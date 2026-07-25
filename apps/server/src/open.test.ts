@@ -5,6 +5,7 @@ import { EDITORS } from "@synara/contracts";
 import { FileSystem, Path, Effect } from "effect";
 
 import {
+  clearCommandAvailabilityCache,
   isCommandAvailable,
   launchDetached,
   resolveAvailableEditors,
@@ -365,7 +366,9 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
         ],
       });
 
-      const availableEditors = resolveAvailableEditors("darwin", { HOME: home, PATH: "" });
+      const availableEditors = yield* Effect.promise(() =>
+        resolveAvailableEditors("darwin", { HOME: home, PATH: "" }),
+      );
       assert.equal(availableEditors.includes("ghostty"), true);
       assert.equal(availableEditors.includes("muxy"), true);
       assert.equal(availableEditors.includes("webstorm"), true);
@@ -464,16 +467,22 @@ it.layer(NodeServices.layer)("isCommandAvailable", (it) => {
         PATH: dir,
         PATHEXT: ".COM;.EXE;.BAT;.CMD",
       } satisfies NodeJS.ProcessEnv;
-      assert.equal(isCommandAvailable("code", { platform: "win32", env }), true);
+      assert.equal(
+        yield* Effect.promise(() => isCommandAvailable("code", { platform: "win32", env })),
+        true,
+      );
     }),
   );
 
-  it("returns false when a command is not on PATH", () => {
+  it("returns false when a command is not on PATH", async () => {
     const env = {
       PATH: "",
       PATHEXT: ".COM;.EXE;.BAT;.CMD",
     } satisfies NodeJS.ProcessEnv;
-    assert.equal(isCommandAvailable("definitely-not-installed", { platform: "win32", env }), false);
+    assert.equal(
+      await isCommandAvailable("definitely-not-installed", { platform: "win32", env }),
+      false,
+    );
   });
 
   it.effect("does not treat bare files without executable extension as available on win32", () =>
@@ -486,7 +495,10 @@ it.layer(NodeServices.layer)("isCommandAvailable", (it) => {
         PATH: dir,
         PATHEXT: ".COM;.EXE;.BAT;.CMD",
       } satisfies NodeJS.ProcessEnv;
-      assert.equal(isCommandAvailable("npm", { platform: "win32", env }), false);
+      assert.equal(
+        yield* Effect.promise(() => isCommandAvailable("npm", { platform: "win32", env })),
+        false,
+      );
     }),
   );
 
@@ -500,7 +512,10 @@ it.layer(NodeServices.layer)("isCommandAvailable", (it) => {
         PATH: dir,
         PATHEXT: ".COM;.EXE;.BAT;.CMD",
       } satisfies NodeJS.ProcessEnv;
-      assert.equal(isCommandAvailable("my.tool", { platform: "win32", env }), true);
+      assert.equal(
+        yield* Effect.promise(() => isCommandAvailable("my.tool", { platform: "win32", env })),
+        true,
+      );
     }),
   );
 
@@ -516,9 +531,75 @@ it.layer(NodeServices.layer)("isCommandAvailable", (it) => {
         PATH: `${firstDir};${secondDir}`,
         PATHEXT: ".COM;.EXE;.BAT;.CMD",
       } satisfies NodeJS.ProcessEnv;
-      assert.equal(isCommandAvailable("code", { platform: "win32", env }), true);
+      assert.equal(
+        yield* Effect.promise(() => isCommandAvailable("code", { platform: "win32", env })),
+        true,
+      );
     }),
   );
+});
+
+// A PATH lookup is O(PATH entries x PATHEXT) synchronous stat calls. On a
+// developer machine that is thousands of them per call, and `loadServerConfig`
+// runs it on every `server.getConfig` and every `server.subscribeConfig`
+// reconnect — enough to stall the event loop, drop the WebSocket heartbeat, and
+// send the client into a reconnect loop. Caching is what keeps that off the hot
+// path, so it is asserted rather than assumed.
+it.layer(NodeServices.layer)("isCommandAvailable caching", (it) => {
+  it.effect("answers a repeat lookup from cache without re-reading the filesystem", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "synara-open-cache-" });
+      const commandPath = path.join(dir, "code.CMD");
+      yield* fs.writeFileString(commandPath, "@echo off\r\n");
+      const env = { PATH: dir, PATHEXT: ".COM;.EXE;.BAT;.CMD" } satisfies NodeJS.ProcessEnv;
+
+      clearCommandAvailabilityCache();
+      assert.equal(
+        yield* Effect.promise(() => isCommandAvailable("code", { platform: "win32", env })),
+        true,
+      );
+
+      // The only way the second answer can still be `true` is the cache.
+      yield* fs.remove(commandPath);
+      assert.equal(
+        yield* Effect.promise(() => isCommandAvailable("code", { platform: "win32", env })),
+        true,
+      );
+    }),
+  );
+
+  it.effect("re-reads the filesystem after the cache is cleared", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "synara-open-cache-" });
+      const commandPath = path.join(dir, "code.CMD");
+      yield* fs.writeFileString(commandPath, "@echo off\r\n");
+      const env = { PATH: dir, PATHEXT: ".COM;.EXE;.BAT;.CMD" } satisfies NodeJS.ProcessEnv;
+
+      clearCommandAvailabilityCache();
+      assert.equal(
+        yield* Effect.promise(() => isCommandAvailable("code", { platform: "win32", env })),
+        true,
+      );
+
+      yield* fs.remove(commandPath);
+      clearCommandAvailabilityCache();
+      assert.equal(
+        yield* Effect.promise(() => isCommandAvailable("code", { platform: "win32", env })),
+        false,
+      );
+    }),
+  );
+
+  it("keys the cache by command so one lookup cannot answer for another", async () => {
+    clearCommandAvailabilityCache();
+    const env = { PATH: "", PATHEXT: ".COM;.EXE;.BAT;.CMD" } satisfies NodeJS.ProcessEnv;
+    assert.equal(await isCommandAvailable("first-missing", { platform: "win32", env }), false);
+    assert.equal(await isCommandAvailable("second-missing", { platform: "win32", env }), false);
+  });
 });
 
 it.layer(NodeServices.layer)("resolveAvailableEditors", (it) => {
@@ -532,10 +613,12 @@ it.layer(NodeServices.layer)("resolveAvailableEditors", (it) => {
       yield* fs.writeFileString(path.join(dir, "code-insiders.CMD"), "@echo off\r\n");
       yield* fs.writeFileString(path.join(dir, "zeditor.CMD"), "@echo off\r\n");
       yield* fs.writeFileString(path.join(dir, "explorer.CMD"), "MZ");
-      const editors = resolveAvailableEditors("win32", {
-        PATH: dir,
-        PATHEXT: ".COM;.EXE;.BAT;.CMD",
-      });
+      const editors = yield* Effect.promise(() =>
+        resolveAvailableEditors("win32", {
+          PATH: dir,
+          PATHEXT: ".COM;.EXE;.BAT;.CMD",
+        }),
+      );
       assert.deepEqual(editors, ["cursor", "vscode-insiders", "zed", "file-manager"]);
     }),
   );
@@ -561,11 +644,13 @@ it.layer(NodeServices.layer)("resolveAvailableEditors", (it) => {
 
       clearWindowsStorePackageDiscoveryCache();
 
-      const editors = resolveAvailableEditors("win32", {
-        PATH: binDir,
-        PATHEXT: ".COM;.EXE;.BAT;.CMD",
-        ProgramFiles: programFiles,
-      });
+      const editors = yield* Effect.promise(() =>
+        resolveAvailableEditors("win32", {
+          PATH: binDir,
+          PATHEXT: ".COM;.EXE;.BAT;.CMD",
+          ProgramFiles: programFiles,
+        }),
+      );
 
       assert.equal(editors.includes("vscode"), true);
     }),

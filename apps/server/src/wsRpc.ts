@@ -609,6 +609,7 @@ const makeWsRpcHandlersLayer = () =>
       const loadServerConfig = Effect.gen(function* () {
         const keybindingsConfig = yield* keybindings.loadConfigState;
         const providerStatuses = yield* providerHealth.getStatuses;
+        const availableEditors = yield* Effect.promise(() => resolveAvailableEditors());
         return {
           cwd: config.cwd,
           homeDir: config.homeDir,
@@ -619,7 +620,7 @@ const makeWsRpcHandlersLayer = () =>
           keybindings: keybindingsConfig.keybindings,
           issues: keybindingsConfig.issues,
           providers: providerStatuses,
-          availableEditors: resolveAvailableEditors(),
+          availableEditors,
         };
       });
 
