@@ -296,11 +296,20 @@ export const ProviderListAgentsInput = Schema.Struct({
 });
 export type ProviderListAgentsInput = typeof ProviderListAgentsInput.Type;
 
+// Where a discovered subagent came from, in precedence order: a project-local
+// definition wins over the user's home definition, which wins over anything the
+// provider runtime reports (SDK/plugin), which wins over Synara's own built-ins.
+export const ProviderAgentSource = Schema.Literals(["project", "user", "sdk", "builtin"]);
+export type ProviderAgentSource = typeof ProviderAgentSource.Type;
+
 export const ProviderAgentDescriptor = Schema.Struct({
   name: TrimmedNonEmptyString,
   displayName: TrimmedNonEmptyString,
   description: Schema.optional(TrimmedNonEmptyString),
   model: Schema.optional(TrimmedNonEmptyString),
+  source: Schema.optional(ProviderAgentSource),
+  /** Absolute path of the definition file for filesystem-discovered agents. */
+  path: Schema.optional(TrimmedNonEmptyString),
 });
 export type ProviderAgentDescriptor = typeof ProviderAgentDescriptor.Type;
 

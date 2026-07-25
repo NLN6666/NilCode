@@ -4,6 +4,7 @@ import path from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type {
+  AgentInfo,
   Options as ClaudeQueryOptions,
   HookInput,
   PermissionMode,
@@ -33,6 +34,7 @@ import { ClaudeAdapter } from "../Services/ClaudeAdapter.ts";
 import {
   buildEmbeddedClaudeSystemPromptAppend,
   makeClaudeAdapterLive,
+  mapSupportedAgents,
   type ClaudeAdapterLiveOptions,
   type ClaudeOwnedProcess,
 } from "./ClaudeAdapter.ts";
@@ -8346,4 +8348,73 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
       Effect.provide(harness.layer),
     );
   });
+});
+
+describe("subagent mention wiring", () => {
+  // Unit tests cover discovery (agentCatalog) and rewriting (agentMentions)
+  // separately. This one covers the seam between them: a regression that drops
+  // the `agents:` option on the way into buildUserMessageEffect would leave both
+  // unit suites green while silently sending the raw `@name(task)` text to the SDK.
+  it.effect("rewrites an on-disk subagent mention into an Agent-tool directive", () => {
+    const cwd = mkdtempSync(path.join(os.tmpdir(), "synara-l2-claude-"));
+    mkdirSync(path.join(cwd, ".claude", "agents"), { recursive: true });
+    writeFileSync(
+      path.join(cwd, ".claude", "agents", "l2-probe.md"),
+      "---\nname: l2-probe\ndescription: Probe agent used to cover mention wiring\n---\n\nDo the assigned task.\n",
+    );
+
+    const harness = makeHarness({ cwd });
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: "claudeAgent",
+        runtimeMode: "full-access",
+        cwd,
+      });
+
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "@l2-probe(audit the parser)",
+        attachments: [],
+      });
+
+      const promptText = yield* Effect.promise(() =>
+        readFirstPromptText(harness.getLastCreateQueryInput()),
+      );
+
+      assert.include(promptText, 'Use the "l2-probe" agent for this task:');
+      assert.include(promptText, "audit the parser");
+
+      rmSync(cwd, { recursive: true, force: true });
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+});
+
+describe("mapSupportedAgents", () => {
+  // Regression: the SDK echoes Synara's own injected builtins next to real plugin
+  // agents, sometimes under the same name in different casing. Merging is
+  // case-insensitive and first-wins, so before the sort the winner depended on
+  // whatever order supportedAgents() happened to return. Both input orders are
+  // exercised because testing only one cannot prove order-independence.
+  const asAgentInfo = (name: string) => ({ name, description: `${name} agent` }) as AgentInfo;
+
+  for (const [first, second] of [
+    ["explore", "Explore"],
+    ["Explore", "explore"],
+  ] as const) {
+    it(`ranks sdk agents ahead of builtin echoes when "${first}" is returned first`, () => {
+      const mapped = mapSupportedAgents([asAgentInfo(first), asAgentInfo(second)]);
+
+      const sdkIndex = mapped.findIndex((agent) => agent.source === "sdk");
+      const builtinIndex = mapped.findIndex((agent) => agent.source === "builtin");
+
+      assert.notEqual(sdkIndex, -1, "expected an sdk-sourced agent");
+      assert.notEqual(builtinIndex, -1, "expected a builtin-sourced agent");
+      assert.ok(sdkIndex < builtinIndex, "sdk agent must win the case-insensitive merge");
+    });
+  }
 });

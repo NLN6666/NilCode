@@ -134,15 +134,19 @@ export function useProviderModelCatalog(input: {
   );
 
   // Agent/mode discovery (kilo/opencode "Mode"/"Agent" picker, claude/codex subagents).
+  // cwd matters here: project-level `.claude/agents` / `.codex/agents` definitions
+  // take precedence over the user's home ones.
   const claudeDynamicAgentsQuery = useQuery(
     providerAgentsQueryOptions({
       provider: "claudeAgent",
+      cwd: discoveryCwd,
       enabled: agentDiscoveryPolicy === "eager-core" || selectedProvider === "claudeAgent",
     }),
   );
   const codexDynamicAgentsQuery = useQuery(
     providerAgentsQueryOptions({
       provider: "codex",
+      cwd: discoveryCwd,
       enabled: agentDiscoveryPolicy === "eager-core" || selectedProvider === "codex",
     }),
   );

@@ -82,7 +82,9 @@ const DISPLAY_LINK_TOKEN_FIRST_REGEX = new RegExp(LINK_TOKEN_DISPLAY_PATTERN);
 
 // Agent mention chip: @alias(
 // Keep plain @alias text editable while typing so the picker can stay open.
-const AGENT_MENTION_TOKEN_REGEX = /(^|\s)@([a-zA-Z0-9._-]+)(?=\()/g;
+// Colon included so plugin-namespaced agents (`ecc:security-reviewer`) tokenize
+// as one alias here exactly as they do in the shared mention parser.
+const AGENT_MENTION_TOKEN_REGEX = /(^|\s)@([a-zA-Z0-9._:-]+)(?=\()/g;
 
 /**
  * Finds the first bare-URL token in `text` using the same rules as the segment split: while

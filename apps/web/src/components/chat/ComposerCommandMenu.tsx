@@ -93,7 +93,7 @@ function commandMenuTitle(
 
 function commandMenuTrailingMeta(item: ComposerCommandItem): string | null {
   if (item.type === "agent") {
-    return "delegate task to subagent";
+    return item.group === "model" ? "switch model" : "delegate task to subagent";
   }
 
   if (item.type === "plugin") {
@@ -233,6 +233,8 @@ export type ComposerCommandItem =
       provider: ProviderKind;
       alias: string;
       color: string;
+      /** Menu section: a discovered subagent, a Synara built-in, or a model switch. */
+      group: "agent" | "builtin" | "model";
       label: string;
       description: string;
     };
@@ -255,7 +257,11 @@ export function groupCommandItems(
     const pluginItems = items.filter((item) => item.type === "plugin");
     const threadItems = items.filter((item) => item.type === "thread");
     const localItems = items.filter((item) => item.type === "local-root" || item.type === "path");
-    const agentItems = items.filter((item) => item.type === "agent");
+    const agentItems = items.filter((item) => item.type === "agent" && item.group === "agent");
+    const builtInAgentItems = items.filter(
+      (item) => item.type === "agent" && item.group === "builtin",
+    );
+    const modelAliasItems = items.filter((item) => item.type === "agent" && item.group === "model");
     const otherItems = items.filter(
       (item) =>
         item.type !== "plugin" &&
@@ -272,11 +278,17 @@ export function groupCommandItems(
     if (threadItems.length > 0) {
       groups.push({ id: "chats", label: "Chats", items: threadItems });
     }
+    if (agentItems.length > 0) {
+      groups.push({ id: "subagents", label: "Your agents", items: agentItems });
+    }
+    if (builtInAgentItems.length > 0) {
+      groups.push({ id: "built-in-agents", label: "Synara agents", items: builtInAgentItems });
+    }
+    if (modelAliasItems.length > 0) {
+      groups.push({ id: "model-aliases", label: "Models", items: modelAliasItems });
+    }
     if (localItems.length > 0) {
       groups.push({ id: "local", label: "Local", items: localItems });
-    }
-    if (agentItems.length > 0) {
-      groups.push({ id: "subagents", label: "Subagents", items: agentItems });
     }
     if (otherItems.length > 0) {
       groups.push({ id: "other", label: null, items: otherItems });

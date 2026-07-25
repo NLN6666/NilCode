@@ -1,0 +1,283 @@
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as nodePath from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  agentCatalogRoots,
+  clearAgentCatalogCacheForTests,
+  collectAgentsFromRoots,
+  discoverAgentCatalog,
+  mergeAgentDescriptors,
+  parseCodexAgentToml,
+} from "./agentCatalog.ts";
+
+let tempDir: string;
+
+beforeEach(async () => {
+  clearAgentCatalogCacheForTests();
+  tempDir = await fs.mkdtemp(nodePath.join(os.tmpdir(), "synara-agent-catalog-"));
+});
+
+afterEach(async () => {
+  clearAgentCatalogCacheForTests();
+  await fs.rm(tempDir, { recursive: true, force: true });
+});
+
+async function writeFile(relativePath: string, contents: string): Promise<string> {
+  const absolutePath = nodePath.join(tempDir, relativePath);
+  await fs.mkdir(nodePath.dirname(absolutePath), { recursive: true });
+  await fs.writeFile(absolutePath, contents, "utf8");
+  return absolutePath;
+}
+
+describe("parseCodexAgentToml", () => {
+  it("reads top-level scalars", () => {
+    expect(
+      parseCodexAgentToml(
+        [
+          'name = "coder"',
+          'description = "Implements scoped changes"',
+          'model = "gpt-5.6-sol"',
+          'model_reasoning_effort = "high"',
+        ].join("\n"),
+      ),
+    ).toEqual({
+      name: "coder",
+      description: "Implements scoped changes",
+      model: "gpt-5.6-sol",
+      model_reasoning_effort: "high",
+    });
+  });
+
+  it("skips multi-line string bodies so embedded key = value lines are not read", () => {
+    const parsed = parseCodexAgentToml(
+      [
+        'name = "reviewer"',
+        'developer_instructions = """',
+        "Example config:",
+        '  name = "not-the-agent-name"',
+        "  allWarningsAsErrors = true",
+        '"""',
+        'model = "gpt-5.4"',
+      ].join("\n"),
+    );
+
+    expect(parsed.name).toBe("reviewer");
+    expect(parsed.model).toBe("gpt-5.4");
+    expect(parsed.allWarningsAsErrors).toBeUndefined();
+  });
+
+  it("reads single-line literal strings and stops at the first table header", () => {
+    const parsed = parseCodexAgentToml(
+      [
+        "name = 'explorer'",
+        "description = '''Explores the repo'''",
+        "[features.multi_agent_v2]",
+        "enabled = false",
+      ].join("\n"),
+    );
+
+    expect(parsed.name).toBe("explorer");
+    expect(parsed.description).toBe("Explores the repo");
+    expect(parsed.enabled).toBeUndefined();
+  });
+
+  it("ignores comments and array values", () => {
+    const parsed = parseCodexAgentToml(
+      ["# a comment", 'name = "planner" # trailing', 'nickname_candidates = ["Planner"]'].join(
+        "\n",
+      ),
+    );
+
+    expect(parsed.name).toBe("planner");
+    expect(parsed.nickname_candidates).toBeUndefined();
+  });
+});
+
+describe("collectAgentsFromRoots", () => {
+  it("skips Codex role files without a non-empty name, like Codex itself does", async () => {
+    await writeFile(".codex/agents/coder.toml", 'name = "coder"\ndescription = "Implements"');
+    await writeFile(".codex/agents/docs-researcher.toml", 'model = "gpt-5.4"');
+    await writeFile(".codex/agents/blank-name.toml", 'name = "   "');
+    await writeFile(".codex/agents/notes.md", "not a role file");
+
+    const agents = await collectAgentsFromRoots({
+      provider: "codex",
+      roots: [{ path: nodePath.join(tempDir, ".codex", "agents"), source: "user" }],
+    });
+
+    expect(agents.map((agent) => agent.name)).toEqual(["coder"]);
+    expect(agents[0]).toMatchObject({
+      displayName: "coder",
+      description: "Implements",
+      source: "user",
+    });
+  });
+
+  it("takes the Codex agent_type from `name`, not the filename", async () => {
+    await writeFile(".codex/agents/file-name.toml", 'name = "declared-name"');
+
+    const agents = await collectAgentsFromRoots({
+      provider: "codex",
+      roots: [{ path: nodePath.join(tempDir, ".codex", "agents"), source: "user" }],
+    });
+
+    expect(agents.map((agent) => agent.name)).toEqual(["declared-name"]);
+  });
+
+  it("reads nested Claude agent definitions and skips ones without a name", async () => {
+    await writeFile(
+      ".claude/agents/coder.md",
+      "---\nname: coder\ndescription: Implements\nmodel: inherit\n---\n\nbody",
+    );
+    await writeFile(".claude/agents/ccg/planner.md", "---\nname: planner\n---\n\nbody");
+    await writeFile(".claude/agents/nameless.md", "---\ndescription: no name here\n---\n");
+    await writeFile(".claude/agents/coder.md.backup", "---\nname: coder-backup\n---\n");
+
+    const agents = await collectAgentsFromRoots({
+      provider: "claudeAgent",
+      roots: [{ path: nodePath.join(tempDir, ".claude", "agents"), source: "user" }],
+    });
+
+    expect(agents.map((agent) => agent.name).toSorted()).toEqual(["coder", "planner"]);
+    expect(agents.find((agent) => agent.name === "coder")?.model).toBe("inherit");
+  });
+
+  it("keeps the project definition when a name exists in several roots", async () => {
+    await writeFile(".claude/agents/review.md", "---\nname: review\ndescription: user copy\n---\n");
+    await writeFile(
+      "workspace/.claude/agents/review.md",
+      "---\nname: review\ndescription: project copy\n---\n",
+    );
+
+    const agents = await collectAgentsFromRoots({
+      provider: "claudeAgent",
+      roots: [
+        { path: nodePath.join(tempDir, "workspace", ".claude", "agents"), source: "project" },
+        { path: nodePath.join(tempDir, ".claude", "agents"), source: "user" },
+      ],
+    });
+
+    expect(agents).toHaveLength(1);
+    expect(agents[0]).toMatchObject({ description: "project copy", source: "project" });
+  });
+
+  it("skips unreadable definitions instead of failing the whole scan", async () => {
+    await writeFile(".codex/agents/good.toml", 'name = "good"');
+    // An unterminated string makes `name` unreadable; the file is dropped, the scan is not.
+    await writeFile(".codex/agents/broken.toml", 'name = "broken');
+
+    const agents = await collectAgentsFromRoots({
+      provider: "codex",
+      roots: [{ path: nodePath.join(tempDir, ".codex", "agents"), source: "user" }],
+    });
+
+    expect(agents.map((agent) => agent.name)).toEqual(["good"]);
+  });
+});
+
+describe("agentCatalogRoots", () => {
+  it("orders project ancestors deepest-first ahead of the user root", () => {
+    const roots = agentCatalogRoots({
+      provider: "claudeAgent",
+      homeDir: nodePath.join(tempDir, "home"),
+      cwd: nodePath.join(tempDir, "repo", "packages", "web"),
+    });
+
+    expect(roots.at(-1)).toEqual({
+      path: nodePath.join(tempDir, "home", ".claude", "agents"),
+      source: "user",
+    });
+    expect(roots[0]?.path).toBe(
+      nodePath.join(tempDir, "repo", "packages", "web", ".claude", "agents"),
+    );
+    expect(roots[1]?.path).toBe(nodePath.join(tempDir, "repo", "packages", ".claude", "agents"));
+    expect(roots.every((root) => root.source === "project" || root === roots.at(-1))).toBe(true);
+  });
+
+  it("scans a home root only once when the cwd sits under the home dir", () => {
+    const homeDir = nodePath.join(tempDir, "home");
+    const roots = agentCatalogRoots({
+      provider: "claudeAgent",
+      homeDir,
+      cwd: nodePath.join(homeDir, "projects", "app"),
+    });
+
+    const homeRootPath = nodePath.join(homeDir, ".claude", "agents");
+    expect(roots.filter((root) => root.path === homeRootPath)).toEqual([
+      { path: homeRootPath, source: "user" },
+    ]);
+  });
+
+  it("scans only the home root for Codex, which ignores project-level role files", () => {
+    const homeDir = nodePath.join(tempDir, "home");
+    const roots = agentCatalogRoots({
+      provider: "codex",
+      homeDir,
+      cwd: nodePath.join(tempDir, "repo"),
+    });
+
+    expect(roots).toEqual([{ path: nodePath.join(homeDir, ".codex", "agents"), source: "user" }]);
+  });
+});
+
+describe("mergeAgentDescriptors", () => {
+  it("keeps the first group's entry on a name conflict", () => {
+    const merged = mergeAgentDescriptors([
+      [{ name: "review", displayName: "review", source: "project" }],
+      [{ name: "review", displayName: "review", source: "user" }],
+      [{ name: "explore", displayName: "explore", source: "builtin" }],
+    ]);
+
+    expect(merged).toEqual([
+      { name: "review", displayName: "review", source: "project" },
+      { name: "explore", displayName: "explore", source: "builtin" },
+    ]);
+  });
+
+  it("matches names case-insensitively", () => {
+    const merged = mergeAgentDescriptors([
+      [{ name: "Review", displayName: "Review", source: "user" }],
+      [{ name: "review", displayName: "review", source: "sdk" }],
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.source).toBe("user");
+  });
+});
+
+describe("discoverAgentCatalog", () => {
+  it("discovers project and user agents together, project first", async () => {
+    await writeFile(".claude/agents/user-only.md", "---\nname: user-only\n---\n");
+    await writeFile("repo/.claude/agents/project-only.md", "---\nname: project-only\n---\n");
+
+    const agents = await discoverAgentCatalog({
+      provider: "claudeAgent",
+      homeDir: tempDir,
+      cwd: nodePath.join(tempDir, "repo"),
+    });
+
+    // The cwd's real ancestors are walked too, so filter to this fixture's
+    // agents; their relative order still proves project roots are scanned first.
+    expect(agents.map((agent) => agent.name).filter((name) => name.endsWith("-only"))).toEqual([
+      "project-only",
+      "user-only",
+    ]);
+  });
+
+  it("picks up a newly added definition without a forced reload", async () => {
+    await writeFile(".codex/agents/first.toml", 'name = "first"');
+    const input = { provider: "codex", homeDir: tempDir } as const;
+
+    expect((await discoverAgentCatalog(input)).map((agent) => agent.name)).toEqual(["first"]);
+
+    await writeFile(".codex/agents/second.toml", 'name = "second"');
+
+    expect((await discoverAgentCatalog(input)).map((agent) => agent.name).toSorted()).toEqual([
+      "first",
+      "second",
+    ]);
+  });
+});

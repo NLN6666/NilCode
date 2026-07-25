@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { groupCommandItems, type ComposerCommandItem } from "./ComposerCommandMenu";
 
 describe("groupCommandItems", () => {
-  it("groups mention suggestions as plugins, chats, local, then subagents", () => {
+  it("groups mention suggestions as plugins, chats, agents, then local", () => {
     const items: ComposerCommandItem[] = [
       {
         id: "agent:codex:mini",
@@ -10,6 +10,7 @@ describe("groupCommandItems", () => {
         provider: "codex",
         alias: "mini",
         color: "violet",
+        group: "model",
         label: "@mini",
         description: "GPT-5.4 Mini",
       },
@@ -62,6 +63,26 @@ describe("groupCommandItems", () => {
         label: "Release prep",
         description: "Synara",
       },
+      {
+        id: "agent:codex:coder",
+        type: "agent",
+        provider: "codex",
+        alias: "coder",
+        color: "violet",
+        group: "agent",
+        label: "@coder",
+        description: "Implements scoped changes",
+      },
+      {
+        id: "agent:claudeAgent:explore",
+        type: "agent",
+        provider: "claudeAgent",
+        alias: "explore",
+        color: "cyan",
+        group: "builtin",
+        label: "@explore",
+        description: "Explore",
+      },
     ];
 
     expect(groupCommandItems(items, "mention", true)).toEqual([
@@ -76,14 +97,24 @@ describe("groupCommandItems", () => {
         items: [items[4]],
       },
       {
+        id: "subagents",
+        label: "Your agents",
+        items: [items[5]],
+      },
+      {
+        id: "built-in-agents",
+        label: "Synara agents",
+        items: [items[6]],
+      },
+      {
+        id: "model-aliases",
+        label: "Models",
+        items: [items[0]],
+      },
+      {
         id: "local",
         label: "Local",
         items: [items[1], items[3]],
-      },
-      {
-        id: "subagents",
-        label: "Subagents",
-        items: [items[0]],
       },
     ]);
   });

@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   ApprovalRequestId,
@@ -22,7 +24,13 @@ import {
   type CodexAppServerStartSessionInput,
   type CodexAppServerSendTurnInput,
 } from "../../codexAppServerManager.ts";
-import { ServerConfig } from "../../config.ts";
+import {
+  deriveServerPaths,
+  resolveDefaultChatWorkspaceRoot,
+  resolveDefaultStudioWorkspaceRoot,
+  ServerConfig,
+  type ServerConfigShape,
+} from "../../config.ts";
 import { ProviderAdapterValidationError } from "../Errors.ts";
 import { CodexAdapter } from "../Services/CodexAdapter.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
@@ -429,6 +437,74 @@ turnPreparationLayer("CodexAdapterLive turn input preparation", (it) => {
       assert.equal(turnPreparationManager.steerTurnImpl.mock.calls.length, 0);
     }),
   );
+
+  it.effect("rewrites a discovered user Codex subagent mention into an agents.spawn_agent directive", () => {
+    const homeDir = mkdtempSync(path.join(os.tmpdir(), "codex-agent-mention-"));
+    const cwd = path.join(homeDir, "workspace");
+    const baseDir = path.join(homeDir, ".synara");
+    const agentName = "fixture-codex-agent";
+    mkdirSync(path.join(homeDir, ".codex", "agents"), { recursive: true });
+    mkdirSync(cwd, { recursive: true });
+    writeFileSync(
+      path.join(homeDir, ".codex", "agents", "fixture-role.toml"),
+      `name = "${agentName}"\ndescription = "Handles the fixture task"\n`,
+    );
+
+    const manager = new FakeCodexManager();
+    const layer = makeCodexAdapterLive({ manager }).pipe(
+      Layer.provideMerge(
+        Layer.effect(
+          ServerConfig,
+          Effect.gen(function* () {
+            const derived = yield* deriveServerPaths(baseDir, undefined);
+            return {
+              mode: "web",
+              port: 0,
+              host: undefined,
+              cwd,
+              homeDir,
+              chatWorkspaceRoot: resolveDefaultChatWorkspaceRoot({ homeDir }),
+              studioWorkspaceRoot: resolveDefaultStudioWorkspaceRoot({ homeDir }),
+              baseDir,
+              ...derived,
+              staticDir: undefined,
+              devUrl: undefined,
+              publicUrl: undefined,
+              allowInsecureRemote: false,
+              noBrowser: true,
+              authToken: undefined,
+              autoBootstrapProjectFromCwd: false,
+              logProviderEvents: false,
+              logWebSocketEvents: false,
+            } satisfies ServerConfigShape;
+          }),
+        ),
+      ),
+      Layer.provideMerge(providerSessionDirectoryTestLayer),
+      Layer.provideMerge(NodeServices.layer),
+    );
+
+    return Effect.gen(function* () {
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => rmSync(homeDir, { recursive: true, force: true })),
+      );
+
+      const adapter = yield* CodexAdapter;
+      yield* adapter.sendTurn({
+        threadId: asThreadId("thread-codex-agent-mention"),
+        input: `@${agentName}(some task)`,
+        attachments: [],
+      });
+
+      const sentInput = manager.sendTurnImpl.mock.calls[0]?.[0]?.input;
+      assert.equal(typeof sentInput, "string");
+      if (typeof sentInput !== "string") {
+        return;
+      }
+      assert.match(sentInput, /agents\.spawn_agent/);
+      assert.match(sentInput, new RegExp(`agent_type "${agentName}"`));
+    }).pipe(Effect.provide(layer));
+  });
 });
 
 const lifecycleManager = new FakeCodexManager();

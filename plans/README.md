@@ -15,6 +15,7 @@ Plans 001–005 are read-only handoff plans for implementing a Codex-like automa
 | 005  | Add Cron, Timezone, Skills, and Automation Policies  | P2       | L      | 001, 002, 003, 004 | DONE   |
 | 006  | Make Synara the Authoritative Agent Harness          | P1       | L      | —                  | DONE   |
 | 007  | Codex-Parity Automation Agent Surface & Run Protocol | P1       | L      | 001–005            | DONE   |
+| 008  | 在 Composer 中 @ 提及真实的 Claude / Codex 子代理    | P1       | M      | —                  | TODO   |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale).
 
@@ -26,6 +27,8 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 - 004 depends on 001 because triage actions such as cancel/archive/read must not race provider completion or leave active work running.
 - 005 is intentionally last because cron/timezone/policies have higher regression risk and should build on the proven timer + triage foundation.
 - 006 is independent from the automation sequence. Its internal order is deliberate: characterize the incident, establish one host policy, bind invocation identity, validate targets, make creation idempotent, then add wait/replay coverage.
+- 008 is independent from the automation sequence. It closes the composer-side gap for subagent mentions: real filesystem/SDK agent discovery for both Claude and Codex, replacing the four hard-coded Claude aliases. Runtime subagent rendering is already complete and is explicitly out of scope.
+- Plans from 008 onward are written in Chinese per operator preference; 001–007 stay as-is in English.
 - 007 builds on the completed 001–005 foundation and closes the remaining gaps versus Codex Desktop automations: full agent-facing MCP tool parity (view/update/suggested-create), run envelope + persistent memory, heartbeat notify/silent decisions with eligibility gates, notification policy, deterministic jitter, and bounded parallel dispatch. Workstream order inside 007 matters: tool surface first, then run protocol, then scheduler refinements.
 
 ## Quality and performance guardrails

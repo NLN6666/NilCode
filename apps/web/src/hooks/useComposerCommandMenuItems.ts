@@ -284,37 +284,42 @@ export function useComposerCommandMenuItems(input: {
   if (composerTrigger.kind === "mention") {
     const query = normalizeProviderDiscoveryText(composerTrigger.query);
 
-    const agentItems: ComposerCommandItem[] = (() => {
-      // Use dynamic agents when available, fallback to static
-      if (dynamicAgents.length > 0) {
-        return rankProviderDiscoveryItems(dynamicAgents, query, ({ name, displayName }) => [
-          { value: name },
-          { value: displayName },
-        ]).map(({ name, displayName }) => ({
-          id: `agent:${provider}:${name}`,
-          type: "agent" as const,
-          provider,
-          alias: name,
-          color: "violet" as const,
-          label: `@${name}`,
-          description: displayName,
-        }));
-      }
-      // Static fallback
-      return rankProviderDiscoveryItems(
-        getAgentMentionAutocompleteAliases(provider),
-        query,
-        ({ alias, displayName }) => [{ value: alias }, { value: displayName }],
-      ).map(({ alias, displayName, color }) => ({
-        id: `agent:${provider}:${alias}`,
-        type: "agent" as const,
-        provider,
-        alias,
-        color,
-        label: `@${alias}`,
-        description: displayName,
-      }));
-    })();
+    // Discovered subagents and the static alias table are different things: the
+    // former are the user's real agents, the latter are Synara built-ins plus (on
+    // Codex) model switches. Group them so a single `@` stays unambiguous.
+    const discoveredAgentItems: ComposerCommandItem[] = rankProviderDiscoveryItems(
+      dynamicAgents,
+      query,
+      ({ name, displayName }) => [{ value: name }, { value: displayName }],
+    ).map(({ name, displayName, description, source }) => ({
+      id: `agent:${provider}:${name}`,
+      type: "agent" as const,
+      provider,
+      alias: name,
+      color: "violet" as const,
+      group: source === "builtin" ? ("builtin" as const) : ("agent" as const),
+      label: `@${name}`,
+      description: description ?? (displayName === name ? "" : displayName),
+    }));
+    const discoveredAgentNames = new Set(dynamicAgents.map(({ name }) => name.toLowerCase()));
+    // Aliases the discovery pass already covers would list the same agent twice.
+    const aliasAgentItems: ComposerCommandItem[] = rankProviderDiscoveryItems(
+      getAgentMentionAutocompleteAliases(provider).filter(
+        ({ alias, kind }) => kind === "model" || !discoveredAgentNames.has(alias.toLowerCase()),
+      ),
+      query,
+      ({ alias, displayName }) => [{ value: alias }, { value: displayName }],
+    ).map(({ alias, displayName, color, kind }) => ({
+      id: `agent:${provider}:${alias}`,
+      type: "agent" as const,
+      provider,
+      alias,
+      color,
+      group: kind === "model" ? ("model" as const) : ("builtin" as const),
+      label: `@${alias}`,
+      description: displayName,
+    }));
+    const agentItems: ComposerCommandItem[] = [...discoveredAgentItems, ...aliasAgentItems];
 
     const pluginItems = rankProviderDiscoveryItems(
       providerPlugins.filter(({ plugin }) => isInstalledProviderPlugin(plugin)),
@@ -353,9 +358,10 @@ export function useComposerCommandMenuItems(input: {
           query: composerTrigger.query,
         })
       : [];
-    // Keep mention suggestions ordered by primary intent: plugins and chats
-    // first, then local context, then subagent delegation targets.
-    return [...pluginItems, ...threadItems, ...localRootItems, ...pathItems, ...agentItems];
+    // Keep mention suggestions ordered by primary intent. Delegation targets sit
+    // right after plugins/chats — ahead of file paths, which the trailing "Files"
+    // hint already tells users to reach by typing.
+    return [...pluginItems, ...threadItems, ...agentItems, ...localRootItems, ...pathItems];
   }
 
   if (composerTrigger.kind === "slash-command") {

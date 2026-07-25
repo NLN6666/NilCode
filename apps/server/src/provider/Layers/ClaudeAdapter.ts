@@ -56,6 +56,7 @@ import {
   type ProviderListCommandsResult,
   type ProviderListSkillsInput,
   type ProviderListSkillsResult,
+  type ProviderAgentDescriptor,
   type ProviderListAgentsResult,
   type ProviderListModelsResult,
   getAgentMentionAliases,
@@ -70,6 +71,7 @@ import {
   trimOrNull,
 } from "@synara/shared/model";
 import { buildClaudeSubagentPrompt } from "@synara/shared/agentMentions";
+import { discoverAgentCatalog, mergeAgentDescriptors } from "../agentCatalog.ts";
 import { prepareWindowsSafeProcess } from "@synara/shared/windowsProcess";
 import {
   Cause,
@@ -941,8 +943,48 @@ function buildClaudeSdkSubagents(): Record<string, AgentDefinition> {
   return agents;
 }
 
-function buildPromptText(input: ProviderSendTurnInput): string {
-  const basePrompt = buildClaudeSubagentPrompt(input.input?.trim() ?? "").prompt;
+// Synara injects these subagents into every session, so the SDK reports them back
+// as if they were user-defined; they belong in the built-in menu group instead.
+function claudeBuiltinAgentDescriptors(): ProviderAgentDescriptor[] {
+  const aliasDisplayNames = new Map(
+    getAgentMentionAliases("claudeAgent").flatMap((alias) =>
+      alias.kind === "claude-subagent" ? ([[alias.agentName, alias.displayName]] as const) : [],
+    ),
+  );
+  return Object.entries(buildClaudeSdkSubagents()).map(([name, definition]) => ({
+    name,
+    displayName: aliasDisplayNames.get(name) ?? name,
+    ...(definition.description ? { description: definition.description } : {}),
+    source: "builtin" as const,
+  }));
+}
+
+// Plugin-provided subagents (`ecc:*`, `superpowers:*`) only exist in the runtime
+// list, never on disk, which is why the SDK result is merged with the catalog.
+export function mapSupportedAgents(agents: ReadonlyArray<AgentInfo>): ProviderAgentDescriptor[] {
+  const builtinNames = new Set(Object.keys(buildClaudeSdkSubagents()));
+  return (
+    agents
+      .map((agent) => ({
+        name: agent.name,
+        displayName: agent.name,
+        ...(agent.description ? { description: agent.description } : {}),
+        ...(agent.model ? { model: agent.model } : {}),
+        source: builtinNames.has(agent.name) ? ("builtin" as const) : ("sdk" as const),
+      }))
+      // A plugin agent and an SDK echo of Synara's own injected builtin can surface
+      // under the same name in different casing (`Explore` vs `explore`). Merging is
+      // case-insensitive and first-wins, so ordering here is what makes the outcome
+      // deterministic instead of dependent on supportedAgents() return order.
+      .toSorted((a, b) => Number(a.source === "builtin") - Number(b.source === "builtin"))
+  );
+}
+
+function buildPromptText(
+  input: ProviderSendTurnInput,
+  agents: ReadonlyArray<ProviderAgentDescriptor>,
+): string {
+  const basePrompt = buildClaudeSubagentPrompt(input.input?.trim() ?? "", { agents }).prompt;
   const rawEffort =
     input.modelSelection?.provider === "claudeAgent" ? input.modelSelection.options?.effort : null;
   const requestedEffort = trimOrNull(rawEffort);
@@ -994,10 +1036,11 @@ function buildUserMessageEffect(
   dependencies: {
     readonly fileSystem: FileSystem.FileSystem;
     readonly attachmentsDir: string;
+    readonly agents: ReadonlyArray<ProviderAgentDescriptor>;
   },
 ): Effect.Effect<SDKUserMessage, ProviderAdapterRequestError> {
   return Effect.gen(function* () {
-    const text = buildPromptText(input);
+    const text = buildPromptText(input, dependencies.agents);
     const sdkContent: Array<Record<string, unknown>> = [];
 
     if (text.length > 0) {
@@ -1524,7 +1567,10 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
     const sessions = new Map<ThreadId, ClaudeSessionContext>();
     const sessionLifecycleLocks = new Map<ThreadId, Semaphore.Semaphore>();
     let cachedModels: ProviderListModelsResult | null = null;
-    let cachedAgents: ProviderListAgentsResult | null = null;
+    // Runtime-reported agents only (plugin-provided ones in particular). The
+    // filesystem catalog is authoritative for anything defined on disk, so these
+    // are merged underneath it rather than cached as the whole answer.
+    let cachedSdkAgents: ReadonlyArray<ProviderAgentDescriptor> | null = null;
     const runtimeEventQueue = yield* Queue.bounded<ProviderRuntimeEvent>(
       PROVIDER_ADAPTER_RUNTIME_EVENT_BUFFER_CAPACITY,
     );
@@ -4603,20 +4649,11 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           }
 
           // Populate agent cache in background from first session
-          if (!cachedAgents) {
+          if (!cachedSdkAgents) {
             queryRuntime
               .supportedAgents()
               .then((agents) => {
-                cachedAgents = {
-                  agents: agents.map((a) => ({
-                    name: a.name,
-                    displayName: a.name,
-                    ...(a.description ? { description: a.description } : {}),
-                    ...(a.model ? { model: a.model } : {}),
-                  })),
-                  source: "sdk",
-                  cached: false,
-                };
+                cachedSdkAgents = mapSupportedAgents(agents);
               })
               .catch(() => {
                 /* ignore discovery failures */
@@ -5011,9 +5048,15 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           });
         }
 
+        // Mentions of real subagents only rewrite into Agent-tool directives if
+        // dispatch resolves them against the same catalog the composer offered.
         const message = yield* buildUserMessageEffect(input, {
           fileSystem,
           attachmentsDir: serverConfig.attachmentsDir,
+          agents: mergeAgentDescriptors([
+            yield* claudeAgentCatalog(context.session.cwd),
+            cachedSdkAgents ?? [],
+          ]),
         });
 
         yield* Queue.offer(context.promptQueue, {
@@ -5386,32 +5429,57 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
         return { models: [], source: "pending", cached: false };
       });
 
-    const listAgents: NonNullable<ClaudeAdapterShape["listAgents"]> = (_input) =>
-      Effect.sync(() => {
-        if (cachedAgents) {
-          return { ...cachedAgents, cached: true };
+    // Best-effort refresh of the runtime agent list from any live session. It
+    // never blocks discovery: the filesystem catalog already answers the call.
+    const refreshSdkAgentsInBackground = Effect.sync(() => {
+      for (const [, context] of sessions) {
+        if (!context.stopped && context.query) {
+          context.query
+            .supportedAgents()
+            .then((agents) => {
+              cachedSdkAgents = mapSupportedAgents(agents);
+            })
+            .catch(() => {});
+          return;
         }
-        for (const [, context] of sessions) {
-          if (!context.stopped && context.query) {
-            context.query
-              .supportedAgents()
-              .then((agents) => {
-                cachedAgents = {
-                  agents: agents.map((a) => ({
-                    name: a.name,
-                    displayName: a.name,
-                    ...(a.description ? { description: a.description } : {}),
-                    ...(a.model ? { model: a.model } : {}),
-                  })),
-                  source: "sdk",
-                  cached: false,
-                };
-              })
-              .catch(() => {});
-            break;
-          }
+      }
+    });
+
+    const claudeAgentCatalog = (cwd: string | undefined) =>
+      Effect.tryPromise(() =>
+        discoverAgentCatalog({
+          provider: PROVIDER,
+          homeDir: serverConfig.homeDir,
+          ...(cwd ? { cwd } : {}),
+        }),
+      ).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("claude subagent catalog discovery failed", { cause }).pipe(
+            Effect.as([] as ProviderAgentDescriptor[]),
+          ),
+        ),
+      );
+
+    // Disk definitions answer immediately so a brand-new session still lists the
+    // user's real subagents; the SDK list (plugin agents) merges in underneath so
+    // it can never shadow a project- or user-level definition of the same name.
+    const listAgents: NonNullable<ClaudeAdapterShape["listAgents"]> = (input) =>
+      Effect.gen(function* () {
+        const scanned = yield* claudeAgentCatalog(input.cwd);
+        const sdkAgents = cachedSdkAgents;
+        if (!sdkAgents) {
+          yield* refreshSdkAgentsInBackground;
         }
-        return { agents: [], source: "pending", cached: false };
+
+        return {
+          agents: mergeAgentDescriptors([
+            scanned,
+            sdkAgents ?? [],
+            claudeBuiltinAgentDescriptors(),
+          ]),
+          source: sdkAgents ? "filesystem+sdk" : "filesystem",
+          cached: false,
+        } satisfies ProviderListAgentsResult;
       });
 
     return {
