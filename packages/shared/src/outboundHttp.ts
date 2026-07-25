@@ -297,6 +297,46 @@ async function resolvePinnedAddress(
   return selected;
 }
 
+type DnsLookupAllCallback = (
+  error: NodeJS.ErrnoException | null,
+  addresses: ReadonlyArray<{ readonly address: string; readonly family: number }>,
+) => void;
+
+type DnsLookupSingleCallback = (
+  error: NodeJS.ErrnoException | null,
+  address: string,
+  family: number,
+) => void;
+
+/**
+ * Builds the `lookup` hook that forces a connection to the address already
+ * resolved and policy-checked, closing the DNS-rebinding window between the
+ * check and the connect.
+ *
+ * Node picks the callback shape via `options.all`, and the two shapes are not
+ * interchangeable: answering an `all: true` call with `(address, family)` makes
+ * the socket read `undefined` as its host and throw ERR_INVALID_IP_ADDRESS
+ * before any byte is sent. Node 24 requests `all: true` here.
+ */
+export function createPinnedLookup(pinned: {
+  readonly address: string;
+  readonly family: 4 | 6;
+}): Net.LookupFunction {
+  return ((
+    _hostname: string,
+    options: { readonly all?: boolean },
+    callback: DnsLookupSingleCallback,
+  ) => {
+    if (options.all === true) {
+      (callback as unknown as DnsLookupAllCallback)(null, [
+        { address: pinned.address, family: pinned.family },
+      ]);
+      return;
+    }
+    callback(null, pinned.address, pinned.family);
+  }) as Net.LookupFunction;
+}
+
 async function requestHop(input: {
   readonly url: URL;
   readonly method: string;
@@ -323,9 +363,7 @@ async function requestHop(input: {
         method: input.method,
         headers: requestHeaders(input.headers),
         signal: input.signal,
-        lookup: (_hostname, _options, callback) => {
-          callback(null, pinned.address, pinned.family);
-        },
+        lookup: createPinnedLookup(pinned),
       },
       (response) => {
         const headers = responseHeaders(response.headers);

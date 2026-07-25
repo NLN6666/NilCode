@@ -289,6 +289,30 @@ export const ProviderListModelsResult = Schema.Struct({
 });
 export type ProviderListModelsResult = typeof ProviderListModelsResult.Type;
 
+// A model as the public cloud catalog describes it. Deliberately narrower than
+// ProviderModelDescriptor: a vendor-neutral catalog cannot know provider-private
+// capabilities (Codex `xhigh`, Claude `ultrathink`, fast mode), so it supplies
+// the roster and the local capability template supplies the rest.
+export const CloudModelDescriptor = Schema.Struct({
+  slug: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  description: Schema.optional(TrimmedNonEmptyString),
+  contextWindowTokens: Schema.optional(Schema.Number),
+  /** Effort ladder the catalog reports; advisory, the local template still decides. */
+  reasoningEffortValues: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+});
+export type CloudModelDescriptor = typeof CloudModelDescriptor.Type;
+
+export const ProviderListCloudModelsInput = Schema.Struct({
+  provider: ProviderDiscoveryKind,
+});
+export type ProviderListCloudModelsInput = typeof ProviderListCloudModelsInput.Type;
+
+export const ProviderListCloudModelsResult = Schema.Struct({
+  models: Schema.Array(CloudModelDescriptor),
+});
+export type ProviderListCloudModelsResult = typeof ProviderListCloudModelsResult.Type;
+
 export const ProviderListAgentsInput = Schema.Struct({
   provider: ProviderDiscoveryKind,
   binaryPath: Schema.optional(TrimmedNonEmptyString),

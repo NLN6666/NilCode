@@ -187,6 +187,8 @@ import type {
   ProviderListCommandsResult,
   ProviderListModelsInput,
   ProviderListModelsResult,
+  ProviderListCloudModelsInput,
+  ProviderListCloudModelsResult,
   ProviderListPluginsInput,
   ProviderListPluginsResult,
   ProviderListSkillsInput,
@@ -702,6 +704,9 @@ export interface NativeApi {
     readPlugin: (input: ProviderReadPluginInput) => Promise<ProviderReadPluginResult>;
     listModels: (input: ProviderListModelsInput) => Promise<ProviderListModelsResult>;
     listAgents: (input: ProviderListAgentsInput) => Promise<ProviderListAgentsResult>;
+    listCloudModels: (
+      input: ProviderListCloudModelsInput,
+    ) => Promise<ProviderListCloudModelsResult>;
   };
   orchestration: {
     getSnapshot: () => Promise<OrchestrationReadModel>;

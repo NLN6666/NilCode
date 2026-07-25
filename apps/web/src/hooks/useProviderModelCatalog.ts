@@ -5,6 +5,7 @@
 // Exports: useProviderModelCatalog, ProviderModelCatalog
 
 import type {
+  CloudModelDescriptor,
   ProviderAgentDescriptor,
   ProviderKind,
   ProviderModelDescriptor,
@@ -19,6 +20,7 @@ import { collapseCursorModelVariants } from "../cursorModelVariants";
 import {
   isInitialModelDiscoveryPending,
   providerAgentsQueryOptions,
+  providerCloudModelsQueryOptions,
   providerModelsQueryOptions,
 } from "../lib/providerDiscoveryReactQuery";
 import { mergeDynamicModelOptions, type ProviderModelOption } from "../providerModelOptions";
@@ -168,6 +170,13 @@ export function useProviderModelCatalog(input: {
     }),
   );
 
+  // Only the providers the server maps onto the cloud catalog are queried;
+  // router-style runtimes (cursor/droid/kilo/opencode/pi) get their roster from
+  // their own CLI, which knows what it can actually start a session with.
+  const codexCloudModelsQuery = useQuery(providerCloudModelsQueryOptions("codex"));
+  const claudeCloudModelsQuery = useQuery(providerCloudModelsQueryOptions("claudeAgent"));
+  const grokCloudModelsQuery = useQuery(providerCloudModelsQueryOptions("grok"));
+
   const cursorRuntimeModels = useMemo(
     () => collapseCursorModelVariants(cursorDynamicModelsQuery.data?.models ?? []),
     [cursorDynamicModelsQuery.data?.models],
@@ -268,6 +277,16 @@ export function useProviderModelCatalog(input: {
       opencode: openCodeDynamicModelsQuery.data,
       pi: piDynamicModelsQuery.data,
     };
+    // The cloud catalog is folded into the static baseline first, so a model it
+    // publishes survives whether or not runtime discovery answers. Runtime still
+    // wins on conflicts: it reflects what the installed CLI actually supports.
+    const cloudSources: Partial<
+      Record<ProviderKind, ReadonlyArray<CloudModelDescriptor> | undefined>
+    > = {
+      codex: codexCloudModelsQuery.data?.models,
+      claudeAgent: claudeCloudModelsQuery.data?.models,
+      grok: grokCloudModelsQuery.data?.models,
+    };
     for (const provider of [
       "claudeAgent",
       "codex",
@@ -279,11 +298,22 @@ export function useProviderModelCatalog(input: {
       "opencode",
       "pi",
     ] as const) {
+      const cloudModels = cloudSources[provider];
+      const baseOptions =
+        cloudModels && cloudModels.length > 0
+          ? mergeDynamicModelOptions({
+              provider,
+              staticOptions: staticOptions[provider],
+              dynamicModels: cloudModels,
+            })
+          : staticOptions[provider];
+      result[provider] = baseOptions;
+
       const dynamicModels = dynamicSources[provider]?.models;
       if (dynamicModels && dynamicModels.length > 0) {
         result[provider] = mergeDynamicModelOptions({
           provider,
-          staticOptions: staticOptions[provider],
+          staticOptions: baseOptions,
           dynamicModels,
         });
       }
@@ -291,12 +321,15 @@ export function useProviderModelCatalog(input: {
     return result;
   }, [
     antigravityModelsQuery.data,
+    claudeCloudModelsQuery.data,
     claudeDynamicModelsQuery.data,
+    codexCloudModelsQuery.data,
     codexDynamicModelsQuery.data,
     cursorDynamicModelsQuery.data,
     cursorRuntimeModels,
     customModelsByProvider,
     droidDynamicModelsQuery.data,
+    grokCloudModelsQuery.data,
     grokDynamicModelsQuery.data,
     kiloDynamicModelsQuery.data,
     modelHintByProvider,

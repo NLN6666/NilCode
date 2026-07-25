@@ -105,6 +105,8 @@ import {
   ProviderComposerCapabilities,
   ProviderListAgentsInput,
   ProviderListAgentsResult,
+  ProviderListCloudModelsInput,
+  ProviderListCloudModelsResult,
   ProviderListCommandsInput,
   ProviderListCommandsResult,
   ProviderListModelsInput,
@@ -894,6 +896,12 @@ export const WsProviderListAgentsRpc = Rpc.make(WS_METHODS.providerListAgents, {
   error: WsRpcError,
 });
 
+export const WsProviderListCloudModelsRpc = Rpc.make(WS_METHODS.providerListCloudModels, {
+  payload: ProviderListCloudModelsInput,
+  success: ProviderListCloudModelsResult,
+  error: WsRpcError,
+});
+
 export const WsAutomationListRpc = Rpc.make(WS_METHODS.automationList, {
   payload: AutomationListInput,
   success: AutomationListResult,
@@ -1066,6 +1074,7 @@ export const WsFeatureRpcGroup = RpcGroup.make(
   WsProviderReadPluginRpc,
   WsProviderListModelsRpc,
   WsProviderListAgentsRpc,
+  WsProviderListCloudModelsRpc,
   WsAutomationListRpc,
   WsAutomationGetMemoryRpc,
   WsAutomationCreateRpc,

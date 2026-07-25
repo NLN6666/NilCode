@@ -4,6 +4,7 @@ import type {
   ProviderListAgentsResult,
   ProviderListCommandsResult,
   ProviderListModelsResult,
+  ProviderListCloudModelsResult,
   ProviderListPluginsResult,
   ProviderListSkillsResult,
   ProviderSkillsCatalogResult,
@@ -80,7 +81,31 @@ export const providerDiscoveryQueryKeys = {
     ["provider-discovery", "agents", provider] as const,
   agents: (provider: ProviderKind, binaryPath: string | null, cwd: string | null) =>
     [...providerDiscoveryQueryKeys.agentsForProvider(provider), binaryPath, cwd] as const,
+  // The cloud catalog is machine- and workspace-independent, so the key carries
+  // only the provider: every surface shares one fetch per provider.
+  cloudModels: (provider: ProviderKind) =>
+    ["provider-discovery", "cloud-models", provider] as const,
 };
+
+/**
+ * Models published by the public cloud catalog for `provider`.
+ *
+ * Resolves to an empty list rather than failing when the catalog is unreachable
+ * — the built-in model table stays the offline baseline, so an outage is a
+ * no-op instead of an error surface. Cached for a day: the catalog changes on
+ * the order of model launches, not minutes.
+ */
+export function providerCloudModelsQueryOptions(provider: ProviderKind) {
+  return queryOptions({
+    queryKey: providerDiscoveryQueryKeys.cloudModels(provider),
+    queryFn: async (): Promise<ProviderListCloudModelsResult> => {
+      const api = ensureNativeApi();
+      return api.provider.listCloudModels({ provider });
+    },
+    staleTime: 24 * 60 * 60 * 1000,
+    retry: false,
+  });
+}
 
 export function providerComposerCapabilitiesQueryOptions(provider: ProviderKind) {
   return queryOptions({

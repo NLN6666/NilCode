@@ -106,6 +106,7 @@ import {
   ProviderListPluginsInput,
   ProviderListModelsInput,
   ProviderListAgentsInput,
+  ProviderListCloudModelsInput,
   ProviderReadPluginInput,
   ProviderListSkillsInput,
   ProviderSkillsCatalogInput,
@@ -235,6 +236,7 @@ export const WS_METHODS = {
   providerReadPlugin: "provider.readPlugin",
   providerListModels: "provider.listModels",
   providerListAgents: "provider.listAgents",
+  providerListCloudModels: "provider.listCloudModels",
 
   // Automation methods
   automationList: "automation.list",
@@ -396,6 +398,7 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.providerReadPlugin, ProviderReadPluginInput),
   tagRequestBody(WS_METHODS.providerListModels, ProviderListModelsInput),
   tagRequestBody(WS_METHODS.providerListAgents, ProviderListAgentsInput),
+  tagRequestBody(WS_METHODS.providerListCloudModels, ProviderListCloudModelsInput),
 
   // Automation methods
   tagRequestBody(WS_METHODS.automationList, AutomationListInput),
