@@ -4,6 +4,8 @@ import {
   normalizeModelSlug,
 } from "@synara/shared/model";
 import type {
+  CloudModelDescriptor,
+  ProviderModelDescriptor,
   AntigravityModelOptions,
   AntigravityModelSelection,
   ClaudeModelOptions,
@@ -442,4 +444,99 @@ export function buildModelSelection(
           }
         : { provider, model };
   }
+}
+
+/**
+ * Presents cloud-catalog entries as runtime descriptors so a model the built-in
+ * table has never seen still reaches the trait picker with a real effort ladder
+ * instead of an empty one.
+ *
+ * Only fills gaps: a slug the CLI already described is left alone, because the
+ * CLI knows what it accepts and the catalog only knows what the vendor sells.
+ */
+export function withCloudModelDescriptors(
+  runtimeModels: ReadonlyArray<ProviderModelDescriptor>,
+  cloudModels: ReadonlyArray<CloudModelDescriptor> | undefined,
+): ReadonlyArray<ProviderModelDescriptor> {
+  if (!cloudModels || cloudModels.length === 0) {
+    return runtimeModels;
+  }
+  const described = new Set(runtimeModels.map((model) => model.slug.trim().toLowerCase()));
+  const additions = cloudModels.flatMap((model) => {
+    if (described.has(model.slug.trim().toLowerCase())) {
+      return [];
+    }
+    const efforts = model.reasoningEffortValues ?? [];
+    return [
+      {
+        slug: model.slug,
+        name: model.name,
+        ...(model.description ? { description: model.description } : {}),
+        ...(efforts.length > 0
+          ? { supportedReasoningEfforts: efforts.map((value) => ({ value })) }
+          : {}),
+      } satisfies ProviderModelDescriptor,
+    ];
+  });
+  return additions.length > 0 ? [...runtimeModels, ...additions] : runtimeModels;
+}
+
+// Family tiers, strongest first. Ordering the picker by capability rather than
+// by whatever order a catalog happened to return keeps the useful models on top.
+const CLAUDE_FAMILY_ORDER = ["fable", "opus", "sonnet", "haiku"] as const;
+
+function claudeFamilyRank(slug: string): number {
+  const family = /^claude-([a-z]+)/.exec(slug.toLowerCase())?.[1];
+  const rank = family
+    ? CLAUDE_FAMILY_ORDER.indexOf(family as (typeof CLAUDE_FAMILY_ORDER)[number])
+    : -1;
+  return rank === -1 ? CLAUDE_FAMILY_ORDER.length : rank;
+}
+
+/** Numeric segments of a slug, e.g. `claude-opus-4-8` → [4, 8], `gpt-5.6` → [5, 6]. */
+function versionSegments(slug: string): readonly number[] {
+  return (slug.match(/\d+/g) ?? []).map(Number);
+}
+
+function compareVersionsDescending(a: string, b: string): number {
+  const left = versionSegments(a);
+  const right = versionSegments(b);
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const l = left[index];
+    const r = right[index];
+    // A shared prefix with extra segments means a dated snapshot
+    // (`claude-opus-4-5-20251101`); the clean alias belongs first.
+    if (l === undefined) return -1;
+    if (r === undefined) return 1;
+    if (l !== r) return r - l;
+  }
+  return a.localeCompare(b);
+}
+
+/**
+ * Orders a provider's models by family tier, then newest version first.
+ *
+ * Applied only to providers with a cloud catalog: their lists are a union of
+ * sources (built-in table, catalog, CLI) whose concatenation order is an
+ * artifact, not a judgement. Router providers keep their CLI's order, which
+ * their own UI treats as meaningful.
+ */
+export function sortProviderModelOptions<T extends { slug: string; isCustom?: boolean }>(
+  provider: ProviderKind,
+  options: ReadonlyArray<T>,
+): ReadonlyArray<T> {
+  if (provider !== "claudeAgent" && provider !== "codex" && provider !== "grok") {
+    return options;
+  }
+  // Custom slugs are the user's own additions; keep them last and untouched.
+  const custom = options.filter((option) => option.isCustom === true);
+  const listed = options.filter((option) => option.isCustom !== true);
+  const sorted = listed.toSorted((a, b) => {
+    if (provider === "claudeAgent") {
+      const rankDelta = claudeFamilyRank(a.slug) - claudeFamilyRank(b.slug);
+      if (rankDelta !== 0) return rankDelta;
+    }
+    return compareVersionsDescending(a.slug, b.slug);
+  });
+  return custom.length > 0 ? [...sorted, ...custom] : sorted;
 }

@@ -3,6 +3,7 @@
 // Layer: Web unit tests
 // Depends on: providerModelOptions shared formatting helpers.
 
+import type { ProviderKind } from "@synara/contracts";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,6 +18,7 @@ import {
   resolveModelGroupDefaultOpen,
   shouldUseCollapsibleModelGroups,
   type ProviderModelOption,
+  sortProviderModelOptions,
 } from "./providerModelOptions";
 
 describe("Antigravity model options", () => {
@@ -297,5 +299,66 @@ describe("collapsible model group helpers", () => {
         groupCount: 4,
       }),
     ).toBe(false);
+  });
+});
+
+describe("sortProviderModelOptions", () => {
+  const slugs = (provider: ProviderKind, values: readonly string[]) =>
+    sortProviderModelOptions(
+      provider,
+      values.map((slug) => ({ slug })),
+    ).map((option) => option.slug);
+
+  it("orders Claude by family tier, then newest first", () => {
+    expect(
+      slugs("claudeAgent", [
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5",
+        "claude-opus-4-8",
+        "claude-fable-5",
+        "claude-opus-5",
+        "claude-sonnet-5",
+      ]),
+    ).toEqual([
+      "claude-fable-5",
+      "claude-opus-5",
+      "claude-opus-4-8",
+      "claude-sonnet-5",
+      "claude-sonnet-4-6",
+      "claude-haiku-4-5",
+    ]);
+  });
+
+  it("puts a clean alias ahead of its dated snapshot", () => {
+    expect(slugs("claudeAgent", ["claude-opus-4-5-20251101", "claude-opus-4-5"])).toEqual([
+      "claude-opus-4-5",
+      "claude-opus-4-5-20251101",
+    ]);
+  });
+
+  it("orders codex newest first and keeps variants beside their base", () => {
+    expect(
+      slugs("codex", ["gpt-5.2", "gpt-5.6-sol", "gpt-5.4-mini", "gpt-5.6", "gpt-5.4"]),
+    ).toEqual(["gpt-5.6", "gpt-5.6-sol", "gpt-5.4", "gpt-5.4-mini", "gpt-5.2"]);
+  });
+
+  it("keeps custom slugs last so the user's own entries stay put", () => {
+    const sorted = sortProviderModelOptions("claudeAgent", [
+      { slug: "zzz-custom", isCustom: true as const },
+      { slug: "claude-sonnet-5" },
+      { slug: "claude-opus-5" },
+    ]);
+
+    expect(sorted.map((option) => option.slug)).toEqual([
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "zzz-custom",
+    ]);
+  });
+
+  it("leaves router providers in the order their CLI reported", () => {
+    const order = ["z-model", "a-model"];
+    expect(slugs("opencode", order)).toEqual(order);
+    expect(slugs("cursor", order)).toEqual(order);
   });
 });

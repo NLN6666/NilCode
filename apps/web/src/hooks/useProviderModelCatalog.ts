@@ -23,7 +23,12 @@ import {
   providerCloudModelsQueryOptions,
   providerModelsQueryOptions,
 } from "../lib/providerDiscoveryReactQuery";
-import { mergeDynamicModelOptions, type ProviderModelOption } from "../providerModelOptions";
+import {
+  mergeDynamicModelOptions,
+  sortProviderModelOptions,
+  withCloudModelDescriptors,
+  type ProviderModelOption,
+} from "../providerModelOptions";
 
 export interface ProviderModelCatalog {
   customModelsByProvider: ReturnType<typeof getCustomModelsByProvider>;
@@ -317,6 +322,9 @@ export function useProviderModelCatalog(input: {
           dynamicModels,
         });
       }
+      // Concatenating built-in, catalog, and CLI lists leaves an order nobody
+      // chose; rank the result so the strongest models stay on top.
+      result[provider] = sortProviderModelOptions(provider, result[provider]);
     }
     return result;
   }, [
@@ -360,11 +368,22 @@ export function useProviderModelCatalog(input: {
     Record<ProviderKind, ReadonlyArray<ProviderModelDescriptor>>
   >(
     () => ({
-      claudeAgent: claudeDynamicModelsQuery.data?.models ?? [],
-      codex: codexDynamicModelsQuery.data?.models ?? [],
+      // Cloud entries fill the gaps so a model newer than this build still
+      // reaches the trait picker with its real effort ladder.
+      claudeAgent: withCloudModelDescriptors(
+        claudeDynamicModelsQuery.data?.models ?? [],
+        claudeCloudModelsQuery.data?.models,
+      ),
+      codex: withCloudModelDescriptors(
+        codexDynamicModelsQuery.data?.models ?? [],
+        codexCloudModelsQuery.data?.models,
+      ),
       cursor: cursorRuntimeModels,
       antigravity: antigravityModelsQuery.data?.models ?? [],
-      grok: grokDynamicModelsQuery.data?.models ?? [],
+      grok: withCloudModelDescriptors(
+        grokDynamicModelsQuery.data?.models ?? [],
+        grokCloudModelsQuery.data?.models,
+      ),
       droid: droidDynamicModelsQuery.data?.models ?? [],
       kilo: kiloDynamicModelsQuery.data?.models ?? [],
       opencode: openCodeDynamicModelsQuery.data?.models ?? [],
@@ -372,10 +391,13 @@ export function useProviderModelCatalog(input: {
     }),
     [
       antigravityModelsQuery.data?.models,
+      claudeCloudModelsQuery.data?.models,
       claudeDynamicModelsQuery.data?.models,
+      codexCloudModelsQuery.data?.models,
       codexDynamicModelsQuery.data?.models,
       cursorRuntimeModels,
       droidDynamicModelsQuery.data?.models,
+      grokCloudModelsQuery.data?.models,
       grokDynamicModelsQuery.data?.models,
       kiloDynamicModelsQuery.data?.models,
       openCodeDynamicModelsQuery.data?.models,
