@@ -6,6 +6,7 @@
 import { PROVIDER_DISPLAY_NAMES, type ProviderKind } from "@synara/contracts";
 import { PROVIDER_DESCRIPTORS } from "@synara/shared/providerMetadata";
 import { sameAppSnapShortcut } from "@synara/shared/appSnapShortcut";
+import { isLocale, SUPPORTED_LOCALES } from "@synara/shared/i18n";
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 
@@ -39,6 +40,8 @@ import {
   isProviderInstallSettingsDirty,
   ProvidersSettingsPanel,
 } from "~/components/settings/ProvidersSettingsPanel";
+import { LOCALE_LABELS } from "../i18n/catalogs";
+import { useMessages } from "../i18n/context";
 import { ProviderOptionLabel } from "../components/ProviderIcon";
 import ReleaseHistoryDialog from "../components/ReleaseHistoryDialog";
 import { KeyboardShortcutsSettingsPanel } from "../components/settings/KeyboardShortcutsSettingsPanel";
@@ -193,6 +196,7 @@ function SettingsRouteView() {
     setSystemUiFont,
   } = useTheme();
   const { settings, defaults, updateSettings, resetSettings } = useAppSettings();
+  const m = useMessages();
   const desktopTopBarTrafficLightGutterClassName = useDesktopTopBarTrafficLightGutterClassName();
   const [releaseHistoryOpen, setReleaseHistoryOpen] = useState(false);
   const [resetEpoch, setResetEpoch] = useState(0);
@@ -349,14 +353,44 @@ function SettingsRouteView() {
 
   const renderGeneralPanel = () => (
     <div className="space-y-6">
-      <SettingsSection title="Core defaults">
+      <SettingsSection title={m.settings.general.coreDefaults.title}>
         <SettingsRow
-          title="Default provider"
-          description="Choose the provider used for new chats."
+          title={m.settings.general.coreDefaults.language.title}
+          description={m.settings.general.coreDefaults.language.description}
+          resetAction={
+            settings.language !== defaults.language ? (
+              <SettingResetButton
+                label={m.settings.general.coreDefaults.language.resetLabel}
+                onClick={() => updateSettings({ language: defaults.language })}
+              />
+            ) : null
+          }
+          control={
+            <SettingsSelectControl
+              value={settings.language}
+              onValueChange={(value) => {
+                if (!isLocale(value)) return;
+                updateSettings({ language: value });
+              }}
+              ariaLabel={m.settings.general.coreDefaults.language.ariaLabel}
+              valueContent={LOCALE_LABELS[settings.language]}
+            >
+              {SUPPORTED_LOCALES.map((locale) => (
+                <SelectItem hideIndicator key={locale} value={locale}>
+                  {LOCALE_LABELS[locale]}
+                </SelectItem>
+              ))}
+            </SettingsSelectControl>
+          }
+        />
+
+        <SettingsRow
+          title={m.settings.general.coreDefaults.defaultProvider.title}
+          description={m.settings.general.coreDefaults.defaultProvider.description}
           resetAction={
             settings.defaultProvider !== defaults.defaultProvider ? (
               <SettingResetButton
-                label="default provider"
+                label={m.settings.general.coreDefaults.defaultProvider.resetLabel}
                 onClick={() => updateSettings({ defaultProvider: defaults.defaultProvider })}
               />
             ) : null
@@ -368,7 +402,7 @@ function SettingsRouteView() {
                 if (!isProviderSelectOption(value)) return;
                 updateSettings({ defaultProvider: value });
               }}
-              ariaLabel="Default provider"
+              ariaLabel={m.settings.general.coreDefaults.defaultProvider.ariaLabel}
               valueContent={
                 <ProviderOptionLabel
                   provider={settings.defaultProvider}
@@ -389,12 +423,12 @@ function SettingsRouteView() {
         />
 
         <SettingsRow
-          title="New threads"
-          description="Pick the default workspace mode for newly created draft threads."
+          title={m.settings.general.coreDefaults.newThreads.title}
+          description={m.settings.general.coreDefaults.newThreads.description}
           resetAction={
             settings.defaultThreadEnvMode !== defaults.defaultThreadEnvMode ? (
               <SettingResetButton
-                label="new threads"
+                label={m.settings.general.coreDefaults.newThreads.resetLabel}
                 onClick={() =>
                   updateSettings({
                     defaultThreadEnvMode: defaults.defaultThreadEnvMode,
@@ -412,28 +446,32 @@ function SettingsRouteView() {
                   defaultThreadEnvMode: value,
                 });
               }}
-              ariaLabel="Default thread mode"
-              valueContent={settings.defaultThreadEnvMode === "worktree" ? "New worktree" : "Local"}
+              ariaLabel={m.settings.general.coreDefaults.newThreads.ariaLabel}
+              valueContent={
+                settings.defaultThreadEnvMode === "worktree"
+                  ? m.settings.general.coreDefaults.newThreads.worktree
+                  : m.settings.general.coreDefaults.newThreads.local
+              }
             >
               <SelectItem hideIndicator value="local">
-                Local
+                {m.settings.general.coreDefaults.newThreads.local}
               </SelectItem>
               <SelectItem hideIndicator value="worktree">
-                New worktree
+                {m.settings.general.coreDefaults.newThreads.worktree}
               </SelectItem>
             </SettingsSelectControl>
           }
         />
       </SettingsSection>
 
-      <SettingsSection title="Sidebar organization">
+      <SettingsSection title={m.settings.general.sidebarOrganization.title}>
         <SettingsRow
-          title="Project order"
-          description="Controls how projects are arranged in the main sidebar."
+          title={m.settings.general.sidebarOrganization.projectOrder.title}
+          description={m.settings.general.sidebarOrganization.projectOrder.description}
           resetAction={
             settings.sidebarProjectSortOrder !== defaults.sidebarProjectSortOrder ? (
               <SettingResetButton
-                label="project order"
+                label={m.settings.general.sidebarOrganization.projectOrder.resetLabel}
                 onClick={() =>
                   updateSettings({
                     sidebarProjectSortOrder: defaults.sidebarProjectSortOrder,
@@ -451,7 +489,7 @@ function SettingsRouteView() {
                 }
                 updateSettings({ sidebarProjectSortOrder: value });
               }}
-              ariaLabel="Project sort order"
+              ariaLabel={m.settings.general.sidebarOrganization.projectOrder.ariaLabel}
               valueContent={SIDEBAR_PROJECT_SORT_ORDER_LABELS[settings.sidebarProjectSortOrder]}
             >
               <SelectItem hideIndicator value="updated_at">
@@ -468,12 +506,12 @@ function SettingsRouteView() {
         />
 
         <SettingsRow
-          title="Thread order"
-          description="Controls how threads are arranged inside each project in the main sidebar."
+          title={m.settings.general.sidebarOrganization.threadOrder.title}
+          description={m.settings.general.sidebarOrganization.threadOrder.description}
           resetAction={
             settings.sidebarThreadSortOrder !== defaults.sidebarThreadSortOrder ? (
               <SettingResetButton
-                label="thread order"
+                label={m.settings.general.sidebarOrganization.threadOrder.resetLabel}
                 onClick={() =>
                   updateSettings({
                     sidebarThreadSortOrder: defaults.sidebarThreadSortOrder,
@@ -491,7 +529,7 @@ function SettingsRouteView() {
                 }
                 updateSettings({ sidebarThreadSortOrder: value });
               }}
-              ariaLabel="Thread sort order"
+              ariaLabel={m.settings.general.sidebarOrganization.threadOrder.ariaLabel}
               valueContent={SIDEBAR_THREAD_SORT_ORDER_LABELS[settings.sidebarThreadSortOrder]}
             >
               <SelectItem hideIndicator value="updated_at">

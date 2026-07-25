@@ -35,6 +35,7 @@ import { WhatsNewPopoutCard } from "../whatsNew/WhatsNewPopoutCard";
 import { shouldRenderTerminalWorkspace } from "../components/ChatView.logic";
 import { Button, dialogActionButtonClassName } from "../components/ui/button";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "../components/ui/toast";
+import { AppI18nProvider } from "../i18n/AppI18nProvider";
 import { useGitProgressToastPreview } from "../components/useGitProgressToastPreview";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { useFeatureFlags } from "../featureFlags";
@@ -228,22 +229,24 @@ function RootRouteView() {
 
   return (
     <>
-      <ToastProvider position="top-center">
-        <AnchoredToastProvider>
-          <GitProgressToastPreviewDev />
-          <EventRouter />
-          <ProviderStatusRefreshCoordinator />
-          <GlobalShortcutsDialog />
-          <GlobalFeedbackDialog />
-          <GlobalWhatsNewSurface />
-          <TaskCompletionNotifications />
-          <AppSnapWelcomeDialog />
-          <AppSnapCoordinator />
-          <ProviderUpdateNotifications />
-          <DesktopProjectBootstrap />
-          <Outlet />
-        </AnchoredToastProvider>
-      </ToastProvider>
+      <AppI18nProvider>
+        <ToastProvider position="top-center">
+          <AnchoredToastProvider>
+            <GitProgressToastPreviewDev />
+            <EventRouter />
+            <ProviderStatusRefreshCoordinator />
+            <GlobalShortcutsDialog />
+            <GlobalFeedbackDialog />
+            <GlobalWhatsNewSurface />
+            <TaskCompletionNotifications />
+            <AppSnapWelcomeDialog />
+            <AppSnapCoordinator />
+            <ProviderUpdateNotifications />
+            <DesktopProjectBootstrap />
+            <Outlet />
+          </AnchoredToastProvider>
+        </ToastProvider>
+      </AppI18nProvider>
       {desktopWindowControls}
     </>
   );

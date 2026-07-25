@@ -28,6 +28,12 @@ import {
   APP_SNAP_SHORTCUT_MODIFIERS,
   DEFAULT_APP_SNAP_SHORTCUT,
 } from "@synara/shared/appSnapShortcut";
+import {
+  detectSystemLocale,
+  type Locale,
+  readNavigatorLocaleTags,
+  SUPPORTED_LOCALES,
+} from "@synara/shared/i18n";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { EnvMode } from "./components/BranchToolbar.logic";
 import { normalizeCursorModelVariantBaseId } from "./cursorModelVariants";
@@ -76,6 +82,16 @@ export const TERMINAL_FONT_FAMILY_SUGGESTIONS: ReadonlyArray<string> = [
   "Ubuntu Mono",
   "Consolas",
 ];
+
+export const AppLocale = Schema.Literals(SUPPORTED_LOCALES);
+export type AppLocale = typeof AppLocale.Type;
+
+/**
+ * First launch follows the operating system and falls back to English when it recognizes nothing.
+ * Resolved once at module load: navigator preferences do not change during a session, and this
+ * keeps the value stable for the reset-to-default comparison in settings.
+ */
+export const DEFAULT_LOCALE: Locale = detectSystemLocale(readNavigatorLocaleTags());
 
 export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"]);
 export type TimestampFormat = typeof TimestampFormat.Type;
@@ -247,6 +263,7 @@ export const AppSettingsSchema = Schema.Struct({
   sidebarThreadSortOrder: SidebarThreadSortOrder.pipe(
     withDefaults(() => DEFAULT_SIDEBAR_THREAD_SORT_ORDER),
   ),
+  language: AppLocale.pipe(withDefaults(() => DEFAULT_LOCALE)),
   timestampFormat: TimestampFormat.pipe(withDefaults(() => DEFAULT_TIMESTAMP_FORMAT)),
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),

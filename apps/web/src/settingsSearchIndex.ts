@@ -34,6 +34,13 @@ export function settingsSearchEntryTarget(entry: SettingsSearchEntry): string | 
 export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   // ── General ────────────────────────────────────────────────────────────────
   {
+    id: "general:language",
+    section: "general",
+    title: "Language",
+    keywords:
+      "Choose the display language for the Synara interface. locale i18n english chinese 语言 中文 简体中文",
+  },
+  {
     id: "general:default-provider",
     section: "general",
     title: "Default provider",
