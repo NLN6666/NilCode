@@ -363,6 +363,22 @@ describe("getModelCapabilities reasoningEffortLevels", () => {
   });
 });
 
+describe("getModelCapabilities for models outside the built-in table", () => {
+  it("stays empty for a model newer than this build so its effort is not second-guessed", () => {
+    // gpt-5.6-sol is published by the cloud catalog and accepts `none`/`max`,
+    // neither of which gpt-5.5 offers. An empty ladder means "do not validate",
+    // so a runtime-discovered effort survives to dispatch.
+    expect(getModelCapabilities("codex", "gpt-5.6-sol").reasoningEffortLevels).toEqual([]);
+    expect(getModelCapabilities("claudeAgent", "claude-opus-9").reasoningEffortLevels).toEqual([]);
+  });
+
+  it("keeps the grok provider-level ladder, which is not per-model", () => {
+    expect(getModelCapabilities("grok", "grok-4.5").reasoningEffortLevels.length).toBeGreaterThan(
+      0,
+    );
+  });
+});
+
 describe("getDefaultEffort", () => {
   it("returns the default effort from capabilities", () => {
     expect(getDefaultEffort(getModelCapabilities("codex", "gpt-5.5"))).toBe("medium");

@@ -12,6 +12,8 @@ import {
   isProviderKind,
   normalizeHiddenProviders,
   normalizeProviderOrder,
+  normalizeHiddenModels,
+  filterModelOptionsByVisibility,
 } from "./providerOrdering";
 
 const ALL_PROVIDER_KINDS = Object.keys(PROVIDER_DISPLAY_NAMES) as ProviderKind[];
@@ -35,5 +37,63 @@ describe("providerOrdering", () => {
     expect(isProviderKind("pi")).toBe(true);
     expect(normalizeProviderOrder(["pi", "codex"])[0]).toBe("pi");
     expect(normalizeHiddenProviders(["bogus", "pi", "pi"])).toEqual(["pi"]);
+  });
+});
+
+describe("normalizeHiddenModels", () => {
+  it("drops unknown providers, blank slugs, and duplicates", () => {
+    expect(
+      normalizeHiddenModels([
+        { provider: "claudeAgent", slug: "claude-haiku-4-5" },
+        { provider: "not-a-provider", slug: "x" },
+        { provider: "codex", slug: "   " },
+        { provider: "claudeAgent", slug: "CLAUDE-HAIKU-4-5" },
+      ]),
+    ).toEqual([{ provider: "claudeAgent", slug: "claude-haiku-4-5" }]);
+  });
+});
+
+describe("filterModelOptionsByVisibility", () => {
+  const options = [{ slug: "claude-opus-5" }, { slug: "claude-haiku-4-5" }];
+
+  it("removes a hidden model", () => {
+    expect(
+      filterModelOptionsByVisibility("claudeAgent", options, [
+        { provider: "claudeAgent", slug: "claude-haiku-4-5" },
+      ]),
+    ).toEqual([{ slug: "claude-opus-5" }]);
+  });
+
+  it("keeps the model in use even when it is hidden", () => {
+    // This guard is why model hiding is safe to ship: without it a thread could
+    // be stranded on a model its own picker refused to show.
+    expect(
+      filterModelOptionsByVisibility(
+        "claudeAgent",
+        options,
+        [{ provider: "claudeAgent", slug: "claude-haiku-4-5" }],
+        "claude-haiku-4-5",
+      ),
+    ).toEqual(options);
+  });
+
+  it("ignores entries belonging to another provider", () => {
+    expect(
+      filterModelOptionsByVisibility("claudeAgent", options, [
+        { provider: "codex", slug: "claude-haiku-4-5" },
+      ]),
+    ).toEqual(options);
+  });
+
+  it("treats hiding everything as hiding nothing", () => {
+    // An empty picker reads as a broken app, and the user's next move would be
+    // to undo it anyway.
+    expect(
+      filterModelOptionsByVisibility(
+        "claudeAgent",
+        options,
+        options.map((option) => ({ provider: "claudeAgent" as const, slug: option.slug })),
+      ),
+    ).toEqual(options);
   });
 });

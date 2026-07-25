@@ -37,7 +37,13 @@ import {
   COMPOSER_INLINE_AGENT_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
   COMPOSER_INLINE_CHIP_INLINE_ICON_CLASS_NAME,
+  COMPOSER_INLINE_MCP_TOOL_CHIP_ICON_NAME,
+  COMPOSER_INLINE_MCP_TOOL_CHIP_SERVER_CLASS_NAME,
+  COMPOSER_INLINE_MCP_TOOL_CHIP_SERVER_SEPARATOR,
+  COMPOSER_INLINE_MCP_TOOL_CHIP_UNAVAILABLE_CLASS_NAME,
+  COMPOSER_INLINE_MCP_TOOL_CHIP_UNAVAILABLE_TITLE,
   COMPOSER_INLINE_SKILL_CHIP_ICON_NAME,
+  formatComposerMcpToolChipLabel,
   formatComposerSlashCommandChipLabel,
   formatComposerSkillChipLabel,
   resolveAgentChipColor,
@@ -67,6 +73,15 @@ export type SerializedComposerSkillNode = Spread<
   {
     skillName: string;
     type: "composer-skill";
+    version: 1;
+  },
+  SerializedTextNode
+>;
+
+export type SerializedComposerMcpToolNode = Spread<
+  {
+    reference: string;
+    type: "composer-mcp-tool";
     version: 1;
   },
   SerializedTextNode
@@ -166,6 +181,60 @@ function renderSkillChipDom(container: HTMLElement, name: string): void {
     container.append(icon, label);
   } else {
     container.append(label);
+  }
+}
+
+function renderMcpToolChipDom(container: HTMLElement, reference: string): void {
+  resetInlineChipContainer(container);
+
+  const icon = createCentralIconElement(
+    COMPOSER_INLINE_MCP_TOOL_CHIP_ICON_NAME,
+    COMPOSER_INLINE_CHIP_INLINE_ICON_CLASS_NAME,
+  );
+
+  const label = document.createElement("span");
+  label.className = COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME;
+
+  // Mirrors InlineMcpToolChip: the server is a dimmed prefix so the tool name leads. Built as two
+  // nodes rather than one string because only the prefix carries the muted class.
+  const { server, tool } = formatComposerMcpToolChipLabel(reference);
+  if (server === null) {
+    label.textContent = tool;
+  } else {
+    const serverPrefix = document.createElement("span");
+    serverPrefix.className = COMPOSER_INLINE_MCP_TOOL_CHIP_SERVER_CLASS_NAME;
+    serverPrefix.textContent = `${server}${COMPOSER_INLINE_MCP_TOOL_CHIP_SERVER_SEPARATOR}`;
+    label.append(serverPrefix, document.createTextNode(tool));
+  }
+
+  if (icon) {
+    container.append(icon, label);
+  } else {
+    container.append(label);
+  }
+}
+
+/**
+ * Greys out a reference the loaded catalog no longer has. The token itself is untouched — sending
+ * is never blocked and the text is never rewritten; only the chip says the tool went away.
+ *
+ * Owns the chip's `title` either way: an unavailable chip explains the greying, an available one
+ * spells out the full `server:tool` the dimmed prefix visually de-emphasizes.
+ */
+function applyMcpToolChipAvailability(
+  container: HTMLElement,
+  unavailable: boolean,
+  reference: string,
+): void {
+  container.className = unavailable
+    ? COMPOSER_INLINE_MCP_TOOL_CHIP_UNAVAILABLE_CLASS_NAME
+    : COMPOSER_EDITOR_INLINE_CHIP_CLASS_NAME;
+  if (unavailable) {
+    container.setAttribute("title", COMPOSER_INLINE_MCP_TOOL_CHIP_UNAVAILABLE_TITLE);
+    container.setAttribute("data-mcp-tool-unavailable", "true");
+  } else {
+    container.setAttribute("title", reference);
+    container.removeAttribute("data-mcp-tool-unavailable");
   }
 }
 
@@ -410,6 +479,107 @@ export class ComposerSkillNode extends TextNode {
 
 export function $createComposerSkillNode(name: string): ComposerSkillNode {
   return $applyNodeReplacement(new ComposerSkillNode(name));
+}
+
+// ── ComposerMcpToolNode ───────────────────────────────────────────────
+
+export class ComposerMcpToolNode extends TextNode {
+  __reference: string;
+  /**
+   * Derived from whichever tool catalog is currently loaded, so it is deliberately not serialized:
+   * a restored draft starts neutral and is re-marked once a catalog is in hand.
+   */
+  __unavailable: boolean;
+
+  static override getType(): string {
+    return "composer-mcp-tool";
+  }
+
+  static override clone(node: ComposerMcpToolNode): ComposerMcpToolNode {
+    return new ComposerMcpToolNode(node.__reference, node.__unavailable, node.__key);
+  }
+
+  static override importJSON(serializedNode: SerializedComposerMcpToolNode): ComposerMcpToolNode {
+    return $createComposerMcpToolNode(serializedNode.reference);
+  }
+
+  constructor(reference: string, unavailable = false, key?: NodeKey) {
+    const normalizedReference = reference.startsWith("&") ? reference.slice(1) : reference;
+    super(`&${normalizedReference}`, key);
+    this.__reference = normalizedReference;
+    this.__unavailable = unavailable;
+  }
+
+  override exportJSON(): SerializedComposerMcpToolNode {
+    return {
+      ...super.exportJSON(),
+      reference: this.__reference,
+      type: "composer-mcp-tool",
+      version: 1,
+    };
+  }
+
+  getReference(): string {
+    return this.getLatest().__reference;
+  }
+
+  isUnavailable(): boolean {
+    return this.getLatest().__unavailable;
+  }
+
+  setUnavailable(unavailable: boolean): this {
+    const writable = this.getWritable();
+    writable.__unavailable = unavailable;
+    return writable;
+  }
+
+  override createDOM(_config: EditorConfig): HTMLElement {
+    const dom = document.createElement("span");
+    dom.contentEditable = "false";
+    dom.setAttribute("spellcheck", "false");
+    applyMcpToolChipAvailability(dom, this.__unavailable, this.__reference);
+    renderMcpToolChipDom(dom, this.__reference);
+    return dom;
+  }
+
+  override updateDOM(
+    prevNode: ComposerMcpToolNode,
+    dom: HTMLElement,
+    _config: EditorConfig,
+  ): boolean {
+    dom.contentEditable = "false";
+    // The available title spells out the reference, so a changed reference has to re-run this too.
+    if (
+      prevNode.__unavailable !== this.__unavailable ||
+      prevNode.__reference !== this.__reference
+    ) {
+      applyMcpToolChipAvailability(dom, this.__unavailable, this.__reference);
+    }
+    if (prevNode.__text !== this.__text || prevNode.__reference !== this.__reference) {
+      renderMcpToolChipDom(dom, this.__reference);
+    }
+    return false;
+  }
+
+  override canInsertTextBefore(): false {
+    return false;
+  }
+
+  override canInsertTextAfter(): true {
+    return true;
+  }
+
+  override isTextEntity(): true {
+    return true;
+  }
+
+  override isToken(): true {
+    return true;
+  }
+}
+
+export function $createComposerMcpToolNode(reference: string): ComposerMcpToolNode {
+  return $applyNodeReplacement(new ComposerMcpToolNode(reference));
 }
 
 // ── ComposerSlashCommandNode ──────────────────────────────────────────
@@ -699,6 +869,7 @@ export function $createComposerTerminalContextNode(
 export type ComposerInlineTokenNode =
   | ComposerMentionNode
   | ComposerSkillNode
+  | ComposerMcpToolNode
   | ComposerSlashCommandNode
   | ComposerTerminalContextNode
   | ComposerAgentMentionNode
@@ -710,6 +881,7 @@ export function isComposerInlineTokenNode(
   return (
     candidate instanceof ComposerMentionNode ||
     candidate instanceof ComposerSkillNode ||
+    candidate instanceof ComposerMcpToolNode ||
     candidate instanceof ComposerSlashCommandNode ||
     candidate instanceof ComposerTerminalContextNode ||
     candidate instanceof ComposerAgentMentionNode ||
@@ -721,6 +893,7 @@ export function isComposerInlineTokenNode(
 export const COMPOSER_NODE_CLASSES = [
   ComposerMentionNode,
   ComposerSkillNode,
+  ComposerMcpToolNode,
   ComposerSlashCommandNode,
   ComposerTerminalContextNode,
   ComposerAgentMentionNode,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   matchComposerLinkToken,
@@ -6,7 +6,16 @@ import {
   splitPromptIntoComposerSegments,
   splitPromptIntoDisplaySegments,
 } from "./composer-editor-mentions";
+import {
+  agentMentionColor,
+  clearComposerAgentMentionCatalogForTests,
+  setComposerAgentMentionCatalog,
+} from "./lib/agentMentionCatalog";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
+
+afterEach(() => {
+  clearComposerAgentMentionCatalogForTests();
+});
 
 describe("matchComposerLinkToken", () => {
   it("matches a URL only once a delimiter follows it while typing", () => {
@@ -182,6 +191,26 @@ describe("splitPromptIntoComposerSegments", () => {
     expect(splitPromptIntoComposerSegments("Ask @spark()")).toEqual([
       { type: "text", text: "Ask " },
       { type: "agent-mention", alias: "spark", color: "cyan" },
+      { type: "text", text: "()" },
+    ]);
+  });
+
+  it("chips a discovered subagent, including a plugin-namespaced one", () => {
+    // Before discovery publishes it there is no such agent, so the token has to
+    // stay text — drawing a chip would promise a delegation that never happens.
+    expect(splitPromptIntoComposerSegments("Ask @fable-advisor:grok-implementer()")).toEqual([
+      { type: "text", text: "Ask @fable-advisor:grok-implementer()" },
+    ]);
+
+    setComposerAgentMentionCatalog([{ name: "fable-advisor:grok-implementer" }]);
+
+    expect(splitPromptIntoComposerSegments("Ask @fable-advisor:grok-implementer()")).toEqual([
+      { type: "text", text: "Ask " },
+      {
+        type: "agent-mention",
+        alias: "fable-advisor:grok-implementer",
+        color: agentMentionColor("fable-advisor:grok-implementer"),
+      },
       { type: "text", text: "()" },
     ]);
   });

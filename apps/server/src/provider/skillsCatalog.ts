@@ -1,6 +1,6 @@
 // FILE: skillsCatalog.ts
-// Purpose: Generic Agent Skill discovery primitives (frontmatter parsing, SKILL.md
-//          walking) plus the unified cross-provider skills catalog backing Synara
+// Purpose: Generic Agent Skill discovery primitives (SKILL.md walking, frontmatter
+//          parsing re-exported from ./frontmatter) plus the unified cross-provider skills catalog backing Synara
 //          portable skills. Aggregates `~/.synara/skills` with every provider-native
 //          skills folder, deduping by name with provider-native copies winning for
 //          the active provider.
@@ -13,7 +13,12 @@ import * as nodePath from "node:path";
 
 import type { ProviderKind, ProviderSkillDescriptor } from "@synara/contracts";
 
-type FrontmatterValue = string | boolean;
+import {
+  parseScalarFrontmatter,
+  readFrontmatterBoolean as readBooleanField,
+  readFrontmatterString as readStringField,
+  readdirOrEmpty,
+} from "./frontmatter.ts";
 
 export interface SkillRoot {
   readonly path: string;
@@ -21,80 +26,9 @@ export interface SkillRoot {
   readonly includeMarkdownFiles?: boolean;
 }
 
-// ── Frontmatter parsing ──────────────────────────────────────────────
-
-function stripYamlQuotes(value: string): string {
-  const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1).trim();
-  }
-  return trimmed;
-}
-
-function parseYamlScalar(value: string): FrontmatterValue {
-  const unquoted = stripYamlQuotes(value);
-  const normalized = unquoted.toLowerCase();
-  if (normalized === "true") return true;
-  if (normalized === "false") return false;
-  return unquoted;
-}
-
-// Parses the small scalar frontmatter subset used by Agent Skills without pulling in YAML.
-export function parseSkillFrontmatter(markdown: string): Record<string, FrontmatterValue> {
-  const normalized = markdown.replace(/\r\n/g, "\n");
-  const match = /^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/.exec(normalized);
-  if (!match) {
-    return {};
-  }
-
-  const record: Record<string, FrontmatterValue> = {};
-  for (const line of (match[1] ?? "").split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) {
-      continue;
-    }
-    const separatorIndex = trimmed.indexOf(":");
-    if (separatorIndex <= 0) {
-      continue;
-    }
-    const key = trimmed.slice(0, separatorIndex).trim();
-    const value = trimmed.slice(separatorIndex + 1).trim();
-    if (!key || !value) {
-      continue;
-    }
-    record[key] = parseYamlScalar(value);
-  }
-  return record;
-}
-
-function readStringField(
-  frontmatter: Record<string, FrontmatterValue>,
-  keys: ReadonlyArray<string>,
-): string | undefined {
-  for (const key of keys) {
-    const value = frontmatter[key];
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-  return undefined;
-}
-
-function readBooleanField(
-  frontmatter: Record<string, FrontmatterValue>,
-  keys: ReadonlyArray<string>,
-): boolean | undefined {
-  for (const key of keys) {
-    const value = frontmatter[key];
-    if (typeof value === "boolean") {
-      return value;
-    }
-  }
-  return undefined;
-}
+// Frontmatter parsing lives in `./frontmatter.ts` so the subagent catalog reads
+// the same scalar subset; the historic name stays for existing call sites.
+export { parseScalarFrontmatter as parseSkillFrontmatter };
 
 // ── Filesystem walking ───────────────────────────────────────────────
 
@@ -109,14 +43,6 @@ export function ancestorsFromDeepest(cwd: string): string[] {
       return ancestors;
     }
     current = parent;
-  }
-}
-
-async function readdirOrEmpty(path: string): Promise<import("node:fs").Dirent[]> {
-  try {
-    return await fs.readdir(path, { withFileTypes: true });
-  } catch {
-    return [];
   }
 }
 
@@ -226,7 +152,7 @@ export async function readSkillDescriptor(input: {
     return null;
   }
 
-  const frontmatter = parseSkillFrontmatter(raw);
+  const frontmatter = parseScalarFrontmatter(raw);
   const skillFilename = nodePath.basename(input.skillPath);
   const fallbackName =
     skillFilename.toLowerCase() === "skill.md"

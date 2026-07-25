@@ -8,6 +8,8 @@
 //          background + color variants; everything else composes from those.
 
 import { cn } from "~/lib/utils";
+import type { AgentMentionColor } from "~/lib/agentMentionCatalog";
+import { formatMcpToolReference, parseMcpToolReference } from "~/lib/mcpToolReferences";
 import {
   COMPOSER_EDITOR_LINE_HEIGHT_CLASS_NAME,
   COMPOSER_EDITOR_TEXT_CLASS_NAME,
@@ -120,7 +122,7 @@ export const DEFAULT_AGENT_CHIP_COLOR: AgentChipColor = {
   bg: "rgb(245 158 11 / 0.15)",
   text: "rgb(245 158 11)",
 };
-const AGENT_CHIP_COLOR_BY_NAME: Record<string, AgentChipColor> = {
+const AGENT_CHIP_COLOR_BY_NAME: Record<AgentMentionColor, AgentChipColor> = {
   violet: { bg: "rgb(139 92 246 / 0.15)", text: "rgb(139 92 246)" },
   fuchsia: { bg: "rgb(217 70 239 / 0.15)", text: "rgb(217 70 239)" },
   teal: { bg: "rgb(20 184 166 / 0.15)", text: "rgb(20 184 166)" },
@@ -128,8 +130,16 @@ const AGENT_CHIP_COLOR_BY_NAME: Record<string, AgentChipColor> = {
   amber: DEFAULT_AGENT_CHIP_COLOR,
   orange: { bg: "rgb(249 115 22 / 0.15)", text: "rgb(249 115 22)" },
 };
+// Colors arrive as plain strings (serialized Lexical nodes, persisted drafts),
+// so an unrecognized name falls back instead of rendering an unstyled chip.
+function isAgentMentionColor(value: string): value is AgentMentionColor {
+  return value in AGENT_CHIP_COLOR_BY_NAME;
+}
+
 export function resolveAgentChipColor(color: string | undefined): AgentChipColor {
-  return (color ? AGENT_CHIP_COLOR_BY_NAME[color] : undefined) ?? DEFAULT_AGENT_CHIP_COLOR;
+  return color !== undefined && isAgentMentionColor(color)
+    ? AGENT_CHIP_COLOR_BY_NAME[color]
+    : DEFAULT_AGENT_CHIP_COLOR;
 }
 
 // ── Sent-message echoes (timeline) ────────────────────────────────────
@@ -176,6 +186,62 @@ function formatComposerInlineTokenLabel(name: string): string {
 export function formatComposerSkillChipLabel(name: string): string {
   return formatComposerInlineTokenLabel(name);
 }
+
+// ── MCP tool helpers ──────────────────────────────────────────────────
+/** Central icon basename shared by every `&server[:tool]` token (editor + timeline). */
+export const COMPOSER_INLINE_MCP_TOOL_CHIP_ICON_NAME = "toolbox";
+
+/**
+ * Separator between the server prefix and the tool name. Rendered inside the dimmed server span,
+ * so it reads as part of the prefix rather than as punctuation the user typed.
+ */
+export const COMPOSER_INLINE_MCP_TOOL_CHIP_SERVER_SEPARATOR = "›";
+
+/**
+ * Server prefix inside an MCP chip. Same color as the tool name, stepped back in weight so the
+ * tool — the part that identifies what will run — leads the chip, the way `@` shows a basename
+ * rather than the whole path. Kept visible instead of dropped: two servers can expose the same
+ * tool name, and the prefix is the only thing telling them apart.
+ */
+export const COMPOSER_INLINE_MCP_TOOL_CHIP_SERVER_CLASS_NAME = "opacity-60 text-[0.92em]";
+
+export interface ComposerMcpToolChipLabel {
+  /** Dimmed prefix. `null` for a whole-server reference, where the server name is the label. */
+  readonly server: string | null;
+  readonly tool: string;
+}
+
+/**
+ * Splits `server:tool` into the two visually distinct halves the chip renders.
+ *
+ * Both halves stay verbatim rather than title-cased: they are identifiers the model is told to
+ * call. The explicit `:*` wildcard collapses to the bare server name it is equivalent to, and an
+ * unparseable reference falls back to a single undimmed run so it is never silently reshaped.
+ */
+export function formatComposerMcpToolChipLabel(reference: string): ComposerMcpToolChipLabel {
+  const parsed = parseMcpToolReference(reference);
+  if (parsed === null) {
+    return { server: null, tool: reference };
+  }
+  return parsed.toolName === null
+    ? { server: null, tool: formatMcpToolReference(parsed) }
+    : { server: parsed.serverName, tool: parsed.toolName };
+}
+
+/**
+ * A reference the loaded catalog no longer has. Dimmed to the same 50% as the unreachable-server
+ * row in the `&` picker, and dropped to the neutral tone so it stops reading as an active token —
+ * the message still sends, with the reference left in the body as plain text.
+ */
+export const COMPOSER_INLINE_MCP_TOOL_CHIP_UNAVAILABLE_CLASS_NAME = composerInlineChipClassName({
+  fill: "plain",
+  tone: "neutral",
+  className: "opacity-50",
+});
+
+/** Hover/AT hint paired with the dimmed look, so the greying is never unexplained. */
+export const COMPOSER_INLINE_MCP_TOOL_CHIP_UNAVAILABLE_TITLE =
+  "This MCP tool is not available right now — it will be sent as plain text.";
 
 export function formatComposerSlashCommandChipLabel(command: string): string {
   return formatComposerInlineTokenLabel(command);

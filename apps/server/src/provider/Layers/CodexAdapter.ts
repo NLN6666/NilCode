@@ -13,6 +13,8 @@ import {
   type ModelSelection,
   type ProviderComposerCapabilities,
   type ProviderEvent,
+  type ProviderAgentDescriptor,
+  type ProviderListAgentsResult,
   type ProviderListModelsResult,
   type ProviderListPluginsResult,
   type ProviderReadPluginResult,
@@ -73,6 +75,8 @@ import { makeRuntimeTaskListItem } from "../runtimeTaskList.ts";
 import { extractProposedPlanMarkdown } from "../planMode.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
 import { synaraSkillsDir } from "../skillsCatalog.ts";
+import { discoverAgentCatalog } from "../agentCatalog.ts";
+import { buildCodexSubagentPrompt } from "@synara/shared/agentMentions";
 import { makeBoundedCallbackIngress } from "../boundedCallbackIngress.ts";
 import { assignDerivedProviderRuntimeEventIds } from "../providerRuntimeEventIdentity.ts";
 import {
@@ -1716,6 +1720,21 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
       (manager) => Effect.promise(() => manager.stopAll()),
     );
 
+    const codexAgentCatalog = (cwd: string | undefined) =>
+      Effect.tryPromise(() =>
+        discoverAgentCatalog({
+          provider: PROVIDER,
+          homeDir: serverConfig.homeDir,
+          ...(cwd ? { cwd } : {}),
+        }),
+      ).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("codex subagent catalog discovery failed", { cause }).pipe(
+            Effect.as([] as ProviderAgentDescriptor[]),
+          ),
+        ),
+      );
+
     const prepareCodexManagerTurnInput = (
       input: ProviderSendTurnInput,
       method: "turn/start" | "turn/steer",
@@ -1740,8 +1759,19 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
           type: "image" as const,
           url: `data:${attachment.mimeType};base64,${attachment.data}`,
         }));
+        // Rewrite `@agent(task)` mentions before attachments are appended so the
+        // echoed "Original user prompt" stays the prompt the user actually typed.
+        const sessionCwd = manager
+          .listSessions()
+          .find((session) => session.threadId === input.threadId)?.cwd;
+        const promptInput =
+          input.input === undefined
+            ? undefined
+            : buildCodexSubagentPrompt(input.input, {
+                agents: yield* codexAgentCatalog(sessionCwd),
+              }).prompt;
         const composedInput = composeCodexInputWithFileAttachments({
-          input: input.input,
+          input: promptInput,
           attachments: input.attachments,
           attachmentsDir: serverConfig.attachmentsDir,
         });
@@ -2016,6 +2046,18 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
           }),
       }).pipe(Effect.map((result) => result satisfies ProviderReadPluginResult));
 
+    // Codex exposes `agents.list_agents` to the model, not over app-server JSON-RPC,
+    // so scanning the role files Codex itself loads is the only server-side path.
+    const listAgents: NonNullable<CodexAdapterShape["listAgents"]> = (input) =>
+      Effect.gen(function* () {
+        const agents = yield* codexAgentCatalog(input.cwd);
+        return {
+          agents,
+          source: "filesystem",
+          cached: false,
+        } satisfies ProviderListAgentsResult;
+      });
+
     const listModels: NonNullable<CodexAdapterShape["listModels"]> = (_input) =>
       Effect.tryPromise({
         try: () => manager.listModels(),
@@ -2153,6 +2195,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
       listPlugins,
       readPlugin,
       listModels,
+      listAgents,
       transcribeVoice,
       streamEvents: Stream.fromQueue(runtimeEventQueue),
     } satisfies CodexAdapterShape;

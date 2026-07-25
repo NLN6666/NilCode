@@ -106,6 +106,7 @@ import {
   ProviderListPluginsInput,
   ProviderListModelsInput,
   ProviderListAgentsInput,
+  ProviderListCloudModelsInput,
   ProviderReadPluginInput,
   ProviderListSkillsInput,
   ProviderSkillsCatalogInput,
@@ -124,6 +125,7 @@ import {
   ExternalMcpRefreshPairingInput,
   ExternalMcpRevokeIntegrationInput,
 } from "./externalMcp";
+import { AgentMcpSetEnabledInput } from "./agentMcp";
 
 // ── WebSocket RPC Method Names ───────────────────────────────────────
 
@@ -204,6 +206,9 @@ export const WS_METHODS = {
   serverCreateExternalMcpIntegration: "server.createExternalMcpIntegration",
   serverRevokeExternalMcpIntegration: "server.revokeExternalMcpIntegration",
   serverRefreshExternalMcpPairing: "server.refreshExternalMcpPairing",
+  serverListAgentMcpServers: "server.listAgentMcpServers",
+  serverListAgentMcpTools: "server.listAgentMcpTools",
+  serverSetAgentMcpServerEnabled: "server.setAgentMcpServerEnabled",
   serverListWorktrees: "server.listWorktrees",
   serverListLocalServers: "server.listLocalServers",
   serverStopLocalServer: "server.stopLocalServer",
@@ -235,6 +240,7 @@ export const WS_METHODS = {
   providerReadPlugin: "provider.readPlugin",
   providerListModels: "provider.listModels",
   providerListAgents: "provider.listAgents",
+  providerListCloudModels: "provider.listCloudModels",
 
   // Automation methods
   automationList: "automation.list",
@@ -373,6 +379,9 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.serverCreateExternalMcpIntegration, ExternalMcpCreateIntegrationInput),
   tagRequestBody(WS_METHODS.serverRevokeExternalMcpIntegration, ExternalMcpRevokeIntegrationInput),
   tagRequestBody(WS_METHODS.serverRefreshExternalMcpPairing, ExternalMcpRefreshPairingInput),
+  tagRequestBody(WS_METHODS.serverListAgentMcpServers, Schema.Struct({})),
+  tagRequestBody(WS_METHODS.serverListAgentMcpTools, Schema.Struct({})),
+  tagRequestBody(WS_METHODS.serverSetAgentMcpServerEnabled, AgentMcpSetEnabledInput),
   tagRequestBody(WS_METHODS.serverListWorktrees, Schema.Struct({})),
   tagRequestBody(WS_METHODS.serverListLocalServers, Schema.Struct({})),
   tagRequestBody(WS_METHODS.serverStopLocalServer, ServerStopLocalServerInput),
@@ -396,6 +405,7 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.providerReadPlugin, ProviderReadPluginInput),
   tagRequestBody(WS_METHODS.providerListModels, ProviderListModelsInput),
   tagRequestBody(WS_METHODS.providerListAgents, ProviderListAgentsInput),
+  tagRequestBody(WS_METHODS.providerListCloudModels, ProviderListCloudModelsInput),
 
   // Automation methods
   tagRequestBody(WS_METHODS.automationList, AutomationListInput),

@@ -1294,6 +1294,7 @@ describe("deriveComposerSendState", () => {
       fileCount: 0,
       assistantSelectionCount: 0,
       fileCommentCount: 0,
+      browserElementCount: 0,
       terminalContexts: [
         {
           id: "ctx-expired",
@@ -1322,6 +1323,7 @@ describe("deriveComposerSendState", () => {
       fileCount: 0,
       assistantSelectionCount: 0,
       fileCommentCount: 0,
+      browserElementCount: 0,
       terminalContexts: [
         {
           id: "ctx-expired",
@@ -1349,6 +1351,7 @@ describe("deriveComposerSendState", () => {
       fileCount: 0,
       assistantSelectionCount: 1,
       fileCommentCount: 0,
+      browserElementCount: 0,
       terminalContexts: [],
       pastedTexts: [],
     });
@@ -1363,6 +1366,7 @@ describe("deriveComposerSendState", () => {
       fileCount: 0,
       assistantSelectionCount: 0,
       fileCommentCount: 1,
+      browserElementCount: 0,
       terminalContexts: [],
       pastedTexts: [],
     });
@@ -1377,6 +1381,7 @@ describe("deriveComposerSendState", () => {
       fileCount: 1,
       assistantSelectionCount: 0,
       fileCommentCount: 0,
+      browserElementCount: 0,
       terminalContexts: [],
       pastedTexts: [],
     });

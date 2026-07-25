@@ -93,18 +93,15 @@ export function getRuntimeAwareModelCapabilities(input: {
     input.runtimeModel?.optionDescriptors ?? staticCapabilities.optionDescriptors;
   const runtimeEfforts = input.runtimeModel?.supportedReasoningEfforts;
   // Providers with dynamic catalogs, including Droid, expose model-specific effort ladders here.
-  if (
-    (input.provider !== "codex" &&
-      input.provider !== "cursor" &&
-      input.provider !== "antigravity" &&
-      input.provider !== "grok" &&
-      input.provider !== "droid" &&
-      input.provider !== "kilo" &&
-      input.provider !== "opencode" &&
-      input.provider !== "pi") ||
-    !runtimeEfforts ||
-    runtimeEfforts.length === 0
-  ) {
+  //
+  // Claude is the exception: its built-in ladders carry Synara-only prompt modes
+  // (`ultrathink`, `ultracode`) that no discovery source reports, so a curated
+  // ladder must never be replaced by a discovered one. A model the built-in
+  // table has never seen has no ladder at all — there the discovered ladder is
+  // the only thing standing between the user and an empty effort picker.
+  const keepsCuratedClaudeEfforts =
+    input.provider === "claudeAgent" && staticCapabilities.reasoningEffortLevels.length > 0;
+  if (keepsCuratedClaudeEfforts || !runtimeEfforts || runtimeEfforts.length === 0) {
     return {
       ...staticCapabilities,
       ...(optionDescriptors ? { optionDescriptors } : {}),

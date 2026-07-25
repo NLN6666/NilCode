@@ -199,11 +199,7 @@ export function useKanbanTaskComposerDiscovery(input: UseKanbanTaskComposerDisco
     hiddenProviders,
     protectedProviders: [selectedProvider],
   });
-  const dynamicAgents = selectedRuntimeAgents.map((agent) =>
-    agent.description
-      ? { name: agent.name, displayName: agent.displayName, description: agent.description }
-      : { name: agent.name, displayName: agent.displayName },
-  );
+  const dynamicAgents = selectedRuntimeAgents;
   const rawComposerMenuItems = useComposerCommandMenuItems({
     composerTrigger,
     provider: selectedProvider,

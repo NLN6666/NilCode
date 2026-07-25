@@ -20,6 +20,12 @@ import type {
   ExternalMcpRevokeIntegrationInput,
 } from "./externalMcp";
 import type {
+  AgentMcpCatalog,
+  AgentMcpSetEnabledInput,
+  AgentMcpSourceView,
+  AgentMcpToolCatalog,
+} from "./agentMcp";
+import type {
   AutomationCancelRunInput,
   AutomationCancelRunResult,
   AutomationArchiveRunInput,
@@ -187,6 +193,8 @@ import type {
   ProviderListCommandsResult,
   ProviderListModelsInput,
   ProviderListModelsResult,
+  ProviderListCloudModelsInput,
+  ProviderListCloudModelsResult,
   ProviderListPluginsInput,
   ProviderListPluginsResult,
   ProviderListSkillsInput,
@@ -413,6 +421,48 @@ export interface BrowserCopyLinkEvent {
   url: string;
 }
 
+// Document-space geometry (viewport rect plus scroll offset) in CSS pixels, so the
+// value stays meaningful after the page scrolls.
+export interface BrowserElementRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Structured description of one picked DOM element. Every string field is already
+// normalized and truncated by the desktop main process before it reaches here: the
+// page itself is untrusted input.
+export interface BrowserElementSelection {
+  tabId: string;
+  pageUrl: string;
+  selector: string;
+  tagName: string;
+  elementId: string | null;
+  classNames: string[];
+  textSnippet: string | null;
+  outerHtmlSnippet: string;
+  rect: BrowserElementRect;
+  computedStyles: Record<string, string>;
+}
+
+export type BrowserStartElementPickInput = BrowserTabInput;
+export type BrowserCancelElementPickInput = BrowserThreadInput;
+
+export interface BrowserElementPickedEvent {
+  threadId: ThreadId;
+  selection: BrowserElementSelection;
+  // Null when the element-region crop failed or the element has no painted area.
+  // The structural context is still useful on its own, so picking does not fail.
+  screenshot: BrowserCaptureScreenshotResult | null;
+}
+
+export interface BrowserElementPickCancelledEvent {
+  threadId: ThreadId;
+  reason: "user" | "navigation" | "tab-closed" | "error";
+  message: string | null;
+}
+
 interface BrowserControlMethods {
   open: (input: BrowserOpenInput) => Promise<ThreadBrowserState>;
   close: (input: BrowserThreadInput) => Promise<ThreadBrowserState>;
@@ -433,7 +483,13 @@ interface BrowserControlMethods {
   closeTab: (input: BrowserTabInput) => Promise<ThreadBrowserState>;
   selectTab: (input: BrowserTabInput) => Promise<ThreadBrowserState>;
   openDevTools: (input: BrowserTabInput) => Promise<void>;
+  startElementPick: (input: BrowserStartElementPickInput) => Promise<void>;
+  cancelElementPick: (input: BrowserCancelElementPickInput) => Promise<void>;
   onState: (listener: (state: ThreadBrowserState) => void) => () => void;
+  onElementPicked: (listener: (event: BrowserElementPickedEvent) => void) => () => void;
+  onElementPickCancelled: (
+    listener: (event: BrowserElementPickCancelledEvent) => void,
+  ) => () => void;
 }
 
 export interface DesktopNotificationInput {
@@ -661,6 +717,9 @@ export interface NativeApi {
     refreshExternalMcpPairing: (
       input: ExternalMcpRefreshPairingInput,
     ) => Promise<ExternalMcpCreateIntegrationResult>;
+    listAgentMcpServers: () => Promise<AgentMcpCatalog>;
+    setAgentMcpServerEnabled: (input: AgentMcpSetEnabledInput) => Promise<AgentMcpSourceView>;
+    listAgentMcpTools: () => Promise<AgentMcpToolCatalog>;
     refreshProviders: () => Promise<ServerRefreshProvidersResult>;
     updateProvider: (input: ServerProviderUpdateInput) => Promise<ServerProviderUpdateResult>;
     listWorktrees: () => Promise<ServerListWorktreesResult>;
@@ -702,6 +761,9 @@ export interface NativeApi {
     readPlugin: (input: ProviderReadPluginInput) => Promise<ProviderReadPluginResult>;
     listModels: (input: ProviderListModelsInput) => Promise<ProviderListModelsResult>;
     listAgents: (input: ProviderListAgentsInput) => Promise<ProviderListAgentsResult>;
+    listCloudModels: (
+      input: ProviderListCloudModelsInput,
+    ) => Promise<ProviderListCloudModelsResult>;
   };
   orchestration: {
     getSnapshot: () => Promise<OrchestrationReadModel>;

@@ -20,6 +20,11 @@ import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
 
 import { normalizeAssistantSelectionAttachment } from "./lib/assistantSelections";
+import {
+  type BrowserElementDraft,
+  browserElementDedupKey,
+  normalizeBrowserElementSelection,
+} from "./lib/browserElementContext";
 import type { ComposerImageSource } from "./lib/composerImageSource";
 import {
   type PastedTextDraft,
@@ -102,6 +107,7 @@ export interface ComposerPromptHistorySavedDraft {
   assistantSelections: ComposerAssistantSelectionAttachment[];
   terminalContexts: TerminalContextDraft[];
   fileComments: FileCommentDraft[];
+  browserElements: BrowserElementDraft[];
   pastedTexts: PastedTextDraft[];
   skills: ProviderSkillReference[];
   mentions: ProviderMentionReference[];
@@ -120,6 +126,7 @@ export interface QueuedComposerChatTurn {
   assistantSelections: ComposerAssistantSelectionAttachment[];
   terminalContexts: TerminalContextDraft[];
   fileComments: FileCommentDraft[];
+  browserElements: BrowserElementDraft[];
   pastedTexts: PastedTextDraft[];
   skills: ProviderSkillReference[];
   mentions: ProviderMentionReference[];
@@ -171,6 +178,7 @@ export interface ComposerThreadDraftState {
   assistantSelections: ComposerAssistantSelectionAttachment[];
   terminalContexts: TerminalContextDraft[];
   fileComments: FileCommentDraft[];
+  browserElements: BrowserElementDraft[];
   pastedTexts: PastedTextDraft[];
   skills: ProviderSkillReference[];
   mentions: ProviderMentionReference[];
@@ -333,6 +341,9 @@ export interface ComposerDraftStoreState {
   addFileComment: (threadId: ThreadId, comment: FileCommentDraft) => boolean;
   removeFileComment: (threadId: ThreadId, commentId: string) => void;
   clearFileComments: (threadId: ThreadId) => void;
+  addBrowserElement: (threadId: ThreadId, element: BrowserElementDraft) => boolean;
+  removeBrowserElement: (threadId: ThreadId, elementId: string) => void;
+  clearBrowserElements: (threadId: ThreadId) => void;
   addPastedTexts: (threadId: ThreadId, pastedTexts: PastedTextDraft[]) => void;
   removePastedText: (threadId: ThreadId, pastedTextId: string) => void;
   clearPastedTexts: (threadId: ThreadId) => void;
@@ -501,6 +512,7 @@ export function createEmptyThreadDraft(): ComposerThreadDraftState {
     assistantSelections: [],
     terminalContexts: [],
     fileComments: [],
+    browserElements: [],
     pastedTexts: [],
     skills: [],
     mentions: [],
@@ -601,6 +613,44 @@ export function normalizeFileComments(
   }
 
   return normalizedComments;
+}
+
+export function normalizeBrowserElement(
+  element: BrowserElementDraft,
+): BrowserElementDraft | null {
+  const normalized = normalizeBrowserElementSelection(element);
+  if (!normalized) {
+    return null;
+  }
+  return {
+    id: element.id,
+    createdAt: element.createdAt,
+    ...normalized,
+  };
+}
+
+export function normalizeBrowserElements(
+  elements: ReadonlyArray<BrowserElementDraft>,
+): BrowserElementDraft[] {
+  const normalizedElements: BrowserElementDraft[] = [];
+  const existingIds = new Set<string>();
+  const existingDedupKeys = new Set<string>();
+
+  for (const element of elements) {
+    const normalizedElement = normalizeBrowserElement(element);
+    if (!normalizedElement) {
+      continue;
+    }
+    const dedupKey = browserElementDedupKey(normalizedElement);
+    if (existingIds.has(normalizedElement.id) || existingDedupKeys.has(dedupKey)) {
+      continue;
+    }
+    normalizedElements.push(normalizedElement);
+    existingIds.add(normalizedElement.id);
+    existingDedupKeys.add(dedupKey);
+  }
+
+  return normalizedElements;
 }
 
 function normalizePastedText(pasted: PastedTextDraft): PastedTextDraft | null {
@@ -707,6 +757,7 @@ export function captureComposerPromptHistorySavedDraft(input: {
     assistantSelections: normalizeAssistantSelections(draft.assistantSelections),
     terminalContexts: normalizeTerminalContextsForThread(threadId, draft.terminalContexts),
     fileComments: normalizeFileComments(draft.fileComments),
+    browserElements: normalizeBrowserElements(draft.browserElements),
     pastedTexts: normalizePastedTexts(draft.pastedTexts),
     skills: [...draft.skills],
     mentions: [...draft.mentions],
@@ -737,6 +788,7 @@ export function buildTransferredComposerDraft(input: {
       sourceDraft.terminalContexts,
     ),
     fileComments: normalizeFileComments(sourceDraft.fileComments),
+    browserElements: normalizeBrowserElements(sourceDraft.browserElements),
     pastedTexts: normalizePastedTexts(sourceDraft.pastedTexts),
     skills: [...sourceDraft.skills],
     mentions: [...sourceDraft.mentions],
@@ -779,6 +831,7 @@ function clonePromptHistorySavedDraft(
       savedDraft.terminalContexts,
     ),
     fileComments: normalizeFileComments(savedDraft.fileComments),
+    browserElements: normalizeBrowserElements(savedDraft.browserElements),
     pastedTexts: normalizePastedTexts(savedDraft.pastedTexts),
     skills: [...savedDraft.skills],
     mentions: [...savedDraft.mentions],
@@ -795,6 +848,7 @@ export function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
     draft.assistantSelections.length === 0 &&
     draft.terminalContexts.length === 0 &&
     draft.fileComments.length === 0 &&
+    draft.browserElements.length === 0 &&
     draft.pastedTexts.length === 0 &&
     draft.skills.length === 0 &&
     draft.mentions.length === 0 &&
@@ -845,6 +899,7 @@ const EMPTY_THREAD_DRAFT = Object.freeze<ComposerThreadDraftState>({
   assistantSelections: [],
   terminalContexts: EMPTY_TERMINAL_CONTEXTS,
   fileComments: [],
+  browserElements: [],
   pastedTexts: EMPTY_PASTED_TEXTS,
   skills: EMPTY_SKILLS,
   mentions: EMPTY_MENTIONS,

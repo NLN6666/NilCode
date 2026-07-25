@@ -138,6 +138,13 @@ export const CheckCircle2Icon: LucideIcon = centralIconWrapper("check-circle-2")
 export const CircleQuestionIcon: LucideIcon = centralIconWrapper("circle-questionmark");
 export const ArrowUpCircleIcon: LucideIcon = centralIconWrapper("arrow-up-circle");
 export const CloudSyncIcon = centralIconWrapper("cloud-sync");
+// Browser element picking: the pointer-with-click glyph marks both the toolbar
+// toggle and the composer/transcript chips for a picked page element.
+export const CursorClickIcon: LucideIcon = centralIconWrapper("cursor-click");
+// Annotation toolbar rectangle tool (the eraser/clear glyph is EraserIcon above).
+export const SquareOutlineIcon: LucideIcon = centralIconWrapper("form-square");
+// Annotation toolbar text tool: the "T" glyph that marks "add a text label".
+export const TextLabelIcon: LucideIcon = centralIconWrapper("text-1");
 export const Columns2Icon = adaptIcon(IconColumns2);
 export const ChangesIcon = centralIconWrapper("changes");
 export const CopyIcon = centralIconWrapper("square-behind-square-6");
@@ -190,6 +197,9 @@ export const McpIcon: LucideIcon = (props) => (
   <VscMcp className={props.className} style={props.style} />
 );
 export const PluginIcon: LucideIcon = centralIconWrapper("puzzle");
+// Composer `&server:tool` references. Same Central glyph the inline chip renders
+// (COMPOSER_INLINE_MCP_TOOL_CHIP_ICON_NAME), mirroring how SkillCubeIcon pairs with the skill chip.
+export const McpToolIcon: LucideIcon = centralIconWrapper("toolbox");
 // Single hammer/build glyph (tool-call rows, codex provider, "build" scripts).
 // Sourced from the Central set so it matches the other work-row icons (pencil,
 // terminal, skill cube) it sits beside, instead of the Tabler wrench it used to be.

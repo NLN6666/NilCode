@@ -289,6 +289,35 @@ export const ProviderListModelsResult = Schema.Struct({
 });
 export type ProviderListModelsResult = typeof ProviderListModelsResult.Type;
 
+// A model as the public cloud catalog describes it. Deliberately narrower than
+// ProviderModelDescriptor: a vendor-neutral catalog cannot know provider-private
+// capabilities (Codex `xhigh`, Claude `ultrathink`, fast mode), so it supplies
+// the roster and the local capability template supplies the rest.
+export const CloudModelDescriptor = Schema.Struct({
+  slug: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  description: Schema.optional(TrimmedNonEmptyString),
+  contextWindowTokens: Schema.optional(Schema.Number),
+  /** Effort ladder the catalog reports; advisory, the local template still decides. */
+  reasoningEffortValues: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+});
+export type CloudModelDescriptor = typeof CloudModelDescriptor.Type;
+
+export const ProviderListCloudModelsInput = Schema.Struct({
+  provider: ProviderDiscoveryKind,
+  /**
+   * Re-fetch the upstream catalog instead of answering from the server's cache.
+   * Omitted means "normal read" — only an explicit user action should reach out.
+   */
+  refresh: Schema.optional(Schema.Boolean),
+});
+export type ProviderListCloudModelsInput = typeof ProviderListCloudModelsInput.Type;
+
+export const ProviderListCloudModelsResult = Schema.Struct({
+  models: Schema.Array(CloudModelDescriptor),
+});
+export type ProviderListCloudModelsResult = typeof ProviderListCloudModelsResult.Type;
+
 export const ProviderListAgentsInput = Schema.Struct({
   provider: ProviderDiscoveryKind,
   binaryPath: Schema.optional(TrimmedNonEmptyString),
@@ -296,11 +325,20 @@ export const ProviderListAgentsInput = Schema.Struct({
 });
 export type ProviderListAgentsInput = typeof ProviderListAgentsInput.Type;
 
+// Where a discovered subagent came from, in precedence order: a project-local
+// definition wins over the user's home definition, which wins over anything the
+// provider runtime reports (SDK/plugin), which wins over Synara's own built-ins.
+export const ProviderAgentSource = Schema.Literals(["project", "user", "sdk", "builtin"]);
+export type ProviderAgentSource = typeof ProviderAgentSource.Type;
+
 export const ProviderAgentDescriptor = Schema.Struct({
   name: TrimmedNonEmptyString,
   displayName: TrimmedNonEmptyString,
   description: Schema.optional(TrimmedNonEmptyString),
   model: Schema.optional(TrimmedNonEmptyString),
+  source: Schema.optional(ProviderAgentSource),
+  /** Absolute path of the definition file for filesystem-discovered agents. */
+  path: Schema.optional(TrimmedNonEmptyString),
 });
 export type ProviderAgentDescriptor = typeof ProviderAgentDescriptor.Type;
 

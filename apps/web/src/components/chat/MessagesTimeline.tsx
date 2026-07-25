@@ -67,6 +67,7 @@ import { DiffStatLabel } from "./DiffStatLabel";
 import { ReviewChangesButton } from "./ReviewChangesButton";
 import { FileEntryIcon } from "./FileEntryIcon";
 import { InlineMentionChip } from "./InlineMentionChip";
+import { InlineMcpToolChip } from "./InlineMcpToolChip";
 import { InlineSkillChip } from "./InlineSkillChip";
 import { InlineAgentChip } from "./InlineAgentChip";
 import { MessageActionButton, MESSAGE_ACTION_ICON_CLASS_NAME } from "./MessageActionButton";
@@ -74,6 +75,7 @@ import { MessageCopyButton } from "./MessageCopyButton";
 import { AssistantSelectionsSummaryChip } from "./AssistantSelectionsSummaryChip";
 import { FileAttachmentChip } from "./FileAttachmentChip";
 import { FileCommentsSummaryChip } from "./FileCommentsSummaryChip";
+import { UserMessageBrowserElementChips } from "./ComposerBrowserElementChips";
 import { UserMessagePastedTextCard } from "./PastedTextChip";
 import {
   EditedFileRowContent,
@@ -1088,6 +1090,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 }));
           const terminalContexts = displayedUserMessage.contexts;
           const renderedFileComments = displayedUserMessage.fileComments;
+          const renderedBrowserElements = displayedUserMessage.browserElements;
           const renderedPastedTexts = displayedUserMessage.pastedTexts;
           const userMessageText = displayedUserMessage.visibleText;
           const userMessageExpanded = expandedUserMessagesById[row.message.id] ?? false;
@@ -1108,6 +1111,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             fileCount: userFiles.length,
             assistantSelectionCount: renderedAssistantSelections.length,
             fileCommentCount: renderedFileComments.length,
+            browserElementCount: renderedBrowserElements.length,
             pastedTextCount: renderedPastedTexts.length,
           });
           const isTailContentRow = row.id === tailContentRowId;
@@ -1146,6 +1150,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   {renderedFileComments.length > 0 && (
                     <div className="mb-1 flex max-w-[240px] flex-wrap justify-end gap-1.5 self-end">
                       <FileCommentsSummaryChip comments={renderedFileComments} />
+                    </div>
+                  )}
+                  {renderedBrowserElements.length > 0 && (
+                    <div className="mb-1 flex max-w-full flex-col items-end gap-1.5 self-end">
+                      <UserMessageBrowserElementChips elements={renderedBrowserElements} />
                     </div>
                   )}
                   {renderedPastedTexts.length > 0 && (
@@ -2524,6 +2533,9 @@ function renderUserMessageInlineText(
     }
     if (segment.type === "agent-mention") {
       return [<InlineAgentChip key={`${key}:agent`} alias={segment.alias} color={segment.color} />];
+    }
+    if (segment.type === "mcp-tool") {
+      return [<InlineMcpToolChip key={`${key}:mcp-tool`} reference={segment.reference} />];
     }
     if (segment.type === "link") {
       return [<InlineLinkChip key={`${key}:link`} url={segment.url} interactive />];

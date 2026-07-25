@@ -99,6 +99,30 @@ export function composerImageFromBrowserScreenshot(
   };
 }
 
+export function annotatedScreenshotAttachmentName(): string {
+  return `browser-annotated-${Date.now()}.png`;
+}
+
+// Annotated captures are composited in the renderer, so they arrive as a Blob rather than a
+// BrowserCaptureScreenshotResult. Kept here beside the plain-screenshot builder so composer
+// image attachments are constructed in exactly one place.
+export function composerImageFromAnnotatedBlob(blob: Blob): ComposerImageAttachment {
+  if (blob.size === 0) {
+    throw new Error("Annotated browser screenshot is empty.");
+  }
+  const mimeType = blob.type || "image/png";
+  const file = new File([blob], annotatedScreenshotAttachmentName(), { type: mimeType });
+  return {
+    type: "image",
+    id: crypto.randomUUID(),
+    name: file.name,
+    mimeType,
+    sizeBytes: file.size,
+    previewUrl: URL.createObjectURL(file),
+    file,
+  };
+}
+
 export interface BrowserPromptAttachmentResolution {
   requested: boolean;
   image: ComposerImageAttachment | null;

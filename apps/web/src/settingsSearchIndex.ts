@@ -387,6 +387,22 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "Rebuild local project indexes without clearing existing chats when the local state gets out of sync.",
   },
   {
+    id: "mcpServers:codex",
+    section: "mcpServers",
+    title: "Codex MCP servers",
+    keywords:
+      "Enable disable the MCP servers Codex uses. config.toml CODEX_HOME mcp_servers stdio http toggle",
+    target: null,
+  },
+  {
+    id: "mcpServers:claude",
+    section: "mcpServers",
+    title: "Claude MCP servers",
+    keywords:
+      "Enable disable the MCP servers Claude uses. claude.json mcpServers disabled stdio http toggle",
+    target: null,
+  },
+  {
     id: "integrations:external-mcp",
     section: "integrations",
     title: "External MCP integrations",

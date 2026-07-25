@@ -171,7 +171,13 @@ import {
 import { buildGitHubReleasesPageUrl, resolveGitHubUpdateSource } from "./githubUpdateFeed";
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch";
 import { BROWSER_SESSION_PARTITION, DesktopBrowserManager } from "./browserManager";
-import { registerBrowserIpcHandlers, sendBrowserCopyLink, sendBrowserState } from "./browserIpc";
+import {
+  registerBrowserIpcHandlers,
+  sendBrowserCopyLink,
+  sendBrowserElementPickCancelled,
+  sendBrowserElementPicked,
+  sendBrowserState,
+} from "./browserIpc";
 import {
   BrowserUsePipeServer,
   SYNARA_BROWSER_USE_PIPE_PATH,
@@ -316,6 +322,14 @@ browserManager.subscribe((state) => {
 
 browserManager.subscribeCopyLink((event) => {
   sendBrowserCopyLink(mainWindow?.webContents, event);
+});
+
+browserManager.subscribeElementPicked((event) => {
+  sendBrowserElementPicked(mainWindow?.webContents, event);
+});
+
+browserManager.subscribeElementPickCancelled((event) => {
+  sendBrowserElementPickCancelled(mainWindow?.webContents, event);
 });
 
 function startBrowserPerformanceLogging(): void {

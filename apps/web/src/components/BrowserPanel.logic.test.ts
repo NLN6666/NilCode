@@ -6,6 +6,7 @@ import {
   normalizeBrowserAddressInput,
   resolveBrowserChromeStatus,
   resolveBrowserAddressSync,
+  resolveNextInteractionMode,
 } from "./BrowserPanel.logic";
 
 describe("browserAddressDisplayValue", () => {
@@ -166,5 +167,34 @@ describe("resolveBrowserChromeStatus", () => {
       tone: "default",
       label: "Starting browser...",
     });
+  });
+});
+
+describe("resolveNextInteractionMode", () => {
+  it("enters picking from browsing", () => {
+    expect(resolveNextInteractionMode("browse", { type: "toggle-picking" })).toBe("picking");
+  });
+
+  it("toggles picking back off", () => {
+    expect(resolveNextInteractionMode("picking", { type: "toggle-picking" })).toBe("browse");
+  });
+
+  it("enters annotating from browsing", () => {
+    expect(resolveNextInteractionMode("browse", { type: "toggle-annotating" })).toBe("annotating");
+  });
+
+  it("toggles annotating back off", () => {
+    expect(resolveNextInteractionMode("annotating", { type: "toggle-annotating" })).toBe("browse");
+  });
+
+  it("keeps the two overlay modes mutually exclusive", () => {
+    expect(resolveNextInteractionMode("annotating", { type: "toggle-picking" })).toBe("picking");
+    expect(resolveNextInteractionMode("picking", { type: "toggle-annotating" })).toBe("annotating");
+  });
+
+  it("always returns to browsing on exit", () => {
+    expect(resolveNextInteractionMode("browse", { type: "exit" })).toBe("browse");
+    expect(resolveNextInteractionMode("picking", { type: "exit" })).toBe("browse");
+    expect(resolveNextInteractionMode("annotating", { type: "exit" })).toBe("browse");
   });
 });

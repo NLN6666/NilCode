@@ -730,6 +730,16 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     directories: {
       buildResources: "apps/desktop/resources",
     },
+    // The staged tree has exactly one native module: msgpackr-extract, an
+    // optional accelerator that effect pulls in through msgpackr. msgpackr falls
+    // back to its JavaScript implementation when the binding is absent, and
+    // Synara serializes its WebSocket traffic as JSON, so the binding is never
+    // on a hot path. Rebuilding it costs a full MSVC toolchain on every build
+    // machine and buys nothing, so the rebuild step is skipped.
+    //
+    // Revisit this the day a genuinely required native dependency is added:
+    // electron-builder will happily ship an unusable binding instead of failing.
+    npmRebuild: false,
     forceCodeSigning: signed,
   };
   const publishConfig = resolveGitHubPublishConfig();

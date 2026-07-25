@@ -128,9 +128,9 @@ function providerAgentsPrefetchQueryOptions(input: {
 
   switch (provider) {
     case "claudeAgent":
-      return providerAgentsQueryOptions({ provider: "claudeAgent" });
+      return providerAgentsQueryOptions({ provider: "claudeAgent", cwd });
     case "codex":
-      return providerAgentsQueryOptions({ provider: "codex" });
+      return providerAgentsQueryOptions({ provider: "codex", cwd });
     case "kilo":
       return providerAgentsQueryOptions({
         provider: "kilo",

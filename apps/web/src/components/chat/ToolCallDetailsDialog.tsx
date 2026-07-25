@@ -27,6 +27,14 @@ export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetail
 
   return (
     <>
+      {details.arguments ? (
+        <ToolDetailSection title="Arguments">
+          <MarkdownToolCodeBlock language={toolArgumentsLanguage(details.arguments)}>
+            {details.arguments}
+          </MarkdownToolCodeBlock>
+        </ToolDetailSection>
+      ) : null}
+
       {details.command ? (
         <div className="space-y-2">
           <MarkdownToolCodeBlock language="bash">
@@ -98,6 +106,12 @@ export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetail
       {details.output && !details.command ? <ToolOutputSection output={details.output} /> : null}
     </>
   );
+}
+
+// Providers hand arguments over either as a JSON object we pretty-printed or as an opaque string.
+// Fencing a non-JSON string as `json` would light it up with the wrong highlighting.
+function toolArgumentsLanguage(value: string): string {
+  return value.startsWith("{") || value.startsWith("[") ? "json" : "text";
 }
 
 function MarkdownToolCodeBlock(props: { language: string; children: string }) {

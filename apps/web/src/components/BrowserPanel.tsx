@@ -18,12 +18,14 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CameraIcon,
+  CursorClickIcon,
   EllipsisIcon,
   ExternalLinkIcon,
   GlobeIcon,
   LinkIcon,
   LoaderCircleIcon,
   type LucideIcon,
+  PencilIcon,
   PlusIcon,
   RefreshCwIcon,
   XIcon,
@@ -56,16 +58,21 @@ import {
 import { useComposerDraftStore } from "../composerDraftStore";
 import { anchoredToastManager } from "./ui/toast";
 import {
+  composerImageFromAnnotatedBlob,
   composerImageFromBrowserScreenshot,
   screenshotAttachmentName,
 } from "../lib/browserPromptContext";
+import { createBrowserElementDraft } from "../lib/browserElementContext";
+import { BrowserAnnotationOverlay } from "./browser/BrowserAnnotationOverlay";
 import {
   browserAddressDisplayValue,
   buildBrowserAddressSuggestions,
   normalizeBrowserAddressInput,
   resolveBrowserChromeStatus,
   resolveBrowserAddressSync,
+  resolveNextInteractionMode,
   type BrowserAddressSuggestion,
+  type BrowserPanelInteractionMode,
 } from "./BrowserPanel.logic";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { LocalServerIdentity } from "./LocalServerIdentity";
@@ -200,6 +207,11 @@ function ignoreBrowserBoundsSyncError(): void {
 
 function ignoreBrowserWebviewDetachError(): void {
   // Renderer webview detach is best-effort cleanup; a stale/destroyed guest is already gone.
+}
+
+function ignoreBrowserElementPickCancelError(): void {
+  // Cancelling a pick session that already ended (tab closed, page navigated) is a no-op;
+  // there is nothing actionable to surface for it.
 }
 
 function setBrowserWebviewOverlayOcclusion(
@@ -510,6 +522,7 @@ export function BrowserPanel({
   const recentHistory = useBrowserStateStore(selectThreadBrowserHistory(threadId));
   const upsertThreadState = useBrowserStateStore((store) => store.upsertThreadState);
   const addComposerDraftImage = useComposerDraftStore((store) => store.addImage);
+  const addComposerDraftBrowserElement = useComposerDraftStore((store) => store.addBrowserElement);
   const composerDraftImageCount = useComposerDraftStore(
     (store) => store.draftsByThreadId[threadId]?.images.length ?? 0,
   );
@@ -553,6 +566,14 @@ export function BrowserPanel({
   const [isAddressFocused, setIsAddressFocused] = useState(false);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const interactionModeRef = useRef<BrowserPanelInteractionMode>("browse");
+  const annotationBitmapRef = useRef<ImageBitmap | null>(null);
+  const interactionRequestRef = useRef(0);
+  const [interactionMode, setInteractionMode] = useState<BrowserPanelInteractionMode>("browse");
+  const [annotationBitmap, setAnnotationBitmap] = useState<ImageBitmap | null>(null);
+  const [annotationError, setAnnotationError] = useState<string | null>(null);
+  const isPicking = interactionMode === "picking";
+  const isAnnotating = interactionMode === "annotating";
   const runtimeReady = isLiveRuntime ? workspaceReady : true;
   const activeTab =
     threadBrowserState?.tabs.find((tab) => tab.id === threadBrowserState.activeTabId) ??
@@ -844,7 +865,10 @@ export function BrowserPanel({
       // While the local-servers home is up, force the browser surface hidden instead of
       // trusting the obscuring-overlay heuristic. The native/inline webview otherwise paints
       // about:blank white over our dark DOM home — the "always white" empty state.
-      const obscuredByOverlay = showLocalServersHome || hasNativeBrowserObscuringOverlay(element);
+      // Annotating replaces the page with a frozen screenshot rendered in the DOM, so the
+      // native/inline browser surface has to get out of the way for the duration.
+      const obscuredByOverlay =
+        showLocalServersHome || isAnnotating || hasNativeBrowserObscuringOverlay(element);
       lastOverlayObscuredRef.current = obscuredByOverlay;
       setBrowserWebviewOverlayOcclusion(browserWebviewRef.current, obscuredByOverlay);
       const rect = element.getBoundingClientRect();
@@ -979,7 +1003,7 @@ export function BrowserPanel({
       burstFramesRemainingRef.current = 0;
       burstStableFramesRef.current = 0;
     };
-  }, [api, isLiveRuntime, showLocalServersHome, threadId]);
+  }, [api, isAnnotating, isLiveRuntime, showLocalServersHome, threadId]);
 
   const onSubmitAddress = useCallback(() => {
     if (!ensureLiveRuntime()) {
@@ -1109,6 +1133,12 @@ export function BrowserPanel({
     });
   }, [api, ensureLiveRuntime, runBrowserAction, threadId, upsertThreadState]);
 
+  const composerAttachmentCount =
+    composerDraftImageCount + composerDraftFileCount + composerDraftAssistantSelectionCount;
+  const composerAttachmentsAreFull =
+    composerAttachmentCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS;
+  const attachmentLimitMessage = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} references per message.`;
+
   const onCaptureScreenshot = useCallback(() => {
     if (!ensureLiveRuntime()) {
       return;
@@ -1117,12 +1147,8 @@ export function BrowserPanel({
       return;
     }
 
-    const attachmentCount =
-      composerDraftImageCount + composerDraftFileCount + composerDraftAssistantSelectionCount;
-    if (attachmentCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
-      setLocalError(
-        `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} references per message.`,
-      );
+    if (composerAttachmentsAreFull) {
+      setLocalError(attachmentLimitMessage);
       return;
     }
 
@@ -1146,13 +1172,275 @@ export function BrowserPanel({
     activeTab,
     addComposerDraftImage,
     api,
-    composerDraftAssistantSelectionCount,
-    composerDraftFileCount,
-    composerDraftImageCount,
+    attachmentLimitMessage,
+    composerAttachmentsAreFull,
     ensureLiveRuntime,
     runBrowserAction,
     threadId,
   ]);
+
+  // Leaving picking mode always has to reach the main process: a page left in CDP inspect
+  // mode swallows every click, so an un-cancelled session would freeze the tab.
+  const cancelElementPick = useCallback(() => {
+    if (!api) {
+      return;
+    }
+    void api.browser.cancelElementPick({ threadId }).catch(ignoreBrowserElementPickCancelError);
+  }, [api, threadId]);
+
+  // Mode and bitmap are mirrored into refs so the exit path never has to depend on the
+  // current mode/bitmap state. A state-dependent exitInteractionMode would change identity
+  // on every mode change and make the unmount/tab-switch cleanup effect fire immediately
+  // after entering a mode, tearing it down again.
+  const applyInteractionMode = useCallback((mode: BrowserPanelInteractionMode) => {
+    interactionModeRef.current = mode;
+    setInteractionMode(mode);
+  }, []);
+
+  // SECURITY: the mosaic tool is a redaction affordance, not a visual gimmick. The frozen
+  // screenshot must never outlive the overlay, so every path that leaves annotate mode
+  // closes the bitmap here. Do not keep a copy of the un-redacted capture anywhere — the
+  // flattened PNG from renderAnnotatedImage is the only artifact allowed to reach a draft.
+  const replaceAnnotationBitmap = useCallback((bitmap: ImageBitmap | null) => {
+    annotationBitmapRef.current?.close();
+    annotationBitmapRef.current = bitmap;
+    setAnnotationBitmap(bitmap);
+  }, []);
+
+  // Every mode switch takes a ticket. Both toggles do async work (an IPC round trip, and for
+  // annotate a screenshot + createImageBitmap) before they land, so a second toggle pressed
+  // in that window would otherwise be overwritten by the first one's stale completion —
+  // dragging the UI into a mode the user already left, or into annotate while a CDP pick
+  // session stays armed behind it.
+  const claimInteractionRequest = useCallback(() => {
+    interactionRequestRef.current += 1;
+    return interactionRequestRef.current;
+  }, []);
+
+  const exitInteractionMode = useCallback(() => {
+    // Invalidate any toggle still in flight so it cannot re-enter a mode after this exit.
+    claimInteractionRequest();
+    if (interactionModeRef.current === "picking") {
+      cancelElementPick();
+    }
+    applyInteractionMode(resolveNextInteractionMode(interactionModeRef.current, { type: "exit" }));
+    replaceAnnotationBitmap(null);
+    setAnnotationError(null);
+  }, [applyInteractionMode, cancelElementPick, claimInteractionRequest, replaceAnnotationBitmap]);
+
+  const onTogglePicking = useCallback(() => {
+    if (!ensureLiveRuntime()) {
+      return;
+    }
+    if (!api || !activeTab) {
+      return;
+    }
+    const nextMode = resolveNextInteractionMode(interactionModeRef.current, {
+      type: "toggle-picking",
+    });
+    if (nextMode !== "picking") {
+      exitInteractionMode();
+      return;
+    }
+    const requestId = claimInteractionRequest();
+    // Modes are mutually exclusive, so entering picking tears the annotation canvas down.
+    replaceAnnotationBitmap(null);
+    setAnnotationError(null);
+    applyInteractionMode("picking");
+    void runBrowserAction(() =>
+      api.browser.startElementPick({ threadId, tabId: activeTab.id }),
+    ).then((result) => {
+      if (interactionRequestRef.current !== requestId) {
+        return;
+      }
+      if (result === null) {
+        applyInteractionMode("browse");
+      }
+    });
+  }, [
+    activeTab,
+    api,
+    applyInteractionMode,
+    claimInteractionRequest,
+    ensureLiveRuntime,
+    exitInteractionMode,
+    replaceAnnotationBitmap,
+    runBrowserAction,
+    threadId,
+  ]);
+
+  const onToggleAnnotating = useCallback(() => {
+    if (!ensureLiveRuntime()) {
+      return;
+    }
+    if (!api || !activeTab) {
+      return;
+    }
+    const nextMode = resolveNextInteractionMode(interactionModeRef.current, {
+      type: "toggle-annotating",
+    });
+    if (nextMode !== "annotating") {
+      exitInteractionMode();
+      return;
+    }
+    if (interactionModeRef.current === "picking") {
+      cancelElementPick();
+    }
+    const requestId = claimInteractionRequest();
+    setAnnotationError(null);
+    void runBrowserAction(() =>
+      api.browser.captureScreenshot({ threadId, tabId: activeTab.id }),
+    ).then(async (screenshot) => {
+      if (!screenshot || interactionRequestRef.current !== requestId) {
+        return;
+      }
+      try {
+        const bitmap = await createImageBitmap(
+          new Blob([new Uint8Array(screenshot.bytes)], { type: screenshot.mimeType }),
+        );
+        // Decoding is itself async, so re-check before adopting — and close the bitmap we
+        // are about to drop, or it leaks its backing store.
+        if (interactionRequestRef.current !== requestId) {
+          bitmap.close();
+          return;
+        }
+        replaceAnnotationBitmap(bitmap);
+        applyInteractionMode("annotating");
+      } catch {
+        if (interactionRequestRef.current === requestId) {
+          setLocalError("Couldn't freeze the page for annotation.");
+        }
+      }
+    });
+  }, [
+    activeTab,
+    api,
+    applyInteractionMode,
+    cancelElementPick,
+    claimInteractionRequest,
+    ensureLiveRuntime,
+    exitInteractionMode,
+    replaceAnnotationBitmap,
+    runBrowserAction,
+    threadId,
+  ]);
+
+  const onConfirmAnnotation = useCallback(
+    (blob: Blob) => {
+      if (composerAttachmentsAreFull) {
+        setAnnotationError(attachmentLimitMessage);
+        return;
+      }
+      if (blob.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
+        setAnnotationError(
+          `The annotated screenshot exceeds the ${IMAGE_SIZE_LIMIT_LABEL} attachment limit.`,
+        );
+        return;
+      }
+      addComposerDraftImage(threadId, composerImageFromAnnotatedBlob(blob));
+      setLocalError(null);
+      exitInteractionMode();
+    },
+    [
+      addComposerDraftImage,
+      attachmentLimitMessage,
+      composerAttachmentsAreFull,
+      exitInteractionMode,
+      threadId,
+    ],
+  );
+
+  // A picked element always contributes its structural chip; the cropped image is a bonus
+  // that is skipped (with a notice) when the attachment budget is already spent.
+  useEffect(() => {
+    if (!api || !isLiveRuntime) {
+      return;
+    }
+    return api.browser.onElementPicked((event) => {
+      if (event.threadId !== threadId) {
+        return;
+      }
+      applyInteractionMode("browse");
+      const draft = createBrowserElementDraft(event.selection);
+      if (!draft) {
+        setLocalError("Couldn't read that page element.");
+        return;
+      }
+      addComposerDraftBrowserElement(threadId, draft);
+
+      const screenshot = event.screenshot;
+      if (!screenshot) {
+        setLocalError(null);
+        return;
+      }
+      if (composerAttachmentsAreFull) {
+        setLocalError(attachmentLimitMessage);
+        return;
+      }
+      if (screenshot.sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
+        setLocalError(
+          `'${screenshotAttachmentName(screenshot)}' exceeds the ${IMAGE_SIZE_LIMIT_LABEL} attachment limit.`,
+        );
+        return;
+      }
+      addComposerDraftImage(threadId, composerImageFromBrowserScreenshot(screenshot));
+      setLocalError(null);
+    });
+  }, [
+    addComposerDraftBrowserElement,
+    addComposerDraftImage,
+    api,
+    applyInteractionMode,
+    attachmentLimitMessage,
+    composerAttachmentsAreFull,
+    isLiveRuntime,
+    threadId,
+  ]);
+
+  useEffect(() => {
+    if (!api || !isLiveRuntime) {
+      return;
+    }
+    return api.browser.onElementPickCancelled((event) => {
+      if (event.threadId !== threadId) {
+        return;
+      }
+      applyInteractionMode("browse");
+      // Navigating away or closing the tab is an expected way to leave the mode; only a real
+      // failure is worth putting in front of the user.
+      if (event.reason === "error") {
+        setLocalError(event.message ?? "Couldn't pick that page element.");
+      }
+    });
+  }, [api, applyInteractionMode, isLiveRuntime, threadId]);
+
+  // Esc leaves picking only. Annotating is deliberately excluded: a long markup session is
+  // too easy to lose to a stray keypress, so it exits through its own toolbar buttons.
+  // Registered on window (not the panel) because the native page holds keyboard focus while
+  // picking, so the React tree never sees the keystroke.
+  useEffect(() => {
+    if (interactionMode !== "picking") {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) {
+        return;
+      }
+      event.preventDefault();
+      exitInteractionMode();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [exitInteractionMode, interactionMode]);
+
+  // Switching tab/thread or unmounting the panel must not leave a live pick session behind.
+  useEffect(() => {
+    return () => {
+      exitInteractionMode();
+    };
+  }, [activeTab?.id, exitInteractionMode, threadId]);
 
   const onCopyScreenshotToClipboard = useCallback(() => {
     if (!ensureLiveRuntime()) {
@@ -1435,6 +1723,38 @@ export function BrowserPanel({
       </div>
       <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
         <Button
+          type="button"
+          variant={isPicking ? "secondary" : "ghost"}
+          size="icon-sm"
+          className="size-7"
+          disabled={!activeTab || isAnnotating}
+          aria-label={isPicking ? "Stop picking an element" : "Pick an element"}
+          aria-pressed={isPicking}
+          title={isPicking ? "Stop picking an element (Esc)" : "Pick an element"}
+          onClick={onTogglePicking}
+        >
+          <CursorClickIcon className="size-3.5" />
+          <span className="sr-only">
+            {isPicking ? "Stop picking an element" : "Pick an element"}
+          </span>
+        </Button>
+        {/* While annotating, the overlay's own Cancel / Add to chat buttons are the only way
+            out, so both mode toggles stay inert rather than silently discarding the marks. */}
+        <Button
+          type="button"
+          variant={isAnnotating ? "secondary" : "ghost"}
+          size="icon-sm"
+          className="size-7"
+          disabled={!activeTab || isAnnotating}
+          aria-label="Annotate the page"
+          aria-pressed={isAnnotating}
+          title="Annotate the page"
+          onClick={onToggleAnnotating}
+        >
+          <PencilIcon className="size-3.5" />
+          <span className="sr-only">Annotate the page</span>
+        </Button>
+        <Button
           ref={copyScreenshotButtonRef}
           type="button"
           variant="ghost"
@@ -1627,6 +1947,14 @@ export function BrowserPanel({
               onNavigate={onOpenLocalServer}
               onRefresh={() => void localServersQuery.refetch()}
               servers={localServersQuery.data?.servers ?? []}
+            />
+          ) : null}
+          {isAnnotating && annotationBitmap ? (
+            <BrowserAnnotationOverlay
+              imageBitmap={annotationBitmap}
+              errorMessage={annotationError}
+              onCancel={exitInteractionMode}
+              onConfirm={onConfirmAnnotation}
             />
           ) : null}
         </div>

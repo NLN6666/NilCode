@@ -1,4 +1,5 @@
 import {
+  type AgentMcpProvider,
   type ProjectEntry,
   type ModelSlug,
   type ProviderNativeCommandDescriptor,
@@ -23,6 +24,7 @@ import {
   GitForkIcon,
   InfoIcon,
   ListTodoIcon,
+  McpToolIcon,
   type LucideIcon,
   MessageCircleIcon,
   Minimize2,
@@ -34,6 +36,7 @@ import {
 } from "~/lib/icons";
 import { formatSkillScope } from "~/lib/providerDiscovery";
 import { cn } from "~/lib/utils";
+import { resolveAgentChipColor } from "../composerInlineChip";
 import {
   Command,
   CommandGroup,
@@ -93,7 +96,7 @@ function commandMenuTitle(
 
 function commandMenuTrailingMeta(item: ComposerCommandItem): string | null {
   if (item.type === "agent") {
-    return "delegate task to subagent";
+    return item.group === "model" ? "switch model" : "delegate task to subagent";
   }
 
   if (item.type === "plugin") {
@@ -110,6 +113,11 @@ function commandMenuTrailingMeta(item: ComposerCommandItem): string | null {
 
   if (item.type === "skill") {
     return formatSkillScope(item.skill.scope);
+  }
+
+  if (item.type === "mcp-tool") {
+    if (item.unavailable) return "Unavailable";
+    return item.toolName === null ? "MCP server" : "MCP tool";
   }
 
   if (item.type === "model") {
@@ -142,7 +150,8 @@ function commandMenuSecondaryText(item: ComposerCommandItem): string | null {
     item.type === "plugin" ||
     item.type === "skill" ||
     item.type === "local-root" ||
-    item.type === "thread"
+    item.type === "thread" ||
+    item.type === "mcp-tool"
   ) {
     return item.description;
   }
@@ -229,10 +238,24 @@ export type ComposerCommandItem =
     }
   | {
       id: string;
+      type: "mcp-tool";
+      provider: AgentMcpProvider;
+      serverName: string;
+      /** `null` references every tool of the server (`&server`). */
+      toolName: string | null;
+      /** A server that could not be probed: shown greyed out and not selectable. */
+      unavailable?: boolean;
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
       type: "agent";
       provider: ProviderKind;
       alias: string;
       color: string;
+      /** Menu section: a discovered subagent, a Synara built-in, or a model switch. */
+      group: "agent" | "builtin" | "model";
       label: string;
       description: string;
     };
@@ -255,7 +278,11 @@ export function groupCommandItems(
     const pluginItems = items.filter((item) => item.type === "plugin");
     const threadItems = items.filter((item) => item.type === "thread");
     const localItems = items.filter((item) => item.type === "local-root" || item.type === "path");
-    const agentItems = items.filter((item) => item.type === "agent");
+    const agentItems = items.filter((item) => item.type === "agent" && item.group === "agent");
+    const builtInAgentItems = items.filter(
+      (item) => item.type === "agent" && item.group === "builtin",
+    );
+    const modelAliasItems = items.filter((item) => item.type === "agent" && item.group === "model");
     const otherItems = items.filter(
       (item) =>
         item.type !== "plugin" &&
@@ -272,11 +299,17 @@ export function groupCommandItems(
     if (threadItems.length > 0) {
       groups.push({ id: "chats", label: "Chats", items: threadItems });
     }
+    if (agentItems.length > 0) {
+      groups.push({ id: "subagents", label: "Your agents", items: agentItems });
+    }
+    if (builtInAgentItems.length > 0) {
+      groups.push({ id: "built-in-agents", label: "Synara agents", items: builtInAgentItems });
+    }
+    if (modelAliasItems.length > 0) {
+      groups.push({ id: "model-aliases", label: "Models", items: modelAliasItems });
+    }
     if (localItems.length > 0) {
       groups.push({ id: "local", label: "Local", items: localItems });
-    }
-    if (agentItems.length > 0) {
-      groups.push({ id: "subagents", label: "Subagents", items: agentItems });
     }
     if (otherItems.length > 0) {
       groups.push({ id: "other", label: null, items: otherItems });
@@ -404,13 +437,17 @@ export function ComposerCommandMenu(props: {
                 ? "Searching mentions..."
                 : props.triggerKind === "skill"
                   ? "Loading skills..."
-                  : "Loading commands..."
+                  : props.triggerKind === "mcp-tool"
+                    ? "Connecting to MCP servers..."
+                    : "Loading commands..."
               : (props.emptyStateText ??
                 (props.triggerKind === "mention"
                   ? "No matching plugin, chat, or file."
                   : props.triggerKind === "skill"
                     ? "No matching skill."
-                    : "No matching command."))}
+                    : props.triggerKind === "mcp-tool"
+                      ? "No MCP tools are configured for this agent."
+                      : "No matching command."))}
           </p>
         )}
       </div>
@@ -494,13 +531,17 @@ function commandMenuItemGlyph(item: ComposerCommandItem, theme: "light" | "dark"
     case "model":
       return <BrainIcon className={cls} />;
     case "agent":
-      return <BotIcon className={cls} />;
+      // Tinted with the same per-agent color the inline chip uses, so scanning
+      // the list and scanning a written prompt rely on the same cue.
+      return <BotIcon className={cls} style={{ color: resolveAgentChipColor(item.color).text }} />;
     case "plugin":
       return <PluginIcon className={cls} />;
     case "thread":
       return <ProviderIcon provider={item.provider} className={cls} />;
     case "skill":
       return <SkillCubeIcon className={cls} />;
+    case "mcp-tool":
+      return <McpToolIcon className={cls} />;
     default:
       return null;
   }
@@ -534,6 +575,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
 }) {
   const secondaryText = commandMenuSecondaryText(props.item);
   const trailingMeta = commandMenuTrailingMeta(props.item);
+  // A server we could not probe stays visible so the user knows why its tools are missing, but
+  // it is dimmed and inert — there is nothing to insert.
+  const isUnavailable = props.item.type === "mcp-tool" && props.item.unavailable === true;
 
   return (
     <CommandItem
@@ -542,6 +586,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       className={cn(
         COMPOSER_COMMAND_MENU_ITEM_CLASS_NAME,
         props.isActive && COMPOSER_COMMAND_MENU_ITEM_ACTIVE_CLASS_NAME,
+        isUnavailable && "opacity-50",
       )}
       onMouseMove={() => {
         if (!props.isActive) props.onHighlight(props.item.id);

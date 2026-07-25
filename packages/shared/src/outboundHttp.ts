@@ -299,9 +299,14 @@ async function resolvePinnedAddress(
 }
 
 /**
- * Custom `http`/`https` lookup that always returns the already-pinned address.
- * Modern Node/Bun Happy Eyeballs pass `{ all: true }` and expect the array
- * callback form; the legacy single-address form alone crashes those runtimes.
+ * Custom `http`/`https` lookup that always returns the already-pinned address,
+ * closing the DNS-rebinding window between the policy check and the connect.
+ *
+ * Node picks the callback shape via `options.all`, and the two shapes are not
+ * interchangeable: modern Node/Bun Happy Eyeballs pass `{ all: true }` and
+ * expect the array form, and answering such a call with `(address, family)`
+ * makes the socket read `undefined` as its host and throw
+ * ERR_INVALID_IP_ADDRESS before any byte is sent.
  */
 export function invokePinnedDnsLookup(
   pinned: { readonly address: string; readonly family: 4 | 6 },
@@ -319,6 +324,20 @@ export function invokePinnedDnsLookup(
     return;
   }
   callback(null, pinned.address, pinned.family);
+}
+
+/** Adapts {@link invokePinnedDnsLookup} to the `lookup` hook shape Node expects. */
+export function createPinnedLookup(pinned: {
+  readonly address: string;
+  readonly family: 4 | 6;
+}): Net.LookupFunction {
+  return ((
+    _hostname: string,
+    options: { readonly all?: boolean | undefined } | undefined,
+    callback: Parameters<typeof invokePinnedDnsLookup>[2],
+  ) => {
+    invokePinnedDnsLookup(pinned, options, callback);
+  }) as Net.LookupFunction;
 }
 
 async function requestHop(input: {
@@ -347,9 +366,7 @@ async function requestHop(input: {
         method: input.method,
         headers: requestHeaders(input.headers),
         signal: input.signal,
-        lookup: (_hostname, options, callback) => {
-          invokePinnedDnsLookup(pinned, options, callback);
-        },
+        lookup: createPinnedLookup(pinned),
       },
       (response) => {
         const headers = responseHeaders(response.headers);

@@ -139,6 +139,7 @@ import {
   hydratePendingBlobComposerAttachments,
   readFileAsDataUrl,
 } from "../lib/composerSend";
+import { buildMcpToolReferenceKeys, formatMcpToolReference } from "../lib/mcpToolReferences";
 import { composerImageBlobKey, persistComposerImageBlob } from "../lib/composerImageBlobStore";
 import { reconcileDeletedThreadFromClient } from "../lib/deletedThreadClientReconciliation";
 import { extractChatAutomationInvocation } from "../lib/automationIntent";
@@ -371,6 +372,11 @@ import {
   type FileCommentDraft,
 } from "../lib/fileComments";
 import {
+  appendBrowserElementsToPrompt,
+  formatBrowserElementLabel,
+  type BrowserElementDraft,
+} from "../lib/browserElementContext";
+import {
   deriveContextWindowSelectionStatus,
   deriveCumulativeCostUsd,
   deriveLatestContextWindowSnapshot,
@@ -415,6 +421,7 @@ import {
   useDesktopTopBarTrafficLightGutterClassName,
   useDesktopTopBarWindowControlsGutterClassName,
 } from "~/hooks/useDesktopTopBarGutter";
+import { useAgentMcpTools } from "~/hooks/useAgentMcpTools";
 import { useNowMs } from "~/hooks/useNowMs";
 import { useThreadRecap } from "~/hooks/useThreadRecap";
 import { useRepoDiffTotals } from "~/hooks/useRepoDiffTotals";
@@ -924,6 +931,7 @@ function buildQueuedComposerPreviewText(input: {
   assistantSelections: ReadonlyArray<{ id: string }>;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   fileComments: ReadonlyArray<FileCommentDraft>;
+  browserElements: ReadonlyArray<BrowserElementDraft>;
   pastedTexts: ReadonlyArray<PastedTextDraft>;
 }): string {
   if (input.trimmedPrompt.length > 0) {
@@ -947,6 +955,10 @@ function buildQueuedComposerPreviewText(input: {
   const firstFileComment = input.fileComments[0];
   if (firstFileComment) {
     return formatFileCommentLabel(firstFileComment);
+  }
+  const firstBrowserElement = input.browserElements[0];
+  if (firstBrowserElement) {
+    return formatBrowserElementLabel(firstBrowserElement);
   }
   const pastedTitle = formatPastedTextTitleSeed(input.pastedTexts);
   if (pastedTitle) {
@@ -1124,6 +1136,7 @@ export default function ChatView({
   const composerFiles = composerDraft.files;
   const composerAssistantSelections = composerDraft.assistantSelections;
   const composerFileComments = composerDraft.fileComments;
+  const composerBrowserElements = composerDraft.browserElements;
   const composerTerminalContexts = composerDraft.terminalContexts;
   const composerPastedTexts = composerDraft.pastedTexts;
   const composerSkills = composerDraft.skills;
@@ -1138,11 +1151,13 @@ export default function ChatView({
         fileCount: composerFiles.length,
         assistantSelectionCount: composerAssistantSelections.length,
         fileCommentCount: composerFileComments.length,
+        browserElementCount: composerBrowserElements.length,
         terminalContexts: composerTerminalContexts,
         pastedTexts: composerPastedTexts,
       }),
     [
       composerAssistantSelections.length,
+      composerBrowserElements.length,
       composerFileComments.length,
       composerFiles.length,
       composerImages.length,
@@ -1186,6 +1201,10 @@ export default function ChatView({
   );
   const addComposerDraftFileComment = useComposerDraftStore((store) => store.addFileComment);
   const clearComposerDraftFileComments = useComposerDraftStore((store) => store.clearFileComments);
+  const addComposerDraftBrowserElement = useComposerDraftStore((store) => store.addBrowserElement);
+  const removeComposerDraftBrowserElement = useComposerDraftStore(
+    (store) => store.removeBrowserElement,
+  );
   const insertComposerDraftTerminalContext = useComposerDraftStore(
     (store) => store.insertTerminalContext,
   );
@@ -1575,6 +1594,24 @@ export default function ChatView({
       addComposerDraftFileComment(threadId, comment);
     },
     [addComposerDraftFileComment, discardPromptHistoryNavigationForComposerMutation, threadId],
+  );
+  const addComposerBrowserElementToDraft = useCallback(
+    (element: BrowserElementDraft) => {
+      discardPromptHistoryNavigationForComposerMutation();
+      addComposerDraftBrowserElement(threadId, element);
+    },
+    [addComposerDraftBrowserElement, discardPromptHistoryNavigationForComposerMutation, threadId],
+  );
+  const removeComposerBrowserElementFromDraft = useCallback(
+    (elementId: string) => {
+      discardPromptHistoryNavigationForComposerMutation();
+      removeComposerDraftBrowserElement(threadId, elementId);
+    },
+    [
+      discardPromptHistoryNavigationForComposerMutation,
+      removeComposerDraftBrowserElement,
+      threadId,
+    ],
   );
   const removeComposerImageFromDraft = useCallback(
     (imageId: string) => {
@@ -3215,6 +3252,25 @@ export default function ChatView({
     isMentionTrigger &&
     isLocalFolderMentionQuery(mentionTriggerQuery);
   const isSkillTrigger = composerTriggerKind === "skill";
+  const isMcpToolTrigger = composerTriggerKind === "mcp-tool";
+  // Probing spawns the user's MCP servers, so only an open `&` picker asks for the catalog — text
+  // that merely looks like a reference must never start one. Everything downstream (send-time
+  // expansion, chip greying) reads whatever that probe already left in the cache.
+  const agentMcpTools = useAgentMcpTools({
+    provider: selectedProvider,
+    composerTriggerKind,
+  });
+  // Read by the send callbacks, which must not re-create on every catalog refresh.
+  const agentMcpToolsRef = useRef(agentMcpTools.tools);
+  useLayoutEffect(() => {
+    agentMcpToolsRef.current = agentMcpTools.tools;
+  }, [agentMcpTools.tools]);
+  // Without a catalog in hand there is nothing to contradict a written reference, so the chips
+  // stay neutral rather than greying out a draft the user has not asked us to verify.
+  const mcpToolReferenceKeys = useMemo(
+    () => (agentMcpTools.hasCatalog ? buildMcpToolReferenceKeys(agentMcpTools.tools) : null),
+    [agentMcpTools.hasCatalog, agentMcpTools.tools],
+  );
   const [debouncedPathQuery, composerPathQueryDebouncer] = useDebouncedValue(
     mentionTriggerQuery,
     { wait: COMPOSER_PATH_QUERY_DEBOUNCE_MS },
@@ -3404,6 +3460,8 @@ export default function ChatView({
     canOfferForkCommand,
     canOfferSideCommand,
     canOfferExportCommand,
+    mcpTools: agentMcpTools.tools,
+    mcpToolErrors: agentMcpTools.errors,
     dynamicAgents,
     threadMentionSources: {
       threads: composerThreadSummaries,
@@ -6483,6 +6541,7 @@ export default function ChatView({
       const restoredAssistantSelections =
         queuedTurn.kind === "chat" ? queuedTurn.assistantSelections : [];
       const restoredFileComments = queuedTurn.kind === "chat" ? queuedTurn.fileComments : [];
+      const restoredBrowserElements = queuedTurn.kind === "chat" ? queuedTurn.browserElements : [];
       promptRef.current = nextPrompt;
       clearComposerDraftContent(activeThread.id);
       setComposerDraftPrompt(activeThread.id, nextPrompt);
@@ -6504,6 +6563,9 @@ export default function ChatView({
         }
         for (const comment of restoredFileComments) {
           addComposerFileCommentToDraft(comment);
+        }
+        for (const element of restoredBrowserElements) {
+          addComposerBrowserElementToDraft(element);
         }
         if (queuedTurn.terminalContexts.length > 0) {
           addComposerTerminalContextsToDraft(queuedTurn.terminalContexts);
@@ -6645,6 +6707,8 @@ export default function ChatView({
     const composerAssistantSelectionsForSend =
       queuedChatTurn?.assistantSelections ?? composerAssistantSelections;
     const composerFileCommentsForSend = queuedChatTurn?.fileComments ?? composerFileComments;
+    const composerBrowserElementsForSend =
+      queuedChatTurn?.browserElements ?? composerBrowserElements;
     const composerTerminalContextsForSend =
       queuedChatTurn?.terminalContexts ?? composerTerminalContexts;
     const composerPastedTextsForSend = queuedChatTurn?.pastedTexts ?? composerPastedTexts;
@@ -6674,6 +6738,7 @@ export default function ChatView({
       fileCount: composerFilesForSend.length,
       assistantSelectionCount: composerAssistantSelectionsForSend.length,
       fileCommentCount: composerFileCommentsForSend.length,
+      browserElementCount: composerBrowserElementsForSend.length,
       terminalContexts: composerTerminalContextsForSend,
       pastedTexts: composerPastedTextsForSend,
     });
@@ -6998,6 +7063,7 @@ export default function ChatView({
           assistantSelections: composerAssistantSelectionsForSend,
           terminalContexts: sendableComposerTerminalContexts,
           fileComments: composerFileCommentsForSend,
+          browserElements: composerBrowserElementsForSend,
           pastedTexts: sendableComposerPastedTexts,
         }),
         prompt: promptForSend,
@@ -7005,6 +7071,7 @@ export default function ChatView({
         files: composerFilesForSend,
         assistantSelections: composerAssistantSelectionsForSend,
         fileComments: composerFileCommentsForSend,
+        browserElements: composerBrowserElementsForSend,
         terminalContexts: sendableComposerTerminalContexts,
         pastedTexts: sendableComposerPastedTexts,
         skills: selectedComposerSkillsForSend,
@@ -7042,6 +7109,8 @@ export default function ChatView({
         titleSeed = formatTerminalContextLabel(sendableComposerTerminalContexts[0]!);
       } else if (composerFileCommentsForSend.length > 0) {
         titleSeed = formatFileCommentTitleSeed(composerFileCommentsForSend.length);
+      } else if (composerBrowserElementsForSend.length > 0) {
+        titleSeed = formatBrowserElementLabel(composerBrowserElementsForSend[0]!);
       } else if (sendableComposerPastedTexts.length > 0) {
         titleSeed =
           formatPastedTextTitleSeed(sendableComposerPastedTexts) ?? GENERIC_CHAT_THREAD_TITLE;
@@ -7221,20 +7290,24 @@ export default function ChatView({
     const composerFilesSnapshot = [...composerFilesForSend];
     const composerAssistantSelectionsSnapshot = [...composerAssistantSelectionsForSend];
     const composerFileCommentsSnapshot = [...composerFileCommentsForSend];
+    const composerBrowserElementsSnapshot = [...composerBrowserElementsForSend];
     const composerTerminalContextsSnapshot = [...sendableComposerTerminalContexts];
     const composerPastedTextsSnapshot = [...sendableComposerPastedTexts];
     const composerSkillsSnapshot = [...selectedComposerSkillsForSend];
     const composerMentionsSnapshot = [...selectedComposerMentionsForSend];
     // Trailing blocks are appended innermost-to-outermost: assistant selections,
-    // terminal contexts, file comments, then pasted text (outermost). The display
-    // extractors unwrap them in the reverse order.
+    // terminal contexts, file comments, browser elements, then pasted text (outermost).
+    // The display extractors unwrap them in the reverse order.
     const messageTextForSend = appendPastedTextsToPrompt(
-      appendFileCommentsToPrompt(
-        appendTerminalContextsToPrompt(
-          appendAssistantSelectionsToPrompt(promptForSend, composerAssistantSelectionsSnapshot),
-          composerTerminalContextsSnapshot,
+      appendBrowserElementsToPrompt(
+        appendFileCommentsToPrompt(
+          appendTerminalContextsToPrompt(
+            appendAssistantSelectionsToPrompt(promptForSend, composerAssistantSelectionsSnapshot),
+            composerTerminalContextsSnapshot,
+          ),
+          composerFileCommentsSnapshot,
         ),
-        composerFileCommentsSnapshot,
+        composerBrowserElementsSnapshot,
       ),
       composerPastedTextsSnapshot,
     );
@@ -7247,6 +7320,7 @@ export default function ChatView({
       model: selectedModelForSend,
       effort: selectedPromptEffortForSend,
       text: outgoingTextSeed,
+      mcpTools: agentMcpToolsRef.current,
     });
     const mentionedSkillsForSend = filterPromptSkillReferences(
       outgoingMessageText,
@@ -7652,6 +7726,9 @@ export default function ChatView({
         for (const comment of composerFileCommentsSnapshot) {
           addComposerFileCommentToDraft(comment);
         }
+        for (const element of composerBrowserElementsSnapshot) {
+          addComposerBrowserElementToDraft(element);
+        }
         addComposerTerminalContextsToDraft(composerTerminalContextsSnapshot);
         addComposerPastedTextsToDraft(composerPastedTextsSnapshot);
         updateSelectedComposerSkills(composerSkillsSnapshot);
@@ -7951,6 +8028,7 @@ export default function ChatView({
       model: queuedTurn?.selectedModel ?? selectedModel,
       effort: queuedTurn?.selectedPromptEffort ?? selectedPromptEffort,
       text: trimmed,
+      mcpTools: agentMcpToolsRef.current,
     });
 
     sendInFlightRef.current = true;
@@ -8097,6 +8175,7 @@ export default function ChatView({
         model: selectedModel,
         effort: selectedPromptEffort,
         text: editedTextWithOriginalContext,
+        mcpTools: agentMcpToolsRef.current,
       });
       return await (async () => {
         await persistThreadSettingsForNextTurn({
@@ -8194,6 +8273,7 @@ export default function ChatView({
       assistantSelections: [],
       terminalContexts: [],
       fileComments: [],
+      browserElements: [],
       pastedTexts: [],
       skills: [],
       mentions: [],
@@ -9303,6 +9383,16 @@ export default function ChatView({
         });
         return;
       }
+      if (item.type === "mcp-tool") {
+        // The failed-server row exists to explain an absence; there is nothing to insert.
+        if (item.unavailable) return;
+        applyComposerTriggerReplacement({
+          snapshot,
+          trigger,
+          base: `&${formatMcpToolReference({ serverName: item.serverName, toolName: item.toolName })} `,
+        });
+        return;
+      }
       if (item.type === "plugin" || item.type === "thread") {
         applyComposerTriggerReplacement({
           snapshot,
@@ -9388,7 +9478,8 @@ export default function ChatView({
       (providerComposerCapabilitiesQuery.isLoading ||
         providerComposerCapabilitiesQuery.isFetching ||
         providerSkillsQuery.isLoading ||
-        providerSkillsQuery.isFetching));
+        providerSkillsQuery.isFetching)) ||
+    (isMcpToolTrigger && agentMcpTools.isLoading);
 
   const onPromptChange = useCallback(
     (
@@ -10306,12 +10397,14 @@ export default function ChatView({
                     pendingUserInputs.length === 0 &&
                     (composerAssistantSelections.length > 0 ||
                       composerFileComments.length > 0 ||
+                      composerBrowserElements.length > 0 ||
                       composerPastedTexts.length > 0 ||
                       composerFiles.length > 0 ||
                       composerImages.length > 0) && (
                       <ComposerReferenceAttachments
                         assistantSelections={composerAssistantSelections}
                         fileComments={composerFileComments}
+                        browserElements={composerBrowserElements}
                         pastedTexts={composerPastedTexts}
                         files={composerFiles}
                         images={composerImages}
@@ -10319,6 +10412,7 @@ export default function ChatView({
                         onExpandImage={setExpandedImage}
                         onRemoveAssistantSelections={clearComposerAssistantSelectionsFromDraft}
                         onRemoveFileComments={clearComposerFileCommentsFromDraft}
+                        onRemoveBrowserElement={removeComposerBrowserElementFromDraft}
                         onRemovePastedText={removeComposerPastedTextFromDraft}
                         onShowPastedTextInField={showComposerPastedTextInField}
                         onRemoveFile={removeComposerFile}
@@ -10341,6 +10435,7 @@ export default function ChatView({
                         : []
                     }
                     mentionReferences={selectedComposerMentions}
+                    mcpToolReferenceKeys={mcpToolReferenceKeys}
                     onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
                     onChange={onPromptChange}
                     onCommandKeyDown={onComposerCommandKey}

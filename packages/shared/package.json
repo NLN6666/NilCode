@@ -211,6 +211,10 @@
     "./i18n": {
       "types": "./src/i18n.ts",
       "import": "./src/i18n.ts"
+    },
+    "./mcp/redact": {
+      "types": "./src/mcp/redact.ts",
+      "import": "./src/mcp/redact.ts"
     }
   },
   "scripts": {

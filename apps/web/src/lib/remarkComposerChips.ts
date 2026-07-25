@@ -27,7 +27,11 @@ export interface TerminalContextChipToken {
 
 export type ComposerChipSegment = Extract<
   ComposerPromptSegment,
-  { type: "skill" } | { type: "mention" } | { type: "agent-mention" } | { type: "link" }
+  | { type: "skill" }
+  | { type: "mention" }
+  | { type: "agent-mention" }
+  | { type: "link" }
+  | { type: "mcp-tool" }
 >;
 
 const CHIP_SEGMENT_TYPES = new Set<ComposerChipSegment["type"]>([
@@ -35,6 +39,7 @@ const CHIP_SEGMENT_TYPES = new Set<ComposerChipSegment["type"]>([
   "mention",
   "agent-mention",
   "link",
+  "mcp-tool",
 ]);
 
 interface MdastNode {

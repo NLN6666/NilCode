@@ -53,9 +53,11 @@ const EMPTY_QUERY: QueryResultLike = {
 };
 const modelQueries = new Map<ProviderKind, QueryResultLike>();
 const agentQueries = new Map<ProviderKind, QueryResultLike>();
+const cloudModelQueries = new Map<ProviderKind, QueryResultLike>();
 const MODEL_HINTS = { cursor: "composer-2" } as const;
 const SETTINGS = {
   antigravityBinaryPath: "",
+  hiddenModels: [],
   cursorApiEndpoint: "",
   cursorBinaryPath: "",
   customAntigravityModels: [],
@@ -114,6 +116,7 @@ function readModelQueryEnabled(provider: ProviderKind): boolean | undefined {
 beforeEach(() => {
   modelQueries.clear();
   agentQueries.clear();
+  cloudModelQueries.clear();
   mocks.useAppSettings
     .mockReset()
     .mockReturnValue({ settings: SETTINGS, serverSettings: DEFAULT_SERVER_SETTINGS });
@@ -124,6 +127,9 @@ beforeEach(() => {
     }
     if (resource === "agents") {
       return agentQueries.get(provider as ProviderKind) ?? EMPTY_QUERY;
+    }
+    if (resource === "cloud-models") {
+      return cloudModelQueries.get(provider as ProviderKind) ?? EMPTY_QUERY;
     }
     throw new Error(`Unexpected provider catalog query: ${String(resource)}`);
   });

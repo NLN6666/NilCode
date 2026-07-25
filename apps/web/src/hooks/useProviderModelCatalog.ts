@@ -5,26 +5,43 @@
 // Exports: useProviderModelCatalog, ProviderModelCatalog
 
 import type {
+  CloudModelDescriptor,
   ProviderAgentDescriptor,
   ProviderKind,
   ProviderModelDescriptor,
 } from "@synara/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { getAppModelOptions, getCustomModelsByProvider, useAppSettings } from "../appSettings";
+import { setComposerAgentMentionCatalog } from "../lib/agentMentionCatalog";
+import { filterModelOptionsByVisibility } from "../providerOrdering";
 import { resolveRuntimeModelDescriptor } from "../components/chat/runtimeModelCapabilities";
 import { collapseCursorModelVariants } from "../cursorModelVariants";
 import {
   isInitialModelDiscoveryPending,
   providerAgentsQueryOptions,
+  providerCloudModelsQueryOptions,
   providerModelsQueryOptions,
 } from "../lib/providerDiscoveryReactQuery";
-import { mergeDynamicModelOptions, type ProviderModelOption } from "../providerModelOptions";
+import {
+  mergeDynamicModelOptions,
+  sortProviderModelOptions,
+  withCloudModelDescriptors,
+  type ProviderModelOption,
+} from "../providerModelOptions";
 
 export interface ProviderModelCatalog {
   customModelsByProvider: ReturnType<typeof getCustomModelsByProvider>;
   modelOptionsByProvider: Record<
+    ProviderKind,
+    ReadonlyArray<ProviderModelOption & { isCustom?: boolean }>
+  >;
+  /**
+   * The same catalog before `hiddenModels` is applied. Settings UI must read
+   * this — filtering there would hide the very rows used to unhide a model.
+   */
+  allModelOptionsByProvider: Record<
     ProviderKind,
     ReadonlyArray<ProviderModelOption & { isCustom?: boolean }>
   >;
@@ -187,15 +204,19 @@ export function useProviderModelCatalog(input: {
   );
 
   // Agent/mode discovery (kilo/opencode "Mode"/"Agent" picker, claude/codex subagents).
+  // cwd matters here: project-level `.claude/agents` / `.codex/agents` definitions
+  // take precedence over the user's home ones.
   const claudeDynamicAgentsQuery = useQuery(
     providerAgentsQueryOptions({
       provider: "claudeAgent",
+      cwd: discoveryCwd,
       enabled: shouldDiscoverProvider("claudeAgent", agentDiscoveryPolicy === "eager-core"),
     }),
   );
   const codexDynamicAgentsQuery = useQuery(
     providerAgentsQueryOptions({
       provider: "codex",
+      cwd: discoveryCwd,
       enabled: shouldDiscoverProvider("codex", agentDiscoveryPolicy === "eager-core"),
     }),
   );
@@ -215,6 +236,13 @@ export function useProviderModelCatalog(input: {
       enabled: kiloModelDiscoveryEnabled,
     }),
   );
+
+  // Only the providers the server maps onto the cloud catalog are queried;
+  // router-style runtimes (cursor/droid/kilo/opencode/pi) get their roster from
+  // their own CLI, which knows what it can actually start a session with.
+  const codexCloudModelsQuery = useQuery(providerCloudModelsQueryOptions("codex"));
+  const claudeCloudModelsQuery = useQuery(providerCloudModelsQueryOptions("claudeAgent"));
+  const grokCloudModelsQuery = useQuery(providerCloudModelsQueryOptions("grok"));
 
   const cursorRuntimeModels = useMemo(
     () => collapseCursorModelVariants(cursorDynamicModelsQuery.data?.models ?? []),
@@ -313,6 +341,16 @@ export function useProviderModelCatalog(input: {
       opencode: openCodeDynamicModelsQuery.data,
       pi: piDynamicModelsQuery.data,
     };
+    // The cloud catalog is folded into the static baseline first, so a model it
+    // publishes survives whether or not runtime discovery answers. Runtime still
+    // wins on conflicts: it reflects what the installed CLI actually supports.
+    const cloudSources: Partial<
+      Record<ProviderKind, ReadonlyArray<CloudModelDescriptor> | undefined>
+    > = {
+      codex: codexCloudModelsQuery.data?.models,
+      claudeAgent: claudeCloudModelsQuery.data?.models,
+      grok: grokCloudModelsQuery.data?.models,
+    };
     for (const provider of [
       "claudeAgent",
       "codex",
@@ -324,24 +362,41 @@ export function useProviderModelCatalog(input: {
       "opencode",
       "pi",
     ] as const) {
+      const cloudModels = cloudSources[provider];
+      const baseOptions =
+        cloudModels && cloudModels.length > 0
+          ? mergeDynamicModelOptions({
+              provider,
+              staticOptions: staticOptions[provider],
+              dynamicModels: cloudModels,
+            })
+          : staticOptions[provider];
+      result[provider] = baseOptions;
+
       const dynamicModels = dynamicSources[provider]?.models;
       if (dynamicModels && dynamicModels.length > 0) {
         result[provider] = mergeDynamicModelOptions({
           provider,
-          staticOptions: staticOptions[provider],
+          staticOptions: baseOptions,
           dynamicModels,
         });
       }
+      // Concatenating built-in, catalog, and CLI lists leaves an order nobody
+      // chose; rank the result so the strongest models stay on top.
+      result[provider] = sortProviderModelOptions(provider, result[provider]);
     }
     return result;
   }, [
     antigravityModelsQuery.data,
+    claudeCloudModelsQuery.data,
     claudeDynamicModelsQuery.data,
+    codexCloudModelsQuery.data,
     codexDynamicModelsQuery.data,
     cursorDynamicModelsQuery.data,
     cursorRuntimeModels,
     customModelsByProvider,
     droidDynamicModelsQuery.data,
+    grokCloudModelsQuery.data,
     grokDynamicModelsQuery.data,
     kiloDynamicModelsQuery.data,
     modelHintByProvider,
@@ -372,11 +427,22 @@ export function useProviderModelCatalog(input: {
     Record<ProviderKind, ReadonlyArray<ProviderModelDescriptor>>
   >(
     () => ({
-      claudeAgent: claudeDynamicModelsQuery.data?.models ?? [],
-      codex: codexDynamicModelsQuery.data?.models ?? [],
+      // Cloud entries fill the gaps so a model newer than this build still
+      // reaches the trait picker with its real effort ladder.
+      claudeAgent: withCloudModelDescriptors(
+        claudeDynamicModelsQuery.data?.models ?? [],
+        claudeCloudModelsQuery.data?.models,
+      ),
+      codex: withCloudModelDescriptors(
+        codexDynamicModelsQuery.data?.models ?? [],
+        codexCloudModelsQuery.data?.models,
+      ),
       cursor: cursorRuntimeModels,
       antigravity: antigravityModelsQuery.data?.models ?? [],
-      grok: grokDynamicModelsQuery.data?.models ?? [],
+      grok: withCloudModelDescriptors(
+        grokDynamicModelsQuery.data?.models ?? [],
+        grokCloudModelsQuery.data?.models,
+      ),
       droid: droidDynamicModelsQuery.data?.models ?? [],
       kilo: kiloDynamicModelsQuery.data?.models ?? [],
       opencode: openCodeDynamicModelsQuery.data?.models ?? [],
@@ -384,16 +450,37 @@ export function useProviderModelCatalog(input: {
     }),
     [
       antigravityModelsQuery.data?.models,
+      claudeCloudModelsQuery.data?.models,
       claudeDynamicModelsQuery.data?.models,
+      codexCloudModelsQuery.data?.models,
       codexDynamicModelsQuery.data?.models,
       cursorRuntimeModels,
       droidDynamicModelsQuery.data?.models,
+      grokCloudModelsQuery.data?.models,
       grokDynamicModelsQuery.data?.models,
       kiloDynamicModelsQuery.data?.models,
       openCodeDynamicModelsQuery.data?.models,
       piDynamicModelsQuery.data?.models,
     ],
   );
+
+  // Applied in one place so every surface hides the same models, and so the
+  // model a surface is already using is always kept visible.
+  const visibleModelOptionsByProvider = useMemo(() => {
+    if (settings.hiddenModels.length === 0) {
+      return modelOptionsByProvider;
+    }
+    const result = { ...modelOptionsByProvider };
+    for (const provider of Object.keys(result) as ProviderKind[]) {
+      result[provider] = filterModelOptionsByVisibility(
+        provider,
+        result[provider],
+        settings.hiddenModels,
+        modelHintByProvider?.[provider] ?? null,
+      );
+    }
+    return result;
+  }, [modelOptionsByProvider, modelHintByProvider, settings.hiddenModels]);
 
   const selectedRuntimeModel = useMemo(
     () =>
@@ -422,6 +509,15 @@ export function useProviderModelCatalog(input: {
       ),
     [selectedDynamicAgents],
   );
+
+  // Prompt tokenizing has to know which subagents exist before it can draw an
+  // `@alias(...)` chip, and it runs from places with no React context (cursor
+  // math). Publishing here — rather than threading the list to each tokenizer
+  // call site — keeps the composer, the caret, and the sent-message echo from
+  // ever disagreeing about where an agent token starts and ends.
+  useEffect(() => {
+    setComposerAgentMentionCatalog(selectedRuntimeAgents);
+  }, [selectedRuntimeAgents]);
 
   const selectedProviderRuntimeModelDiscoveryPending =
     loadingModelProviders[selectedProvider] ?? false;
@@ -453,7 +549,8 @@ export function useProviderModelCatalog(input: {
   return useMemo(
     () => ({
       customModelsByProvider,
-      modelOptionsByProvider,
+      modelOptionsByProvider: visibleModelOptionsByProvider,
+      allModelOptionsByProvider: modelOptionsByProvider,
       loadingModelProviders,
       runtimeModelsByProvider,
       selectedRuntimeModel,
@@ -465,6 +562,7 @@ export function useProviderModelCatalog(input: {
       customModelsByProvider,
       loadingModelProviders,
       modelOptionsByProvider,
+      visibleModelOptionsByProvider,
       runtimeModelsByProvider,
       selectedProviderModelsLoading,
       selectedProviderRuntimeModelDiscoveryPending,

@@ -29,10 +29,12 @@ import {
   type PersistedComposerImageAttachment,
 } from "../composerDraftDomain";
 import { readComposerImageBlob } from "./composerImageBlobStore";
+import { appendAvailableMcpToolsBlock, type McpToolCandidate } from "./mcpToolReferences";
 import { normalizeComposerImageSource } from "./composerImageSource";
 import { randomUUID } from "./utils";
 import { resolveWsHttpUrl } from "./wsHttpUrl";
 
+const EMPTY_MCP_TOOLS: ReadonlyArray<McpToolCandidate> = [];
 const ATTACHMENT_CANCEL_CONCURRENCY = 2;
 const ATTACHMENT_CANCEL_BODY_MAX_BYTES = 512;
 
@@ -180,12 +182,20 @@ export function formatOutgoingComposerPrompt(params: {
   model: string | null;
   effort: string | null;
   text: string;
+  /**
+   * Tools available to this thread's provider. `&server[:tool]` references in the text resolve
+   * against these and become an `<available-mcp-tools>` block at the end of the message; a
+   * reference that matches nothing simply contributes no line.
+   */
+  mcpTools?: ReadonlyArray<McpToolCandidate>;
 }): string {
+  // Suffix first, prefix second: the effort marker must stay the very first thing the model reads.
+  const text = appendAvailableMcpToolsBlock(params.text, params.mcpTools ?? EMPTY_MCP_TOOLS);
   const caps = getModelCapabilities(params.provider, params.model);
   if (params.effort && caps.promptInjectedEffortLevels.includes(params.effort)) {
-    return applyClaudePromptEffortPrefix(params.text, params.effort as ClaudeCodeEffort | null);
+    return applyClaudePromptEffortPrefix(text, params.effort as ClaudeCodeEffort | null);
   }
-  return params.text;
+  return text;
 }
 
 export function resolvePromptEffortFromModelSelection(

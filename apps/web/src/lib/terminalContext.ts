@@ -4,7 +4,12 @@ import {
   type ParsedAssistantSelectionEntry,
 } from "./assistantSelections";
 import { extractTrailingFileComments, type ParsedFileCommentEntry } from "./fileComments";
+import {
+  extractTrailingBrowserElements,
+  type ParsedBrowserElementEntry,
+} from "./browserElementContext";
 import { extractTrailingPastedTexts, type ParsedPastedTextEntry } from "./composerPastedText";
+import { stripAvailableMcpToolsBlock } from "./mcpToolReferences";
 
 export interface TerminalContextSelection {
   terminalId: string;
@@ -35,6 +40,7 @@ export interface DisplayedUserMessageState {
   contexts: ParsedTerminalContextEntry[];
   assistantSelections: ParsedAssistantSelectionEntry[];
   fileComments: ParsedFileCommentEntry[];
+  browserElements: ParsedBrowserElementEntry[];
   pastedTexts: ParsedPastedTextEntry[];
 }
 
@@ -52,6 +58,7 @@ const TRAILING_TERMINAL_CONTEXT_BLOCK_PATTERN =
   /\n*<terminal_context>\n([\s\S]*?)\n<\/terminal_context>\s*$/;
 const TRAILING_SERIALIZED_COMPOSER_BLOCK_PATTERNS = [
   /\n*(<pasted_text>\n[\s\S]*?\n<\/pasted_text>)\s*$/u,
+  /\n*(<browser_elements>\n[\s\S]*?\n<\/browser_elements>)\s*$/u,
   /\n*(<file_comments>\n[\s\S]*?\n<\/file_comments>)\s*$/u,
   /\n*(<terminal_context>\n[\s\S]*?\n<\/terminal_context>)\s*$/u,
   /\n*(<assistant_selection>\n[\s\S]*?\n<\/assistant_selection>)\s*$/u,
@@ -320,10 +327,16 @@ export function deriveDisplayedUserMessageState(
   options?: DisplayedUserMessageOptions,
 ): DisplayedUserMessageState {
   // Trailing blocks are serialized in order: assistant selections, then terminal
-  // contexts, then file comments, then pasted text (outermost). Strip them in
-  // reverse so each extractor sees its block at the end of the remaining text.
-  const extractedPastedTexts = extractTrailingPastedTexts(prompt);
-  const extractedFileComments = extractTrailingFileComments(extractedPastedTexts.promptText);
+  // contexts, then file comments, then browser elements, then pasted text
+  // (outermost). Strip them in reverse so each extractor sees its block at the end
+  // of the remaining text.
+  //
+  // The `<available-mcp-tools>` block sits outside all of them — send appends it last, after the
+  // composer has already serialized its own blocks — so it comes off first. It carries no parsed
+  // state: the `&` chips in the body already say which tools were referenced.
+  const extractedPastedTexts = extractTrailingPastedTexts(stripAvailableMcpToolsBlock(prompt));
+  const extractedBrowserElements = extractTrailingBrowserElements(extractedPastedTexts.promptText);
+  const extractedFileComments = extractTrailingFileComments(extractedBrowserElements.promptText);
   const extractedContexts = extractTrailingTerminalContexts(extractedFileComments.promptText);
   const extractedAssistantSelections = extractTrailingAssistantSelections(
     extractedContexts.promptText,
@@ -343,6 +356,7 @@ export function deriveDisplayedUserMessageState(
     contexts: extractedContexts.contexts,
     assistantSelections: extractedAssistantSelections.selections,
     fileComments: extractedFileComments.comments,
+    browserElements: extractedBrowserElements.elements,
     pastedTexts: extractedPastedTexts.pastedTexts,
   };
 }

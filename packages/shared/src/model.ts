@@ -414,15 +414,30 @@ export function buildProviderOptionSelectionsFromDescriptors(
 
 // ── Data-driven capability resolver ───────────────────────────────────
 
+/**
+ * Capabilities for `model`, or empty when the built-in table has never seen it.
+ *
+ * Empty is deliberate for an unknown slug — a model newer than this build, e.g.
+ * one the cloud catalog just published. Substituting a sibling's ladder would be
+ * a guess that is wrong in both directions: `gpt-5.6-sol` accepts `none` and
+ * `max`, which `gpt-5.5` does not, while an unknown Claude model may accept far
+ * fewer levels than `opus-4-8`. Callers treat empty as "do not validate", which
+ * lets a runtime-discovered effort this build cannot name survive to dispatch
+ * (see composerProviderRegistry). Runtime discovery fills in the real ladder.
+ */
 export function getModelCapabilities(
   provider: ProviderKind,
   model: string | null | undefined,
 ): ModelCapabilities {
   const slug = normalizeModelSlug(model, provider);
-  if (slug && MODEL_CAPABILITIES_INDEX[provider]?.[slug]) {
-    return MODEL_CAPABILITIES_INDEX[provider][slug];
+  if (!slug) {
+    return EMPTY_MODEL_CAPABILITIES;
   }
-  if (provider === "grok" && slug) {
+  const known = MODEL_CAPABILITIES_INDEX[provider]?.[slug];
+  if (known) {
+    return known;
+  }
+  if (provider === "grok") {
     // Grok exposes reasoning effort as a provider-level CLI option, while its
     // runtime model catalog contains only model ids. New models must inherit the
     // provider ladder even before runtime discovery has returned their descriptor.

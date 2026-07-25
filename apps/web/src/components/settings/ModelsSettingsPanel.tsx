@@ -8,7 +8,7 @@ import {
   type ProviderKind,
 } from "@synara/contracts";
 import { getModelOptions, normalizeModelSlug } from "@synara/shared/model";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 import {
@@ -24,6 +24,7 @@ import {
 import { useProviderModelCatalog } from "~/hooks/useProviderModelCatalog";
 import { PlusIcon, XIcon } from "~/lib/icons";
 import { resolveProviderDiscoveryCwd } from "~/lib/providerDiscovery";
+import { refreshCloudModelCatalog } from "~/lib/providerDiscoveryReactQuery";
 import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { cn } from "~/lib/utils";
 import {
@@ -35,6 +36,8 @@ import { Button } from "../ui/button";
 import { DisclosureRegion } from "../ui/DisclosureRegion";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Switch } from "../ui/switch";
+import { toastManager } from "../ui/toast";
 import {
   SettingResetButton,
   SettingsSelectControl,
@@ -81,6 +84,7 @@ export function ModelsSettingsPanel({
   active,
 }: AppSettingsBinding & { readonly resetEpoch: number; readonly active: boolean }) {
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
+  const queryClient = useQueryClient();
   const [selectedCustomModelProvider, setSelectedCustomModelProvider] =
     useState<ProviderKind>("codex");
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
@@ -90,12 +94,14 @@ export function ModelsSettingsPanel({
     Partial<Record<ProviderKind, string | null>>
   >({});
   const [showAllCustomModels, setShowAllCustomModels] = useState(false);
+  const [visibilityProvider, setVisibilityProvider] = useState<ProviderKind>("claudeAgent");
 
   useSettingsRestoreSignal(resetEpoch, () => {
     setSelectedCustomModelProvider("codex");
     setCustomModelInputByProvider({});
     setCustomModelErrorByProvider({});
     setShowAllCustomModels(false);
+    setVisibilityProvider("claudeAgent");
   });
 
   const {
@@ -116,13 +122,21 @@ export function ModelsSettingsPanel({
     activeProjectCwd: null,
     serverCwd: serverConfigQuery.data?.cwd ?? null,
   });
-  const { modelOptionsByProvider: gitWritingCatalogOptionsByProvider } = useProviderModelCatalog({
-    selectedProvider: currentGitTextGenerationProvider,
-    discoveryEnabled: active,
-    cwd: providerModelDiscoveryCwd,
-    modelHintByProvider: gitWritingModelHintByProvider,
-    prefetchProviders: GIT_WRITING_DISCOVERY_PROVIDERS,
-  });
+  // The git-writing picker only needs its own providers, but the visibility list
+  // below renders every model of the provider being edited, so that one has to be
+  // discovered too — otherwise switching it would only ever show built-in models.
+  const discoveryProviders = useMemo<ReadonlyArray<ProviderKind>>(
+    () => [...GIT_WRITING_DISCOVERY_PROVIDERS, visibilityProvider],
+    [visibilityProvider],
+  );
+  const { modelOptionsByProvider: gitWritingCatalogOptionsByProvider, allModelOptionsByProvider } =
+    useProviderModelCatalog({
+      selectedProvider: currentGitTextGenerationProvider,
+      discoveryEnabled: active,
+      cwd: providerModelDiscoveryCwd,
+      modelHintByProvider: gitWritingModelHintByProvider,
+      prefetchProviders: discoveryProviders,
+    });
   const gitTextGenerationModelOptions = useMemo(
     () =>
       getGitTextGenerationModelOptions(
@@ -253,10 +267,70 @@ export function ModelsSettingsPanel({
     </div>
   );
 
+  const visibilityModels = allModelOptionsByProvider[visibilityProvider];
+  const hiddenSlugsForProvider = new Set(
+    settings.hiddenModels
+      .filter((entry) => entry.provider === visibilityProvider)
+      .map((entry) => entry.slug.toLowerCase()),
+  );
+  const toggleModelVisibility = (slug: string, visible: boolean) => {
+    const others = settings.hiddenModels.filter(
+      (entry) =>
+        entry.provider !== visibilityProvider || entry.slug.toLowerCase() !== slug.toLowerCase(),
+    );
+    updateSettings({
+      hiddenModels: visible ? others : [...others, { provider: visibilityProvider, slug }],
+    });
+  };
+
+  // A silent refresh is indistinguishable from a broken button, so both outcomes
+  // are reported — including "reached the server but the catalog was empty",
+  // which means models.dev is unreachable and only built-in models are on offer.
+  const refreshCatalogMutation = useMutation({
+    mutationFn: () => refreshCloudModelCatalog(queryClient),
+    onSuccess: (modelCount) =>
+      toastManager.add(
+        modelCount > 0
+          ? {
+              type: "success",
+              title: "Model catalog refreshed",
+              description: `${modelCount} cloud ${modelCount === 1 ? "model is" : "models are"} available.`,
+            }
+          : {
+              type: "warning",
+              title: "Model catalog is unavailable",
+              description: "models.dev could not be reached. Built-in models are still available.",
+            },
+      ),
+    onError: (error: unknown) =>
+      toastManager.add({
+        type: "error",
+        title: "Could not refresh the model catalog",
+        description: error instanceof Error ? error.message : "The refresh request failed.",
+      }),
+  });
+
   if (!active) return null;
 
   return (
     <div className="space-y-6">
+      <SettingsSection title="Model catalog">
+        <SettingsRow
+          title="Cloud model catalog"
+          description="Synara reads the public models.dev catalog so newly released models show up without waiting for an update. Refresh to pull it again right now."
+          control={
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={refreshCatalogMutation.isPending}
+              onClick={() => refreshCatalogMutation.mutate()}
+            >
+              {refreshCatalogMutation.isPending ? "Refreshing..." : "Refresh"}
+            </Button>
+          }
+        />
+      </SettingsSection>
+
       <SettingsSection title="Generation defaults">
         <SettingsRow
           title="Git writing model"
@@ -304,6 +378,71 @@ export function ModelsSettingsPanel({
             </SettingsSelectControl>
           }
         />
+      </SettingsSection>
+
+      <SettingsSection title="Visible models">
+        <SettingsRow
+          title="Models shown in the picker"
+          description="Turn off the models you never reach for. The model a conversation is already using stays visible so a thread is never stranded."
+          resetAction={
+            settings.hiddenModels.length > 0 ? (
+              <SettingResetButton
+                label="visible models"
+                onClick={() => updateSettings({ hiddenModels: [] })}
+              />
+            ) : null
+          }
+        >
+          <div className={cn("mt-4 pt-4", SETTINGS_CARD_ROW_DIVIDER_CLASS_NAME)}>
+            <Select
+              value={visibilityProvider}
+              onValueChange={(value) => {
+                if (value) setVisibilityProvider(value as ProviderKind);
+              }}
+            >
+              <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Provider">
+                <SelectValue>{PROVIDER_DISPLAY_NAMES[visibilityProvider]}</SelectValue>
+              </SelectTrigger>
+              <SettingsSelectPopup align="start">
+                {CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS.map((config) => (
+                  <SelectItem hideIndicator key={config.provider} value={config.provider}>
+                    {PROVIDER_DISPLAY_NAMES[config.provider]}
+                  </SelectItem>
+                ))}
+              </SettingsSelectPopup>
+            </Select>
+
+            {visibilityModels.length > 0 ? (
+              <div className={cn("mt-3", SETTINGS_INSET_LIST_CLASS_NAME)}>
+                {visibilityModels.map((model) => {
+                  const visible = !hiddenSlugsForProvider.has(model.slug.toLowerCase());
+                  return (
+                    <div
+                      key={model.slug}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-[color:var(--color-border)] px-4 py-2 first:border-t-0"
+                    >
+                      <div className="min-w-0">
+                        <span className="block truncate text-sm text-foreground">{model.name}</span>
+                        <code className="block truncate text-xs text-muted-foreground">
+                          {model.slug}
+                        </code>
+                      </div>
+                      <Switch
+                        checked={visible}
+                        onCheckedChange={(next) => toggleModelVisibility(model.slug, next)}
+                        aria-label={`Show ${model.name}`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-muted-foreground">
+                No models discovered for this provider yet.
+              </p>
+            )}
+          </div>
+        </SettingsRow>
       </SettingsSection>
 
       <SettingsSection title="Custom models">

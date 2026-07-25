@@ -1,4 +1,6 @@
 import type {
+  AgentMcpToolDescriptor,
+  AgentMcpToolSourceError,
   ProjectEntry,
   ProviderAgentDescriptor,
   ProviderNativeCommandDescriptor,
@@ -8,6 +10,7 @@ import type {
   ProviderSkillDescriptor,
 } from "@synara/contracts";
 import { getAgentMentionAutocompleteAliases } from "@synara/contracts";
+import { agentMentionColor } from "~/lib/agentMentionCatalog";
 import {
   buildCommandSearchFields,
   buildPluginSearchFields,
@@ -52,6 +55,94 @@ export type SearchableModelOption = {
 };
 
 const THREAD_MENTION_SUGGESTION_LIMIT = 20;
+
+const EMPTY_MCP_TOOLS: readonly AgentMcpToolDescriptor[] = [];
+const EMPTY_MCP_TOOL_ERRORS: readonly AgentMcpToolSourceError[] = [];
+
+// Descriptions are long prose; ranking them at the same weight as a name would let a single
+// verbose tool outrank an exact server-name hit.
+const MCP_TOOL_DESCRIPTION_FIELD_WEIGHT = 200;
+
+interface McpServerSuggestion {
+  readonly provider: AgentMcpToolDescriptor["provider"];
+  readonly serverName: string;
+  readonly toolCount: number;
+}
+
+/**
+ * Candidates for a `&` trigger: one whole-server entry per configured server, then the individual
+ * tools, then a dimmed row per server that could not be probed.
+ *
+ * Both the server name and the tool name feed the fuzzy match, so `&doc` surfaces
+ * `context7:query-docs` (tool name) next to a hypothetical `docs` server (server name). The
+ * normalizer turns `:` into a space, so typing `&context7:que` scores as the phrase it reads as.
+ */
+export function buildMcpToolComposerItems(input: {
+  readonly query: string;
+  readonly tools: readonly AgentMcpToolDescriptor[];
+  readonly errors: readonly AgentMcpToolSourceError[];
+}): ComposerCommandItem[] {
+  const query = normalizeProviderDiscoveryText(input.query);
+
+  const serversByKey = new Map<string, McpServerSuggestion>();
+  for (const tool of input.tools) {
+    const key = `${tool.provider}:${tool.serverName}`;
+    const existing = serversByKey.get(key);
+    serversByKey.set(key, {
+      provider: tool.provider,
+      serverName: tool.serverName,
+      toolCount: (existing?.toolCount ?? 0) + 1,
+    });
+  }
+
+  const serverItems: ComposerCommandItem[] = rankProviderDiscoveryItems(
+    [...serversByKey.values()],
+    query,
+    (server) => [{ value: server.serverName }],
+  ).map((server) => ({
+    id: `mcp-server:${server.provider}:${server.serverName}`,
+    type: "mcp-tool" as const,
+    provider: server.provider,
+    serverName: server.serverName,
+    toolName: null,
+    label: `&${server.serverName}`,
+    description: server.toolCount === 1 ? "1 tool" : `All ${server.toolCount} tools`,
+  }));
+
+  const toolItems: ComposerCommandItem[] = rankProviderDiscoveryItems(
+    input.tools,
+    query,
+    (tool) => [
+      { value: `${tool.serverName}:${tool.toolName}` },
+      { value: tool.toolName },
+      { value: tool.serverName },
+      { value: tool.description, weight: MCP_TOOL_DESCRIPTION_FIELD_WEIGHT },
+    ],
+  ).map((tool) => ({
+    id: `mcp-tool:${tool.provider}:${tool.serverName}:${tool.toolName}`,
+    type: "mcp-tool" as const,
+    provider: tool.provider,
+    serverName: tool.serverName,
+    toolName: tool.toolName,
+    label: `&${tool.serverName}:${tool.toolName}`,
+    description: tool.description ?? "",
+  }));
+
+  // Failures are appended last and never ranked away: they explain an absence, so hiding them
+  // behind a query would leave the user with a silently short list.
+  const errorItems: ComposerCommandItem[] = input.errors.map((error, index) => ({
+    id: `mcp-error:${error.provider}:${error.serverName ?? index}`,
+    type: "mcp-tool" as const,
+    provider: error.provider,
+    serverName: error.serverName ?? "",
+    toolName: null,
+    unavailable: true,
+    label: error.serverName ?? error.provider,
+    description: error.message,
+  }));
+
+  return [...serverItems, ...toolItems, ...errorItems];
+}
 
 function threadSuggestionTitle(title: string): string {
   return title.trim() || "Untitled thread";
@@ -252,6 +343,9 @@ export function useComposerCommandMenuItems(input: {
   canOfferSideCommand: boolean;
   canOfferExportCommand: boolean;
   surfaceAppSlashCommands?: ReadonlySet<string>;
+  /** Empty on surfaces that do not offer `&` references (the kanban composer, for now). */
+  mcpTools?: readonly AgentMcpToolDescriptor[];
+  mcpToolErrors?: readonly AgentMcpToolSourceError[];
   dynamicAgents: readonly ProviderAgentDescriptor[];
   threadMentionSources?: {
     readonly threads: readonly ComposerThreadMentionSource[];
@@ -274,6 +368,8 @@ export function useComposerCommandMenuItems(input: {
     canOfferSideCommand,
     canOfferExportCommand,
     surfaceAppSlashCommands,
+    mcpTools = EMPTY_MCP_TOOLS,
+    mcpToolErrors = EMPTY_MCP_TOOL_ERRORS,
     dynamicAgents,
     threadMentionSources,
   } = input;
@@ -284,37 +380,44 @@ export function useComposerCommandMenuItems(input: {
   if (composerTrigger.kind === "mention") {
     const query = normalizeProviderDiscoveryText(composerTrigger.query);
 
-    const agentItems: ComposerCommandItem[] = (() => {
-      // Use dynamic agents when available, fallback to static
-      if (dynamicAgents.length > 0) {
-        return rankProviderDiscoveryItems(dynamicAgents, query, ({ name, displayName }) => [
-          { value: name },
-          { value: displayName },
-        ]).map(({ name, displayName }) => ({
-          id: `agent:${provider}:${name}`,
-          type: "agent" as const,
-          provider,
-          alias: name,
-          color: "violet" as const,
-          label: `@${name}`,
-          description: displayName,
-        }));
-      }
-      // Static fallback
-      return rankProviderDiscoveryItems(
-        getAgentMentionAutocompleteAliases(provider),
-        query,
-        ({ alias, displayName }) => [{ value: alias }, { value: displayName }],
-      ).map(({ alias, displayName, color }) => ({
-        id: `agent:${provider}:${alias}`,
-        type: "agent" as const,
-        provider,
-        alias,
-        color,
-        label: `@${alias}`,
-        description: displayName,
-      }));
-    })();
+    // Discovered subagents and the static alias table are different things: the
+    // former are the user's real agents, the latter are Synara built-ins plus (on
+    // Codex) model switches. Group them so a single `@` stays unambiguous.
+    const discoveredAgentItems: ComposerCommandItem[] = rankProviderDiscoveryItems(
+      dynamicAgents,
+      query,
+      ({ name, displayName }) => [{ value: name }, { value: displayName }],
+    ).map(({ name, displayName, description, source }) => ({
+      id: `agent:${provider}:${name}`,
+      type: "agent" as const,
+      provider,
+      alias: name,
+      // Same resolution the inline chip uses, so the glyph in this list is a
+      // preview of the token the user is about to insert.
+      color: agentMentionColor(name),
+      group: source === "builtin" ? ("builtin" as const) : ("agent" as const),
+      label: `@${name}`,
+      description: description ?? (displayName === name ? "" : displayName),
+    }));
+    const discoveredAgentNames = new Set(dynamicAgents.map(({ name }) => name.toLowerCase()));
+    // Aliases the discovery pass already covers would list the same agent twice.
+    const aliasAgentItems: ComposerCommandItem[] = rankProviderDiscoveryItems(
+      getAgentMentionAutocompleteAliases(provider).filter(
+        ({ alias, kind }) => kind === "model" || !discoveredAgentNames.has(alias.toLowerCase()),
+      ),
+      query,
+      ({ alias, displayName }) => [{ value: alias }, { value: displayName }],
+    ).map(({ alias, displayName, color, kind }) => ({
+      id: `agent:${provider}:${alias}`,
+      type: "agent" as const,
+      provider,
+      alias,
+      color,
+      group: kind === "model" ? ("model" as const) : ("builtin" as const),
+      label: `@${alias}`,
+      description: displayName,
+    }));
+    const agentItems: ComposerCommandItem[] = [...discoveredAgentItems, ...aliasAgentItems];
 
     const pluginItems = rankProviderDiscoveryItems(
       providerPlugins.filter(({ plugin }) => isInstalledProviderPlugin(plugin)),
@@ -353,9 +456,10 @@ export function useComposerCommandMenuItems(input: {
           query: composerTrigger.query,
         })
       : [];
-    // Keep mention suggestions ordered by primary intent: plugins and chats
-    // first, then local context, then subagent delegation targets.
-    return [...pluginItems, ...threadItems, ...localRootItems, ...pathItems, ...agentItems];
+    // Keep mention suggestions ordered by primary intent. Delegation targets sit
+    // right after plugins/chats — ahead of file paths, which the trailing "Files"
+    // hint already tells users to reach by typing.
+    return [...pluginItems, ...threadItems, ...agentItems, ...localRootItems, ...pathItems];
   }
 
   if (composerTrigger.kind === "slash-command") {
@@ -425,6 +529,14 @@ export function useComposerCommandMenuItems(input: {
       description: skill.interface?.shortDescription ?? skill.description ?? skill.path,
     }));
     return [...builtInItems, ...rankedProviderCommandItems, ...skillItems];
+  }
+
+  if (composerTrigger.kind === "mcp-tool") {
+    return buildMcpToolComposerItems({
+      query: composerTrigger.query,
+      tools: mcpTools,
+      errors: mcpToolErrors,
+    });
   }
 
   if (composerTrigger.kind === "skill") {

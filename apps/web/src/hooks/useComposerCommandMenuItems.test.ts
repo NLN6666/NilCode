@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import type { ProviderAgentDescriptor } from "@synara/contracts";
+
 import type { ComposerThreadMentionSource, Project } from "../types";
-import { buildThreadMentionComposerItems } from "./useComposerCommandMenuItems";
+import {
+  buildThreadMentionComposerItems,
+  useComposerCommandMenuItems,
+} from "./useComposerCommandMenuItems";
 
 function project(id: string, kind: Project["kind"], name: string): Project {
   return {
@@ -188,5 +193,71 @@ describe("buildThreadMentionComposerItems", () => {
 
     const names = items.map((item) => (item.type === "thread" ? item.mention.name : ""));
     expect(names).toEqual(["Release (aaaaaa)", "release (bbbbbb)"]);
+  });
+});
+
+describe("useComposerCommandMenuItems mention agents", () => {
+  function mentionItems(input: {
+    provider: "codex" | "claudeAgent";
+    query: string;
+    dynamicAgents: readonly ProviderAgentDescriptor[];
+  }) {
+    return useComposerCommandMenuItems({
+      composerTrigger: { kind: "mention", query: input.query } as never,
+      provider: input.provider,
+      providerPlugins: [],
+      providerNativeCommands: [],
+      providerSkills: [],
+      workspaceEntries: [],
+      searchableModelOptions: [],
+      supportsFastSlashCommand: false,
+      canOfferCompactCommand: false,
+      canOfferReviewCommand: false,
+      canOfferForkCommand: false,
+      canOfferSideCommand: false,
+      canOfferExportCommand: false,
+      dynamicAgents: input.dynamicAgents,
+    });
+  }
+
+  it("splits discovered agents, Synara built-ins, and Codex model aliases", () => {
+    const items = mentionItems({
+      provider: "codex",
+      query: "",
+      dynamicAgents: [
+        { name: "coder", displayName: "coder", description: "Implements", source: "user" },
+      ],
+    });
+    const agents = items.filter((item) => item.type === "agent");
+
+    expect(agents.find((agent) => agent.alias === "coder")?.group).toBe("agent");
+    expect(agents.find((agent) => agent.alias === "spark")?.group).toBe("model");
+  });
+
+  it("marks runtime-reported Synara built-ins as built-in, not user agents", () => {
+    const items = mentionItems({
+      provider: "claudeAgent",
+      query: "",
+      dynamicAgents: [
+        { name: "explore", displayName: "Explore", source: "builtin" },
+        { name: "ecc:security-reviewer", displayName: "ecc:security-reviewer", source: "sdk" },
+      ],
+    });
+    const agents = items.filter((item) => item.type === "agent");
+
+    expect(agents.find((agent) => agent.alias === "explore")?.group).toBe("builtin");
+    expect(agents.find((agent) => agent.alias === "ecc:security-reviewer")?.group).toBe("agent");
+    // The static alias must not re-add an agent discovery already reported.
+    expect(agents.filter((agent) => agent.alias === "explore")).toHaveLength(1);
+  });
+
+  it("lists agents ahead of file paths", () => {
+    const items = mentionItems({
+      provider: "claudeAgent",
+      query: "",
+      dynamicAgents: [{ name: "coder", displayName: "coder", source: "user" }],
+    });
+
+    expect(items[0]?.type).toBe("agent");
   });
 });

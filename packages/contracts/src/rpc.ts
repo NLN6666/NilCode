@@ -22,6 +22,12 @@ import {
   AutomationStreamEvent,
   AutomationUpdateInput,
 } from "./automation";
+import {
+  AgentMcpCatalog,
+  AgentMcpSetEnabledInput,
+  AgentMcpSourceView,
+  AgentMcpToolCatalog,
+} from "./agentMcp";
 import { OpenInEditorInput } from "./editor";
 import {
   ExternalMcpCreateIntegrationInput,
@@ -105,6 +111,8 @@ import {
   ProviderComposerCapabilities,
   ProviderListAgentsInput,
   ProviderListAgentsResult,
+  ProviderListCloudModelsInput,
+  ProviderListCloudModelsResult,
   ProviderListCommandsInput,
   ProviderListCommandsResult,
   ProviderListModelsInput,
@@ -728,6 +736,32 @@ export const WsServerRefreshExternalMcpPairingRpc = Rpc.make(
   },
 );
 
+export const WsServerListAgentMcpServersRpc = Rpc.make(WS_METHODS.serverListAgentMcpServers, {
+  payload: Schema.Struct({}),
+  success: AgentMcpCatalog,
+  error: WsRpcError,
+});
+
+// Tool discovery is a separate call from `serverListAgentMcpServers`: listing servers only reads
+// a config file, while this one may connect to every enabled server, so the composer pays that
+// cost lazily on the first `&` instead of on every settings render.
+export const WsServerListAgentMcpToolsRpc = Rpc.make(WS_METHODS.serverListAgentMcpTools, {
+  payload: Schema.Struct({}),
+  success: AgentMcpToolCatalog,
+  error: WsRpcError,
+});
+
+// Resolves with the edited provider's refreshed view only, so the client replaces one group
+// instead of discarding the other provider's state on every toggle.
+export const WsServerSetAgentMcpServerEnabledRpc = Rpc.make(
+  WS_METHODS.serverSetAgentMcpServerEnabled,
+  {
+    payload: AgentMcpSetEnabledInput,
+    success: AgentMcpSourceView,
+    error: WsRpcError,
+  },
+);
+
 export const WsServerListWorktreesRpc = Rpc.make(WS_METHODS.serverListWorktrees, {
   payload: Schema.Struct({}),
   success: ServerListWorktreesResult,
@@ -894,6 +928,12 @@ export const WsProviderListAgentsRpc = Rpc.make(WS_METHODS.providerListAgents, {
   error: WsRpcError,
 });
 
+export const WsProviderListCloudModelsRpc = Rpc.make(WS_METHODS.providerListCloudModels, {
+  payload: ProviderListCloudModelsInput,
+  success: ProviderListCloudModelsResult,
+  error: WsRpcError,
+});
+
 export const WsAutomationListRpc = Rpc.make(WS_METHODS.automationList, {
   payload: AutomationListInput,
   success: AutomationListResult,
@@ -1041,6 +1081,9 @@ export const WsFeatureRpcGroup = RpcGroup.make(
   WsServerCreateExternalMcpIntegrationRpc,
   WsServerRevokeExternalMcpIntegrationRpc,
   WsServerRefreshExternalMcpPairingRpc,
+  WsServerListAgentMcpServersRpc,
+  WsServerListAgentMcpToolsRpc,
+  WsServerSetAgentMcpServerEnabledRpc,
   WsServerListWorktreesRpc,
   WsServerListLocalServersRpc,
   WsServerStopLocalServerRpc,
@@ -1066,6 +1109,7 @@ export const WsFeatureRpcGroup = RpcGroup.make(
   WsProviderReadPluginRpc,
   WsProviderListModelsRpc,
   WsProviderListAgentsRpc,
+  WsProviderListCloudModelsRpc,
   WsAutomationListRpc,
   WsAutomationGetMemoryRpc,
   WsAutomationCreateRpc,

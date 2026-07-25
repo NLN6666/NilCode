@@ -36,6 +36,8 @@ import {
   fileCommentDedupKey,
   normalizeAssistantSelection,
   normalizeAssistantSelections,
+  normalizeBrowserElement,
+  normalizeBrowserElements,
   normalizeDraftThreadEntryPoint,
   normalizeFileComment,
   normalizeFileComments,
@@ -57,6 +59,7 @@ import {
   reconcileProviderScopedModelSelection,
   stripNonStickyModelOptions,
 } from "./composerDraftModels";
+import { browserElementDedupKey } from "./lib/browserElementContext";
 import { isComposerAppSnapCaptureSource } from "./lib/composerImageSource";
 import { ensureInlineTerminalContextPlaceholders } from "./lib/terminalContext";
 import { buildModelSelection } from "./providerModelOptions";
@@ -582,6 +585,7 @@ export const createComposerDraftStoreState =
                 assistantSelections: [],
                 terminalContexts: [],
                 fileComments: [],
+                browserElements: [],
                 pastedTexts: [],
                 skills: [],
                 mentions: [],
@@ -627,6 +631,7 @@ export const createComposerDraftStoreState =
             savedDraft.terminalContexts,
           ),
           fileComments: normalizeFileComments(savedDraft.fileComments),
+          browserElements: normalizeBrowserElements(savedDraft.browserElements),
           pastedTexts: normalizePastedTexts(savedDraft.pastedTexts),
           skills: [...savedDraft.skills],
           mentions: [...savedDraft.mentions],
@@ -1413,6 +1418,81 @@ export const createComposerDraftStoreState =
         return { draftsByThreadId: nextDraftsByThreadId };
       });
     },
+    addBrowserElement: (threadId, element) => {
+      if (threadId.length === 0) {
+        return false;
+      }
+      let inserted = false;
+      set((state) => {
+        const existing = state.draftsByThreadId[threadId] ?? createEmptyThreadDraft();
+        const normalizedElement = normalizeBrowserElement(element);
+        if (!normalizedElement) {
+          return state;
+        }
+        const dedupKey = browserElementDedupKey(normalizedElement);
+        if (
+          existing.browserElements.some((entry) => entry.id === normalizedElement.id) ||
+          existing.browserElements.some((entry) => browserElementDedupKey(entry) === dedupKey)
+        ) {
+          return state;
+        }
+        inserted = true;
+        return {
+          draftsByThreadId: {
+            ...state.draftsByThreadId,
+            [threadId]: {
+              ...existing,
+              browserElements: [...existing.browserElements, normalizedElement],
+            },
+          },
+        };
+      });
+      return inserted;
+    },
+    removeBrowserElement: (threadId, elementId) => {
+      if (threadId.length === 0 || elementId.length === 0) {
+        return;
+      }
+      set((state) => {
+        const current = state.draftsByThreadId[threadId];
+        if (!current) {
+          return state;
+        }
+        const nextDraft: ComposerThreadDraftState = {
+          ...current,
+          browserElements: current.browserElements.filter((element) => element.id !== elementId),
+        };
+        const nextDraftsByThreadId = { ...state.draftsByThreadId };
+        if (shouldRemoveDraft(nextDraft)) {
+          delete nextDraftsByThreadId[threadId];
+        } else {
+          nextDraftsByThreadId[threadId] = nextDraft;
+        }
+        return { draftsByThreadId: nextDraftsByThreadId };
+      });
+    },
+    clearBrowserElements: (threadId) => {
+      if (threadId.length === 0) {
+        return;
+      }
+      set((state) => {
+        const current = state.draftsByThreadId[threadId];
+        if (!current || current.browserElements.length === 0) {
+          return state;
+        }
+        const nextDraft: ComposerThreadDraftState = {
+          ...current,
+          browserElements: [],
+        };
+        const nextDraftsByThreadId = { ...state.draftsByThreadId };
+        if (shouldRemoveDraft(nextDraft)) {
+          delete nextDraftsByThreadId[threadId];
+        } else {
+          nextDraftsByThreadId[threadId] = nextDraft;
+        }
+        return { draftsByThreadId: nextDraftsByThreadId };
+      });
+    },
     addPastedTexts: (threadId, pastedTexts) => {
       if (threadId.length === 0 || pastedTexts.length === 0) {
         return;
@@ -1707,6 +1787,7 @@ export const createComposerDraftStoreState =
           assistantSelections: [],
           terminalContexts: [],
           fileComments: [],
+          browserElements: [],
           pastedTexts: [],
           skills: [],
           mentions: [],

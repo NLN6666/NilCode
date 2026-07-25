@@ -65,3 +65,64 @@ export function compareProvidersByOrder(
     rightIndex >= 0 ? rightIndex : DEFAULT_PROVIDER_ORDER.indexOf(right) + providerOrder.length;
   return normalizedLeftIndex - normalizedRightIndex;
 }
+
+export interface HiddenModelRef {
+  readonly provider: ProviderKind;
+  readonly slug: string;
+}
+
+export function normalizeHiddenModels(
+  hiddenModels: ReadonlyArray<{ provider: string; slug: string }>,
+): HiddenModelRef[] {
+  const seen = new Set<string>();
+  const result: HiddenModelRef[] = [];
+  for (const candidate of hiddenModels) {
+    const slug = candidate.slug.trim();
+    if (!isProviderKind(candidate.provider) || slug.length === 0) {
+      continue;
+    }
+    const key = `${candidate.provider}:${slug.toLowerCase()}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push({ provider: candidate.provider, slug });
+  }
+  return result;
+}
+
+/**
+ * Drops hidden models from a provider's picker list.
+ *
+ * `protectedSlug` — the model the surface is currently using — is always kept.
+ * Model hiding was withdrawn once before because it could strand a thread on a
+ * model the picker refused to show; this guard is what makes it safe, and is
+ * the reason callers must go through this helper rather than filtering inline.
+ *
+ * Hiding every model is also treated as hiding none: an empty picker reads as a
+ * broken app, and the user's next action would be to undo it anyway.
+ */
+export function filterModelOptionsByVisibility<T extends { slug: string }>(
+  provider: ProviderKind,
+  options: ReadonlyArray<T>,
+  hiddenModels: ReadonlyArray<HiddenModelRef>,
+  protectedSlug?: string | null,
+): ReadonlyArray<T> {
+  if (hiddenModels.length === 0 || options.length === 0) {
+    return options;
+  }
+  const hidden = new Set(
+    hiddenModels
+      .filter((entry) => entry.provider === provider)
+      .map((entry) => entry.slug.trim().toLowerCase()),
+  );
+  if (hidden.size === 0) {
+    return options;
+  }
+  const keep = protectedSlug?.trim().toLowerCase();
+  const visible = options.filter(
+    (option) =>
+      option.slug.trim().toLowerCase() === keep || !hidden.has(option.slug.trim().toLowerCase()),
+  );
+  return visible.length > 0 ? visible : options;
+}

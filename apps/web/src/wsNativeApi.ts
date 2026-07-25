@@ -19,6 +19,7 @@ import {
   type ExternalMcpCreateIntegrationInput,
   type ExternalMcpCreateIntegrationResult,
   type ExternalMcpIntegration,
+  type AgentMcpSetEnabledInput,
   type ExternalMcpRefreshPairingInput,
   type ExternalMcpRevokeIntegrationInput,
   type ThreadId,
@@ -626,6 +627,10 @@ export function createWsNativeApi(): NativeApi {
         transport.request(WS_METHODS.serverRevokeExternalMcpIntegration, input),
       refreshExternalMcpPairing: (input: ExternalMcpRefreshPairingInput) =>
         transport.request(WS_METHODS.serverRefreshExternalMcpPairing, input),
+      listAgentMcpServers: () => transport.request(WS_METHODS.serverListAgentMcpServers),
+      setAgentMcpServerEnabled: (input: AgentMcpSetEnabledInput) =>
+        transport.request(WS_METHODS.serverSetAgentMcpServerEnabled, input),
+      listAgentMcpTools: () => transport.request(WS_METHODS.serverListAgentMcpTools),
       refreshProviders: () => transport.request(WS_METHODS.serverRefreshProviders),
       // Provider updates run up to 2 minutes server-side; callers wrap this in
       // withProviderUpdateTimeout, which owns the client-side watchdog.
@@ -673,6 +678,7 @@ export function createWsNativeApi(): NativeApi {
       readPlugin: (input) => transport.request(WS_METHODS.providerReadPlugin, input),
       listModels: (input) => transport.request(WS_METHODS.providerListModels, input),
       listAgents: (input) => transport.request(WS_METHODS.providerListAgents, input),
+      listCloudModels: (input) => transport.request(WS_METHODS.providerListCloudModels, input),
     },
     orchestration: {
       getSnapshot: () => transport.request(ORCHESTRATION_WS_METHODS.getSnapshot),
@@ -907,6 +913,30 @@ export function createWsNativeApi(): NativeApi {
       onCopyLink: (callback) => {
         if (window.desktopBridge) {
           return window.desktopBridge.browser.onBrowserCopyLink(callback);
+        }
+        return () => {};
+      },
+      // Element picking needs the native CDP overlay, so the browser-only fallback is a
+      // no-op rather than a simulated pick.
+      startElementPick: async (input) => {
+        if (window.desktopBridge) {
+          await window.desktopBridge.browser.startElementPick(input);
+        }
+      },
+      cancelElementPick: async (input) => {
+        if (window.desktopBridge) {
+          await window.desktopBridge.browser.cancelElementPick(input);
+        }
+      },
+      onElementPicked: (callback) => {
+        if (window.desktopBridge) {
+          return window.desktopBridge.browser.onElementPicked(callback);
+        }
+        return () => {};
+      },
+      onElementPickCancelled: (callback) => {
+        if (window.desktopBridge) {
+          return window.desktopBridge.browser.onElementPickCancelled(callback);
         }
         return () => {};
       },
