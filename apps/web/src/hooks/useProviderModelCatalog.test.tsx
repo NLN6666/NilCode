@@ -53,6 +53,7 @@ const cloudModelQueries = new Map<ProviderKind, QueryResultLike>();
 const MODEL_HINTS = { cursor: "composer-2" } as const;
 const SETTINGS = {
   antigravityBinaryPath: "",
+  hiddenModels: [],
   cursorApiEndpoint: "",
   cursorBinaryPath: "",
   customAntigravityModels: [],

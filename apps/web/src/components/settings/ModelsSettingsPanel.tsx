@@ -35,6 +35,7 @@ import { Button } from "../ui/button";
 import { DisclosureRegion } from "../ui/DisclosureRegion";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Switch } from "../ui/switch";
 import {
   SettingResetButton,
   SettingsSelectControl,
@@ -88,12 +89,14 @@ export function ModelsSettingsPanel({
     Partial<Record<ProviderKind, string | null>>
   >({});
   const [showAllCustomModels, setShowAllCustomModels] = useState(false);
+  const [visibilityProvider, setVisibilityProvider] = useState<ProviderKind>("claudeAgent");
 
   useSettingsRestoreSignal(resetEpoch, () => {
     setSelectedCustomModelProvider("codex");
     setCustomModelInputByProvider({});
     setCustomModelErrorByProvider({});
     setShowAllCustomModels(false);
+    setVisibilityProvider("claudeAgent");
   });
 
   const {
@@ -114,12 +117,13 @@ export function ModelsSettingsPanel({
     activeProjectCwd: null,
     serverCwd: serverConfigQuery.data?.cwd ?? null,
   });
-  const { modelOptionsByProvider: gitWritingCatalogOptionsByProvider } = useProviderModelCatalog({
-    selectedProvider: currentGitTextGenerationProvider,
-    discoveryEnabled: active,
-    cwd: providerModelDiscoveryCwd,
-    modelHintByProvider: gitWritingModelHintByProvider,
-  });
+  const { modelOptionsByProvider: gitWritingCatalogOptionsByProvider, allModelOptionsByProvider } =
+    useProviderModelCatalog({
+      selectedProvider: currentGitTextGenerationProvider,
+      discoveryEnabled: active,
+      cwd: providerModelDiscoveryCwd,
+      modelHintByProvider: gitWritingModelHintByProvider,
+    });
   const gitTextGenerationModelOptions = useMemo(
     () =>
       getGitTextGenerationModelOptions(
@@ -250,6 +254,22 @@ export function ModelsSettingsPanel({
     </div>
   );
 
+  const visibilityModels = allModelOptionsByProvider[visibilityProvider];
+  const hiddenSlugsForProvider = new Set(
+    settings.hiddenModels
+      .filter((entry) => entry.provider === visibilityProvider)
+      .map((entry) => entry.slug.toLowerCase()),
+  );
+  const toggleModelVisibility = (slug: string, visible: boolean) => {
+    const others = settings.hiddenModels.filter(
+      (entry) =>
+        entry.provider !== visibilityProvider || entry.slug.toLowerCase() !== slug.toLowerCase(),
+    );
+    updateSettings({
+      hiddenModels: visible ? others : [...others, { provider: visibilityProvider, slug }],
+    });
+  };
+
   if (!active) return null;
 
   return (
@@ -301,6 +321,71 @@ export function ModelsSettingsPanel({
             </SettingsSelectControl>
           }
         />
+      </SettingsSection>
+
+      <SettingsSection title="Visible models">
+        <SettingsRow
+          title="Models shown in the picker"
+          description="Turn off the models you never reach for. The model a conversation is already using stays visible so a thread is never stranded."
+          resetAction={
+            settings.hiddenModels.length > 0 ? (
+              <SettingResetButton
+                label="visible models"
+                onClick={() => updateSettings({ hiddenModels: [] })}
+              />
+            ) : null
+          }
+        >
+          <div className={cn("mt-4 pt-4", SETTINGS_CARD_ROW_DIVIDER_CLASS_NAME)}>
+            <Select
+              value={visibilityProvider}
+              onValueChange={(value) => {
+                if (value) setVisibilityProvider(value as ProviderKind);
+              }}
+            >
+              <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Provider">
+                <SelectValue>{PROVIDER_DISPLAY_NAMES[visibilityProvider]}</SelectValue>
+              </SelectTrigger>
+              <SettingsSelectPopup align="start">
+                {CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS.map((config) => (
+                  <SelectItem hideIndicator key={config.provider} value={config.provider}>
+                    {PROVIDER_DISPLAY_NAMES[config.provider]}
+                  </SelectItem>
+                ))}
+              </SettingsSelectPopup>
+            </Select>
+
+            {visibilityModels.length > 0 ? (
+              <div className={cn("mt-3", SETTINGS_INSET_LIST_CLASS_NAME)}>
+                {visibilityModels.map((model) => {
+                  const visible = !hiddenSlugsForProvider.has(model.slug.toLowerCase());
+                  return (
+                    <div
+                      key={model.slug}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-[color:var(--color-border)] px-4 py-2 first:border-t-0"
+                    >
+                      <div className="min-w-0">
+                        <span className="block truncate text-sm text-foreground">{model.name}</span>
+                        <code className="block truncate text-xs text-muted-foreground">
+                          {model.slug}
+                        </code>
+                      </div>
+                      <Switch
+                        checked={visible}
+                        onCheckedChange={(next) => toggleModelVisibility(model.slug, next)}
+                        aria-label={`Show ${model.name}`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-muted-foreground">
+                No models discovered for this provider yet.
+              </p>
+            )}
+          </div>
+        </SettingsRow>
       </SettingsSection>
 
       <SettingsSection title="Custom models">

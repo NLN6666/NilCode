@@ -15,6 +15,7 @@ import { useEffect, useMemo } from "react";
 
 import { getAppModelOptions, getCustomModelsByProvider, useAppSettings } from "../appSettings";
 import { setComposerAgentMentionCatalog } from "../lib/agentMentionCatalog";
+import { filterModelOptionsByVisibility } from "../providerOrdering";
 import { resolveRuntimeModelDescriptor } from "../components/chat/runtimeModelCapabilities";
 import { collapseCursorModelVariants } from "../cursorModelVariants";
 import {
@@ -33,6 +34,14 @@ import {
 export interface ProviderModelCatalog {
   customModelsByProvider: ReturnType<typeof getCustomModelsByProvider>;
   modelOptionsByProvider: Record<
+    ProviderKind,
+    ReadonlyArray<ProviderModelOption & { isCustom?: boolean }>
+  >;
+  /**
+   * The same catalog before `hiddenModels` is applied. Settings UI must read
+   * this — filtering there would hide the very rows used to unhide a model.
+   */
+  allModelOptionsByProvider: Record<
     ProviderKind,
     ReadonlyArray<ProviderModelOption & { isCustom?: boolean }>
   >;
@@ -405,6 +414,24 @@ export function useProviderModelCatalog(input: {
     ],
   );
 
+  // Applied in one place so every surface hides the same models, and so the
+  // model a surface is already using is always kept visible.
+  const visibleModelOptionsByProvider = useMemo(() => {
+    if (settings.hiddenModels.length === 0) {
+      return modelOptionsByProvider;
+    }
+    const result = { ...modelOptionsByProvider };
+    for (const provider of Object.keys(result) as ProviderKind[]) {
+      result[provider] = filterModelOptionsByVisibility(
+        provider,
+        result[provider],
+        settings.hiddenModels,
+        modelHintByProvider?.[provider] ?? null,
+      );
+    }
+    return result;
+  }, [modelOptionsByProvider, modelHintByProvider, settings.hiddenModels]);
+
   const selectedRuntimeModel = useMemo(
     () =>
       resolveRuntimeModelDescriptor({
@@ -472,7 +499,8 @@ export function useProviderModelCatalog(input: {
   return useMemo(
     () => ({
       customModelsByProvider,
-      modelOptionsByProvider,
+      modelOptionsByProvider: visibleModelOptionsByProvider,
+      allModelOptionsByProvider: modelOptionsByProvider,
       loadingModelProviders,
       runtimeModelsByProvider,
       selectedRuntimeModel,
@@ -484,6 +512,7 @@ export function useProviderModelCatalog(input: {
       customModelsByProvider,
       loadingModelProviders,
       modelOptionsByProvider,
+      visibleModelOptionsByProvider,
       runtimeModelsByProvider,
       selectedProviderModelsLoading,
       selectedProviderRuntimeModelDiscoveryPending,

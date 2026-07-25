@@ -34,6 +34,7 @@ import { normalizeCursorModelVariantBaseId } from "./cursorModelVariants";
 import { formatProviderModelOptionName, type ProviderModelOption } from "./providerModelOptions";
 import {
   DEFAULT_PROVIDER_ORDER,
+  normalizeHiddenModels,
   normalizeHiddenProviders,
   normalizeProviderOrder,
 } from "./providerOrdering";
@@ -271,8 +272,13 @@ export const AppSettingsSchema = Schema.Struct({
   providerOrder: Schema.Array(PersistedProviderKind).pipe(
     withDefaults(() => [...DEFAULT_PROVIDER_ORDER]),
   ),
-  // Deprecated local-only preference kept for backward-compatible decoding.
-  // Model-level hiding caused too many edge cases, so the app now normalizes it away.
+  // Local-only UI preference: models hidden from the composer picker.
+  //
+  // An earlier version of this was normalized away because hiding could strand a
+  // thread on a model it could no longer show. Callers must therefore treat the
+  // model a thread is already using as protected — see
+  // `filterModelOptionsByVisibility`, which is the only supported way to apply
+  // this list.
   hiddenModels: Schema.Array(
     Schema.Struct({
       provider: PersistedProviderKind,
@@ -546,7 +552,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     customPiModels: normalizeCustomModelSlugs(settings.customPiModels, "pi"),
     hiddenProviders: normalizeHiddenProviders(settings.hiddenProviders),
     providerOrder: normalizeProviderOrder(settings.providerOrder),
-    hiddenModels: [],
+    hiddenModels: normalizeHiddenModels(settings.hiddenModels),
   };
 }
 
