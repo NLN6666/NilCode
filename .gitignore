@@ -39,3 +39,11 @@ __screenshots__/
 /browser-sidebar-comment-preload.js.map
 /preload.js.map
 /bootstrap.js.map
+
+# Local scratch notes and agent tooling artifacts. These are per-machine: the
+# local-code-context index and its ignore rules, agent worktrees, and the
+# personal TODO scratchpad never belong in the repository.
+TODO.md
+.contextignore
+.code-context/
+.claude/worktrees/
