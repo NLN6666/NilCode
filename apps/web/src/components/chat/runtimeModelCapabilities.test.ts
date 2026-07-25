@@ -8,15 +8,18 @@ const efforts = (input: Parameters<typeof getRuntimeAwareModelCapabilities>[0]) 
 
 describe("getRuntimeAwareModelCapabilities for Claude", () => {
   it("gives a model outside the built-in table the discovered ladder", () => {
-    // claude-opus-5 ships in the cloud catalog but not in this build's table,
-    // so without this it reaches the trait picker with no effort options at all.
+    // A model the cloud catalog ships before this build's table knows it, which
+    // without this reaches the trait picker with no effort options at all. The
+    // slug has to be one the table still has no ladder for — the moment it gains
+    // one, `keepsCuratedClaudeEfforts` takes over and this stops testing
+    // discovery at all (which is what retired the original claude-opus-5 here).
     expect(
       efforts({
         provider: "claudeAgent",
-        model: "claude-opus-5",
+        model: "claude-opus-6",
         runtimeModel: {
-          slug: "claude-opus-5",
-          name: "Claude Opus 5",
+          slug: "claude-opus-6",
+          name: "Claude Opus 6",
           supportedReasoningEfforts: [
             { value: "low" },
             { value: "medium" },
