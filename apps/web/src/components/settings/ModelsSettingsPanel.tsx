@@ -8,7 +8,7 @@ import {
   type ProviderKind,
 } from "@synara/contracts";
 import { getModelOptions, normalizeModelSlug } from "@synara/shared/model";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 import {
@@ -24,6 +24,7 @@ import {
 import { useProviderModelCatalog } from "~/hooks/useProviderModelCatalog";
 import { PlusIcon, XIcon } from "~/lib/icons";
 import { resolveProviderDiscoveryCwd } from "~/lib/providerDiscovery";
+import { refreshCloudModelCatalog } from "~/lib/providerDiscoveryReactQuery";
 import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { cn } from "~/lib/utils";
 import {
@@ -36,6 +37,7 @@ import { DisclosureRegion } from "../ui/DisclosureRegion";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { toastManager } from "../ui/toast";
 import {
   SettingResetButton,
   SettingsSelectControl,
@@ -80,6 +82,7 @@ export function ModelsSettingsPanel({
   active,
 }: AppSettingsBinding & { readonly resetEpoch: number; readonly active: boolean }) {
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
+  const queryClient = useQueryClient();
   const [selectedCustomModelProvider, setSelectedCustomModelProvider] =
     useState<ProviderKind>("codex");
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
@@ -270,10 +273,54 @@ export function ModelsSettingsPanel({
     });
   };
 
+  // A silent refresh is indistinguishable from a broken button, so both outcomes
+  // are reported — including "reached the server but the catalog was empty",
+  // which means models.dev is unreachable and only built-in models are on offer.
+  const refreshCatalogMutation = useMutation({
+    mutationFn: () => refreshCloudModelCatalog(queryClient),
+    onSuccess: (modelCount) =>
+      toastManager.add(
+        modelCount > 0
+          ? {
+              type: "success",
+              title: "Model catalog refreshed",
+              description: `${modelCount} cloud ${modelCount === 1 ? "model is" : "models are"} available.`,
+            }
+          : {
+              type: "warning",
+              title: "Model catalog is unavailable",
+              description: "models.dev could not be reached. Built-in models are still available.",
+            },
+      ),
+    onError: (error: unknown) =>
+      toastManager.add({
+        type: "error",
+        title: "Could not refresh the model catalog",
+        description: error instanceof Error ? error.message : "The refresh request failed.",
+      }),
+  });
+
   if (!active) return null;
 
   return (
     <div className="space-y-6">
+      <SettingsSection title="Model catalog">
+        <SettingsRow
+          title="Cloud model catalog"
+          description="Synara reads the public models.dev catalog so newly released models show up without waiting for an update. Refresh to pull it again right now."
+          control={
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={refreshCatalogMutation.isPending}
+              onClick={() => refreshCatalogMutation.mutate()}
+            >
+              {refreshCatalogMutation.isPending ? "Refreshing..." : "Refresh"}
+            </Button>
+          }
+        />
+      </SettingsSection>
+
       <SettingsSection title="Generation defaults">
         <SettingsRow
           title="Git writing model"

@@ -208,9 +208,16 @@ async function requestCatalog(): Promise<CachedCatalog | null> {
  */
 export async function fetchCloudModelCatalog(options?: {
   readonly nowMs?: number;
+  /**
+   * Skip the TTL shortcut, for an explicit "refresh now" from the user. It still
+   * joins a fetch already in flight — that fetch is itself a live network read,
+   * so sharing it costs nothing and keeps a double-click from becoming two
+   * requests. What `force` must never do is answer from `cached`.
+   */
+  readonly force?: boolean;
 }): Promise<Readonly<Partial<Record<ProviderKind, readonly CloudModelDescriptor[]>>>> {
   const nowMs = options?.nowMs ?? Date.now();
-  if (cached && nowMs - cached.fetchedAtMs < CATALOG_TTL_MS) {
+  if (!options?.force && cached && nowMs - cached.fetchedAtMs < CATALOG_TTL_MS) {
     return cached.modelsByProvider;
   }
 

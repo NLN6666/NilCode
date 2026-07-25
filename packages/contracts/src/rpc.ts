@@ -22,6 +22,7 @@ import {
   AutomationStreamEvent,
   AutomationUpdateInput,
 } from "./automation";
+import { AgentMcpCatalog, AgentMcpSetEnabledInput, AgentMcpSourceView } from "./agentMcp";
 import { OpenInEditorInput } from "./editor";
 import {
   ExternalMcpCreateIntegrationInput,
@@ -730,6 +731,23 @@ export const WsServerRefreshExternalMcpPairingRpc = Rpc.make(
   },
 );
 
+export const WsServerListAgentMcpServersRpc = Rpc.make(WS_METHODS.serverListAgentMcpServers, {
+  payload: Schema.Struct({}),
+  success: AgentMcpCatalog,
+  error: WsRpcError,
+});
+
+// Resolves with the edited provider's refreshed view only, so the client replaces one group
+// instead of discarding the other provider's state on every toggle.
+export const WsServerSetAgentMcpServerEnabledRpc = Rpc.make(
+  WS_METHODS.serverSetAgentMcpServerEnabled,
+  {
+    payload: AgentMcpSetEnabledInput,
+    success: AgentMcpSourceView,
+    error: WsRpcError,
+  },
+);
+
 export const WsServerListWorktreesRpc = Rpc.make(WS_METHODS.serverListWorktrees, {
   payload: Schema.Struct({}),
   success: ServerListWorktreesResult,
@@ -1049,6 +1067,8 @@ export const WsFeatureRpcGroup = RpcGroup.make(
   WsServerCreateExternalMcpIntegrationRpc,
   WsServerRevokeExternalMcpIntegrationRpc,
   WsServerRefreshExternalMcpPairingRpc,
+  WsServerListAgentMcpServersRpc,
+  WsServerSetAgentMcpServerEnabledRpc,
   WsServerListWorktreesRpc,
   WsServerListLocalServersRpc,
   WsServerStopLocalServerRpc,

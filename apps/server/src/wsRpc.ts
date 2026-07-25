@@ -90,6 +90,7 @@ import { ProfileStatsQuery } from "./profileStats";
 import { redactSensitiveProcessArgs } from "./processArgumentRedaction";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment";
 import { ExternalMcpService } from "./externalMcp/Services/ExternalMcpService";
+import { AgentMcpService } from "./agentMcp/Services/AgentMcpService";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup";
 import { ServerSettingsService } from "./serverSettings";
@@ -301,6 +302,7 @@ const makeWsRpcHandlersLayer = () =>
       const devServerManager = yield* DevServerManager;
       const fileSystem = yield* FileSystem.FileSystem;
       const externalMcp = yield* ExternalMcpService;
+      const agentMcp = yield* AgentMcpService;
       const git = yield* GitCore;
       const gitManager = yield* GitManager;
       const gitStatusBroadcaster = yield* GitStatusBroadcaster;
@@ -1338,6 +1340,18 @@ const makeWsRpcHandlersLayer = () =>
             requireOwner.pipe(Effect.andThen(externalMcp.refreshPairing(input))),
             "Failed to refresh external MCP pairing",
           ),
+        // Owner-only on both sides: listing exposes the shape of this machine's agent
+        // configuration, and toggling rewrites a file in the user's home directory.
+        [WS_METHODS.serverListAgentMcpServers]: () =>
+          rpcEffect(
+            requireOwner.pipe(Effect.andThen(agentMcp.listServers())),
+            "Failed to list agent MCP servers",
+          ),
+        [WS_METHODS.serverSetAgentMcpServerEnabled]: (input) =>
+          rpcEffect(
+            requireOwner.pipe(Effect.andThen(agentMcp.setServerEnabled(input))),
+            "Failed to update the agent MCP server",
+          ),
         [WS_METHODS.serverListWorktrees]: () =>
           rpcEffect(
             pruneManagedWorktrees.pipe(Effect.map((worktrees) => ({ worktrees }))),
@@ -1604,9 +1618,9 @@ const makeWsRpcHandlersLayer = () =>
           rpcEffect(providerDiscoveryService.listAgents(input), "Failed to list agents"),
         // Never fails: the catalog resolves to an empty roster when unreachable
         // and the client falls back to the built-in model table.
-        [WS_METHODS.providerListCloudModels]: ({ provider }) =>
+        [WS_METHODS.providerListCloudModels]: ({ provider, refresh }) =>
           Effect.promise(async () => ({
-            models: (await fetchCloudModelCatalog())[provider] ?? [],
+            models: (await fetchCloudModelCatalog({ force: refresh === true }))[provider] ?? [],
           })),
         [WS_METHODS.automationList]: (input) =>
           rpcEffect(automationService.list(input), "Failed to list automations"),

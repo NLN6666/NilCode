@@ -9,6 +9,7 @@ export * from "./providerRuntime";
 export * from "./model";
 export * from "./agentMentions";
 export * from "./agentGateway";
+export * from "./agentMcp";
 export * from "./externalMcp";
 export * from "./ws";
 export * from "./wsCompatibility";

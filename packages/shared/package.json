@@ -207,6 +207,10 @@
     "./threadMentions": {
       "types": "./src/threadMentions.ts",
       "import": "./src/threadMentions.ts"
+    },
+    "./mcp/redact": {
+      "types": "./src/mcp/redact.ts",
+      "import": "./src/mcp/redact.ts"
     }
   },
   "scripts": {

@@ -9,7 +9,7 @@ import type {
   ProviderListSkillsResult,
   ProviderSkillsCatalogResult,
 } from "@synara/contracts";
-import { queryOptions } from "@tanstack/react-query";
+import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { ensureNativeApi } from "~/nativeApi";
 
 const EMPTY_SKILLS_RESULT: ProviderListSkillsResult = {
@@ -81,11 +81,19 @@ export const providerDiscoveryQueryKeys = {
     ["provider-discovery", "agents", provider] as const,
   agents: (provider: ProviderKind, binaryPath: string | null, cwd: string | null) =>
     [...providerDiscoveryQueryKeys.agentsForProvider(provider), binaryPath, cwd] as const,
+  cloudModelsAll: () => ["provider-discovery", "cloud-models"] as const,
   // The cloud catalog is machine- and workspace-independent, so the key carries
   // only the provider: every surface shares one fetch per provider.
   cloudModels: (provider: ProviderKind) =>
-    ["provider-discovery", "cloud-models", provider] as const,
+    [...providerDiscoveryQueryKeys.cloudModelsAll(), provider] as const,
 };
+
+/**
+ * Provider used to drive a forced catalog fetch. Any provider Synara maps into
+ * the upstream catalog works — the server memoizes one catalog for all of them,
+ * so a single call is what invalidates the whole thing.
+ */
+const CLOUD_CATALOG_REFRESH_PROBE: ProviderKind = "codex";
 
 /**
  * Models published by the public cloud catalog for `provider`.
@@ -105,6 +113,35 @@ export function providerCloudModelsQueryOptions(provider: ProviderKind) {
     staleTime: 24 * 60 * 60 * 1000,
     retry: false,
   });
+}
+
+/**
+ * Pulls the cloud catalog again on the user's command and returns how many
+ * models are on offer afterwards.
+ *
+ * Two caches sit between the button and models.dev, and clearing either alone
+ * reads as a button that does nothing: the server memoizes the catalog for six
+ * hours, and every client query marks it fresh for a day. One `refresh` call
+ * clears the server's (its cache is global, not per provider); invalidating the
+ * cloud-model keys then makes every mounted surface re-read it.
+ */
+export async function refreshCloudModelCatalog(queryClient: QueryClient): Promise<number> {
+  const api = ensureNativeApi();
+  const forced = await api.provider.listCloudModels({
+    provider: CLOUD_CATALOG_REFRESH_PROBE,
+    refresh: true,
+  });
+  await queryClient.invalidateQueries({
+    queryKey: providerDiscoveryQueryKeys.cloudModelsAll(),
+  });
+
+  const total = queryClient
+    .getQueriesData<ProviderListCloudModelsResult>({
+      queryKey: providerDiscoveryQueryKeys.cloudModelsAll(),
+    })
+    .reduce((sum, [, result]) => sum + (result?.models.length ?? 0), 0);
+  // Nothing was mounted to refetch, so the probe's own roster is all we know.
+  return total > 0 ? total : forced.models.length;
 }
 
 export function providerComposerCapabilitiesQueryOptions(provider: ProviderKind) {

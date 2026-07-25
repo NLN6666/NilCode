@@ -1,6 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { projectCloudModelCatalog } from "./cloudModelCatalog.ts";
+import { decodeOutboundJson, outboundHttp } from "@synara/shared/outboundHttp";
+
+import {
+  clearCloudModelCatalogCacheForTests,
+  fetchCloudModelCatalog,
+  projectCloudModelCatalog,
+} from "./cloudModelCatalog.ts";
+
+vi.mock("@synara/shared/outboundHttp", () => ({
+  outboundHttp: { request: vi.fn() },
+  decodeOutboundJson: vi.fn(),
+}));
+
+const requestMock = vi.mocked(outboundHttp.request);
+const decodeMock = vi.mocked(decodeOutboundJson);
 
 function model(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -117,5 +131,87 @@ describe("projectCloudModelCatalog", () => {
     });
 
     expect(projected.codex?.[0]).not.toHaveProperty("contextWindowTokens");
+  });
+});
+
+function catalogPayload(...slugs: readonly string[]): Record<string, unknown> {
+  return {
+    openai: {
+      models: Object.fromEntries(slugs.map((slug) => [slug, model({ id: slug, name: slug })])),
+    },
+  };
+}
+
+/** Makes the next upstream read succeed with `payload`, or fail when omitted. */
+function nextResponse(payload?: Record<string, unknown>): void {
+  if (!payload) {
+    requestMock.mockRejectedValueOnce(new Error("network down"));
+    return;
+  }
+  requestMock.mockResolvedValueOnce({ status: 200 } as never);
+  decodeMock.mockReturnValueOnce(payload);
+}
+
+describe("fetchCloudModelCatalog", () => {
+  beforeEach(() => {
+    clearCloudModelCatalogCacheForTests();
+    requestMock.mockReset();
+    decodeMock.mockReset();
+  });
+
+  it("answers a second read from the cache instead of re-fetching", async () => {
+    nextResponse(catalogPayload("gpt-5.6-sol"));
+
+    const first = await fetchCloudModelCatalog();
+    const second = await fetchCloudModelCatalog();
+
+    expect(first.codex?.map((entry) => entry.slug)).toEqual(["gpt-5.6-sol"]);
+    expect(second).toEqual(first);
+    expect(requestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-fetches inside the TTL when forced", async () => {
+    nextResponse(catalogPayload("gpt-5.6-sol"));
+    await fetchCloudModelCatalog();
+    nextResponse(catalogPayload("gpt-5.6-sol", "gpt-6"));
+
+    const refreshed = await fetchCloudModelCatalog({ force: true });
+
+    expect(requestMock).toHaveBeenCalledTimes(2);
+    expect(refreshed.codex?.map((entry) => entry.slug)).toEqual(["gpt-5.6-sol", "gpt-6"]);
+  });
+
+  it("keeps the previous catalog when a forced refresh fails", async () => {
+    nextResponse(catalogPayload("gpt-5.6-sol"));
+    const before = await fetchCloudModelCatalog();
+    nextResponse();
+
+    const afterFailure = await fetchCloudModelCatalog({ force: true });
+
+    expect(afterFailure).toEqual(before);
+    // The cached copy also survives for the next ordinary read.
+    expect(await fetchCloudModelCatalog()).toEqual(before);
+    expect(requestMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the previous catalog when a forced refresh returns an unusable shape", async () => {
+    nextResponse(catalogPayload("gpt-5.6-sol"));
+    const before = await fetchCloudModelCatalog();
+    // An empty projection means the upstream shape changed; it must not evict.
+    nextResponse({ openai: { models: {} } });
+
+    expect(await fetchCloudModelCatalog({ force: true })).toEqual(before);
+  });
+
+  it("still honours the TTL for ordinary reads after a forced refresh", async () => {
+    nextResponse(catalogPayload("gpt-5.6-sol"));
+    await fetchCloudModelCatalog();
+    nextResponse(catalogPayload("gpt-6"));
+    await fetchCloudModelCatalog({ force: true });
+
+    const ordinary = await fetchCloudModelCatalog();
+
+    expect(ordinary.codex?.map((entry) => entry.slug)).toEqual(["gpt-6"]);
+    expect(requestMock).toHaveBeenCalledTimes(2);
   });
 });

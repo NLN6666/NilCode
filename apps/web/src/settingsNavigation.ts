@@ -17,6 +17,7 @@ export const SETTINGS_SECTION_IDS = [
   "providers",
   "skills",
   "usage",
+  "mcpServers",
   "integrations",
   "advanced",
 ] as const;
@@ -156,6 +157,17 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
     description: "Remaining quota and credits for each signed-in provider.",
     icon: "gauge",
     eyebrow: "Limits & credits",
+  },
+  // Sits immediately before Integrations so the two MCP pages are neighbours. The icon is
+  // deliberately not `plugin-1` (Integrations owns that) — the pages point in opposite
+  // directions and must be distinguishable at a glance.
+  {
+    id: "mcpServers",
+    group: "synara",
+    label: "MCP Servers",
+    description: "Enable or disable the MCP servers your Codex and Claude agents use.",
+    icon: "api-connection",
+    eyebrow: "Agent tooling",
   },
   {
     id: "integrations",

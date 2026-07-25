@@ -305,6 +305,11 @@ export type CloudModelDescriptor = typeof CloudModelDescriptor.Type;
 
 export const ProviderListCloudModelsInput = Schema.Struct({
   provider: ProviderDiscoveryKind,
+  /**
+   * Re-fetch the upstream catalog instead of answering from the server's cache.
+   * Omitted means "normal read" — only an explicit user action should reach out.
+   */
+  refresh: Schema.optional(Schema.Boolean),
 });
 export type ProviderListCloudModelsInput = typeof ProviderListCloudModelsInput.Type;
 

@@ -40,6 +40,7 @@ import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResol
 import { ExternalMcpRepositoryLive } from "./externalMcp/Layers/ExternalMcpRepository";
 import { ExternalMcpServiceLive } from "./externalMcp/Layers/ExternalMcpService";
 import { ExternalMcpGatewayLive } from "./externalMcp/Layers/ExternalMcpGateway";
+import { AgentMcpServiceLive } from "./agentMcp/Layers/AgentMcpService";
 import { ServerEnvironmentLive } from "./environment/Layers/ServerEnvironment";
 import { AutomationRepositoryLive } from "./persistence/Layers/AutomationRepository";
 import { ProjectPullRequestPinsLive } from "./persistence/Layers/ProjectPullRequestPins";
@@ -193,6 +194,7 @@ export function makeServerRuntimeServicesLayer(
     ExternalMcpRepositoryLive,
     externalMcpServiceLayer,
     externalMcpGatewayLayer,
+    AgentMcpServiceLive,
     providerHealthLayer,
     ProjectPullRequestPinsLive,
     pullRequestServiceLayer,
