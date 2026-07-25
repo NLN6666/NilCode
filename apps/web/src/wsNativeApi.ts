@@ -889,6 +889,30 @@ export function createWsNativeApi(): NativeApi {
         }
         return () => {};
       },
+      // Element picking needs the native CDP overlay, so the browser-only fallback is a
+      // no-op rather than a simulated pick.
+      startElementPick: async (input) => {
+        if (window.desktopBridge) {
+          await window.desktopBridge.browser.startElementPick(input);
+        }
+      },
+      cancelElementPick: async (input) => {
+        if (window.desktopBridge) {
+          await window.desktopBridge.browser.cancelElementPick(input);
+        }
+      },
+      onElementPicked: (callback) => {
+        if (window.desktopBridge) {
+          return window.desktopBridge.browser.onElementPicked(callback);
+        }
+        return () => {};
+      },
+      onElementPickCancelled: (callback) => {
+        if (window.desktopBridge) {
+          return window.desktopBridge.browser.onElementPickCancelled(callback);
+        }
+        return () => {};
+      },
     },
   };
 

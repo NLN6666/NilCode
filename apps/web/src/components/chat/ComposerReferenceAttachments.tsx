@@ -1,17 +1,19 @@
 // FILE: ComposerReferenceAttachments.tsx
-// Purpose: Render assistant-selection, file-comment, pasted-text, file, and image
-//   composer attachments in one reusable row.
+// Purpose: Render assistant-selection, file-comment, browser-element, pasted-text, file,
+//   and image composer attachments in one reusable row.
 // Layer: Chat composer presentation
 
 import {
   type ComposerFileAttachment,
   type ComposerImageAttachment,
 } from "../../composerDraftStore";
+import { type BrowserElementDraft } from "../../lib/browserElementContext";
 import { type PastedTextDraft } from "../../lib/composerPastedText";
 import { type FileCommentDraft } from "../../lib/fileComments";
 import { type ChatAssistantSelectionAttachment } from "../../types";
 import { type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { AssistantSelectionsSummaryChip } from "./AssistantSelectionsSummaryChip";
+import { ComposerBrowserElementChips } from "./ComposerBrowserElementChips";
 import { ComposerImageAttachmentChip } from "./ComposerImageAttachmentChip";
 import { FileAttachmentChip } from "./FileAttachmentChip";
 import { ComposerPastedTextCard } from "./PastedTextChip";
@@ -20,6 +22,7 @@ import { FileCommentsSummaryChip } from "./FileCommentsSummaryChip";
 interface ComposerReferenceAttachmentsProps {
   assistantSelections: ReadonlyArray<ChatAssistantSelectionAttachment>;
   fileComments: ReadonlyArray<FileCommentDraft>;
+  browserElements?: ReadonlyArray<BrowserElementDraft>;
   pastedTexts?: ReadonlyArray<PastedTextDraft>;
   files: ReadonlyArray<ComposerFileAttachment>;
   images: ReadonlyArray<ComposerImageAttachment>;
@@ -27,15 +30,19 @@ interface ComposerReferenceAttachmentsProps {
   onExpandImage: (preview: ExpandedImagePreview) => void;
   onRemoveAssistantSelections: () => void;
   onRemoveFileComments: () => void;
+  onRemoveBrowserElement?: (elementId: string) => void;
   onRemovePastedText?: (pastedTextId: string) => void;
   onShowPastedTextInField?: (pastedTextId: string) => void;
   onRemoveFile: (fileId: string) => void;
   onRemoveImage: (imageId: string) => void;
 }
 
+const NO_BROWSER_ELEMENTS: ReadonlyArray<BrowserElementDraft> = [];
+
 export function ComposerReferenceAttachments({
   assistantSelections,
   fileComments,
+  browserElements = NO_BROWSER_ELEMENTS,
   pastedTexts = [],
   files,
   images,
@@ -43,6 +50,7 @@ export function ComposerReferenceAttachments({
   onExpandImage,
   onRemoveAssistantSelections,
   onRemoveFileComments,
+  onRemoveBrowserElement,
   onRemovePastedText,
   onShowPastedTextInField,
   onRemoveFile,
@@ -51,6 +59,7 @@ export function ComposerReferenceAttachments({
   if (
     assistantSelections.length === 0 &&
     fileComments.length === 0 &&
+    browserElements.length === 0 &&
     pastedTexts.length === 0 &&
     files.length === 0 &&
     images.length === 0
@@ -67,6 +76,10 @@ export function ComposerReferenceAttachments({
       <FileCommentsSummaryChip
         comments={fileComments}
         onRemove={fileComments.length > 0 ? onRemoveFileComments : undefined}
+      />
+      <ComposerBrowserElementChips
+        elements={browserElements}
+        onRemove={onRemoveBrowserElement ?? (() => {})}
       />
       {pastedTexts.map((pasted) => (
         <ComposerPastedTextCard

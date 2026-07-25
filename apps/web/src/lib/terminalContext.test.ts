@@ -211,6 +211,7 @@ describe("terminalContext", () => {
       ],
       assistantSelections: [],
       fileComments: [],
+      browserElements: [],
       pastedTexts: [],
     });
   });
@@ -230,6 +231,7 @@ describe("terminalContext", () => {
       contexts: [],
       assistantSelections: [{ assistantMessageId: "msg-1", text: "selected line" }],
       fileComments: [],
+      browserElements: [],
       pastedTexts: [],
     });
   });
@@ -258,6 +260,7 @@ describe("terminalContext", () => {
       ],
       assistantSelections: [{ assistantMessageId: "msg-1", text: "selected line" }],
       fileComments: [],
+      browserElements: [],
       pastedTexts: [],
     });
   });
@@ -288,6 +291,7 @@ describe("terminalContext", () => {
       ],
       assistantSelections: [{ assistantMessageId: "msg-1", text: "selected line" }],
       fileComments: [{ path: "src/app.ts", startLine: 3, endLine: 5, text: "rename this helper" }],
+      browserElements: [],
       pastedTexts: [],
     });
   });
@@ -314,6 +318,7 @@ describe("terminalContext", () => {
       contexts: [],
       assistantSelections: [],
       fileComments: [],
+      browserElements: [],
       pastedTexts: [],
     });
   });

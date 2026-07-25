@@ -67,6 +67,10 @@ export const DESKTOP_IPC_CHANNELS = {
     closeTab: "desktop:browser-close-tab",
     selectTab: "desktop:browser-select-tab",
     openDevTools: "desktop:browser-open-devtools",
+    startElementPick: "desktop:browser-start-element-pick",
+    cancelElementPick: "desktop:browser-cancel-element-pick",
+    elementPicked: "desktop:browser-element-picked",
+    elementPickCancelled: "desktop:browser-element-pick-cancelled",
   },
 } as const;
 

@@ -303,39 +303,98 @@ export function resolveNextInteractionMode(current, action): BrowserPanelInterac
 
 **新文件 `apps/web/src/lib/browserAnnotation.ts`（纯逻辑）**
 
+五种工具：**画笔 / 矩形 / 箭头 / 文字 / 马赛克**。用可辨识联合建模，不要用「一个 stroke 结构塞所有工具」的宽松形状 —— 文字没有 points，马赛克没有 color，硬塞会产生一堆永远为空的字段。
+
 ```ts
-export type AnnotationTool = "pen" | "rect" | "arrow";
+export type AnnotationTool = "pen" | "rect" | "arrow" | "text" | "mosaic";
 export interface AnnotationPoint { x: number; y: number }
-export interface AnnotationStroke {
-  id: string;
-  tool: AnnotationTool;
-  color: string;
-  lineWidth: number;
-  points: AnnotationPoint[];   // pen 为全路径；rect/arrow 只有起止两点
+
+interface AnnotationItemBase { id: string }
+
+export interface AnnotationPenItem extends AnnotationItemBase {
+  tool: "pen"; color: string; lineWidth: number; points: AnnotationPoint[];
+}
+export interface AnnotationRectItem extends AnnotationItemBase {
+  tool: "rect"; color: string; lineWidth: number; start: AnnotationPoint; end: AnnotationPoint;
+}
+export interface AnnotationArrowItem extends AnnotationItemBase {
+  tool: "arrow"; color: string; lineWidth: number; start: AnnotationPoint; end: AnnotationPoint;
+}
+export interface AnnotationTextItem extends AnnotationItemBase {
+  tool: "text"; color: string; fontSize: number; text: string; at: AnnotationPoint;
+}
+export interface AnnotationMosaicItem extends AnnotationItemBase {
+  tool: "mosaic"; blockSize: number; start: AnnotationPoint; end: AnnotationPoint;
 }
 
-export function appendStrokePoint(stroke: AnnotationStroke, point: AnnotationPoint): AnnotationStroke;
-export function undoLastStroke(strokes: readonly AnnotationStroke[]): AnnotationStroke[];
-export function hasVisibleStrokes(strokes: readonly AnnotationStroke[]): boolean;
-export function drawStrokes(ctx: CanvasRenderingContext2D, strokes: readonly AnnotationStroke[]): void;
+export type AnnotationItem =
+  | AnnotationPenItem | AnnotationRectItem | AnnotationArrowItem
+  | AnnotationTextItem | AnnotationMosaicItem;
+
+export const ANNOTATION_TEXT_MAX_CHARS = 120;
+export const ANNOTATION_MOSAIC_BLOCK_SIZE = 12;
+
+export function appendPenPoint(item: AnnotationPenItem, point: AnnotationPoint): AnnotationPenItem;
+export function normalizeRect(a: AnnotationPoint, b: AnnotationPoint): {
+  x: number; y: number; width: number; height: number;
+};
+
+// —— 撤销/重做历史：经典 past/present/future 快照模型 ——
+export const ANNOTATION_HISTORY_MAX_DEPTH = 50;
+
+export interface AnnotationHistory {
+  past: readonly (readonly AnnotationItem[])[];
+  present: readonly AnnotationItem[];
+  future: readonly (readonly AnnotationItem[])[];
+}
+
+export function createAnnotationHistory(): AnnotationHistory;
+export function commitAnnotationItem(h: AnnotationHistory, item: AnnotationItem): AnnotationHistory;
+export function clearAnnotations(h: AnnotationHistory): AnnotationHistory;
+export function undoAnnotation(h: AnnotationHistory): AnnotationHistory;
+export function redoAnnotation(h: AnnotationHistory): AnnotationHistory;
+export function canUndoAnnotation(h: AnnotationHistory): boolean;
+export function canRedoAnnotation(h: AnnotationHistory): boolean;
+export function hasVisibleItems(h: AnnotationHistory): boolean;
+// 单一渲染函数：底图 + 全部标注，按插入顺序绘制
+export function renderAnnotationScene(
+  ctx: CanvasRenderingContext2D,
+  base: CanvasImageSource,
+  items: readonly AnnotationItem[],
+): void;
 export async function renderAnnotatedImage(
   base: ImageBitmap,
-  strokes: readonly AnnotationStroke[],
+  items: readonly AnnotationItem[],
 ): Promise<Blob>;
 ```
 
-全部不可变操作，返回新数组/新对象。`renderAnnotatedImage` 用离屏 canvas 合成，输出 PNG Blob。
+全部不可变操作，返回新数组/新对象。
 
-配套 `browserAnnotation.test.ts`：笔画增删、pen 去抖后点数、`drawStrokes` 对一个 mock ctx 的调用序列断言（不需要真实 canvas）。
+**架构要点：只用一个 canvas，底图也画进 canvas，不要用「`<img>` 底图 + 透明 canvas 覆盖」的双层结构。** 原因有二：马赛克必须能采样底层像素，双层结构下 canvas 读不到 `<img>` 的像素；而且单层结构让实时预览和最终导出走**同一个** `renderAnnotationScene`，预览所见即导出所得，从根上消除两者不一致的整类 bug。
+
+各工具渲染规则：
+- `pen`：`quadraticCurveTo` 平滑路径，`lineCap`/`lineJoin` 用 `round`。
+- `rect`：`normalizeRect` 后 `strokeRect`，要支持反向拖拽（从右下往左上拉）。
+- `arrow`：主线段 + 箭头两条短边，箭头大小随 `lineWidth` 缩放。
+- `text`：`fillText`，加一圈同色描边或半透明底衬，保证在浅色和深色页面上都可读。
+- `mosaic`：把目标区域按 `blockSize` 缩小后再放大回去（`imageSmoothingEnabled = false`），采样源是**当前 canvas 内容**而非原始底图 —— 这样先画的标注被马赛克盖住时也会一起被打码，符合直觉。
+
+**马赛克的安全语义（必须落实）**：马赛克是用来遮蔽敏感信息的，绝不能只做视觉障眼法。展平后的 PNG 必须是**唯一**离开覆盖层的产物 —— 原始截图 Blob 和 `ImageBitmap` 在确认后立即释放（`bitmap.close()`），任何情况下都不得把未打码的原图单独加入草稿或附件。
+
+配套 `browserAnnotation.test.ts`：五种工具各自的增删；pen 追加点的不可变性；`normalizeRect` 的反向拖拽；文字超长截断；空文字项被丢弃；`renderAnnotationScene` 对 mock ctx 的调用序列断言（不需要真实 canvas，mosaic 断言 `imageSmoothingEnabled` 被置 false 且用后复原）。
 
 **新文件 `apps/web/src/components/browser/BrowserAnnotationOverlay.tsx`**
 
 - props：`imageBitmap`、`onCancel`、`onConfirm(blob)`。
-- 布局：底图 `object-contain` 铺满，`<canvas>` 绝对覆盖同尺寸，工具条浮在底部。
-- 工具条：画笔/矩形/箭头切换、3–4 个预设颜色、撤销、清除、取消、「添加到对话」。
-- 指针事件：`pointerdown/move/up` + `setPointerCapture`；坐标要按 canvas 显示尺寸与位图尺寸的比例换算，否则高 DPI 下会错位。
-- 键盘：Esc 取消，Ctrl/Cmd+Z 撤销。
-- 无笔画时「添加到对话」禁用。
+- 布局：单个 `<canvas>` 按 `object-contain` 等比铺满，工具条浮在底部。
+- 工具条：五种工具切换、3–4 个预设颜色（文字与画笔共用）、撤销、清除、取消、「添加到对话」。马赛克不需要颜色选择，切到马赛克时颜色区置灰。
+- 指针事件：`pointerdown/move/up` + `setPointerCapture`；坐标必须按 canvas 显示尺寸与位图尺寸的比例换算，否则高 DPI 下会错位。
+- **拖拽中的项不进历史**：拖拽过程用一个独立的 `draftItem` 状态承载，渲染时按 `[...history.present, ...(draftItem ? [draftItem] : [])]` 合成；只在 `pointerup` 时 `commitAnnotationItem` 一次。若每个 `pointermove` 都提交历史，一笔画会产生上百条历史记录，撤销功能直接报废。
+- **文字工具交互**：点击落点 → 在该位置浮出一个受控 `<input>` → Enter 或失焦提交 → 空内容则丢弃该项，不留空 item。输入态下 Esc 只取消当前这次输入，不影响已有标注。
+- **撤销/重做**：工具条上必须有独立的「撤销」「重做」按钮，禁用态由 `canUndoAnnotation` / `canRedoAnnotation` 驱动。快捷键：撤销 `Ctrl/Cmd+Z`；重做 `Ctrl/Cmd+U` 与 `Ctrl/Cmd+Shift+Z` 两个都要绑（前者是本项目指定键位，后者是跨平台通用约定，用户两种习惯都能命中）。「清除」走同一套历史，因此**清除也可撤销**。
+- **退出必须点按钮**：Esc **不关闭**标注覆盖层。用户可能已经画了很久，一次误触 Esc 就全丢。只有工具条上的「取消」和「添加到对话」两个按钮能关闭覆盖层；「取消」在已有标注时需二次确认。这条是刻意偏离常规模态框惯例的，实现时不要"顺手"把 Esc 关闭加回去。
+- 无标注项时「添加到对话」禁用。
+- 工具按钮要有 `aria-label` + `title`，当前选中态用 `aria-pressed` 表达。
 
 **`BrowserPanel.tsx` 接线**
 
