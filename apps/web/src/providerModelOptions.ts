@@ -493,12 +493,29 @@ function claudeFamilyRank(slug: string): number {
   return rank === -1 ? CLAUDE_FAMILY_ORDER.length : rank;
 }
 
+// Codex ships several models per version that share a version number and differ
+// only by a trailing name. Alphabetical order puts them in an order nobody
+// wants (luna, sol, terra), so rank them by capability the way Claude families
+// are ranked. `pro` sits above the plain alias for the same reason.
+const CODEX_VARIANT_ORDER = ["sol", "terra", "luna", "pro"] as const;
+
+function codexVariantRank(slug: string): number {
+  const variant = /-([a-z]+)$/.exec(slug.toLowerCase())?.[1];
+  const rank = variant
+    ? CODEX_VARIANT_ORDER.indexOf(variant as (typeof CODEX_VARIANT_ORDER)[number])
+    : -1;
+  // Both the plain alias (`gpt-5.6`) and any variant released after this list
+  // was written land here, behind everything named — then sort by slug.
+  return rank === -1 ? CODEX_VARIANT_ORDER.length : rank;
+}
+
 /** Numeric segments of a slug, e.g. `claude-opus-4-8` → [4, 8], `gpt-5.6` → [5, 6]. */
 function versionSegments(slug: string): readonly number[] {
   return (slug.match(/\d+/g) ?? []).map(Number);
 }
 
-function compareVersionsDescending(a: string, b: string): number {
+/** Version order alone, so callers can insert their own tiebreaker before the slug compare. */
+function compareVersionSegments(a: string, b: string): number {
   const left = versionSegments(a);
   const right = versionSegments(b);
   for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
@@ -510,11 +527,18 @@ function compareVersionsDescending(a: string, b: string): number {
     if (r === undefined) return 1;
     if (l !== r) return r - l;
   }
-  return a.localeCompare(b);
+  return 0;
+}
+
+function compareVersionsDescending(a: string, b: string): number {
+  const versionDelta = compareVersionSegments(a, b);
+  return versionDelta !== 0 ? versionDelta : a.localeCompare(b);
 }
 
 /**
- * Orders a provider's models by family tier, then newest version first.
+ * Orders a provider's models by family tier, then newest version first. Codex
+ * inverts that pairing — its version leads and the variant name breaks the tie,
+ * because a 5.6 model outranks a 5.5 one whatever it is called.
  *
  * Applied only to providers with a cloud catalog: their lists are a union of
  * sources (built-in table, catalog, CLI) whose concatenation order is an
@@ -535,6 +559,12 @@ export function sortProviderModelOptions<T extends { slug: string; isCustom?: bo
     if (provider === "claudeAgent") {
       const rankDelta = claudeFamilyRank(a.slug) - claudeFamilyRank(b.slug);
       if (rankDelta !== 0) return rankDelta;
+    }
+    if (provider === "codex") {
+      const versionDelta = compareVersionSegments(a.slug, b.slug);
+      if (versionDelta !== 0) return versionDelta;
+      const variantDelta = codexVariantRank(a.slug) - codexVariantRank(b.slug);
+      if (variantDelta !== 0) return variantDelta;
     }
     return compareVersionsDescending(a.slug, b.slug);
   });

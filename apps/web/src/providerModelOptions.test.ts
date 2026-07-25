@@ -339,7 +339,34 @@ describe("sortProviderModelOptions", () => {
   it("orders codex newest first and keeps variants beside their base", () => {
     expect(
       slugs("codex", ["gpt-5.2", "gpt-5.6-sol", "gpt-5.4-mini", "gpt-5.6", "gpt-5.4"]),
-    ).toEqual(["gpt-5.6", "gpt-5.6-sol", "gpt-5.4", "gpt-5.4-mini", "gpt-5.2"]);
+    ).toEqual(["gpt-5.6-sol", "gpt-5.6", "gpt-5.4", "gpt-5.4-mini", "gpt-5.2"]);
+  });
+
+  it("ranks codex variants of one version by capability, not alphabetically", () => {
+    expect(
+      slugs("codex", ["gpt-5.6-luna", "gpt-5.6", "gpt-5.6-terra", "gpt-5.6-sol"]),
+    ).toEqual(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6"]);
+  });
+
+  it("keeps a codex version ahead of every variant of an older one", () => {
+    expect(slugs("codex", ["gpt-5.5-pro", "gpt-5.6-luna"])).toEqual([
+      "gpt-5.6-luna",
+      "gpt-5.5-pro",
+    ]);
+  });
+
+  it("puts a codex pro variant ahead of its plain alias", () => {
+    expect(slugs("codex", ["gpt-5.5", "gpt-5.5-pro"])).toEqual(["gpt-5.5-pro", "gpt-5.5"]);
+  });
+
+  // The suffix here is a stand-in for whatever ships after CODEX_VARIANT_ORDER was
+  // written, not a real model: an unlisted name must not outrank a listed one.
+  it("sorts an unrecognized codex variant with the plain alias rather than above it", () => {
+    expect(slugs("codex", ["gpt-5.6-unlisted", "gpt-5.6", "gpt-5.6-sol"])).toEqual([
+      "gpt-5.6-sol",
+      "gpt-5.6",
+      "gpt-5.6-unlisted",
+    ]);
   });
 
   it("keeps custom slugs last so the user's own entries stay put", () => {
