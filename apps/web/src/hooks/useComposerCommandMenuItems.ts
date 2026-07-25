@@ -8,6 +8,7 @@ import type {
   ProviderSkillDescriptor,
 } from "@synara/contracts";
 import { getAgentMentionAutocompleteAliases } from "@synara/contracts";
+import { agentMentionColor } from "~/lib/agentMentionCatalog";
 import {
   buildCommandSearchFields,
   buildPluginSearchFields,
@@ -296,7 +297,9 @@ export function useComposerCommandMenuItems(input: {
       type: "agent" as const,
       provider,
       alias: name,
-      color: "violet" as const,
+      // Same resolution the inline chip uses, so the glyph in this list is a
+      // preview of the token the user is about to insert.
+      color: agentMentionColor(name),
       group: source === "builtin" ? ("builtin" as const) : ("agent" as const),
       label: `@${name}`,
       description: description ?? (displayName === name ? "" : displayName),

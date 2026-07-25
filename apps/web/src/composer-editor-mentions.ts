@@ -15,7 +15,7 @@ import {
   normalizeComposerLinkUrl,
   trimTrailingLinkPunctuation,
 } from "./lib/linkChips";
-import { resolveAgentAlias } from "@synara/contracts";
+import { resolveComposerAgentMention } from "./lib/agentMentionCatalog";
 import type { ProviderMentionReference } from "@synara/contracts";
 import { threadIdFromThreadMentionPath } from "@synara/shared/threadMentions";
 
@@ -222,10 +222,11 @@ function collectInlineTokenMatches(
     // Skip if this falls inside a URL token
     if (isReserved(start)) continue;
 
-    // Try to resolve the alias
-    const resolved = resolveAgentAlias(alias);
+    // Only chip aliases that name a real agent — a discovered subagent or a
+    // static built-in. An unknown `@foo(...)` is left as ordinary text because
+    // that is exactly what the provider will do with it.
+    const resolved = resolveComposerAgentMention(alias);
     if (!resolved) {
-      // Not a valid agent alias, skip - will be handled as regular mention
       continue;
     }
 

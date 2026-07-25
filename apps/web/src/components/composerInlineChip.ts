@@ -8,6 +8,7 @@
 //          background + color variants; everything else composes from those.
 
 import { cn } from "~/lib/utils";
+import type { AgentMentionColor } from "~/lib/agentMentionCatalog";
 import {
   COMPOSER_EDITOR_LINE_HEIGHT_CLASS_NAME,
   COMPOSER_EDITOR_TEXT_CLASS_NAME,
@@ -120,7 +121,7 @@ export const DEFAULT_AGENT_CHIP_COLOR: AgentChipColor = {
   bg: "rgb(245 158 11 / 0.15)",
   text: "rgb(245 158 11)",
 };
-const AGENT_CHIP_COLOR_BY_NAME: Record<string, AgentChipColor> = {
+const AGENT_CHIP_COLOR_BY_NAME: Record<AgentMentionColor, AgentChipColor> = {
   violet: { bg: "rgb(139 92 246 / 0.15)", text: "rgb(139 92 246)" },
   fuchsia: { bg: "rgb(217 70 239 / 0.15)", text: "rgb(217 70 239)" },
   teal: { bg: "rgb(20 184 166 / 0.15)", text: "rgb(20 184 166)" },
@@ -128,8 +129,16 @@ const AGENT_CHIP_COLOR_BY_NAME: Record<string, AgentChipColor> = {
   amber: DEFAULT_AGENT_CHIP_COLOR,
   orange: { bg: "rgb(249 115 22 / 0.15)", text: "rgb(249 115 22)" },
 };
+// Colors arrive as plain strings (serialized Lexical nodes, persisted drafts),
+// so an unrecognized name falls back instead of rendering an unstyled chip.
+function isAgentMentionColor(value: string): value is AgentMentionColor {
+  return value in AGENT_CHIP_COLOR_BY_NAME;
+}
+
 export function resolveAgentChipColor(color: string | undefined): AgentChipColor {
-  return (color ? AGENT_CHIP_COLOR_BY_NAME[color] : undefined) ?? DEFAULT_AGENT_CHIP_COLOR;
+  return color !== undefined && isAgentMentionColor(color)
+    ? AGENT_CHIP_COLOR_BY_NAME[color]
+    : DEFAULT_AGENT_CHIP_COLOR;
 }
 
 // ── Sent-message echoes (timeline) ────────────────────────────────────

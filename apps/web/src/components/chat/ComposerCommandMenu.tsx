@@ -34,6 +34,7 @@ import {
 } from "~/lib/icons";
 import { formatSkillScope } from "~/lib/providerDiscovery";
 import { cn } from "~/lib/utils";
+import { resolveAgentChipColor } from "../composerInlineChip";
 import {
   Command,
   CommandGroup,
@@ -506,7 +507,9 @@ function commandMenuItemGlyph(item: ComposerCommandItem, theme: "light" | "dark"
     case "model":
       return <BrainIcon className={cls} />;
     case "agent":
-      return <BotIcon className={cls} />;
+      // Tinted with the same per-agent color the inline chip uses, so scanning
+      // the list and scanning a written prompt rely on the same cue.
+      return <BotIcon className={cls} style={{ color: resolveAgentChipColor(item.color).text }} />;
     case "plugin":
       return <PluginIcon className={cls} />;
     case "thread":

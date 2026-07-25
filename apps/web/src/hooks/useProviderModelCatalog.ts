@@ -10,9 +10,10 @@ import type {
   ProviderModelDescriptor,
 } from "@synara/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { getAppModelOptions, getCustomModelsByProvider, useAppSettings } from "../appSettings";
+import { setComposerAgentMentionCatalog } from "../lib/agentMentionCatalog";
 import { resolveRuntimeModelDescriptor } from "../components/chat/runtimeModelCapabilities";
 import { collapseCursorModelVariants } from "../cursorModelVariants";
 import {
@@ -376,6 +377,15 @@ export function useProviderModelCatalog(input: {
       ),
     [selectedDynamicAgents],
   );
+
+  // Prompt tokenizing has to know which subagents exist before it can draw an
+  // `@alias(...)` chip, and it runs from places with no React context (cursor
+  // math). Publishing here — rather than threading the list to each tokenizer
+  // call site — keeps the composer, the caret, and the sent-message echo from
+  // ever disagreeing about where an agent token starts and ends.
+  useEffect(() => {
+    setComposerAgentMentionCatalog(selectedRuntimeAgents);
+  }, [selectedRuntimeAgents]);
 
   const selectedProviderRuntimeModelDiscoveryPending =
     loadingModelProviders[selectedProvider] ?? false;
