@@ -2,14 +2,10 @@
 // Purpose: Declarative, searchable index of settings rows/sections so the sidebar can
 //          surface matches by title/description the same way the editor file search does.
 // Layer: Route/UI support
-// Exports: entry type, the index, section label lookup, and the ranking helper
+// Exports: entry type, the index, and the ranking helper
 
 import { rankProviderDiscoveryItems } from "~/lib/providerDiscovery";
-import {
-  settingRowAnchorId,
-  SETTINGS_NAV_ITEMS,
-  type SettingsSectionId,
-} from "./settingsNavigation";
+import { settingRowAnchorId, type SettingsSectionId } from "./settingsNavigation";
 
 /**
  * One searchable settings result. `title` usually matches a string SettingsRow heading so
@@ -424,14 +420,6 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   },
 ] as const;
 
-const SETTINGS_SECTION_LABEL_BY_ID = new Map<SettingsSectionId, string>(
-  SETTINGS_NAV_ITEMS.map((item) => [item.id, item.label]),
-);
-
-export function settingsSectionLabel(section: SettingsSectionId): string {
-  return SETTINGS_SECTION_LABEL_BY_ID.get(section) ?? section;
-}
-
 /**
  * Fuzzy-rank settings rows for the sidebar search. Title carries the strongest intent;
  * the description/synonym keywords and the owning section label match more loosely so a
@@ -440,6 +428,8 @@ export function settingsSectionLabel(section: SettingsSectionId): string {
 export function rankSettingsSearchEntries(
   query: string,
   limit: number,
+  /** Resolves a section's display label. Injected because labels live in the active i18n catalog. */
+  sectionLabel: (section: SettingsSectionId) => string,
 ): readonly SettingsSearchEntry[] {
   const trimmed = query.trim();
   if (trimmed.length === 0) {
@@ -448,7 +438,7 @@ export function rankSettingsSearchEntries(
   const ranked = rankProviderDiscoveryItems(SETTINGS_SEARCH_ENTRIES, trimmed, (entry) => [
     { value: entry.title },
     { value: entry.keywords, weight: 200 },
-    { value: settingsSectionLabel(entry.section), weight: 400 },
+    { value: sectionLabel(entry.section), weight: 400 },
   ]);
   return ranked.slice(0, limit);
 }

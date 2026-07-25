@@ -2,9 +2,11 @@
 // Purpose: Assemble the English catalog and derive the Messages contract every locale implements.
 
 import { settings } from "./settings";
+import { settingsNav } from "./settingsNav";
 
 export const en = {
   settings,
+  settingsNav,
 };
 
 /** Structural contract for every locale catalog. Adding a key here obligates all translations. */

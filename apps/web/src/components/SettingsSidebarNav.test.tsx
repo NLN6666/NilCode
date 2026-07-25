@@ -7,31 +7,35 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { SettingsSidebarNav } from "./SettingsSidebarNav";
-import { settingRowAnchorId } from "../settingsNavigation";
+import { settingRowAnchorId, type SettingsSectionId } from "../settingsNavigation";
 import {
   SETTINGS_SEARCH_ENTRIES,
   rankSettingsSearchEntries,
   settingsSearchEntryTarget,
 } from "../settingsSearchIndex";
+import { en } from "../i18n/locales/en";
+
+/** Rank against the real English labels, matching what the sidebar passes in at runtime. */
+const sectionLabel = (section: SettingsSectionId) => en.settingsNav.sections[section].label;
 
 describe("rankSettingsSearchEntries", () => {
   it("returns nothing for an empty query", () => {
-    expect(rankSettingsSearchEntries("", 12)).toHaveLength(0);
-    expect(rankSettingsSearchEntries("   ", 12)).toHaveLength(0);
+    expect(rankSettingsSearchEntries("", 12, sectionLabel)).toHaveLength(0);
+    expect(rankSettingsSearchEntries("   ", 12, sectionLabel)).toHaveLength(0);
   });
 
   it("ranks an exact title match first", () => {
-    const [top] = rankSettingsSearchEntries("theme", 12);
+    const [top] = rankSettingsSearchEntries("theme", 12, sectionLabel);
     expect(top?.id).toBe("appearance:theme");
   });
 
   it("matches on description keywords, not just titles", () => {
-    const results = rankSettingsSearchEntries("wrap", 12);
+    const results = rankSettingsSearchEntries("wrap", 12, sectionLabel);
     expect(results.some((entry) => entry.id === "behavior:diff-line-wrapping")).toBe(true);
   });
 
   it("includes the activity toasts notification row", () => {
-    const results = rankSettingsSearchEntries("toasts", 12);
+    const results = rankSettingsSearchEntries("toasts", 12, sectionLabel);
     expect(results.some((entry) => entry.id === "notifications:activity-toasts")).toBe(true);
   });
 
@@ -42,12 +46,16 @@ describe("rankSettingsSearchEntries", () => {
   });
 
   it("surfaces every row in a section when searching the section label", () => {
-    const results = rankSettingsSearchEntries("appearance", SETTINGS_SEARCH_ENTRIES.length);
+    const results = rankSettingsSearchEntries(
+      "appearance",
+      SETTINGS_SEARCH_ENTRIES.length,
+      sectionLabel,
+    );
     expect(results.some((entry) => entry.section === "appearance")).toBe(true);
   });
 
   it("respects the result limit", () => {
-    expect(rankSettingsSearchEntries("e", 3)).toHaveLength(3);
+    expect(rankSettingsSearchEntries("e", 3, sectionLabel)).toHaveLength(3);
   });
 
   it("derives a deep-link anchor target from each entry's title", () => {

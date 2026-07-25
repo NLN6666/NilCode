@@ -90,11 +90,7 @@ import { DeviceLaptopIcon, MoonIcon, RotateCcwIcon, SunIcon } from "../lib/icons
 import { cn, isMacPlatform } from "../lib/utils";
 import { ensureNativeApi, readNativeApi } from "../nativeApi";
 import { sameProviderOrder } from "../providerOrdering";
-import {
-  normalizeSettingsSection,
-  SETTINGS_NAV_ITEMS,
-  SETTINGS_TARGETS,
-} from "../settingsNavigation";
+import { normalizeSettingsSection, SETTINGS_TARGETS } from "../settingsNavigation";
 import {
   SETTINGS_PAGE_BACKGROUND_CLASS_NAME,
   SETTINGS_PANEL_SECTION_CLASS_NAME,
@@ -185,7 +181,6 @@ function SettingsRouteView() {
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown>;
   const activeSection = normalizeSettingsSection(routeSearch.section);
   const settingsTarget = typeof routeSearch.target === "string" ? routeSearch.target : null;
-  const activeSectionItem = SETTINGS_NAV_ITEMS.find((item) => item.id === activeSection)!;
 
   const {
     isDefaultActiveTheme,
@@ -1060,10 +1055,10 @@ function SettingsRouteView() {
                 <div className="mb-8 flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <h1 className="text-xl font-medium tracking-tight text-foreground">
-                      {activeSectionItem.label}
+                      {m.settingsNav.sections[activeSection].label}
                     </h1>
                     <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                      {activeSectionItem.description}
+                      {m.settingsNav.sections[activeSection].description}
                     </p>
                   </div>
                   <Button

@@ -3,7 +3,9 @@
 
 import type { Messages } from "../en";
 import { settings } from "./settings";
+import { settingsNav } from "./settingsNav";
 
 export const zhCN: Messages = {
   settings,
+  settingsNav,
 };
