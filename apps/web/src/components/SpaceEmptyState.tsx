@@ -7,6 +7,7 @@
 //      there is something to do.
 
 import type { Space } from "~/types";
+import { useMessages } from "~/i18n/context";
 import { Button } from "./ui/button";
 
 export function SpaceEmptyState(props: {
@@ -16,6 +17,7 @@ export function SpaceEmptyState(props: {
   hasProjectsElsewhere: boolean;
   onMoveProjects: () => void;
 }) {
+  const m = useMessages();
   // Before the first project exists, every Space is empty for the same reason and the
   // only move is to create one (which lands in Void). Naming the Space here would dress
   // a global "nothing yet" up as a per-Space problem, and the bulk-move action below
@@ -23,7 +25,7 @@ export function SpaceEmptyState(props: {
   if (!props.hasProjectsElsewhere) {
     return (
       <p className="px-2 pt-4 text-center text-[length:var(--app-font-size-ui,12px)] text-muted-foreground/58">
-        No projects yet
+        {m.sidebar.space.noProjects}
       </p>
     );
   }
@@ -40,7 +42,7 @@ export function SpaceEmptyState(props: {
       </p>
       {props.space ? (
         <Button size="xs" variant="outline" className="mt-3" onClick={props.onMoveProjects}>
-          Move projects here
+          {m.sidebar.space.moveProjectsHere}
         </Button>
       ) : null}
     </div>

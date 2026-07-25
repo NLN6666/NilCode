@@ -66,6 +66,7 @@ import {
   CommandPanel,
   CommandSeparator,
 } from "./ui/command";
+import { useMessages } from "~/i18n/context";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { ShortcutKbd } from "./ui/shortcut-kbd";
@@ -349,6 +350,7 @@ function HighlightedText(props: { text: string; query: string; className?: strin
 }
 
 export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
+  const m = useMessages();
   const { activeTheme, resolvedTheme, setCodeThemeId, setTheme, theme } = useTheme();
   const [query, setQuery] = useState("");
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
@@ -611,16 +613,20 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                   <LuArrowLeft className="size-4" />
                 </Button>
                 <div>
-                  <p className="text-sm font-medium text-foreground">Import thread from provider</p>
+                  <p className="text-sm font-medium text-foreground">
+                    {m.sidebar.searchPalette.importTitle}
+                  </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Create a local app thread and resume it from an existing provider id.
+                    {m.sidebar.searchPalette.importDescription}
                   </p>
                 </div>
               </div>
             </div>
             <div className="space-y-4 px-4 py-4">
               <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">Provider</p>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {m.sidebar.searchPalette.providerLabel}
+                </p>
                 <div className="flex gap-2">
                   {props.importProviders.map((provider) => (
                     <Button
@@ -648,7 +654,7 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                 </div>
                 {props.importProviders.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    No connected providers expose chat import in this build.
+                    {m.sidebar.searchPalette.noImportProviders}
                   </p>
                 ) : null}
               </div>
@@ -693,7 +699,7 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                     props.onOpenChange(false);
                   }}
                 >
-                  Cancel
+                  {m.sidebar.actions.cancel}
                 </Button>
                 <Button
                   disabled={
@@ -775,7 +781,7 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                     unsupportedWindowsPath ? (
                       <CommandEmpty className="py-10">
                         <div className="text-center text-sm text-muted-foreground/79">
-                          Windows paths are not supported on this platform.
+                          {m.sidebar.searchPalette.windowsPathsUnsupported}
                         </div>
                       </CommandEmpty>
                     ) : (
@@ -819,14 +825,14 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                           </CommandGroup>
                         ) : !isBrowseFetching ? (
                           <div className="px-3 py-2 text-sm text-muted-foreground">
-                            No matching folders.
+                            {m.sidebar.searchPalette.noMatchingFolders}
                           </div>
                         ) : null}
                         {willCreateMissingFolder ? (
                           <div className="mx-1.5 mt-2 rounded-md border border-dashed border-[color:var(--color-border)] px-3 py-2 text-sm text-muted-foreground">
-                            Press Enter to create{" "}
-                            <span className="text-foreground">{trimmedQuery}</span> and add it as a
-                            project.
+                            {m.sidebar.searchPalette.createFolderPrefix}{" "}
+                            <span className="text-foreground">{trimmedQuery}</span>{" "}
+                            {m.sidebar.searchPalette.createFolderSuffix}
                           </div>
                         ) : null}
                         {addProjectError ? (
@@ -840,7 +846,9 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
 
                   {!isBrowsing && matchedActions.length > 0 ? (
                     <CommandGroup>
-                      <CommandGroupLabel className="pt-0 pb-1.5 pl-3">Suggested</CommandGroupLabel>
+                      <CommandGroupLabel className="pt-0 pb-1.5 pl-3">
+                        {m.sidebar.searchPalette.groupSuggested}
+                      </CommandGroupLabel>
                       {matchedActions.map((action) => {
                         const onSelect = action.run ?? actionHandler(action.id, props);
                         const Icon = action.icon ?? ACTION_ICONS[action.id];
@@ -965,7 +973,9 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
 
                   {!isBrowsing && matchedProjects.length > 0 ? (
                     <CommandGroup>
-                      <CommandGroupLabel className="py-1.5 pl-3">Projects</CommandGroupLabel>
+                      <CommandGroupLabel className="py-1.5 pl-3">
+                        {m.sidebar.searchPalette.groupProjects}
+                      </CommandGroupLabel>
                       {matchedProjects.map(({ id, project }) => (
                         <CommandItem
                           key={id}
@@ -1010,7 +1020,9 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                     <>
                       {themeCommandItems.length > 0 ? (
                         <CommandGroup>
-                          <CommandGroupLabel className="py-1.5 pl-3">Configure</CommandGroupLabel>
+                          <CommandGroupLabel className="py-1.5 pl-3">
+                            {m.sidebar.searchPalette.groupConfigure}
+                          </CommandGroupLabel>
                           {themeCommandItems.map((themeCommandItem) => (
                             <CommandItem
                               key={themeCommandItem.id}
@@ -1100,7 +1112,7 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                     <CommandEmpty className="py-10">
                       <div className="flex flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground/79">
                         <SearchIcon className="size-4 opacity-70" />
-                        <div>No matches.</div>
+                        <div>{m.sidebar.searchPalette.noMatches}</div>
                       </div>
                     </CommandEmpty>
                   ) : null}
@@ -1125,8 +1137,8 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                   </>
                 ) : (
                   <>
-                    <span>Jump to threads, projects, actions, or appearance.</span>
-                    <span>Enter to open</span>
+                    <span>{m.sidebar.searchPalette.hint}</span>
+                    <span>{m.sidebar.searchPalette.hintEnter}</span>
                   </>
                 )}
               </CommandFooter>
