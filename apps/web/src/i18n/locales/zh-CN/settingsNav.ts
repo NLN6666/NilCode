@@ -8,6 +8,11 @@ import type { SettingsNav } from "../en/settingsNav";
 
 export const settingsNav: SettingsNav = {
   navAriaLabel: "设置分区",
+  backToApp: "返回应用",
+  searchPlaceholder: "搜索设置…",
+  searchAriaLabel: "搜索设置",
+  searchResultsAriaLabel: "设置搜索结果",
+  noResults: "没有匹配的设置。",
 
   groups: {
     app: "应用",

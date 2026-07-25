@@ -17,11 +17,20 @@ export interface SettingsSearchEntry {
   title: string;
   keywords: string;
   target?: string | null;
+  /**
+   * Set once the row renders its title from the i18n catalog. A translated title is useless as
+   * an anchor source — `settingRowAnchorId` keeps only `[a-z0-9]`, so every Chinese title
+   * slugs to the same empty id — so the anchor comes from this entry's locale-independent
+   * `id` instead. Rows opt in by passing the same id as `anchorKey` to `SettingsRow`.
+   * Every entry gains this flag as panels migrate, at which point it becomes the default.
+   */
+  localizedTitle?: true;
 }
 
 /** DOM id a result deep-links to, or null for panel-level entries with no anchored row. */
 export function settingsSearchEntryTarget(entry: SettingsSearchEntry): string | null {
-  return entry.target === undefined ? settingRowAnchorId(entry.title) : entry.target;
+  if (entry.target !== undefined) return entry.target;
+  return settingRowAnchorId(entry.localizedTitle ? entry.id : entry.title);
 }
 
 // Mirrors row titles/descriptions rendered in settings panels. Panels stay mounted but render
@@ -35,108 +44,129 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     title: "Language",
     keywords:
       "Choose the display language for the Synara interface. locale i18n english chinese 语言 中文 简体中文",
+    localizedTitle: true,
   },
   {
     id: "general:default-provider",
     section: "general",
     title: "Default provider",
-    keywords: "Choose the provider used for new chats. agent codex claude",
+    keywords: "Choose the provider used for new chats. agent codex claude 默认提供商 新对话",
+    localizedTitle: true,
   },
   {
     id: "general:new-threads",
     section: "general",
     title: "New threads",
     keywords:
-      "Pick the default workspace mode for newly created draft threads. local worktree environment",
+      "Pick the default workspace mode for newly created draft threads. local worktree environment 新建会话 本地 工作树",
+    localizedTitle: true,
   },
   {
     id: "general:project-order",
     section: "general",
     title: "Project order",
-    keywords: "Controls how projects are arranged in the main sidebar. sort updated created manual",
+    keywords:
+      "Controls how projects are arranged in the main sidebar. sort updated created manual 项目排序 侧边栏",
+    localizedTitle: true,
   },
   {
     id: "general:thread-order",
     section: "general",
     title: "Thread order",
     keywords:
-      "Controls how threads are arranged inside each project in the main sidebar. sort updated created",
+      "Controls how threads are arranged inside each project in the main sidebar. sort updated created 会话排序 侧边栏",
+    localizedTitle: true,
   },
   {
     id: "general:chats-section",
     section: "general",
     title: "Chats",
     keywords:
-      "Show the standalone Chats list in the sidebar footer chats not tied to a project. sidebar section",
+      "Show the standalone Chats list in the sidebar footer chats not tied to a project. sidebar section 对话 侧边栏板块",
+    localizedTitle: true,
   },
   {
     id: "general:studio-section",
     section: "general",
     title: "Studio",
-    keywords: "Show the Studio tab in the sidebar switcher. sidebar section content outbox",
+    keywords:
+      "Show the Studio tab in the sidebar switcher. sidebar section content outbox 侧边栏板块",
+    localizedTitle: true,
   },
   {
     id: "general:environment-default-open",
     section: "general",
     title: "Open by default",
     keywords:
-      "Open the chat Environment panel automatically on normal threads. default closed open environment panel preference",
+      "Open the chat Environment panel automatically on normal threads. default closed open environment panel preference 环境面板 默认展开",
+    localizedTitle: true,
   },
   {
     id: "general:environment-usage",
     section: "general",
     title: "Usage",
-    keywords: "Show the provider usage row in the chat Environment panel.",
+    keywords: "Show the provider usage row in the chat Environment panel. 用量 环境面板",
+    localizedTitle: true,
   },
   {
     id: "general:environment-repository",
     section: "general",
     title: "Repository",
-    keywords: "Show the GitHub repository link in the chat Environment panel. git changes worktree",
+    keywords:
+      "Show the GitHub repository link in the chat Environment panel. git changes worktree 仓库 环境面板",
+    localizedTitle: true,
   },
   {
     id: "general:environment-pull-request",
     section: "general",
     title: "Pull request",
     keywords:
-      "Show the open pull request CI checks and review comments in the chat Environment panel. pr fix github",
+      "Show the open pull request CI checks and review comments in the chat Environment panel. pr fix github 拉取请求 环境面板",
+    localizedTitle: true,
   },
   {
     id: "general:environment-editor",
     section: "general",
     title: "Editor",
     keywords:
-      "Show the Editor section in-app editor view and Open in editor picker in the chat Environment panel.",
+      "Show the Editor section in-app editor view and Open in editor picker in the chat Environment panel. 编辑器 环境面板",
+    localizedTitle: true,
   },
   {
     id: "general:environment-recap",
     section: "general",
     title: "Recap",
-    keywords: "Show the auto-generated chat recap in the Environment panel.",
+    keywords: "Show the auto-generated chat recap in the Environment panel. 摘要 环境面板",
+    localizedTitle: true,
   },
   {
     id: "general:environment-pinned",
     section: "general",
     title: "Pinned messages",
-    keywords: "Show the pinned-messages checklist in the Environment panel.",
+    keywords: "Show the pinned-messages checklist in the Environment panel. 置顶消息 环境面板",
+    localizedTitle: true,
   },
   {
     id: "general:environment-markers",
     section: "general",
     title: "Text markers",
-    keywords: "Show highlighted and underlined transcript text in the Environment panel.",
+    keywords:
+      "Show highlighted and underlined transcript text in the Environment panel. 文本标记 高亮 环境面板",
+    localizedTitle: true,
   },
   {
     id: "general:environment-instructions",
     section: "general",
     title: "Project instructions",
-    keywords: "Show project-level instructions in the Environment panel.",
+    keywords: "Show project-level instructions in the Environment panel. 项目指令 环境面板",
+    localizedTitle: true,
   },
   {
     id: "general:environment-notepad",
     section: "general",
     title: "Notepad",
-    keywords: "Show the per-thread notepad in the Environment panel.",
+    keywords: "Show the per-thread notepad in the Environment panel. 记事本 环境面板",
+    localizedTitle: true,
   },
 
   // ── Appearance ───────────────────────────────────────────────────────────────

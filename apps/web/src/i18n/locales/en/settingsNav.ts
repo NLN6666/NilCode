@@ -13,6 +13,11 @@ type NavSectionCopy = {
 
 export const settingsNav = {
   navAriaLabel: "Settings sections",
+  backToApp: "Back to app",
+  searchPlaceholder: "Search settings...",
+  searchAriaLabel: "Search settings",
+  searchResultsAriaLabel: "Settings search results",
+  noResults: "No matching settings.",
 
   groups: {
     app: "App",

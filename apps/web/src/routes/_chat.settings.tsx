@@ -150,17 +150,6 @@ const TIMESTAMP_FORMAT_LABELS = {
   "24-hour": "24-hour",
 } as const;
 
-const SIDEBAR_PROJECT_SORT_ORDER_LABELS = {
-  updated_at: "Recently active",
-  created_at: "Recently added",
-  manual: "Manual order",
-} as const;
-
-const SIDEBAR_THREAD_SORT_ORDER_LABELS = {
-  updated_at: "Recently active",
-  created_at: "Newest first",
-} as const;
-
 // ── Settings UI primitives ────────────────────────────────────────────────
 
 // Shared settings controls live in ~/components/settings/SettingControls.
@@ -317,11 +306,13 @@ function SettingsRouteView() {
     description: string;
     resetLabel: string;
     ariaLabel: string;
+    anchorKey?: string;
   }) => {
-    const { settingKey, title, description, resetLabel, ariaLabel } = config;
+    const { settingKey, title, description, resetLabel, ariaLabel, anchorKey } = config;
     const isChanged = settings[settingKey] !== defaults[settingKey];
     return (
       <SettingsRow
+        anchorKey={anchorKey}
         title={title}
         description={description}
         resetAction={
@@ -351,6 +342,7 @@ function SettingsRouteView() {
     <div className="space-y-6">
       <SettingsSection title={m.settings.general.coreDefaults.title}>
         <SettingsRow
+          anchorKey="general:language"
           title={m.settings.general.coreDefaults.language.title}
           description={m.settings.general.coreDefaults.language.description}
           resetAction={
@@ -381,6 +373,7 @@ function SettingsRouteView() {
         />
 
         <SettingsRow
+          anchorKey="general:default-provider"
           title={m.settings.general.coreDefaults.defaultProvider.title}
           description={m.settings.general.coreDefaults.defaultProvider.description}
           resetAction={
@@ -419,6 +412,7 @@ function SettingsRouteView() {
         />
 
         <SettingsRow
+          anchorKey="general:new-threads"
           title={m.settings.general.coreDefaults.newThreads.title}
           description={m.settings.general.coreDefaults.newThreads.description}
           resetAction={
@@ -462,6 +456,7 @@ function SettingsRouteView() {
 
       <SettingsSection title={m.settings.general.sidebarOrganization.title}>
         <SettingsRow
+          anchorKey="general:project-order"
           title={m.settings.general.sidebarOrganization.projectOrder.title}
           description={m.settings.general.sidebarOrganization.projectOrder.description}
           resetAction={
@@ -486,22 +481,27 @@ function SettingsRouteView() {
                 updateSettings({ sidebarProjectSortOrder: value });
               }}
               ariaLabel={m.settings.general.sidebarOrganization.projectOrder.ariaLabel}
-              valueContent={SIDEBAR_PROJECT_SORT_ORDER_LABELS[settings.sidebarProjectSortOrder]}
+              valueContent={
+                m.settings.general.sidebarOrganization.projectOrder.options[
+                  settings.sidebarProjectSortOrder
+                ]
+              }
             >
               <SelectItem hideIndicator value="updated_at">
-                {SIDEBAR_PROJECT_SORT_ORDER_LABELS.updated_at}
+                {m.settings.general.sidebarOrganization.projectOrder.options.updated_at}
               </SelectItem>
               <SelectItem hideIndicator value="created_at">
-                {SIDEBAR_PROJECT_SORT_ORDER_LABELS.created_at}
+                {m.settings.general.sidebarOrganization.projectOrder.options.created_at}
               </SelectItem>
               <SelectItem hideIndicator value="manual">
-                {SIDEBAR_PROJECT_SORT_ORDER_LABELS.manual}
+                {m.settings.general.sidebarOrganization.projectOrder.options.manual}
               </SelectItem>
             </SettingsSelectControl>
           }
         />
 
         <SettingsRow
+          anchorKey="general:thread-order"
           title={m.settings.general.sidebarOrganization.threadOrder.title}
           description={m.settings.general.sidebarOrganization.threadOrder.description}
           resetAction={
@@ -526,123 +526,97 @@ function SettingsRouteView() {
                 updateSettings({ sidebarThreadSortOrder: value });
               }}
               ariaLabel={m.settings.general.sidebarOrganization.threadOrder.ariaLabel}
-              valueContent={SIDEBAR_THREAD_SORT_ORDER_LABELS[settings.sidebarThreadSortOrder]}
+              valueContent={
+                m.settings.general.sidebarOrganization.threadOrder.options[
+                  settings.sidebarThreadSortOrder
+                ]
+              }
             >
               <SelectItem hideIndicator value="updated_at">
-                {SIDEBAR_THREAD_SORT_ORDER_LABELS.updated_at}
+                {m.settings.general.sidebarOrganization.threadOrder.options.updated_at}
               </SelectItem>
               <SelectItem hideIndicator value="created_at">
-                {SIDEBAR_THREAD_SORT_ORDER_LABELS.created_at}
+                {m.settings.general.sidebarOrganization.threadOrder.options.created_at}
               </SelectItem>
             </SettingsSelectControl>
           }
         />
       </SettingsSection>
 
-      <SettingsSection title="Sidebar sections">
+      <SettingsSection title={m.settings.general.sidebarSections.title}>
         {renderBooleanSettingRow({
           settingKey: "showChatsSection",
-          title: "Chats",
-          description:
-            "Show the standalone Chats list in the sidebar footer (chats not tied to a project).",
-          resetLabel: "chats section",
-          ariaLabel: "Show the Chats section in the sidebar",
+          anchorKey: "general:chats-section",
+          ...m.settings.general.sidebarSections.chats,
         })}
 
         {renderBooleanSettingRow({
           settingKey: "showStudioSection",
-          title: "Studio",
-          description: "Show the Studio tab in the sidebar switcher.",
-          resetLabel: "studio section",
-          ariaLabel: "Show the Studio section in the sidebar",
+          anchorKey: "general:studio-section",
+          ...m.settings.general.sidebarSections.studio,
         })}
       </SettingsSection>
 
       <div id={SETTINGS_TARGETS.environmentPanel}>
-        <SettingsSection title="Environment panel">
+        <SettingsSection title={m.settings.general.environmentPanel.title}>
           {renderBooleanSettingRow({
             settingKey: "environmentPanelDefaultOpen",
-            title: "Open by default",
-            description:
-              "Open the chat Environment panel automatically on normal threads. When off, the panel stays closed until you open it. Your last open/close also updates this preference.",
-            resetLabel: "environment panel default open",
-            ariaLabel: "Open the Environment panel by default on normal threads",
+            anchorKey: "general:environment-default-open",
+            ...m.settings.general.environmentPanel.defaultOpen,
           })}
 
           {renderBooleanSettingRow({
             settingKey: "showEnvironmentUsage",
-            title: "Usage",
-            description: "Show the provider usage row in the chat Environment panel.",
-            resetLabel: "usage section",
-            ariaLabel: "Show the Usage section in the Environment panel",
+            anchorKey: "general:environment-usage",
+            ...m.settings.general.environmentPanel.usage,
           })}
 
           {renderBooleanSettingRow({
             settingKey: "showEnvironmentRepository",
-            title: "Repository",
-            description:
-              "Show the GitHub repository link in the chat Environment panel. The git block (Changes, Worktree, branch, Commit and Push) always stays visible.",
-            resetLabel: "repository section",
-            ariaLabel: "Show the Repository section in the Environment panel",
+            anchorKey: "general:environment-repository",
+            ...m.settings.general.environmentPanel.repository,
           })}
 
           {renderBooleanSettingRow({
             settingKey: "showEnvironmentPullRequest",
-            title: "Pull request",
-            description:
-              "Show the open pull request (CI checks and review comments) for the current branch in the chat Environment panel.",
-            resetLabel: "pull request section",
-            ariaLabel: "Show the Pull request section in the Environment panel",
+            anchorKey: "general:environment-pull-request",
+            ...m.settings.general.environmentPanel.pullRequest,
           })}
 
           {renderBooleanSettingRow({
             settingKey: "showEnvironmentEditor",
-            title: "Editor",
-            description:
-              "Show the Editor section (in-app editor view and Open in editor picker) in the chat Environment panel.",
-            resetLabel: "editor section",
-            ariaLabel: "Show the Editor section in the Environment panel",
+            anchorKey: "general:environment-editor",
+            ...m.settings.general.environmentPanel.editor,
           })}
 
           {renderBooleanSettingRow({
             settingKey: "showEnvironmentRecap",
-            title: "Recap",
-            description: "Show the auto-generated chat recap in the Environment panel.",
-            resetLabel: "recap section",
-            ariaLabel: "Show the Recap section in the Environment panel",
+            anchorKey: "general:environment-recap",
+            ...m.settings.general.environmentPanel.recap,
           })}
 
           {renderBooleanSettingRow({
             settingKey: "showEnvironmentPinned",
-            title: "Pinned messages",
-            description: "Show the pinned-messages checklist in the Environment panel.",
-            resetLabel: "pinned messages section",
-            ariaLabel: "Show the Pinned messages section in the Environment panel",
+            anchorKey: "general:environment-pinned",
+            ...m.settings.general.environmentPanel.pinned,
           })}
 
           {renderBooleanSettingRow({
             settingKey: "showEnvironmentMarkers",
-            title: "Text markers",
-            description:
-              "Show highlighted and underlined transcript text in the Environment panel.",
-            resetLabel: "text markers section",
-            ariaLabel: "Show the Text markers section in the Environment panel",
+            anchorKey: "general:environment-markers",
+            ...m.settings.general.environmentPanel.markers,
           })}
 
           {renderBooleanSettingRow({
             settingKey: "showEnvironmentInstructions",
-            title: "Project instructions",
-            description: "Show project-level instructions in the Environment panel.",
-            resetLabel: "project instructions section",
-            ariaLabel: "Show the Project instructions section in the Environment panel",
+            anchorKey: "general:environment-instructions",
+            ...m.settings.general.environmentPanel.instructions,
           })}
 
           {renderBooleanSettingRow({
             settingKey: "showEnvironmentNotepad",
-            title: "Notepad",
-            description: "Show the per-thread notepad in the Environment panel.",
-            resetLabel: "notepad section",
-            ariaLabel: "Show the Notepad section in the Environment panel",
+            anchorKey: "general:environment-notepad",
+            ...m.settings.general.environmentPanel.notepad,
           })}
         </SettingsSection>
       </div>

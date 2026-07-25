@@ -112,6 +112,7 @@ export function SettingsRow({
   control,
   children,
   onClick,
+  anchorKey,
 }: {
   title: ReactNode;
   description: string;
@@ -120,10 +121,16 @@ export function SettingsRow({
   control?: ReactNode;
   children?: ReactNode;
   onClick?: () => void;
+  /**
+   * Locale-independent anchor source, required once `title` is translated: pass the row's
+   * search-index entry id (e.g. `"general:language"`), which that entry anchors on too.
+   */
+  anchorKey?: string | undefined;
 }) {
   // String-titled rows expose a stable anchor so the sidebar search can deep-link to them
   // via `?target=…`; scroll-margin keeps the row clear of the sticky settings header.
-  const anchorId = typeof title === "string" ? settingRowAnchorId(title) : undefined;
+  const anchorSource = anchorKey ?? (typeof title === "string" ? title : undefined);
+  const anchorId = anchorSource === undefined ? undefined : settingRowAnchorId(anchorSource);
   return (
     <div
       id={anchorId}

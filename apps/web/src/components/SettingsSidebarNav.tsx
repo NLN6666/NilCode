@@ -135,7 +135,7 @@ export function SettingsSidebarNav(props: {
           <SidebarLeadingIcon size="sm" tone="text-inherit">
             <CentralIcon name="arrow-left" className={SETTINGS_SIDEBAR_ICON_CLASS_NAME} />
           </SidebarLeadingIcon>
-          <span className={SETTINGS_SIDEBAR_ITEM_LABEL_CLASS_NAME}>Back to app</span>
+          <span className={SETTINGS_SIDEBAR_ITEM_LABEL_CLASS_NAME}>{m.settingsNav.backToApp}</span>
         </button>
       </div>
 
@@ -145,8 +145,8 @@ export function SettingsSidebarNav(props: {
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
-          placeholder="Search settings..."
-          aria-label="Search settings"
+          placeholder={m.settingsNav.searchPlaceholder}
+          aria-label={m.settingsNav.searchAriaLabel}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={handleSearchKeyDown}
         />
@@ -154,10 +154,10 @@ export function SettingsSidebarNav(props: {
 
       {isSearching ? (
         results.length === 0 ? (
-          <p className={SETTINGS_SIDEBAR_SECTION_LABEL_CLASS_NAME}>No matching settings.</p>
+          <p className={SETTINGS_SIDEBAR_SECTION_LABEL_CLASS_NAME}>{m.settingsNav.noResults}</p>
         ) : (
           <ul
-            aria-label="Settings search results"
+            aria-label={m.settingsNav.searchResultsAriaLabel}
             className={cn("flex flex-col", SETTINGS_SIDEBAR_LIST_GAP_CLASS_NAME)}
           >
             {results.map((entry) => (

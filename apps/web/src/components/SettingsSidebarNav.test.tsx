@@ -64,11 +64,24 @@ describe("rankSettingsSearchEntries", () => {
     for (const entry of SETTINGS_SEARCH_ENTRIES) {
       if (entry.target === null) {
         expect(settingsSearchEntryTarget(entry)).toBeNull();
-      } else {
+      } else if (!entry.localizedTitle) {
         expect(settingsSearchEntryTarget(entry)).toBe(settingRowAnchorId(entry.title));
         expect(settingsSearchEntryTarget(entry)?.startsWith("setting-")).toBe(true);
       }
     }
+  });
+
+  it("anchors localized-title rows on their id so translation cannot collapse the slug", () => {
+    const localized = SETTINGS_SEARCH_ENTRIES.filter((entry) => entry.localizedTitle);
+    expect(localized.length).toBeGreaterThan(0);
+
+    // Ids are locale-independent, so these anchors survive translation; a title-derived anchor
+    // would slug every Chinese title down to the bare `setting-` prefix and collide.
+    for (const entry of localized) {
+      expect(settingsSearchEntryTarget(entry)).toBe(settingRowAnchorId(entry.id));
+    }
+    const targets = localized.map((entry) => settingsSearchEntryTarget(entry));
+    expect(new Set(targets).size).toBe(localized.length);
   });
 });
 
