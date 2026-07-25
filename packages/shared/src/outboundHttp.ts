@@ -3,6 +3,7 @@
 // Layer: Shared Node/Electron network security boundary
 
 import { randomUUID } from "node:crypto";
+import type { LookupAddress } from "node:dns";
 import * as Dns from "node:dns/promises";
 import * as Http from "node:http";
 import * as Https from "node:https";
@@ -297,43 +298,45 @@ async function resolvePinnedAddress(
   return selected;
 }
 
-type DnsLookupAllCallback = (
-  error: NodeJS.ErrnoException | null,
-  addresses: ReadonlyArray<{ readonly address: string; readonly family: number }>,
-) => void;
-
-type DnsLookupSingleCallback = (
-  error: NodeJS.ErrnoException | null,
-  address: string,
-  family: number,
-) => void;
-
 /**
- * Builds the `lookup` hook that forces a connection to the address already
- * resolved and policy-checked, closing the DNS-rebinding window between the
- * check and the connect.
+ * Custom `http`/`https` lookup that always returns the already-pinned address,
+ * closing the DNS-rebinding window between the policy check and the connect.
  *
  * Node picks the callback shape via `options.all`, and the two shapes are not
- * interchangeable: answering an `all: true` call with `(address, family)` makes
- * the socket read `undefined` as its host and throw ERR_INVALID_IP_ADDRESS
- * before any byte is sent. Node 24 requests `all: true` here.
+ * interchangeable: modern Node/Bun Happy Eyeballs pass `{ all: true }` and
+ * expect the array form, and answering such a call with `(address, family)`
+ * makes the socket read `undefined` as its host and throw
+ * ERR_INVALID_IP_ADDRESS before any byte is sent.
  */
+export function invokePinnedDnsLookup(
+  pinned: { readonly address: string; readonly family: 4 | 6 },
+  options: { readonly all?: boolean | undefined } | undefined,
+  // Match Node/Bun's Happy Eyeballs lookup callback shape (`LookupAddress[]`, not
+  // a readonly structural twin) so `http.request({ lookup })` typechecks.
+  callback: (
+    err: NodeJS.ErrnoException | null,
+    address: string | LookupAddress[],
+    family?: number,
+  ) => void,
+): void {
+  if (options?.all) {
+    callback(null, [{ address: pinned.address, family: pinned.family }]);
+    return;
+  }
+  callback(null, pinned.address, pinned.family);
+}
+
+/** Adapts {@link invokePinnedDnsLookup} to the `lookup` hook shape Node expects. */
 export function createPinnedLookup(pinned: {
   readonly address: string;
   readonly family: 4 | 6;
 }): Net.LookupFunction {
   return ((
     _hostname: string,
-    options: { readonly all?: boolean },
-    callback: DnsLookupSingleCallback,
+    options: { readonly all?: boolean | undefined } | undefined,
+    callback: Parameters<typeof invokePinnedDnsLookup>[2],
   ) => {
-    if (options.all === true) {
-      (callback as unknown as DnsLookupAllCallback)(null, [
-        { address: pinned.address, family: pinned.family },
-      ]);
-      return;
-    }
-    callback(null, pinned.address, pinned.family);
+    invokePinnedDnsLookup(pinned, options, callback);
   }) as Net.LookupFunction;
 }
 

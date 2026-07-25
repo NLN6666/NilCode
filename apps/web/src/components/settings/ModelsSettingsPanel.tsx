@@ -49,6 +49,8 @@ type CustomModelValidationResult =
   | { readonly model: string; readonly error?: never }
   | { readonly model?: never; readonly error: string };
 
+const GIT_WRITING_DISCOVERY_PROVIDERS = ["codex", "kilo", "opencode"] as const;
+
 export function validateCustomModelInput(input: {
   readonly provider: ProviderKind;
   readonly value: string;
@@ -120,12 +122,20 @@ export function ModelsSettingsPanel({
     activeProjectCwd: null,
     serverCwd: serverConfigQuery.data?.cwd ?? null,
   });
+  // The git-writing picker only needs its own providers, but the visibility list
+  // below renders every model of the provider being edited, so that one has to be
+  // discovered too — otherwise switching it would only ever show built-in models.
+  const discoveryProviders = useMemo<ReadonlyArray<ProviderKind>>(
+    () => [...GIT_WRITING_DISCOVERY_PROVIDERS, visibilityProvider],
+    [visibilityProvider],
+  );
   const { modelOptionsByProvider: gitWritingCatalogOptionsByProvider, allModelOptionsByProvider } =
     useProviderModelCatalog({
       selectedProvider: currentGitTextGenerationProvider,
       discoveryEnabled: active,
       cwd: providerModelDiscoveryCwd,
       modelHintByProvider: gitWritingModelHintByProvider,
+      prefetchProviders: discoveryProviders,
     });
   const gitTextGenerationModelOptions = useMemo(
     () =>
