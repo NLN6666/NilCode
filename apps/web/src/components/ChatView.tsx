@@ -139,6 +139,7 @@ import {
   hydratePendingBlobComposerAttachments,
   readFileAsDataUrl,
 } from "../lib/composerSend";
+import { buildMcpToolReferenceKeys, formatMcpToolReference } from "../lib/mcpToolReferences";
 import { composerImageBlobKey, persistComposerImageBlob } from "../lib/composerImageBlobStore";
 import { reconcileDeletedThreadFromClient } from "../lib/deletedThreadClientReconciliation";
 import { extractChatAutomationInvocation } from "../lib/automationIntent";
@@ -414,6 +415,7 @@ import {
   useDesktopTopBarTrafficLightGutterClassName,
   useDesktopTopBarWindowControlsGutterClassName,
 } from "~/hooks/useDesktopTopBarGutter";
+import { useAgentMcpTools } from "~/hooks/useAgentMcpTools";
 import { useNowMs } from "~/hooks/useNowMs";
 import { useThreadRecap } from "~/hooks/useThreadRecap";
 import { useRepoDiffTotals } from "~/hooks/useRepoDiffTotals";
@@ -3179,6 +3181,25 @@ export default function ChatView({
     isMentionTrigger &&
     isLocalFolderMentionQuery(mentionTriggerQuery);
   const isSkillTrigger = composerTriggerKind === "skill";
+  const isMcpToolTrigger = composerTriggerKind === "mcp-tool";
+  // Probing spawns the user's MCP servers, so only an open `&` picker asks for the catalog — text
+  // that merely looks like a reference must never start one. Everything downstream (send-time
+  // expansion, chip greying) reads whatever that probe already left in the cache.
+  const agentMcpTools = useAgentMcpTools({
+    provider: selectedProvider,
+    composerTriggerKind,
+  });
+  // Read by the send callbacks, which must not re-create on every catalog refresh.
+  const agentMcpToolsRef = useRef(agentMcpTools.tools);
+  useLayoutEffect(() => {
+    agentMcpToolsRef.current = agentMcpTools.tools;
+  }, [agentMcpTools.tools]);
+  // Without a catalog in hand there is nothing to contradict a written reference, so the chips
+  // stay neutral rather than greying out a draft the user has not asked us to verify.
+  const mcpToolReferenceKeys = useMemo(
+    () => (agentMcpTools.hasCatalog ? buildMcpToolReferenceKeys(agentMcpTools.tools) : null),
+    [agentMcpTools.hasCatalog, agentMcpTools.tools],
+  );
   const [debouncedPathQuery, composerPathQueryDebouncer] = useDebouncedValue(
     mentionTriggerQuery,
     { wait: COMPOSER_PATH_QUERY_DEBOUNCE_MS },
@@ -3368,6 +3389,8 @@ export default function ChatView({
     canOfferForkCommand,
     canOfferSideCommand,
     canOfferExportCommand,
+    mcpTools: agentMcpTools.tools,
+    mcpToolErrors: agentMcpTools.errors,
     dynamicAgents,
     threadMentionSources: {
       threads: composerThreadSummaries,
@@ -7192,6 +7215,7 @@ export default function ChatView({
       model: selectedModelForSend,
       effort: selectedPromptEffortForSend,
       text: outgoingTextSeed,
+      mcpTools: agentMcpToolsRef.current,
     });
     const mentionedSkillsForSend = filterPromptSkillReferences(
       outgoingMessageText,
@@ -7895,6 +7919,7 @@ export default function ChatView({
       model: queuedTurn?.selectedModel ?? selectedModel,
       effort: queuedTurn?.selectedPromptEffort ?? selectedPromptEffort,
       text: trimmed,
+      mcpTools: agentMcpToolsRef.current,
     });
 
     sendInFlightRef.current = true;
@@ -8041,6 +8066,7 @@ export default function ChatView({
         model: selectedModel,
         effort: selectedPromptEffort,
         text: editedTextWithOriginalContext,
+        mcpTools: agentMcpToolsRef.current,
       });
       return await (async () => {
         await persistThreadSettingsForNextTurn({
@@ -9224,6 +9250,16 @@ export default function ChatView({
         });
         return;
       }
+      if (item.type === "mcp-tool") {
+        // The failed-server row exists to explain an absence; there is nothing to insert.
+        if (item.unavailable) return;
+        applyComposerTriggerReplacement({
+          snapshot,
+          trigger,
+          base: `&${formatMcpToolReference({ serverName: item.serverName, toolName: item.toolName })} `,
+        });
+        return;
+      }
       if (item.type === "plugin" || item.type === "thread") {
         applyComposerTriggerReplacement({
           snapshot,
@@ -9309,7 +9345,8 @@ export default function ChatView({
       (providerComposerCapabilitiesQuery.isLoading ||
         providerComposerCapabilitiesQuery.isFetching ||
         providerSkillsQuery.isLoading ||
-        providerSkillsQuery.isFetching));
+        providerSkillsQuery.isFetching)) ||
+    (isMcpToolTrigger && agentMcpTools.isLoading);
 
   const onPromptChange = useCallback(
     (
@@ -10259,6 +10296,7 @@ export default function ChatView({
                         : []
                     }
                     mentionReferences={selectedComposerMentions}
+                    mcpToolReferenceKeys={mcpToolReferenceKeys}
                     onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
                     onChange={onPromptChange}
                     onCommandKeyDown={onComposerCommandKey}

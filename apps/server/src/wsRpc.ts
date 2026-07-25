@@ -91,6 +91,7 @@ import { redactSensitiveProcessArgs } from "./processArgumentRedaction";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment";
 import { ExternalMcpService } from "./externalMcp/Services/ExternalMcpService";
 import { AgentMcpService } from "./agentMcp/Services/AgentMcpService";
+import { AgentMcpToolCatalogService } from "./agentMcp/Services/AgentMcpToolCatalogService";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents";
 import { ServerRuntimeStartup } from "./serverRuntimeStartup";
 import { ServerSettingsService } from "./serverSettings";
@@ -303,6 +304,7 @@ const makeWsRpcHandlersLayer = () =>
       const fileSystem = yield* FileSystem.FileSystem;
       const externalMcp = yield* ExternalMcpService;
       const agentMcp = yield* AgentMcpService;
+      const agentMcpToolCatalog = yield* AgentMcpToolCatalogService;
       const git = yield* GitCore;
       const gitManager = yield* GitManager;
       const gitStatusBroadcaster = yield* GitStatusBroadcaster;
@@ -1346,6 +1348,13 @@ const makeWsRpcHandlersLayer = () =>
           rpcEffect(
             requireOwner.pipe(Effect.andThen(agentMcp.listServers())),
             "Failed to list agent MCP servers",
+          ),
+        // Owner-only as well: answering this connects to the MCP servers configured on this
+        // machine, using credentials only the owner put there.
+        [WS_METHODS.serverListAgentMcpTools]: () =>
+          rpcEffect(
+            requireOwner.pipe(Effect.andThen(agentMcpToolCatalog.listTools())),
+            "Failed to list agent MCP tools",
           ),
         [WS_METHODS.serverSetAgentMcpServerEnabled]: (input) =>
           rpcEffect(

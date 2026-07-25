@@ -188,6 +188,9 @@ export const McpIcon: LucideIcon = (props) => (
   <VscMcp className={props.className} style={props.style} />
 );
 export const PluginIcon: LucideIcon = centralIconWrapper("puzzle");
+// Composer `&server:tool` references. Same Central glyph the inline chip renders
+// (COMPOSER_INLINE_MCP_TOOL_CHIP_ICON_NAME), mirroring how SkillCubeIcon pairs with the skill chip.
+export const McpToolIcon: LucideIcon = centralIconWrapper("toolbox");
 // Single hammer/build glyph (tool-call rows, codex provider, "build" scripts).
 // Sourced from the Central set so it matches the other work-row icons (pencil,
 // terminal, skill cube) it sits beside, instead of the Tabler wrench it used to be.

@@ -68,3 +68,42 @@ export const AgentMcpSetEnabledInput = Schema.Struct({
   enabled: Schema.Boolean,
 });
 export type AgentMcpSetEnabledInput = typeof AgentMcpSetEnabledInput.Type;
+
+/**
+ * One tool a locally configured MCP server reported through `tools/list`.
+ *
+ * `serverName` / `toolName` are plain strings rather than validated names on purpose: they are
+ * echoes of whatever a third-party server calls itself, and one oddly named tool must not fail
+ * the decode of the whole catalog.
+ */
+export const AgentMcpToolDescriptor = Schema.Struct({
+  provider: AgentMcpProvider,
+  serverName: Schema.String,
+  toolName: Schema.String,
+  /** Absent when the server ships the tool without a description. */
+  description: Schema.optional(Schema.String),
+});
+export type AgentMcpToolDescriptor = typeof AgentMcpToolDescriptor.Type;
+
+/**
+ * A server that could not be reached. Reported per server rather than failing the request, so a
+ * single broken server greys out one row instead of emptying the picker.
+ */
+export const AgentMcpToolSourceError = Schema.Struct({
+  provider: AgentMcpProvider,
+  /** Absent when the failure is the provider's config file itself rather than one server. */
+  serverName: Schema.optional(Schema.String),
+  message: Schema.String,
+});
+export type AgentMcpToolSourceError = typeof AgentMcpToolSourceError.Type;
+
+export const AgentMcpToolCatalog = Schema.Struct({
+  tools: Schema.Array(AgentMcpToolDescriptor),
+  errors: Schema.Array(AgentMcpToolSourceError),
+  /**
+   * ISO timestamp of the oldest cache entry in this response, set only while a background
+   * refresh is in flight. Clients treat its presence as "ask again shortly".
+   */
+  staleAt: Schema.optional(Schema.String),
+});
+export type AgentMcpToolCatalog = typeof AgentMcpToolCatalog.Type;

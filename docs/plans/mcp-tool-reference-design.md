@@ -10,26 +10,26 @@
 
 引用形态三种：
 
-| 形态 | 含义 |
-| --- | --- |
-| `&context7` | 引用整个 server（等价于 `&context7:*`） |
-| `&context7:query-docs` | 引用单个工具 |
-| `&context7:*` | 引用该 server 的全部工具 |
+| 形态                   | 含义                                    |
+| ---------------------- | --------------------------------------- |
+| `&context7`            | 引用整个 server（等价于 `&context7:*`） |
+| `&context7:query-docs` | 引用单个工具                            |
+| `&context7:*`          | 引用该 server 的全部工具                |
 
 ## 2. 已有地基（`dev` 分支，commit `347e878c`）
 
 `dev` 上已存在 `agentMcp` 模块（2394 行），本设计**建立在它之上**，不重写：
 
-| 已有件 | 作用 |
-| --- | --- |
-| `apps/server/src/agentMcp/codexSource.ts` | 解析 Codex `config.toml` 的 `[mcp_servers.*]` |
-| `apps/server/src/agentMcp/claudeSource.ts` | 解析 Claude `~/.claude.json` |
-| `apps/server/src/agentMcp/codexTomlDocument.ts` | TOML 文档的外科式读写（454 行） |
-| `apps/server/src/agentMcp/Services/AgentMcpService.ts` | Effect 服务接口 + `AgentMcpError` 错误码 |
-| `packages/contracts/src/agentMcp.ts` | `AgentMcpServerDescriptor` / `AgentMcpCatalog` 等契约 |
-| `packages/shared/src/mcp/redact.ts` | 凭据脱敏 |
-| `apps/web/src/components/settings/AgentMcpSettingsPanel.tsx` | 设置面板 |
-| RPC `serverListAgentMcpServers` / `serverSetAgentMcpServerEnabled` | 已注册 |
+| 已有件                                                             | 作用                                                  |
+| ------------------------------------------------------------------ | ----------------------------------------------------- |
+| `apps/server/src/agentMcp/codexSource.ts`                          | 解析 Codex `config.toml` 的 `[mcp_servers.*]`         |
+| `apps/server/src/agentMcp/claudeSource.ts`                         | 解析 Claude `~/.claude.json`                          |
+| `apps/server/src/agentMcp/codexTomlDocument.ts`                    | TOML 文档的外科式读写（454 行）                       |
+| `apps/server/src/agentMcp/Services/AgentMcpService.ts`             | Effect 服务接口 + `AgentMcpError` 错误码              |
+| `packages/contracts/src/agentMcp.ts`                               | `AgentMcpServerDescriptor` / `AgentMcpCatalog` 等契约 |
+| `packages/shared/src/mcp/redact.ts`                                | 凭据脱敏                                              |
+| `apps/web/src/components/settings/AgentMcpSettingsPanel.tsx`       | 设置面板                                              |
+| RPC `serverListAgentMcpServers` / `serverSetAgentMcpServerEnabled` | 已注册                                                |
 
 **关键约束**：现有契约**故意**只回传 `envKeys` / `headerKeys`（仅键名），并丢弃 URL 的 query 与
 userinfo（`redact.ts` 注释："a WebSocket frame can cross a network"）。
@@ -39,15 +39,15 @@ userinfo（`redact.ts` 注释："a WebSocket frame can cross a network"）。
 
 ## 3. 已确认的决策
 
-| # | 决策 | 取值 |
-| --- | --- | --- |
-| D1 | 候选来源 | 实时向 MCP server 发 `tools/list` 拉取 |
-| D2 | 配置来源 | 跟随当前线程的 provider（复用 `agentMcp`，即 Codex + Claude） |
-| D3 | 发送语义 | 展开成带工具说明的指令（非纯文本、非 provider 原生白名单） |
-| D4 | 匹配语义 | 候选搜索对 **server 名与工具名双字段模糊匹配**；支持 `&server:*` 整包引用。不支持用户书写正则 |
-| D5 | 拉取策略 | 懒加载（首次输入 `&` 才拉）+ 持久缓存 + 后台刷新 |
-| D6 | 探测实现 | 手写最小 MCP client（不引入 `@modelcontextprotocol/sdk`）；**stdio 与 http 两条路径一起做** |
-| D7 | 分支同步 | 当前 worktree `rebase` 到 `dev` |
+| #   | 决策     | 取值                                                                                          |
+| --- | -------- | --------------------------------------------------------------------------------------------- |
+| D1  | 候选来源 | 实时向 MCP server 发 `tools/list` 拉取                                                        |
+| D2  | 配置来源 | 跟随当前线程的 provider（复用 `agentMcp`，即 Codex + Claude）                                 |
+| D3  | 发送语义 | 展开成带工具说明的指令（非纯文本、非 provider 原生白名单）                                    |
+| D4  | 匹配语义 | 候选搜索对 **server 名与工具名双字段模糊匹配**；支持 `&server:*` 整包引用。不支持用户书写正则 |
+| D5  | 拉取策略 | 懒加载（首次输入 `&` 才拉）+ 持久缓存 + 后台刷新                                              |
+| D6  | 探测实现 | 手写最小 MCP client（不引入 `@modelcontextprotocol/sdk`）；**stdio 与 http 两条路径一起做**   |
+| D7  | 分支同步 | 当前 worktree `rebase` 到 `dev`                                                               |
 
 ### D6 的实证依据
 
@@ -207,14 +207,14 @@ Please use the MCP tools listed above.
 
 ## 8. 错误处理与降级
 
-| 失败 | 处理 |
-| --- | --- |
-| 配置文件不存在 | 复用 `AgentMcpError` 的 `unavailable`；picker 显示"未配置 MCP" |
-| 配置解析失败 | 复用 `parse-failed`；该 provider 的候选整体不可用 |
-| 单个 server 探测超时（10s） | **该 server 单独标记失败，其余照常返回**——一个坏 server 不得拖垮整个菜单 |
-| stdio 进程起不来或崩溃 | 同上；`finally` 中必杀进程 + `unref`，绝不泄漏 |
-| 缓存陈旧 | stale-while-revalidate：先渲染旧数据，后台刷新后静默更新 |
-| 发送时引用的工具已消失 | **照常发送**：末尾块只含仍存在的工具，失效引用以纯文本留在正文（模型仍可见用户意图）；编辑器内该 chip 标灰提示。不阻断发送，不静默删除 |
+| 失败                        | 处理                                                                                                                                   |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 配置文件不存在              | 复用 `AgentMcpError` 的 `unavailable`；picker 显示"未配置 MCP"                                                                         |
+| 配置解析失败                | 复用 `parse-failed`；该 provider 的候选整体不可用                                                                                      |
+| 单个 server 探测超时（10s） | **该 server 单独标记失败，其余照常返回**——一个坏 server 不得拖垮整个菜单                                                               |
+| stdio 进程起不来或崩溃      | 同上；`finally` 中必杀进程 + `unref`，绝不泄漏                                                                                         |
+| 缓存陈旧                    | stale-while-revalidate：先渲染旧数据，后台刷新后静默更新                                                                               |
+| 发送时引用的工具已消失      | **照常发送**：末尾块只含仍存在的工具，失效引用以纯文本留在正文（模型仍可见用户意图）；编辑器内该 chip 标灰提示。不阻断发送，不静默删除 |
 
 ## 9. 安全约束
 

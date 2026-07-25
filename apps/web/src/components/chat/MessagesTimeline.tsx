@@ -67,6 +67,7 @@ import { DiffStatLabel } from "./DiffStatLabel";
 import { ReviewChangesButton } from "./ReviewChangesButton";
 import { FileEntryIcon } from "./FileEntryIcon";
 import { InlineMentionChip } from "./InlineMentionChip";
+import { InlineMcpToolChip } from "./InlineMcpToolChip";
 import { InlineSkillChip } from "./InlineSkillChip";
 import { InlineAgentChip } from "./InlineAgentChip";
 import { MessageActionButton, MESSAGE_ACTION_ICON_CLASS_NAME } from "./MessageActionButton";
@@ -2524,6 +2525,9 @@ function renderUserMessageInlineText(
     }
     if (segment.type === "agent-mention") {
       return [<InlineAgentChip key={`${key}:agent`} alias={segment.alias} color={segment.color} />];
+    }
+    if (segment.type === "mcp-tool") {
+      return [<InlineMcpToolChip key={`${key}:mcp-tool`} reference={segment.reference} />];
     }
     if (segment.type === "link") {
       return [<InlineLinkChip key={`${key}:link`} url={segment.url} interactive />];

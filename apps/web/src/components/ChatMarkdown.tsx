@@ -50,6 +50,7 @@ import { LinkChipIcon } from "./LinkChipIcon";
 import { InlineAgentChip } from "./chat/InlineAgentChip";
 import { InlineLinkChip } from "./InlineLinkChip";
 import { InlineMentionChip } from "./chat/InlineMentionChip";
+import { InlineMcpToolChip } from "./chat/InlineMcpToolChip";
 import { InlineSkillChip } from "./chat/InlineSkillChip";
 import {
   COMPOSER_CHIP_SEGMENT_ATTRIBUTE,
@@ -814,6 +815,9 @@ function ComposerChipElement(props: {
   }
   if (segment.type === "agent-mention") {
     return <InlineAgentChip alias={segment.alias} color={segment.color} />;
+  }
+  if (segment.type === "mcp-tool") {
+    return <InlineMcpToolChip reference={segment.reference} />;
   }
   return <InlineLinkChip url={segment.url} interactive />;
 }

@@ -59,6 +59,7 @@ import {
   splitPromptIntoComposerSegments,
 } from "~/composer-editor-mentions";
 import { parseBareComposerLink } from "~/lib/linkChips";
+import { isMcpToolReferenceUnavailable } from "~/lib/mcpToolReferences";
 import { type TerminalContextDraft } from "~/lib/terminalContext";
 import { shouldCollapsePastedText } from "~/lib/composerPastedText";
 import type { ProviderMentionReference } from "@synara/contracts";
@@ -75,12 +76,14 @@ import {
 import {
   ComposerMentionNode,
   ComposerSkillNode,
+  ComposerMcpToolNode,
   ComposerSlashCommandNode,
   ComposerAgentMentionNode,
   ComposerTerminalContextNode,
   ComposerLinkNode,
   $createComposerMentionNode,
   $createComposerSkillNode,
+  $createComposerMcpToolNode,
   $createComposerSlashCommandNode,
   $createComposerAgentMentionNode,
   $createComposerTerminalContextNode,
@@ -232,6 +235,7 @@ function getAbsoluteOffsetForPoint(node: LexicalNode, pointOffset: number): numb
     if (
       node instanceof ComposerMentionNode ||
       node instanceof ComposerSkillNode ||
+      node instanceof ComposerMcpToolNode ||
       node instanceof ComposerSlashCommandNode ||
       node instanceof ComposerAgentMentionNode
     ) {
@@ -285,6 +289,7 @@ function getExpandedAbsoluteOffsetForPoint(node: LexicalNode, pointOffset: numbe
     if (
       node instanceof ComposerMentionNode ||
       node instanceof ComposerSkillNode ||
+      node instanceof ComposerMcpToolNode ||
       node instanceof ComposerSlashCommandNode ||
       node instanceof ComposerAgentMentionNode
     ) {
@@ -318,6 +323,7 @@ function findSelectionPointAtOffset(
   if (
     node instanceof ComposerMentionNode ||
     node instanceof ComposerSkillNode ||
+    node instanceof ComposerMcpToolNode ||
     node instanceof ComposerSlashCommandNode ||
     node instanceof ComposerAgentMentionNode ||
     node instanceof ComposerLinkNode ||
@@ -465,6 +471,10 @@ function $setComposerEditorPrompt(
       paragraph.append($createComposerSkillNode(prefixedName));
       continue;
     }
+    if (segment.type === "mcp-tool") {
+      paragraph.append($createComposerMcpToolNode(segment.reference));
+      continue;
+    }
     if (segment.type === "slash-command") {
       paragraph.append($createComposerSlashCommandNode(segment.command));
       continue;
@@ -517,6 +527,12 @@ interface ComposerPromptEditorProps {
   cursor: number;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   mentionReferences?: ReadonlyArray<ProviderMentionReference>;
+  /**
+   * Lookup keys of the MCP tool catalog currently held for this thread's provider (see
+   * `buildMcpToolReferenceKeys`). `null` — the default — means no catalog is loaded, and every
+   * `&` chip keeps its normal look.
+   */
+  mcpToolReferenceKeys?: ReadonlySet<string> | null;
   disabled: boolean;
   placeholder: string;
   className?: string;
@@ -893,6 +909,27 @@ function ComposerThreadMentionProviderPlugin() {
   return null;
 }
 
+// A `&server[:tool]` chip greys out only against a catalog we actually hold: `null` keys mean the
+// picker was never opened this session (or this provider has no managed MCP servers), and
+// unverified is not the same as missing. Marking runs as a node transform rather than a one-shot
+// sweep so chips inserted later are covered too, and re-registering on a new catalog re-runs it
+// over every existing chip.
+function ComposerMcpToolAvailabilityPlugin(props: { referenceKeys: ReadonlySet<string> | null }) {
+  const [editor] = useLexicalComposerContext();
+  const referenceKeys = props.referenceKeys;
+
+  useEffect(() => {
+    return editor.registerNodeTransform(ComposerMcpToolNode, (node) => {
+      const unavailable = isMcpToolReferenceUnavailable(node.getReference(), referenceKeys);
+      if (node.isUnavailable() !== unavailable) {
+        node.setUnavailable(unavailable);
+      }
+    });
+  }, [editor, referenceKeys]);
+
+  return null;
+}
+
 // A sufficiently large text paste collapses into an attachment card instead of
 // flooding the editor. Intercepting at the Lexical command level (rather than the
 // React onPaste prop) is required: Lexical's own paste listener would otherwise
@@ -937,6 +974,7 @@ function ComposerPromptEditorInner({
   cursor,
   terminalContexts,
   mentionReferences = [],
+  mcpToolReferenceKeys = null,
   disabled,
   placeholder,
   className,
@@ -1237,6 +1275,7 @@ function ComposerPromptEditorInner({
         <ComposerLinkTransformPlugin />
         <ComposerLinkPastePlugin />
         <ComposerThreadMentionProviderPlugin />
+        <ComposerMcpToolAvailabilityPlugin referenceKeys={mcpToolReferenceKeys} />
         {onCollapsePastedText ? (
           <ComposerBigPastePlugin onCollapsePastedText={onCollapsePastedText} />
         ) : null}
@@ -1255,6 +1294,7 @@ export const ComposerPromptEditor = forwardRef<
     cursor,
     terminalContexts,
     mentionReferences,
+    mcpToolReferenceKeys,
     disabled,
     placeholder,
     className,
@@ -1294,6 +1334,7 @@ export const ComposerPromptEditor = forwardRef<
         cursor={cursor}
         terminalContexts={terminalContexts}
         mentionReferences={normalizedMentionReferences}
+        mcpToolReferenceKeys={mcpToolReferenceKeys ?? null}
         disabled={disabled}
         placeholder={placeholder}
         onRemoveTerminalContext={onRemoveTerminalContext}

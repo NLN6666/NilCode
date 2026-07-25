@@ -609,6 +609,7 @@ export function createWsNativeApi(): NativeApi {
       listAgentMcpServers: () => transport.request(WS_METHODS.serverListAgentMcpServers),
       setAgentMcpServerEnabled: (input: AgentMcpSetEnabledInput) =>
         transport.request(WS_METHODS.serverSetAgentMcpServerEnabled, input),
+      listAgentMcpTools: () => transport.request(WS_METHODS.serverListAgentMcpTools),
       refreshProviders: () => transport.request(WS_METHODS.serverRefreshProviders),
       // Provider updates run up to 2 minutes server-side; callers wrap this in
       // withProviderUpdateTimeout, which owns the client-side watchdog.

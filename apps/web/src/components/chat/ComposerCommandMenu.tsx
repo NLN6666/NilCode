@@ -1,4 +1,5 @@
 import {
+  type AgentMcpProvider,
   type ProjectEntry,
   type ModelSlug,
   type ProviderNativeCommandDescriptor,
@@ -23,6 +24,7 @@ import {
   GitForkIcon,
   InfoIcon,
   ListTodoIcon,
+  McpToolIcon,
   type LucideIcon,
   MessageCircleIcon,
   Minimize2,
@@ -113,6 +115,11 @@ function commandMenuTrailingMeta(item: ComposerCommandItem): string | null {
     return formatSkillScope(item.skill.scope);
   }
 
+  if (item.type === "mcp-tool") {
+    if (item.unavailable) return "Unavailable";
+    return item.toolName === null ? "MCP server" : "MCP tool";
+  }
+
   if (item.type === "model") {
     return "Model";
   }
@@ -143,7 +150,8 @@ function commandMenuSecondaryText(item: ComposerCommandItem): string | null {
     item.type === "plugin" ||
     item.type === "skill" ||
     item.type === "local-root" ||
-    item.type === "thread"
+    item.type === "thread" ||
+    item.type === "mcp-tool"
   ) {
     return item.description;
   }
@@ -225,6 +233,18 @@ export type ComposerCommandItem =
       id: string;
       type: "skill";
       skill: ProviderSkillDescriptor;
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
+      type: "mcp-tool";
+      provider: AgentMcpProvider;
+      serverName: string;
+      /** `null` references every tool of the server (`&server`). */
+      toolName: string | null;
+      /** A server that could not be probed: shown greyed out and not selectable. */
+      unavailable?: boolean;
       label: string;
       description: string;
     }
@@ -417,13 +437,17 @@ export function ComposerCommandMenu(props: {
                 ? "Searching mentions..."
                 : props.triggerKind === "skill"
                   ? "Loading skills..."
-                  : "Loading commands..."
+                  : props.triggerKind === "mcp-tool"
+                    ? "Connecting to MCP servers..."
+                    : "Loading commands..."
               : (props.emptyStateText ??
                 (props.triggerKind === "mention"
                   ? "No matching plugin, chat, or file."
                   : props.triggerKind === "skill"
                     ? "No matching skill."
-                    : "No matching command."))}
+                    : props.triggerKind === "mcp-tool"
+                      ? "No MCP tools are configured for this agent."
+                      : "No matching command."))}
           </p>
         )}
       </div>
@@ -516,6 +540,8 @@ function commandMenuItemGlyph(item: ComposerCommandItem, theme: "light" | "dark"
       return <ProviderIcon provider={item.provider} className={cls} />;
     case "skill":
       return <SkillCubeIcon className={cls} />;
+    case "mcp-tool":
+      return <McpToolIcon className={cls} />;
     default:
       return null;
   }
@@ -549,6 +575,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
 }) {
   const secondaryText = commandMenuSecondaryText(props.item);
   const trailingMeta = commandMenuTrailingMeta(props.item);
+  // A server we could not probe stays visible so the user knows why its tools are missing, but
+  // it is dimmed and inert — there is nothing to insert.
+  const isUnavailable = props.item.type === "mcp-tool" && props.item.unavailable === true;
 
   return (
     <CommandItem
@@ -557,6 +586,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       className={cn(
         COMPOSER_COMMAND_MENU_ITEM_CLASS_NAME,
         props.isActive && COMPOSER_COMMAND_MENU_ITEM_ACTIVE_CLASS_NAME,
+        isUnavailable && "opacity-50",
       )}
       onMouseMove={() => {
         if (!props.isActive) props.onHighlight(props.item.id);

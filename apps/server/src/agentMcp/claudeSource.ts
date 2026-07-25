@@ -5,36 +5,19 @@
 // Exports: CLAUDE_AGENT_MCP_PROVIDER, resolveClaudeMcpConfigPath, parseClaudeMcpServers
 
 import type { AgentMcpServerDescriptor } from "@synara/contracts";
-import { redactMcpUrl, redactedMcpKeys } from "@synara/shared/mcp/redact";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const CLAUDE_AGENT_MCP_PROVIDER = "claudeAgent" as const;
+import {
+  CLAUDE_AGENT_MCP_PROVIDER,
+  parseClaudeMcpServerConnections,
+  redactMcpServerConnection,
+} from "./mcpConfigParser";
+
+export { CLAUDE_AGENT_MCP_PROVIDER };
 
 export function resolveClaudeMcpConfigPath(homeDirectory: string = homedir()): string {
   return join(homeDirectory, ".claude.json");
-}
-
-function readStringArray(value: unknown): ReadonlyArray<string> {
-  return Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === "string")
-    : [];
-}
-
-function describeTransport(entry: Record<string, unknown>): AgentMcpServerDescriptor["transport"] {
-  if (typeof entry["url"] === "string") {
-    return {
-      _tag: "http",
-      url: redactMcpUrl(entry["url"]),
-      headerKeys: redactedMcpKeys(entry["headers"]),
-    };
-  }
-  return {
-    _tag: "stdio",
-    command: typeof entry["command"] === "string" ? entry["command"] : "",
-    args: readStringArray(entry["args"]),
-    envKeys: redactedMcpKeys(entry["env"]),
-  };
 }
 
 /**
@@ -46,20 +29,5 @@ function describeTransport(entry: Record<string, unknown>): AgentMcpServerDescri
  * malformed input; callers surface it as `parseError` and refuse to write.
  */
 export function parseClaudeMcpServers(text: string): ReadonlyArray<AgentMcpServerDescriptor> {
-  const document = JSON.parse(text) as Record<string, unknown>;
-  const servers = document["mcpServers"];
-  if (typeof servers !== "object" || servers === null || Array.isArray(servers)) return [];
-
-  return Object.entries(servers as Record<string, unknown>).flatMap(([name, value]) => {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
-    const entry = value as Record<string, unknown>;
-    return [
-      {
-        provider: CLAUDE_AGENT_MCP_PROVIDER,
-        name,
-        enabled: entry["disabled"] !== true,
-        transport: describeTransport(entry),
-      } satisfies AgentMcpServerDescriptor,
-    ];
-  });
+  return parseClaudeMcpServerConnections(text).map(redactMcpServerConnection);
 }

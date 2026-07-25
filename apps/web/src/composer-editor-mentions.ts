@@ -16,6 +16,7 @@ import {
   trimTrailingLinkPunctuation,
 } from "./lib/linkChips";
 import { resolveComposerAgentMention } from "./lib/agentMentionCatalog";
+import { MCP_TOOL_TOKEN_SOURCE } from "./lib/mcpToolReferences";
 import type { ProviderMentionReference } from "@synara/contracts";
 import { threadIdFromThreadMentionPath } from "@synara/shared/threadMentions";
 
@@ -39,6 +40,12 @@ export type ComposerPromptSegment =
       type: "skill";
       name: string;
       prefix?: string;
+    }
+  | {
+      /** MCP tool reference: `&server`, `&server:tool` or `&server:*`. */
+      type: "mcp-tool";
+      /** Token body without the `&`, exactly as written. */
+      reference: string;
     }
   | {
       type: "slash-command";
@@ -79,6 +86,11 @@ const DISPLAY_LINK_TOKEN_REGEX = new RegExp(LINK_TOKEN_DISPLAY_PATTERN, "g");
 // `lastIndex`, so these can't pollute the global variants the split helpers feed to `matchAll`.
 const LINK_TOKEN_FIRST_REGEX = new RegExp(LINK_TOKEN_TYPING_PATTERN);
 const DISPLAY_LINK_TOKEN_FIRST_REGEX = new RegExp(LINK_TOKEN_DISPLAY_PATTERN);
+
+// MCP tool reference chip: `&server[:tool]`. Same trailing-boundary rule as skills and links —
+// a delimiter must follow while typing, and read-only display also accepts end of text.
+const MCP_TOOL_TOKEN_REGEX = new RegExp(`${MCP_TOOL_TOKEN_SOURCE}(?=\\s)`, "g");
+const DISPLAY_MCP_TOOL_TOKEN_REGEX = new RegExp(`${MCP_TOOL_TOKEN_SOURCE}(?=\\s|$)`, "g");
 
 // Agent mention chip: @alias(
 // Keep plain @alias text editable while typing so the picker can stay open.
@@ -153,6 +165,12 @@ type InlineTokenMatch =
       url: string;
       start: number;
       end: number;
+    }
+  | {
+      kind: "mcp-tool";
+      reference: string;
+      start: number;
+      end: number;
     };
 
 function isComposerSlashCommandChipName(value: string): value is ComposerSlashCommand {
@@ -190,6 +208,9 @@ function collectInlineTokenMatches(
     ? DISPLAY_SKILL_TOKEN_REGEX
     : SKILL_TOKEN_REGEX;
   const linkRegex = options.includeTrailingTokenAtEnd ? DISPLAY_LINK_TOKEN_REGEX : LINK_TOKEN_REGEX;
+  const mcpToolRegex = options.includeTrailingTokenAtEnd
+    ? DISPLAY_MCP_TOOL_TOKEN_REGEX
+    : MCP_TOOL_TOKEN_REGEX;
 
   // Ranges covered by higher-priority tokens, so mentions/skills do not match
   // inside a URL (e.g. an `@` host) and links do not match inside an agent token.
@@ -206,6 +227,20 @@ function collectInlineTokenMatches(
     const end = start + rawUrl.length;
     reservedRanges.push({ start, end });
     matches.push({ kind: "link", url, start, end });
+  }
+
+  // MCP references run right after links, because `&` is also the URL query separator: the
+  // reserved link ranges are what stop `?b=1&c=2` from being read as `&c=2`.
+  for (const match of text.matchAll(mcpToolRegex)) {
+    const whitespace = match[1] ?? "";
+    const serverName = match[2] ?? "";
+    const toolName = match[3];
+    const start = (match.index ?? 0) + whitespace.length;
+    if (serverName.length === 0 || isReserved(start)) continue;
+    const reference = toolName === undefined ? serverName : `${serverName}:${toolName}`;
+    const end = start + reference.length + 1;
+    reservedRanges.push({ start, end });
+    matches.push({ kind: "mcp-tool", reference, start, end });
   }
 
   // Track positions covered by agent mentions to avoid double-matching
@@ -318,6 +353,8 @@ function splitTextIntoPromptSegments(
 
     if (match.kind === "link") {
       segments.push({ type: "link", url: match.url });
+    } else if (match.kind === "mcp-tool") {
+      segments.push({ type: "mcp-tool", reference: match.reference });
     } else if (match.kind === "agent-mention") {
       segments.push({
         type: "agent-mention",

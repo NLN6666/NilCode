@@ -9,6 +9,7 @@
 
 import { cn } from "~/lib/utils";
 import type { AgentMentionColor } from "~/lib/agentMentionCatalog";
+import { formatMcpToolReference, parseMcpToolReference } from "~/lib/mcpToolReferences";
 import {
   COMPOSER_EDITOR_LINE_HEIGHT_CLASS_NAME,
   COMPOSER_EDITOR_TEXT_CLASS_NAME,
@@ -185,6 +186,35 @@ function formatComposerInlineTokenLabel(name: string): string {
 export function formatComposerSkillChipLabel(name: string): string {
   return formatComposerInlineTokenLabel(name);
 }
+
+// ── MCP tool helpers ──────────────────────────────────────────────────
+/** Central icon basename shared by every `&server[:tool]` token (editor + timeline). */
+export const COMPOSER_INLINE_MCP_TOOL_CHIP_ICON_NAME = "toolbox";
+
+/**
+ * MCP references stay verbatim rather than title-cased: `server:tool` is an identifier the model
+ * is told to call, and prettifying it would stop the chip from matching what is actually sent.
+ * The explicit `:*` wildcard collapses to the bare server name it is equivalent to.
+ */
+export function formatComposerMcpToolChipLabel(reference: string): string {
+  const parsed = parseMcpToolReference(reference);
+  return parsed === null ? reference : formatMcpToolReference(parsed);
+}
+
+/**
+ * A reference the loaded catalog no longer has. Dimmed to the same 50% as the unreachable-server
+ * row in the `&` picker, and dropped to the neutral tone so it stops reading as an active token —
+ * the message still sends, with the reference left in the body as plain text.
+ */
+export const COMPOSER_INLINE_MCP_TOOL_CHIP_UNAVAILABLE_CLASS_NAME = composerInlineChipClassName({
+  fill: "plain",
+  tone: "neutral",
+  className: "opacity-50",
+});
+
+/** Hover/AT hint paired with the dimmed look, so the greying is never unexplained. */
+export const COMPOSER_INLINE_MCP_TOOL_CHIP_UNAVAILABLE_TITLE =
+  "This MCP tool is not available right now — it will be sent as plain text.";
 
 export function formatComposerSlashCommandChipLabel(command: string): string {
   return formatComposerInlineTokenLabel(command);

@@ -23,6 +23,7 @@ import type {
   AgentMcpCatalog,
   AgentMcpSetEnabledInput,
   AgentMcpSourceView,
+  AgentMcpToolCatalog,
 } from "./agentMcp";
 import type {
   AutomationCancelRunInput,

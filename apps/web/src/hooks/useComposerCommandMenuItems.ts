@@ -1,4 +1,6 @@
 import type {
+  AgentMcpToolDescriptor,
+  AgentMcpToolSourceError,
   ProjectEntry,
   ProviderAgentDescriptor,
   ProviderNativeCommandDescriptor,
@@ -53,6 +55,94 @@ export type SearchableModelOption = {
 };
 
 const THREAD_MENTION_SUGGESTION_LIMIT = 20;
+
+const EMPTY_MCP_TOOLS: readonly AgentMcpToolDescriptor[] = [];
+const EMPTY_MCP_TOOL_ERRORS: readonly AgentMcpToolSourceError[] = [];
+
+// Descriptions are long prose; ranking them at the same weight as a name would let a single
+// verbose tool outrank an exact server-name hit.
+const MCP_TOOL_DESCRIPTION_FIELD_WEIGHT = 200;
+
+interface McpServerSuggestion {
+  readonly provider: AgentMcpToolDescriptor["provider"];
+  readonly serverName: string;
+  readonly toolCount: number;
+}
+
+/**
+ * Candidates for a `&` trigger: one whole-server entry per configured server, then the individual
+ * tools, then a dimmed row per server that could not be probed.
+ *
+ * Both the server name and the tool name feed the fuzzy match, so `&doc` surfaces
+ * `context7:query-docs` (tool name) next to a hypothetical `docs` server (server name). The
+ * normalizer turns `:` into a space, so typing `&context7:que` scores as the phrase it reads as.
+ */
+export function buildMcpToolComposerItems(input: {
+  readonly query: string;
+  readonly tools: readonly AgentMcpToolDescriptor[];
+  readonly errors: readonly AgentMcpToolSourceError[];
+}): ComposerCommandItem[] {
+  const query = normalizeProviderDiscoveryText(input.query);
+
+  const serversByKey = new Map<string, McpServerSuggestion>();
+  for (const tool of input.tools) {
+    const key = `${tool.provider}:${tool.serverName}`;
+    const existing = serversByKey.get(key);
+    serversByKey.set(key, {
+      provider: tool.provider,
+      serverName: tool.serverName,
+      toolCount: (existing?.toolCount ?? 0) + 1,
+    });
+  }
+
+  const serverItems: ComposerCommandItem[] = rankProviderDiscoveryItems(
+    [...serversByKey.values()],
+    query,
+    (server) => [{ value: server.serverName }],
+  ).map((server) => ({
+    id: `mcp-server:${server.provider}:${server.serverName}`,
+    type: "mcp-tool" as const,
+    provider: server.provider,
+    serverName: server.serverName,
+    toolName: null,
+    label: `&${server.serverName}`,
+    description: server.toolCount === 1 ? "1 tool" : `All ${server.toolCount} tools`,
+  }));
+
+  const toolItems: ComposerCommandItem[] = rankProviderDiscoveryItems(
+    input.tools,
+    query,
+    (tool) => [
+      { value: `${tool.serverName}:${tool.toolName}` },
+      { value: tool.toolName },
+      { value: tool.serverName },
+      { value: tool.description, weight: MCP_TOOL_DESCRIPTION_FIELD_WEIGHT },
+    ],
+  ).map((tool) => ({
+    id: `mcp-tool:${tool.provider}:${tool.serverName}:${tool.toolName}`,
+    type: "mcp-tool" as const,
+    provider: tool.provider,
+    serverName: tool.serverName,
+    toolName: tool.toolName,
+    label: `&${tool.serverName}:${tool.toolName}`,
+    description: tool.description ?? "",
+  }));
+
+  // Failures are appended last and never ranked away: they explain an absence, so hiding them
+  // behind a query would leave the user with a silently short list.
+  const errorItems: ComposerCommandItem[] = input.errors.map((error, index) => ({
+    id: `mcp-error:${error.provider}:${error.serverName ?? index}`,
+    type: "mcp-tool" as const,
+    provider: error.provider,
+    serverName: error.serverName ?? "",
+    toolName: null,
+    unavailable: true,
+    label: error.serverName ?? error.provider,
+    description: error.message,
+  }));
+
+  return [...serverItems, ...toolItems, ...errorItems];
+}
 
 function threadSuggestionTitle(title: string): string {
   return title.trim() || "Untitled thread";
@@ -253,6 +343,9 @@ export function useComposerCommandMenuItems(input: {
   canOfferSideCommand: boolean;
   canOfferExportCommand: boolean;
   surfaceAppSlashCommands?: ReadonlySet<string>;
+  /** Empty on surfaces that do not offer `&` references (the kanban composer, for now). */
+  mcpTools?: readonly AgentMcpToolDescriptor[];
+  mcpToolErrors?: readonly AgentMcpToolSourceError[];
   dynamicAgents: readonly ProviderAgentDescriptor[];
   threadMentionSources?: {
     readonly threads: readonly ComposerThreadMentionSource[];
@@ -275,6 +368,8 @@ export function useComposerCommandMenuItems(input: {
     canOfferSideCommand,
     canOfferExportCommand,
     surfaceAppSlashCommands,
+    mcpTools = EMPTY_MCP_TOOLS,
+    mcpToolErrors = EMPTY_MCP_TOOL_ERRORS,
     dynamicAgents,
     threadMentionSources,
   } = input;
@@ -434,6 +529,14 @@ export function useComposerCommandMenuItems(input: {
       description: skill.interface?.shortDescription ?? skill.description ?? skill.path,
     }));
     return [...builtInItems, ...rankedProviderCommandItems, ...skillItems];
+  }
+
+  if (composerTrigger.kind === "mcp-tool") {
+    return buildMcpToolComposerItems({
+      query: composerTrigger.query,
+      tools: mcpTools,
+      errors: mcpToolErrors,
+    });
   }
 
   if (composerTrigger.kind === "skill") {

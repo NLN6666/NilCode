@@ -4,9 +4,15 @@ import {
   composerMentionQuotedPathHasClosingQuote,
   decodeComposerMentionQuotedPath,
 } from "./lib/composerMentions";
+import { MCP_TOOL_REFERENCE_PREFIX } from "./lib/mcpToolReferences";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
-export type ComposerTriggerKind = "mention" | "slash-command" | "slash-model" | "skill";
+export type ComposerTriggerKind =
+  | "mention"
+  | "slash-command"
+  | "slash-model"
+  | "skill"
+  | "mcp-tool";
 
 export interface ComposerTrigger {
   kind: ComposerTriggerKind;
@@ -27,6 +33,7 @@ type ComposerSegmentLike =
   | { type: "text"; text: string }
   | { type: "mention" }
   | { type: "skill" }
+  | { type: "mcp-tool"; reference: string }
   | { type: "slash-command"; command: ComposerSlashCommand }
   | { type: "terminal-context" }
   | { type: "agent-mention"; alias: string }
@@ -98,6 +105,16 @@ export function expandCollapsedComposerCursor(text: string, cursorInput: number)
     }
     if (segment.type === "skill") {
       const expandedLength = segment.name.length + 1;
+      if (remaining <= 1) {
+        return expandedCursor + (remaining === 0 ? 0 : expandedLength);
+      }
+      remaining -= 1;
+      expandedCursor += expandedLength;
+      continue;
+    }
+    if (segment.type === "mcp-tool") {
+      // &server:tool = 1 + reference.length
+      const expandedLength = segment.reference.length + 1;
       if (remaining <= 1) {
         return expandedCursor + (remaining === 0 ? 0 : expandedLength);
       }
@@ -207,6 +224,19 @@ export function collapseExpandedComposerCursor(text: string, cursorInput: number
     }
     if (segment.type === "skill") {
       const expandedLength = segment.name.length + 1;
+      if (remaining === 0) {
+        return collapsedCursor;
+      }
+      if (remaining <= expandedLength) {
+        return collapsedCursor + 1;
+      }
+      remaining -= expandedLength;
+      collapsedCursor += 1;
+      continue;
+    }
+    if (segment.type === "mcp-tool") {
+      // &server:tool = 1 + reference.length
+      const expandedLength = segment.reference.length + 1;
       if (remaining === 0) {
         return collapsedCursor;
       }
@@ -354,6 +384,18 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
   if (token.startsWith("$")) {
     return {
       kind: "skill",
+      query: token.slice(1),
+      rangeStart: tokenStart,
+      rangeEnd: cursor,
+    };
+  }
+
+  // `&server:tool` never contains whitespace, so the whitespace-bounded token above already
+  // delimits it exactly. A URL's `&` can't reach here either: the enclosing word starts with the
+  // scheme or host, not with `&`.
+  if (token.startsWith(MCP_TOOL_REFERENCE_PREFIX)) {
+    return {
+      kind: "mcp-tool",
       query: token.slice(1),
       rangeStart: tokenStart,
       rangeEnd: cursor,
