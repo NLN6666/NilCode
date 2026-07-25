@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   agentCatalogRoots,
+  claudePluginAgentRoots,
   clearAgentCatalogCacheForTests,
   collectAgentsFromRoots,
   discoverAgentCatalog,
@@ -279,5 +280,45 @@ describe("discoverAgentCatalog", () => {
       "first",
       "second",
     ]);
+  });
+});
+
+describe("claudePluginAgentRoots", () => {
+  it("namespaces installed plugin subagents and skips uninstalled marketplace copies", async () => {
+    const installPath = nodePath.join(
+      tempDir,
+      ".claude/plugins/cache/fable-advisor/fable-advisor/3.1.0",
+    );
+    await writeFile(
+      ".claude/plugins/installed_plugins.json",
+      JSON.stringify({
+        version: 2,
+        plugins: { "fable-advisor@fable-advisor": [{ scope: "user", installPath }] },
+      }),
+    );
+    await writeFile(
+      ".claude/plugins/cache/fable-advisor/fable-advisor/3.1.0/agents/grok-implementer.md",
+      "---\nname: grok-implementer\ndescription: Grok lane\n---\n",
+    );
+    // Browsable but never installed. Listing it would offer a mention that
+    // silently does nothing, since Claude Code cannot spawn it.
+    await writeFile(
+      ".claude/plugins/marketplaces/other-market/agents/not-installed.md",
+      "---\nname: not-installed\ndescription: Should stay hidden\n---\n",
+    );
+
+    const names = (await discoverAgentCatalog({ provider: "claudeAgent", homeDir: tempDir })).map(
+      (agent) => agent.name,
+    );
+
+    expect(names).toContain("fable-advisor:grok-implementer");
+    expect(names).not.toContain("not-installed");
+  });
+
+  it("returns no roots when the manifest is missing or malformed", async () => {
+    expect(await claudePluginAgentRoots(tempDir)).toEqual([]);
+
+    await writeFile(".claude/plugins/installed_plugins.json", "{ not valid json");
+    expect(await claudePluginAgentRoots(tempDir)).toEqual([]);
   });
 });

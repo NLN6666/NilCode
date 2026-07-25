@@ -22,7 +22,12 @@ export type AgentCatalogProvider = "claudeAgent" | "codex";
 
 export interface AgentRoot {
   readonly path: string;
-  readonly source: Extract<ProviderAgentSource, "project" | "user">;
+  readonly source: Extract<ProviderAgentSource, "project" | "user" | "sdk">;
+  /**
+   * Plugin namespace. Plugin subagents are mentioned as `<prefix>:<name>` because
+   * their frontmatter only carries the bare name; Claude Code adds the namespace.
+   */
+  readonly namePrefix?: string;
 }
 
 // Nested namespaces are common under `~/.claude/agents` (e.g. `ccg/planner.md`);
@@ -173,6 +178,7 @@ export function agentCatalogRoots(input: AgentCatalogInput): AgentRoot[] {
 async function readClaudeAgentDescriptor(input: {
   readonly agentPath: string;
   readonly source: AgentRoot["source"];
+  readonly namePrefix?: string | undefined;
 }): Promise<ProviderAgentDescriptor | null> {
   let raw: string;
   try {
@@ -189,10 +195,11 @@ async function readClaudeAgentDescriptor(input: {
   }
   const description = readFrontmatterString(frontmatter, ["description"]);
   const model = readFrontmatterString(frontmatter, ["model"]);
+  const qualifiedName = input.namePrefix ? `${input.namePrefix}:${name}` : name;
 
   return {
-    name,
-    displayName: name,
+    name: qualifiedName,
+    displayName: qualifiedName,
     ...(description ? { description } : {}),
     ...(model ? { model } : {}),
     source: input.source,
@@ -332,7 +339,11 @@ export async function collectAgentsFromRoots(input: {
       const descriptors = await Promise.all(
         agentPaths.map((agentPath) =>
           isClaude
-            ? readClaudeAgentDescriptor({ agentPath, source: root.source })
+            ? readClaudeAgentDescriptor({
+                agentPath,
+                source: root.source,
+                namePrefix: root.namePrefix,
+              })
             : readCodexAgentDescriptor({ agentPath, source: root.source }),
         ),
       );
@@ -340,6 +351,58 @@ export async function collectAgentsFromRoots(input: {
     }),
   );
   return mergeAgentDescriptors(perRoot);
+}
+
+// ── Claude plugin roots ──────────────────────────────────────────────
+
+interface InstalledPluginEntry {
+  readonly installPath?: string;
+}
+
+interface InstalledPluginsFile {
+  readonly plugins?: Record<string, ReadonlyArray<InstalledPluginEntry>>;
+}
+
+/**
+ * Plugin subagents (`fable-advisor:grok-implementer`) live under each plugin's
+ * install directory, not `~/.claude/agents`, so a plain home-root scan misses
+ * them entirely and they would only ever arrive via the SDK's async reply.
+ *
+ * Only entries listed in `installed_plugins.json` are real: `plugins/marketplaces`
+ * additionally holds hundreds of browsable-but-uninstalled definitions that
+ * cannot actually be spawned, and listing those would fill the composer menu
+ * with mentions that silently do nothing.
+ */
+export async function claudePluginAgentRoots(homeDir: string): Promise<AgentRoot[]> {
+  const manifestPath = nodePath.join(homeDir, ".claude", "plugins", "installed_plugins.json");
+
+  let parsed: InstalledPluginsFile;
+  try {
+    parsed = JSON.parse(await fs.readFile(manifestPath, "utf8")) as InstalledPluginsFile;
+  } catch {
+    return [];
+  }
+
+  const roots: AgentRoot[] = [];
+  for (const [key, installs] of Object.entries(parsed.plugins ?? {})) {
+    // Keys are `<plugin>@<marketplace>`; the mention namespace is the plugin part.
+    const pluginName = key.split("@")[0]?.trim();
+    if (!pluginName) {
+      continue;
+    }
+    for (const install of installs ?? []) {
+      const installPath = install?.installPath?.trim();
+      if (!installPath) {
+        continue;
+      }
+      roots.push({
+        path: nodePath.join(installPath, "agents"),
+        source: "sdk",
+        namePrefix: pluginName,
+      });
+    }
+  }
+  return roots;
 }
 
 // ── Cache ────────────────────────────────────────────────────────────
@@ -381,7 +444,13 @@ async function fingerprintRoots(roots: ReadonlyArray<AgentRoot>): Promise<string
 export async function discoverAgentCatalog(
   input: AgentCatalogInput,
 ): Promise<ProviderAgentDescriptor[]> {
-  const roots = agentCatalogRoots(input);
+  // Plugin roots come last so a project- or user-level definition of the same
+  // name still wins, matching the locked precedence (project > user > sdk/plugin).
+  // They also feed the fingerprint, so installing a plugin invalidates the cache.
+  const roots =
+    input.provider === "claudeAgent"
+      ? [...agentCatalogRoots(input), ...(await claudePluginAgentRoots(input.homeDir))]
+      : agentCatalogRoots(input);
   const cacheKey = [input.provider, input.homeDir, input.cwd?.trim() ?? ""].join(" ");
 
   if (!input.forceReload) {
