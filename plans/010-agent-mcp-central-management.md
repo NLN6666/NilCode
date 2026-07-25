@@ -12,10 +12,10 @@ Executor: 服务端两个纯文本编辑器（TOML 行编辑、JSON 最小编辑
 
 与已有的 **External MCP**（`docs/external-mcp.md`）方向相反，二者互补：
 
-| 设置页 | 方向 |
-| --- | --- |
-| External MCP（已有） | 外部 coding agent 把 Synara **当作** MCP 服务器接入 |
-| MCP Servers（本计划） | Synara 管理这些 agent **各自使用**的 MCP 服务器 |
+| 设置页                | 方向                                                |
+| --------------------- | --------------------------------------------------- |
+| External MCP（已有）  | 外部 coding agent 把 Synara **当作** MCP 服务器接入 |
+| MCP Servers（本计划） | Synara 管理这些 agent **各自使用**的 MCP 服务器     |
 
 ## 已锁定的决策
 
@@ -56,10 +56,10 @@ enabled = false
 
 ### 两个文件的真实形态
 
-| | 路径 | 规模 | 特征 |
-| --- | --- | --- | --- |
-| Codex | `resolveCodexHome()` + `config.toml` | 248+ 行 | 混用 `'` 与 `"` 字符串；内嵌明文 API key；有嵌套子表 `[mcp_servers.x.env]`、`[mcp_servers.x.http_headers]` |
-| Claude | `~/.claude.json` | 214 KB / 6039 行 | 2 空格缩进标准 JSON，无注释；被 Claude Code 高频写入 `numStartups` / `toolUsage` / `tipsHistory` |
+|        | 路径                                 | 规模             | 特征                                                                                                       |
+| ------ | ------------------------------------ | ---------------- | ---------------------------------------------------------------------------------------------------------- |
+| Codex  | `resolveCodexHome()` + `config.toml` | 248+ 行          | 混用 `'` 与 `"` 字符串；内嵌明文 API key；有嵌套子表 `[mcp_servers.x.env]`、`[mcp_servers.x.http_headers]` |
+| Claude | `~/.claude.json`                     | 214 KB / 6039 行 | 2 空格缩进标准 JSON，无注释；被 Claude Code 高频写入 `numStartups` / `toolUsage` / `tipsHistory`           |
 
 Codex home 路径必须走既有的 `resolveCodexHome()`（`packages/shared/src/codexConfig.ts`），它认 `CODEX_HOME` 环境变量，不能写死 `~/.codex`。
 
@@ -80,17 +80,17 @@ contracts/agentMcp.ts · shared/mcp/redact.ts    Schema 与脱敏
 
 ### 新增文件
 
-| 文件 | 职责 |
-| --- | --- |
-| `packages/contracts/src/agentMcp.ts` | Schema：descriptor / source / catalog / setEnabled 输入 |
-| `packages/shared/src/mcp/redact.ts` | URL 脱敏、env 与 header 只留键名 |
-| `apps/server/src/agentMcp/codexTomlDocument.ts` | `[mcp_servers.<name>]` 段内 upsert / 删除 `enabled` 行 |
-| `apps/server/src/agentMcp/claudeJsonDocument.ts` | 设置 / 删除 `mcpServers.<name>.disabled` |
-| `apps/server/src/agentMcp/codexSource.ts` | 解析 TOML → descriptor[]，就地脱敏 |
-| `apps/server/src/agentMcp/claudeSource.ts` | 解析 JSON → descriptor[]，就地脱敏 |
-| `apps/server/src/agentMcp/Services/AgentMcpService.ts` | Service tag 与接口 |
-| `apps/server/src/agentMcp/Layers/AgentMcpService.ts` | 实现：聚合、回读重试、原子写 |
-| `apps/web/src/components/settings/AgentMcpSettingsPanel.tsx` | 面板 |
+| 文件                                                         | 职责                                                    |
+| ------------------------------------------------------------ | ------------------------------------------------------- |
+| `packages/contracts/src/agentMcp.ts`                         | Schema：descriptor / source / catalog / setEnabled 输入 |
+| `packages/shared/src/mcp/redact.ts`                          | URL 脱敏、env 与 header 只留键名                        |
+| `apps/server/src/agentMcp/codexTomlDocument.ts`              | `[mcp_servers.<name>]` 段内 upsert / 删除 `enabled` 行  |
+| `apps/server/src/agentMcp/claudeJsonDocument.ts`             | 设置 / 删除 `mcpServers.<name>.disabled`                |
+| `apps/server/src/agentMcp/codexSource.ts`                    | 解析 TOML → descriptor[]，就地脱敏                      |
+| `apps/server/src/agentMcp/claudeSource.ts`                   | 解析 JSON → descriptor[]，就地脱敏                      |
+| `apps/server/src/agentMcp/Services/AgentMcpService.ts`       | Service tag 与接口                                      |
+| `apps/server/src/agentMcp/Layers/AgentMcpService.ts`         | 实现：聚合、回读重试、原子写                            |
+| `apps/web/src/components/settings/AgentMcpSettingsPanel.tsx` | 面板                                                    |
 
 对应 `.test.ts` 与仓库既有布局一致（同目录同名）。
 
@@ -139,10 +139,10 @@ AgentMcpSetEnabledInput = { provider: AgentMcpProvider; name: string; enabled: b
 
 ## 开关语义：一个必须显式处理的反转
 
-| | 字段 | 方向 | 字段缺失时 |
-| --- | --- | --- | --- |
-| Codex | `enabled` | 正向，`false` = 禁用 | 启用 |
-| Claude | `disabled` | 反向，`true` = 禁用 | 启用 |
+|        | 字段       | 方向                 | 字段缺失时 |
+| ------ | ---------- | -------------------- | ---------- |
+| Codex  | `enabled`  | 正向，`false` = 禁用 | 启用       |
+| Claude | `disabled` | 反向，`true` = 禁用  | 启用       |
 
 descriptor 对外统一暴露正向的 `enabled`。
 
@@ -153,7 +153,7 @@ descriptor 对外统一暴露正向的 `enabled`。
 `codexTomlDocument.ts` 是本计划风险最集中的地方。签名：
 
 ```ts
-export function applyCodexMcpEnabled(text: string, name: string, enabled: boolean): string
+export function applyCodexMcpEnabled(text: string, name: string, enabled: boolean): string;
 ```
 
 逐字节保留除目标行外的一切。必须处理：
@@ -174,7 +174,7 @@ export function applyCodexMcpEnabled(text: string, name: string, enabled: boolea
 `claudeJsonDocument.ts`：
 
 ```ts
-export function applyClaudeMcpDisabled(text: string, name: string, enabled: boolean): string
+export function applyClaudeMcpDisabled(text: string, name: string, enabled: boolean): string;
 ```
 
 用 `jsonc-parser` 的 `modify(text, ["mcpServers", name, "disabled"], value, { formattingOptions: { insertSpaces: true, tabSize: 2 } })` + `applyEdits`。`enabled === true` 时传 `undefined` 作为 value 以删除该键。
@@ -223,13 +223,13 @@ throw ConcurrentModification
 
 ## 错误处理
 
-| 情况 | 行为 |
-| --- | --- |
-| 配置文件不存在 | `available: false`，UI 显示"未检测到 Codex 配置" —— 这不是错误 |
-| 解析失败 | `parseError` 带原因，该组只读，**拒绝任何写入** |
-| 目标名已被外部删除 | 明确错误 + 自动刷新列表 |
-| 三次重试后仍被覆盖 | 报"配置文件正被其他程序修改，请重试" |
-| 写入失败 | 原子替换保证原文件完好，UI 回滚开关 |
+| 情况               | 行为                                                           |
+| ------------------ | -------------------------------------------------------------- |
+| 配置文件不存在     | `available: false`，UI 显示"未检测到 Codex 配置" —— 这不是错误 |
+| 解析失败           | `parseError` 带原因，该组只读，**拒绝任何写入**                |
+| 目标名已被外部删除 | 明确错误 + 自动刷新列表                                        |
+| 三次重试后仍被覆盖 | 报"配置文件正被其他程序修改，请重试"                           |
+| 写入失败           | 原子替换保证原文件完好，UI 回滚开关                            |
 
 ## UI 接入清单
 
@@ -247,6 +247,7 @@ throw ConcurrentModification
    ```
 
    图标刻意不用 `plugin-1` —— 那是 Integrations（External MCP）在用的，两个 MCP 页必须一眼可分。
+
 2. `apps/web/src/settingsSearchIndex.ts` — 加 `mcpServers:*` 条目，keywords 覆盖 "MCP server enable disable codex claude config.toml claude.json"
 3. `apps/web/src/routes/_chat.settings.tsx` — 渲染 `<AgentMcpSettingsPanel active={activeSection === "mcpServers"} />`
 4. 面板本体复用 `SettingsPanelPrimitives`（`SettingsSection` / `SettingsListRow`）与 `ui/switch`，与 `ExternalMcpSettingsPanel` 视觉一致
