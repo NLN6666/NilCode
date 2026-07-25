@@ -19,6 +19,7 @@ import {
   type ExternalMcpCreateIntegrationInput,
   type ExternalMcpCreateIntegrationResult,
   type ExternalMcpIntegration,
+  type AgentMcpSetEnabledInput,
   type ExternalMcpRefreshPairingInput,
   type ExternalMcpRevokeIntegrationInput,
   type ThreadId,
@@ -605,6 +606,9 @@ export function createWsNativeApi(): NativeApi {
         transport.request(WS_METHODS.serverRevokeExternalMcpIntegration, input),
       refreshExternalMcpPairing: (input: ExternalMcpRefreshPairingInput) =>
         transport.request(WS_METHODS.serverRefreshExternalMcpPairing, input),
+      listAgentMcpServers: () => transport.request(WS_METHODS.serverListAgentMcpServers),
+      setAgentMcpServerEnabled: (input: AgentMcpSetEnabledInput) =>
+        transport.request(WS_METHODS.serverSetAgentMcpServerEnabled, input),
       refreshProviders: () => transport.request(WS_METHODS.serverRefreshProviders),
       // Provider updates run up to 2 minutes server-side; callers wrap this in
       // withProviderUpdateTimeout, which owns the client-side watchdog.

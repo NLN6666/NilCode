@@ -20,6 +20,11 @@ import type {
   ExternalMcpRevokeIntegrationInput,
 } from "./externalMcp";
 import type {
+  AgentMcpCatalog,
+  AgentMcpSetEnabledInput,
+  AgentMcpSourceView,
+} from "./agentMcp";
+import type {
   AutomationCancelRunInput,
   AutomationCancelRunResult,
   AutomationArchiveRunInput,
@@ -663,6 +668,8 @@ export interface NativeApi {
     refreshExternalMcpPairing: (
       input: ExternalMcpRefreshPairingInput,
     ) => Promise<ExternalMcpCreateIntegrationResult>;
+    listAgentMcpServers: () => Promise<AgentMcpCatalog>;
+    setAgentMcpServerEnabled: (input: AgentMcpSetEnabledInput) => Promise<AgentMcpSourceView>;
     refreshProviders: () => Promise<ServerRefreshProvidersResult>;
     updateProvider: (input: ServerProviderUpdateInput) => Promise<ServerProviderUpdateResult>;
     listWorktrees: () => Promise<ServerListWorktreesResult>;
