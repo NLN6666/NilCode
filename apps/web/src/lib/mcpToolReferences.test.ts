@@ -8,6 +8,7 @@ import {
   formatMcpToolReference,
   isMcpToolReferenceUnavailable,
   parseMcpToolReference,
+  stripAvailableMcpToolsBlock,
   type McpToolCandidate,
 } from "./mcpToolReferences";
 
@@ -204,5 +205,39 @@ describe("appendAvailableMcpToolsBlock", () => {
     expect(appendAvailableMcpToolsBlock("&context7:removed-tool please", TOOLS)).toBe(
       "&context7:removed-tool please",
     );
+  });
+});
+
+describe("stripAvailableMcpToolsBlock", () => {
+  it("undoes what appendAvailableMcpToolsBlock added", () => {
+    const text = "帮我查一下 React 19 的用法 &context7:query-docs";
+
+    expect(stripAvailableMcpToolsBlock(appendAvailableMcpToolsBlock(text, TOOLS))).toBe(text);
+  });
+
+  it("leaves a prompt that never carried a block alone", () => {
+    expect(stripAvailableMcpToolsBlock("just a message")).toBe("just a message");
+    expect(stripAvailableMcpToolsBlock("&context7:query-docs please")).toBe(
+      "&context7:query-docs please",
+    );
+  });
+
+  it("keeps a block the user wrote mid-message", () => {
+    // Only the generated trailing block is display-stripped; text the user typed stays put.
+    const text = "look at <available-mcp-tools>\nfoo\n</available-mcp-tools> and then continue";
+
+    expect(stripAvailableMcpToolsBlock(text)).toBe(text);
+  });
+
+  it("strips a block stored before the instruction line existed", () => {
+    const text = [
+      "check this &context7:query-docs",
+      "",
+      "<available-mcp-tools>",
+      "context7:query-docs — Fetch up-to-date documentation for a library by ID.",
+      "</available-mcp-tools>",
+    ].join("\n");
+
+    expect(stripAvailableMcpToolsBlock(text)).toBe("check this &context7:query-docs");
   });
 });

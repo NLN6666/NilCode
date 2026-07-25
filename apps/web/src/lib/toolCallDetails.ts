@@ -23,9 +23,12 @@ export interface WorkLogToolEditDetails {
 }
 
 export interface WorkLogToolDetails {
-  kind: "command" | "file-change";
+  /** `tool` covers MCP and other non-command tool calls: arguments in, result out. */
+  kind: "command" | "file-change" | "tool";
   title: string;
   command?: string;
+  /** Pretty-printed call arguments, for `tool` rows. */
+  arguments?: string;
   output?: WorkLogToolOutputDetails;
   diff?: string;
   content?: string;
@@ -351,6 +354,50 @@ function detailsTitle(input: DeriveWorkLogToolDetailsInput): string {
   return input.toolTitle ?? input.label;
 }
 
+// Tool call arguments as the model sent them. Providers report these either already serialized
+// (a JSON string) or as a nested object; both become pretty-printed JSON so the expanded row reads
+// the same regardless of provider. Ingestion has already bounded every field.
+function extractToolArguments(payload: Record<string, unknown> | null): string | undefined {
+  const data = asRecord(payload?.data);
+  const item = asRecord(data?.item);
+  const candidates = [
+    data?.input,
+    data?.arguments,
+    data?.args,
+    data?.params,
+    data?.rawInput,
+    item?.input,
+    item?.arguments,
+  ];
+  for (const candidate of candidates) {
+    const text = asTrimmedString(candidate);
+    if (text) {
+      return text;
+    }
+    const record = asRecord(candidate);
+    if (record && Object.keys(record).length > 0) {
+      try {
+        return JSON.stringify(record, null, 2);
+      } catch {
+        // Circular or otherwise unserializable payloads must not break the whole row.
+        continue;
+      }
+    }
+  }
+  return undefined;
+}
+
+// Any tool call that is neither a shell command nor a file edit: MCP tools, provider-native
+// dynamic tools, and collab agent tools. They have no diff and no command line — what is worth
+// showing is the call arguments and whatever the tool returned.
+function shouldBuildToolDetails(input: DeriveWorkLogToolDetailsInput): boolean {
+  return (
+    input.itemType === "mcp_tool_call" ||
+    input.itemType === "dynamic_tool_call" ||
+    input.itemType === "collab_agent_tool_call"
+  );
+}
+
 function shouldBuildCommandDetails(input: DeriveWorkLogToolDetailsInput): boolean {
   return (
     input.requestKind === "command" ||
@@ -367,6 +414,25 @@ export function deriveWorkLogToolDetails(
   input: DeriveWorkLogToolDetailsInput,
 ): WorkLogToolDetails | undefined {
   const command = input.rawCommand ?? input.command;
+  // Checked first: `itemType` is the unambiguous signal, while the command branch also fires on a
+  // merely present `command` field, which a tool payload can carry as one of its arguments.
+  if (shouldBuildToolDetails(input)) {
+    const toolArguments = extractToolArguments(input.payload);
+    const output = extractToolOutputDetails({
+      payload: input.payload,
+      detail: input.detail,
+    });
+    if (!toolArguments && !output) {
+      return undefined;
+    }
+    return {
+      kind: "tool",
+      title: detailsTitle(input),
+      ...(toolArguments ? { arguments: toolArguments } : {}),
+      ...(output ? { output } : {}),
+    };
+  }
+
   if (shouldBuildCommandDetails(input)) {
     const output = extractToolOutputDetails({
       payload: input.payload,
@@ -447,6 +513,11 @@ export function mergeWorkLogToolDetails(
     kind: right.kind,
     title: right.title || left.title,
     ...((right.command ?? left.command) ? { command: right.command ?? left.command } : {}),
+    // Arguments arrive on `tool.started` and the result on `tool.completed`; keeping the left side
+    // is what stops the completion event from erasing what the call was made with.
+    ...((right.arguments ?? left.arguments)
+      ? { arguments: right.arguments ?? left.arguments }
+      : {}),
     ...(output ? { output } : {}),
     ...((right.diff ?? left.diff) ? { diff: right.diff ?? left.diff } : {}),
     ...((right.content ?? left.content) ? { content: right.content ?? left.content } : {}),

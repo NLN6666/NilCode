@@ -123,6 +123,30 @@ export const AVAILABLE_MCP_TOOLS_OPEN_TAG = "<available-mcp-tools>";
 export const AVAILABLE_MCP_TOOLS_CLOSE_TAG = "</available-mcp-tools>";
 export const AVAILABLE_MCP_TOOLS_INSTRUCTION = "Please use the MCP tools listed above.";
 
+/**
+ * The block as `appendAvailableMcpToolsBlock` writes it, anchored to the end of the prompt.
+ *
+ * Anchoring is what keeps a `<available-mcp-tools>` the user typed mid-message intact — only the
+ * generated trailing block is display-stripped. The instruction line is optional so a message
+ * stored before it existed still unwraps cleanly.
+ */
+const TRAILING_AVAILABLE_MCP_TOOLS_BLOCK_PATTERN =
+  /\n*<available-mcp-tools>\n[\s\S]*?\n<\/available-mcp-tools>(?:\nPlease use the MCP tools listed above\.)?\s*$/;
+
+/**
+ * Drops the generated tool block from a sent prompt so the transcript shows only what the user
+ * wrote plus their `&` chips. Display-only: the model still receives the block.
+ *
+ * `formatOutgoingComposerPrompt` appends this after every composer-serialized block, making it the
+ * outermost trailing section — `deriveDisplayedUserMessageState` must strip it before unwrapping
+ * pasted text, or those extractors' end anchors no longer match.
+ */
+export function stripAvailableMcpToolsBlock(text: string): string {
+  const match = TRAILING_AVAILABLE_MCP_TOOLS_BLOCK_PATTERN.exec(text);
+  if (!match) return text;
+  return text.slice(0, match.index).replace(/\n+$/, "");
+}
+
 interface AvailableMcpToolLine {
   readonly label: string;
   readonly description: string | null;

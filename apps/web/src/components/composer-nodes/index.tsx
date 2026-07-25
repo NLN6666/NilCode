@@ -38,6 +38,8 @@ import {
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
   COMPOSER_INLINE_CHIP_INLINE_ICON_CLASS_NAME,
   COMPOSER_INLINE_MCP_TOOL_CHIP_ICON_NAME,
+  COMPOSER_INLINE_MCP_TOOL_CHIP_SERVER_CLASS_NAME,
+  COMPOSER_INLINE_MCP_TOOL_CHIP_SERVER_SEPARATOR,
   COMPOSER_INLINE_MCP_TOOL_CHIP_UNAVAILABLE_CLASS_NAME,
   COMPOSER_INLINE_MCP_TOOL_CHIP_UNAVAILABLE_TITLE,
   COMPOSER_INLINE_SKILL_CHIP_ICON_NAME,
@@ -192,7 +194,18 @@ function renderMcpToolChipDom(container: HTMLElement, reference: string): void {
 
   const label = document.createElement("span");
   label.className = COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME;
-  label.textContent = formatComposerMcpToolChipLabel(reference);
+
+  // Mirrors InlineMcpToolChip: the server is a dimmed prefix so the tool name leads. Built as two
+  // nodes rather than one string because only the prefix carries the muted class.
+  const { server, tool } = formatComposerMcpToolChipLabel(reference);
+  if (server === null) {
+    label.textContent = tool;
+  } else {
+    const serverPrefix = document.createElement("span");
+    serverPrefix.className = COMPOSER_INLINE_MCP_TOOL_CHIP_SERVER_CLASS_NAME;
+    serverPrefix.textContent = `${server}${COMPOSER_INLINE_MCP_TOOL_CHIP_SERVER_SEPARATOR}`;
+    label.append(serverPrefix, document.createTextNode(tool));
+  }
 
   if (icon) {
     container.append(icon, label);
@@ -204,8 +217,15 @@ function renderMcpToolChipDom(container: HTMLElement, reference: string): void {
 /**
  * Greys out a reference the loaded catalog no longer has. The token itself is untouched — sending
  * is never blocked and the text is never rewritten; only the chip says the tool went away.
+ *
+ * Owns the chip's `title` either way: an unavailable chip explains the greying, an available one
+ * spells out the full `server:tool` the dimmed prefix visually de-emphasizes.
  */
-function applyMcpToolChipAvailability(container: HTMLElement, unavailable: boolean): void {
+function applyMcpToolChipAvailability(
+  container: HTMLElement,
+  unavailable: boolean,
+  reference: string,
+): void {
   container.className = unavailable
     ? COMPOSER_INLINE_MCP_TOOL_CHIP_UNAVAILABLE_CLASS_NAME
     : COMPOSER_EDITOR_INLINE_CHIP_CLASS_NAME;
@@ -213,7 +233,7 @@ function applyMcpToolChipAvailability(container: HTMLElement, unavailable: boole
     container.setAttribute("title", COMPOSER_INLINE_MCP_TOOL_CHIP_UNAVAILABLE_TITLE);
     container.setAttribute("data-mcp-tool-unavailable", "true");
   } else {
-    container.removeAttribute("title");
+    container.setAttribute("title", reference);
     container.removeAttribute("data-mcp-tool-unavailable");
   }
 }
@@ -517,7 +537,7 @@ export class ComposerMcpToolNode extends TextNode {
     const dom = document.createElement("span");
     dom.contentEditable = "false";
     dom.setAttribute("spellcheck", "false");
-    applyMcpToolChipAvailability(dom, this.__unavailable);
+    applyMcpToolChipAvailability(dom, this.__unavailable, this.__reference);
     renderMcpToolChipDom(dom, this.__reference);
     return dom;
   }
@@ -528,8 +548,12 @@ export class ComposerMcpToolNode extends TextNode {
     _config: EditorConfig,
   ): boolean {
     dom.contentEditable = "false";
-    if (prevNode.__unavailable !== this.__unavailable) {
-      applyMcpToolChipAvailability(dom, this.__unavailable);
+    // The available title spells out the reference, so a changed reference has to re-run this too.
+    if (
+      prevNode.__unavailable !== this.__unavailable ||
+      prevNode.__reference !== this.__reference
+    ) {
+      applyMcpToolChipAvailability(dom, this.__unavailable, this.__reference);
     }
     if (prevNode.__text !== this.__text || prevNode.__reference !== this.__reference) {
       renderMcpToolChipDom(dom, this.__reference);

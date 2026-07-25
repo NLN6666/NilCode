@@ -9,6 +9,7 @@ import {
   type ParsedBrowserElementEntry,
 } from "./browserElementContext";
 import { extractTrailingPastedTexts, type ParsedPastedTextEntry } from "./composerPastedText";
+import { stripAvailableMcpToolsBlock } from "./mcpToolReferences";
 
 export interface TerminalContextSelection {
   terminalId: string;
@@ -329,7 +330,11 @@ export function deriveDisplayedUserMessageState(
   // contexts, then file comments, then browser elements, then pasted text
   // (outermost). Strip them in reverse so each extractor sees its block at the end
   // of the remaining text.
-  const extractedPastedTexts = extractTrailingPastedTexts(prompt);
+  //
+  // The `<available-mcp-tools>` block sits outside all of them — send appends it last, after the
+  // composer has already serialized its own blocks — so it comes off first. It carries no parsed
+  // state: the `&` chips in the body already say which tools were referenced.
+  const extractedPastedTexts = extractTrailingPastedTexts(stripAvailableMcpToolsBlock(prompt));
   const extractedBrowserElements = extractTrailingBrowserElements(extractedPastedTexts.promptText);
   const extractedFileComments = extractTrailingFileComments(extractedBrowserElements.promptText);
   const extractedContexts = extractTrailingTerminalContexts(extractedFileComments.promptText);

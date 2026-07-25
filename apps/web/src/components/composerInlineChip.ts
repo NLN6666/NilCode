@@ -192,13 +192,40 @@ export function formatComposerSkillChipLabel(name: string): string {
 export const COMPOSER_INLINE_MCP_TOOL_CHIP_ICON_NAME = "toolbox";
 
 /**
- * MCP references stay verbatim rather than title-cased: `server:tool` is an identifier the model
- * is told to call, and prettifying it would stop the chip from matching what is actually sent.
- * The explicit `:*` wildcard collapses to the bare server name it is equivalent to.
+ * Separator between the server prefix and the tool name. Rendered inside the dimmed server span,
+ * so it reads as part of the prefix rather than as punctuation the user typed.
  */
-export function formatComposerMcpToolChipLabel(reference: string): string {
+export const COMPOSER_INLINE_MCP_TOOL_CHIP_SERVER_SEPARATOR = "›";
+
+/**
+ * Server prefix inside an MCP chip. Same color as the tool name, stepped back in weight so the
+ * tool — the part that identifies what will run — leads the chip, the way `@` shows a basename
+ * rather than the whole path. Kept visible instead of dropped: two servers can expose the same
+ * tool name, and the prefix is the only thing telling them apart.
+ */
+export const COMPOSER_INLINE_MCP_TOOL_CHIP_SERVER_CLASS_NAME = "opacity-60 text-[0.92em]";
+
+export interface ComposerMcpToolChipLabel {
+  /** Dimmed prefix. `null` for a whole-server reference, where the server name is the label. */
+  readonly server: string | null;
+  readonly tool: string;
+}
+
+/**
+ * Splits `server:tool` into the two visually distinct halves the chip renders.
+ *
+ * Both halves stay verbatim rather than title-cased: they are identifiers the model is told to
+ * call. The explicit `:*` wildcard collapses to the bare server name it is equivalent to, and an
+ * unparseable reference falls back to a single undimmed run so it is never silently reshaped.
+ */
+export function formatComposerMcpToolChipLabel(reference: string): ComposerMcpToolChipLabel {
   const parsed = parseMcpToolReference(reference);
-  return parsed === null ? reference : formatMcpToolReference(parsed);
+  if (parsed === null) {
+    return { server: null, tool: reference };
+  }
+  return parsed.toolName === null
+    ? { server: null, tool: formatMcpToolReference(parsed) }
+    : { server: parsed.serverName, tool: parsed.toolName };
 }
 
 /**
