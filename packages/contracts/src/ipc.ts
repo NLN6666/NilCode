@@ -719,6 +719,7 @@ export interface NativeApi {
     ) => Promise<ExternalMcpCreateIntegrationResult>;
     listAgentMcpServers: () => Promise<AgentMcpCatalog>;
     setAgentMcpServerEnabled: (input: AgentMcpSetEnabledInput) => Promise<AgentMcpSourceView>;
+    listAgentMcpTools: () => Promise<AgentMcpToolCatalog>;
     refreshProviders: () => Promise<ServerRefreshProvidersResult>;
     updateProvider: (input: ServerProviderUpdateInput) => Promise<ServerProviderUpdateResult>;
     listWorktrees: () => Promise<ServerListWorktreesResult>;

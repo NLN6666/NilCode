@@ -505,7 +505,7 @@ function normalizePersistedFileCommentDraft(value: unknown): PersistedFileCommen
 // instead of rejecting the whole draft.
 function normalizePersistedBrowserElementDraft(
   value: unknown,
-): PersistedBrowserElementDraft | null {
+): DeepMutable<PersistedBrowserElementDraft> | null {
   if (!value || typeof value !== "object") {
     return null;
   }
@@ -1460,6 +1460,7 @@ function hydratePromptHistorySavedDraft(
       terminalContexts: [],
       fileComments: [],
       pastedTexts: [],
+      browserElements: [],
       skills: [],
       mentions: [],
     };

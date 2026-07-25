@@ -142,6 +142,8 @@ export const CloudSyncIcon = centralIconWrapper("cloud-sync");
 export const CursorClickIcon: LucideIcon = centralIconWrapper("cursor-click");
 // Annotation toolbar rectangle tool (the eraser/clear glyph is EraserIcon above).
 export const SquareOutlineIcon: LucideIcon = centralIconWrapper("form-square");
+// Annotation toolbar text tool: the "T" glyph that marks "add a text label".
+export const TextLabelIcon: LucideIcon = centralIconWrapper("text-1");
 export const Columns2Icon = adaptIcon(IconColumns2);
 export const ChangesIcon = centralIconWrapper("changes");
 export const CopyIcon = centralIconWrapper("square-behind-square-6");

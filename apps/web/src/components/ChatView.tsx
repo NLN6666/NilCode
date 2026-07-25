@@ -6694,6 +6694,7 @@ export default function ChatView({
       fileCount: composerFilesForSend.length,
       assistantSelectionCount: composerAssistantSelectionsForSend.length,
       fileCommentCount: composerFileCommentsForSend.length,
+      browserElementCount: composerBrowserElementsForSend.length,
       terminalContexts: composerTerminalContextsForSend,
       pastedTexts: composerPastedTextsForSend,
     });
