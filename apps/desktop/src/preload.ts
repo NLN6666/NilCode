@@ -164,6 +164,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     closeTab: (input) => ipcRenderer.invoke(IPC.browser.closeTab, input),
     selectTab: (input) => ipcRenderer.invoke(IPC.browser.selectTab, input),
     openDevTools: (input) => ipcRenderer.invoke(IPC.browser.openDevTools, input),
+    startElementPick: (input) => ipcRenderer.invoke(IPC.browser.startElementPick, input),
+    cancelElementPick: (input) => ipcRenderer.invoke(IPC.browser.cancelElementPick, input),
     onState: (listener) => {
       const wrappedListener = (_event: Electron.IpcRendererEvent, state: unknown) => {
         if (typeof state !== "object" || state === null) return;
@@ -190,6 +192,26 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       ipcRenderer.on(IPC.browser.copyLink, wrappedListener);
       return () => {
         ipcRenderer.removeListener(IPC.browser.copyLink, wrappedListener);
+      };
+    },
+    onElementPicked: (listener) => {
+      const wrappedListener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        if (typeof payload !== "object" || payload === null) return;
+        listener(payload as Parameters<typeof listener>[0]);
+      };
+      ipcRenderer.on(IPC.browser.elementPicked, wrappedListener);
+      return () => {
+        ipcRenderer.removeListener(IPC.browser.elementPicked, wrappedListener);
+      };
+    },
+    onElementPickCancelled: (listener) => {
+      const wrappedListener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        if (typeof payload !== "object" || payload === null) return;
+        listener(payload as Parameters<typeof listener>[0]);
+      };
+      ipcRenderer.on(IPC.browser.elementPickCancelled, wrappedListener);
+      return () => {
+        ipcRenderer.removeListener(IPC.browser.elementPickCancelled, wrappedListener);
       };
     },
   },

@@ -1,7 +1,9 @@
 // FILE: BrowserPanel.logic.ts
-// Purpose: Holds the address-bar sync rules and suggestions for the in-app browser panel.
+// Purpose: Holds the address-bar sync rules, suggestions, and interaction-mode state
+//          machine for the in-app browser panel.
 // Layer: Component logic helper
-// Exports: browserAddressDisplayValue, normalizeBrowserAddressInput, buildBrowserAddressSuggestions
+// Exports: browserAddressDisplayValue, normalizeBrowserAddressInput, buildBrowserAddressSuggestions,
+//          resolveNextInteractionMode
 // Depends on: shared browser URL rules, browser tab metadata, and thread-local browser history
 
 import {
@@ -13,6 +15,30 @@ import type { BrowserTabState } from "@synara/contracts";
 import type { BrowserHistoryEntry } from "../browserStateStore";
 
 const BROWSER_SUGGESTION_LIMIT = 6;
+
+// The panel is in exactly one interaction mode: browsing the live page, picking a DOM
+// element through the CDP overlay, or annotating a frozen screenshot. Picking and
+// annotating both take over the surface, so they can never be active at the same time.
+export type BrowserPanelInteractionMode = "browse" | "picking" | "annotating";
+
+export type BrowserPanelInteractionAction =
+  | { type: "toggle-picking" }
+  | { type: "toggle-annotating" }
+  | { type: "exit" };
+
+export function resolveNextInteractionMode(
+  current: BrowserPanelInteractionMode,
+  action: BrowserPanelInteractionAction,
+): BrowserPanelInteractionMode {
+  switch (action.type) {
+    case "toggle-picking":
+      return current === "picking" ? "browse" : "picking";
+    case "toggle-annotating":
+      return current === "annotating" ? "browse" : "annotating";
+    case "exit":
+      return "browse";
+  }
+}
 
 interface ResolveBrowserAddressSyncInput {
   activeTabId: string | null;

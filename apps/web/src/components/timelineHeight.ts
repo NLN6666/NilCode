@@ -26,6 +26,8 @@ const USER_ATTACHMENT_THUMBNAILS_PER_ROW = 4;
 const USER_ATTACHMENT_ROW_MARGIN_BOTTOM_PX = 4;
 const USER_PASTED_TEXT_CARD_HEIGHT_PX = 52;
 const USER_PASTED_TEXT_CARD_GAP_PX = 6;
+// One stacked AttachmentCard (size "sm") per picked browser element, plus the row gap.
+const USER_BROWSER_ELEMENT_CHIP_HEIGHT_PX = 46;
 const USER_MESSAGE_TOGGLE_HEIGHT_PX = 20;
 const USER_DISPATCH_CHIP_HEIGHT_PX = 24;
 const USER_DISPATCH_CHIP_MARGIN_BOTTOM_PX = 6;
@@ -302,6 +304,7 @@ export function estimateTimelineMessageHeight(
     // Prompt-serialized reference cards are not wire attachments, so count them
     // from the parsed display state to keep virtualization estimates aligned.
     const fileCommentCount = displayedUserMessage.fileComments.length;
+    const browserElementCount = displayedUserMessage.browserElements.length;
     const pastedTextCount = displayedUserMessage.pastedTexts.length;
     const imageAttachmentHeight =
       imageAttachmentCount > 0
@@ -313,6 +316,7 @@ export function estimateTimelineMessageHeight(
     const assistantSelectionHeight = assistantSelectionCount > 0 ? 40 : 0;
     const fileAttachmentHeight = fileAttachmentCount > 0 ? 40 : 0;
     const fileCommentHeight = fileCommentCount > 0 ? 40 : 0;
+    const browserElementHeight = browserElementCount * USER_BROWSER_ELEMENT_CHIP_HEIGHT_PX;
     const pastedTextHeight =
       pastedTextCount > 0
         ? pastedTextCount * USER_PASTED_TEXT_CARD_HEIGHT_PX +
@@ -323,12 +327,14 @@ export function estimateTimelineMessageHeight(
         assistantSelectionHeight +
         fileAttachmentHeight +
         fileCommentHeight +
+        browserElementHeight +
         pastedTextHeight >
       0
         ? imageAttachmentHeight +
           assistantSelectionHeight +
           fileAttachmentHeight +
           fileCommentHeight +
+          browserElementHeight +
           pastedTextHeight +
           (renderedText.length > 0 ? USER_ATTACHMENT_ROW_MARGIN_BOTTOM_PX : 0)
         : 0;
@@ -340,6 +346,7 @@ export function estimateTimelineMessageHeight(
             fileCount: fileAttachmentCount,
             assistantSelectionCount,
             fileCommentCount,
+            browserElementCount,
             pastedTextCount,
           })
             ? USER_DISPATCH_CHIP_WITH_MEDIA_MARGIN_BOTTOM_PX

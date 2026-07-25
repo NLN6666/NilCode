@@ -7,14 +7,18 @@ import type { IpcMain, WebContents } from "electron";
 
 import type {
   BrowserAttachWebviewInput,
+  BrowserCancelElementPickInput,
   BrowserCaptureScreenshotResult,
   BrowserCopyLinkEvent,
   BrowserDetachWebviewInput,
+  BrowserElementPickCancelledEvent,
+  BrowserElementPickedEvent,
   BrowserExecuteCdpInput,
   BrowserNavigateInput,
   BrowserNewTabInput,
   BrowserOpenInput,
   BrowserSetPanelBoundsInput,
+  BrowserStartElementPickInput,
   BrowserTabInput,
   BrowserThreadInput,
   ThreadBrowserState,
@@ -38,6 +42,24 @@ export function sendBrowserCopyLink(
   event: BrowserCopyLinkEvent,
 ): void {
   webContents?.send(BROWSER_IPC_CHANNELS.copyLink, event);
+}
+
+// Delivers a completed element pick (structure plus optional cropped screenshot) to the
+// shell so it can attach the result to the thread's composer draft.
+export function sendBrowserElementPicked(
+  webContents: WebContents | null | undefined,
+  event: BrowserElementPickedEvent,
+): void {
+  webContents?.send(BROWSER_IPC_CHANNELS.elementPicked, event);
+}
+
+// Tells the shell that the pick session ended without a selection so it can leave
+// picking mode instead of waiting forever for an element that will never arrive.
+export function sendBrowserElementPickCancelled(
+  webContents: WebContents | null | undefined,
+  event: BrowserElementPickCancelledEvent,
+): void {
+  webContents?.send(BROWSER_IPC_CHANNELS.elementPickCancelled, event);
 }
 
 // Registers the desktop browser bridge in one place so main.ts stays focused on app boot.
@@ -149,4 +171,20 @@ export function registerBrowserIpcHandlers(
   ipcMain.handle(BROWSER_IPC_CHANNELS.openDevTools, async (_event, input: BrowserTabInput) => {
     browserManager.openDevTools(input);
   });
+
+  ipcMain.removeHandler(BROWSER_IPC_CHANNELS.startElementPick);
+  ipcMain.handle(
+    BROWSER_IPC_CHANNELS.startElementPick,
+    async (_event, input: BrowserStartElementPickInput) => {
+      await browserManager.startElementPick(input);
+    },
+  );
+
+  ipcMain.removeHandler(BROWSER_IPC_CHANNELS.cancelElementPick);
+  ipcMain.handle(
+    BROWSER_IPC_CHANNELS.cancelElementPick,
+    async (_event, input: BrowserCancelElementPickInput) => {
+      await browserManager.cancelElementPick(input);
+    },
+  );
 }

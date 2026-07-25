@@ -15,15 +15,19 @@ import {
 import type { WebContents } from "electron";
 import type {
   BrowserAttachWebviewInput,
+  BrowserCancelElementPickInput,
   BrowserCaptureScreenshotResult,
   BrowserCopyLinkEvent,
   BrowserDetachWebviewInput,
+  BrowserElementPickCancelledEvent,
+  BrowserElementPickedEvent,
   BrowserExecuteCdpInput,
   BrowserNavigateInput,
   BrowserNewTabInput,
   BrowserOpenInput,
   BrowserPanelBounds,
   BrowserSetPanelBoundsInput,
+  BrowserStartElementPickInput,
   BrowserTabInput,
   BrowserTabState,
   BrowserThreadInput,
@@ -38,6 +42,7 @@ import {
   normalizeBrowserUrlInput as normalizeUrlInput,
   resolveCopyableBrowserTabUrl,
 } from "@synara/shared/browserSession";
+import { BrowserElementPicker } from "./browserElementPicker";
 import { BROWSER_SESSION_PARTITION, BrowserSessionPolicy } from "./browserSessionPolicy";
 
 export { BROWSER_SESSION_PARTITION } from "./browserSessionPolicy";
@@ -49,6 +54,8 @@ const BROWSER_ERROR_ABORTED = -3;
 
 type BrowserStateListener = (state: ThreadBrowserState) => void;
 type BrowserCopyLinkListener = (event: BrowserCopyLinkEvent) => void;
+type BrowserElementPickedListener = (event: BrowserElementPickedEvent) => void;
+type BrowserElementPickCancelledListener = (event: BrowserElementPickCancelledEvent) => void;
 
 interface LiveTabRuntime {
   key: string;
@@ -250,6 +257,28 @@ export class DesktopBrowserManager {
   private readonly pendingRuntimeSyncs = new Map<string, PendingRuntimeSync>();
   private readonly listeners = new Set<BrowserStateListener>();
   private readonly copyLinkListeners = new Set<BrowserCopyLinkListener>();
+  private readonly elementPickedListeners = new Set<BrowserElementPickedListener>();
+  private readonly elementPickCancelledListeners =
+    new Set<BrowserElementPickCancelledListener>();
+  // Element picking is its own state machine (CDP inspect mode + one-shot extraction);
+  // this manager only forwards commands and lifecycle signals to it.
+  private readonly elementPicker = new BrowserElementPicker({
+    attachTab: (input) => this.attachBrowserUseTab(input),
+    sendCommand: (input, method, params) =>
+      this.executeCdp({ ...input, method, ...(params ? { params } : {}) }),
+    subscribeToCdpEvents: (input, listener) => this.subscribeToCdpEvents(input, listener),
+    getTabUrl: (input) => this.resolveTabPageUrl(input),
+    emitPicked: (event) => {
+      for (const listener of this.elementPickedListeners) {
+        listener(event);
+      }
+    },
+    emitCancelled: (event) => {
+      for (const listener of this.elementPickCancelledListeners) {
+        listener(event);
+      }
+    },
+  });
   // OAuth/sign-in popups opened by pages via `window.open`. Tracked so they can be sized over
   // the panel and torn down cleanly without leaking native windows.
   private readonly popupRuntimes = new Map<BrowserWindow, OAuthPopupRuntime>();
@@ -301,6 +330,29 @@ export class DesktopBrowserManager {
     return () => {
       this.copyLinkListeners.delete(listener);
     };
+  }
+
+  subscribeElementPicked(listener: BrowserElementPickedListener): () => void {
+    this.elementPickedListeners.add(listener);
+    return () => {
+      this.elementPickedListeners.delete(listener);
+    };
+  }
+
+  subscribeElementPickCancelled(listener: BrowserElementPickCancelledListener): () => void {
+    this.elementPickCancelledListeners.add(listener);
+    return () => {
+      this.elementPickCancelledListeners.delete(listener);
+    };
+  }
+
+  // Thin delegation: the pick session owns inspect mode, extraction, and its own cleanup.
+  async startElementPick(input: BrowserStartElementPickInput): Promise<void> {
+    await this.elementPicker.start(input);
+  }
+
+  async cancelElementPick(input: BrowserCancelElementPickInput): Promise<void> {
+    await this.elementPicker.cancel(input);
   }
 
   private configureWindowOpenHandling(
@@ -476,6 +528,7 @@ export class DesktopBrowserManager {
   }
 
   dispose(): void {
+    this.elementPicker.disposeAll();
     for (const timer of this.suspendTimers.values()) {
       clearTimeout(timer);
     }
@@ -491,6 +544,8 @@ export class DesktopBrowserManager {
     this.runtimeLastActiveAtByKey.clear();
     this.listeners.clear();
     this.copyLinkListeners.clear();
+    this.elementPickedListeners.clear();
+    this.elementPickCancelledListeners.clear();
     this.states.clear();
     this.threadVersionById.clear();
     this.snapshotCacheByThreadId.clear();
@@ -1508,6 +1563,8 @@ export class DesktopBrowserManager {
     });
 
     const didNavigate = () => {
+      // Inspect mode does not survive a document swap, so the pick session has to go with it.
+      this.elementPicker.handleNavigation(threadId, tabId);
       this.queueRuntimeStateSync(threadId, tabId);
     };
     webContents.on("did-navigate", didNavigate);
@@ -1694,6 +1751,9 @@ export class DesktopBrowserManager {
 
   private destroyRuntime(threadId: ThreadId, tabId: string): void {
     const key = buildRuntimeKey(threadId, tabId);
+    // Tear the pick session down before the debugger detaches: afterwards there is no
+    // channel left to clear inspect mode on, and the renderer would stay stuck in the mode.
+    this.elementPicker.handleTabClosed(threadId, tabId);
     this.clearTabSuspendTimer(threadId, tabId);
     this.pendingRuntimeSyncs.delete(key);
     this.runtimeLastActiveAtByKey.delete(key);
@@ -1861,6 +1921,22 @@ export class DesktopBrowserManager {
 
   private getTab(state: ThreadBrowserState, tabId: string): BrowserTabState | null {
     return state.tabs.find((tab) => tab.id === tabId) ?? null;
+  }
+
+  // Live page URL for a tab, preferring the running webContents over cached tab state.
+  // Unlike resolveCopyableTabUrl this keeps about:blank: an element picked on a blank page
+  // should still record where it came from.
+  private resolveTabPageUrl(input: BrowserTabInput): string {
+    const runtime = this.runtimes.get(buildRuntimeKey(input.threadId, input.tabId));
+    if (runtime && !runtime.webContents.isDestroyed()) {
+      const liveUrl = runtime.webContents.getURL();
+      if (liveUrl.length > 0) {
+        return liveUrl;
+      }
+    }
+    const state = this.states.get(input.threadId);
+    const tab = state ? this.getTab(state, input.tabId) : null;
+    return tab?.lastCommittedUrl ?? tab?.url ?? "";
   }
 
   // Resolves the most accurate URL for a tab, preferring the live page over cached state and

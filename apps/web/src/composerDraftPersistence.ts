@@ -28,6 +28,7 @@ import {
 import {
   hydratePastedTextsFromPersisted,
   normalizeAssistantSelections,
+  normalizeBrowserElements,
   normalizeDraftThreadEntryPoint,
   normalizeFileComments,
   normalizeTerminalContextsForThread,
@@ -51,6 +52,10 @@ import {
   sanitizeStickyModelSelectionMap,
 } from "./composerDraftModels";
 import { normalizeAssistantSelectionAttachment } from "./lib/assistantSelections";
+import {
+  type BrowserElementDraft,
+  normalizeBrowserElementSelection,
+} from "./lib/browserElementContext";
 import { normalizePastedTextContent } from "./lib/composerPastedText";
 import { normalizeFileCommentSelection } from "./lib/fileComments";
 import {
@@ -97,6 +102,28 @@ const PersistedFileCommentDraft = Schema.Struct({
 
 type PersistedFileCommentDraft = typeof PersistedFileCommentDraft.Type;
 
+const PersistedBrowserElementDraft = Schema.Struct({
+  id: Schema.String,
+  createdAt: Schema.String,
+  tabId: Schema.String,
+  pageUrl: Schema.String,
+  selector: Schema.String,
+  tagName: Schema.String,
+  elementId: Schema.NullOr(Schema.String),
+  classNames: Schema.Array(Schema.String),
+  textSnippet: Schema.NullOr(Schema.String),
+  outerHtmlSnippet: Schema.String,
+  rect: Schema.Struct({
+    x: Schema.Number,
+    y: Schema.Number,
+    width: Schema.Number,
+    height: Schema.Number,
+  }),
+  computedStyles: Schema.Record(Schema.String, Schema.String),
+});
+
+type PersistedBrowserElementDraft = typeof PersistedBrowserElementDraft.Type;
+
 const PersistedPastedTextDraft = Schema.Struct({
   id: Schema.String,
   createdAt: Schema.String,
@@ -134,6 +161,7 @@ const PersistedQueuedComposerChatTurn = Schema.Struct({
   assistantSelections: Schema.optionalKey(Schema.Array(PersistedAssistantSelectionDraft)),
   terminalContexts: Schema.Array(PersistedQueuedTerminalContextDraft),
   fileComments: Schema.optionalKey(Schema.Array(PersistedFileCommentDraft)),
+  browserElements: Schema.optionalKey(Schema.Array(PersistedBrowserElementDraft)),
   pastedTexts: Schema.optionalKey(Schema.Array(PersistedPastedTextDraft)),
   skills: Schema.Array(ProviderSkillReference),
   mentions: Schema.Array(ProviderMentionReference),
@@ -182,6 +210,7 @@ const PersistedComposerPromptHistorySavedDraft = Schema.Union([
     assistantSelections: Schema.optionalKey(Schema.Array(PersistedAssistantSelectionDraft)),
     terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
     fileComments: Schema.optionalKey(Schema.Array(PersistedFileCommentDraft)),
+    browserElements: Schema.optionalKey(Schema.Array(PersistedBrowserElementDraft)),
     pastedTexts: Schema.optionalKey(Schema.Array(PersistedPastedTextDraft)),
     skills: Schema.optionalKey(Schema.Array(ProviderSkillReference)),
     mentions: Schema.optionalKey(Schema.Array(ProviderMentionReference)),
@@ -208,6 +237,7 @@ const PersistedComposerThreadDraftState = Schema.Struct({
   ),
   terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
   fileComments: Schema.optionalKey(Schema.Array(PersistedFileCommentDraft)),
+  browserElements: Schema.optionalKey(Schema.Array(PersistedBrowserElementDraft)),
   pastedTexts: Schema.optionalKey(Schema.Array(PersistedPastedTextDraft)),
   skills: Schema.optionalKey(Schema.Array(ProviderSkillReference)),
   mentions: Schema.optionalKey(Schema.Array(ProviderMentionReference)),
@@ -332,6 +362,12 @@ function normalizePersistedPromptHistorySavedDraft(
         return normalized ? [normalized] : [];
       })
     : [];
+  const browserElements = Array.isArray(candidate.browserElements)
+    ? candidate.browserElements.flatMap((entry) => {
+        const normalized = normalizePersistedBrowserElementDraft(entry);
+        return normalized ? [normalized] : [];
+      })
+    : [];
   const pastedTexts = Array.isArray(candidate.pastedTexts)
     ? candidate.pastedTexts.flatMap((entry) => {
         const normalized = normalizePersistedPastedTextDraft(entry);
@@ -350,6 +386,7 @@ function normalizePersistedPromptHistorySavedDraft(
     ...(assistantSelections.length > 0 ? { assistantSelections } : {}),
     ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
     ...(fileComments.length > 0 ? { fileComments } : {}),
+    ...(browserElements.length > 0 ? { browserElements } : {}),
     ...(pastedTexts.length > 0 ? { pastedTexts } : {}),
     ...(skills.length > 0 ? { skills } : {}),
     ...(mentions.length > 0 ? { mentions } : {}),
@@ -464,6 +501,64 @@ function normalizePersistedFileCommentDraft(value: unknown): PersistedFileCommen
   return { id, ...normalized };
 }
 
+// Older drafts predate browser elements entirely; a missing/degenerate entry decodes away
+// instead of rejecting the whole draft.
+function normalizePersistedBrowserElementDraft(
+  value: unknown,
+): PersistedBrowserElementDraft | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Record<string, unknown>;
+  const id = typeof candidate.id === "string" ? candidate.id : "";
+  if (id.length === 0) {
+    return null;
+  }
+  const rect = (candidate.rect ?? {}) as Record<string, unknown>;
+  const readNumber = (input: unknown): number => (typeof input === "number" ? input : Number.NaN);
+  const normalized = normalizeBrowserElementSelection({
+    tabId: typeof candidate.tabId === "string" ? candidate.tabId : "",
+    pageUrl: typeof candidate.pageUrl === "string" ? candidate.pageUrl : "",
+    selector: typeof candidate.selector === "string" ? candidate.selector : "",
+    tagName: typeof candidate.tagName === "string" ? candidate.tagName : "",
+    elementId: typeof candidate.elementId === "string" ? candidate.elementId : null,
+    classNames: Array.isArray(candidate.classNames)
+      ? candidate.classNames.filter((entry): entry is string => typeof entry === "string")
+      : [],
+    textSnippet: typeof candidate.textSnippet === "string" ? candidate.textSnippet : null,
+    outerHtmlSnippet:
+      typeof candidate.outerHtmlSnippet === "string" ? candidate.outerHtmlSnippet : "",
+    rect: {
+      x: readNumber(rect.x),
+      y: readNumber(rect.y),
+      width: readNumber(rect.width),
+      height: readNumber(rect.height),
+    },
+    computedStyles: readPersistedComputedStyles(candidate.computedStyles),
+  });
+  if (!normalized) {
+    return null;
+  }
+  return {
+    id,
+    createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : "",
+    ...normalized,
+  };
+}
+
+function readPersistedComputedStyles(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  const styles: Record<string, string> = {};
+  for (const [property, styleValue] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof styleValue === "string") {
+      styles[property] = styleValue;
+    }
+  }
+  return styles;
+}
+
 function normalizePersistedPastedTextDraft(value: unknown): PersistedPastedTextDraft | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -562,6 +657,12 @@ function normalizePersistedQueuedTurns(
             return normalized ? [normalized] : [];
           })
         : [];
+      const browserElements = Array.isArray(candidate.browserElements)
+        ? candidate.browserElements.flatMap((element) => {
+            const normalized = normalizePersistedBrowserElementDraft(element);
+            return normalized ? [normalized] : [];
+          })
+        : [];
       const pastedTexts = Array.isArray(candidate.pastedTexts)
         ? candidate.pastedTexts.flatMap((pasted) => {
             const normalized = normalizePersistedPastedTextDraft(pasted);
@@ -595,6 +696,7 @@ function normalizePersistedQueuedTurns(
         ...(assistantSelections.length > 0 ? { assistantSelections } : {}),
         terminalContexts,
         ...(fileComments.length > 0 ? { fileComments } : {}),
+        ...(browserElements.length > 0 ? { browserElements } : {}),
         ...(pastedTexts.length > 0 ? { pastedTexts } : {}),
         skills: [...skills],
         mentions: [...mentions],
@@ -814,6 +916,12 @@ function normalizePersistedDraftsByThreadId(
           return normalized ? [normalized] : [];
         })
       : [];
+    const browserElements = Array.isArray(draftCandidate.browserElements)
+      ? draftCandidate.browserElements.flatMap((entry) => {
+          const normalized = normalizePersistedBrowserElementDraft(entry);
+          return normalized ? [normalized] : [];
+        })
+      : [];
     const pastedTexts = Array.isArray(draftCandidate.pastedTexts)
       ? draftCandidate.pastedTexts.flatMap((entry) => {
           const normalized = normalizePersistedPastedTextDraft(entry);
@@ -903,6 +1011,7 @@ function normalizePersistedDraftsByThreadId(
       terminalContexts.length === 0 &&
       assistantSelections.length === 0 &&
       fileComments.length === 0 &&
+      browserElements.length === 0 &&
       pastedTexts.length === 0 &&
       !hasReferenceData &&
       !hasQueuedTurns &&
@@ -920,6 +1029,7 @@ function normalizePersistedDraftsByThreadId(
       ...(assistantSelections.length > 0 ? { assistantSelections } : {}),
       ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
       ...(fileComments.length > 0 ? { fileComments } : {}),
+      ...(browserElements.length > 0 ? { browserElements } : {}),
       ...(pastedTexts.length > 0 ? { pastedTexts } : {}),
       ...(skills.length > 0 ? { skills } : {}),
       ...(mentions.length > 0 ? { mentions } : {}),
@@ -999,6 +1109,9 @@ export function partializeComposerDraftStoreState(
                 })),
               }
             : {}),
+          ...(queuedTurn.browserElements.length > 0
+            ? { browserElements: queuedTurn.browserElements.map(toPersistedBrowserElement) }
+            : {}),
           ...(queuedTurn.pastedTexts.length > 0
             ? {
                 pastedTexts: queuedTurn.pastedTexts.map((pasted) => ({
@@ -1054,6 +1167,7 @@ export function partializeComposerDraftStoreState(
       draft.assistantSelections.length === 0 &&
       draft.terminalContexts.length === 0 &&
       draft.fileComments.length === 0 &&
+      draft.browserElements.length === 0 &&
       draft.pastedTexts.length === 0 &&
       !hasReferenceData &&
       !hasQueuedTurns &&
@@ -1110,6 +1224,12 @@ export function partializeComposerDraftStoreState(
                     })),
                   }
                 : {}),
+              ...(draft.promptHistorySavedDraft.browserElements.length > 0
+                ? {
+                    browserElements:
+                      draft.promptHistorySavedDraft.browserElements.map(toPersistedBrowserElement),
+                  }
+                : {}),
               ...(draft.promptHistorySavedDraft.pastedTexts.length > 0
                 ? {
                     pastedTexts: draft.promptHistorySavedDraft.pastedTexts.map((pasted) => ({
@@ -1161,6 +1281,9 @@ export function partializeComposerDraftStoreState(
               text: comment.text,
             })),
           }
+        : {}),
+      ...(draft.browserElements.length > 0
+        ? { browserElements: draft.browserElements.map(toPersistedBrowserElement) }
         : {}),
       ...(draft.pastedTexts.length > 0
         ? {
@@ -1258,6 +1381,40 @@ export function normalizeCurrentPersistedComposerDraftStoreState(
   };
 }
 
+function toPersistedBrowserElement(
+  element: BrowserElementDraft,
+): DeepMutable<PersistedBrowserElementDraft> {
+  return {
+    id: element.id,
+    createdAt: element.createdAt,
+    tabId: element.tabId,
+    pageUrl: element.pageUrl,
+    selector: element.selector,
+    tagName: element.tagName,
+    elementId: element.elementId,
+    classNames: [...element.classNames],
+    textSnippet: element.textSnippet,
+    outerHtmlSnippet: element.outerHtmlSnippet,
+    rect: { ...element.rect },
+    computedStyles: { ...element.computedStyles },
+  };
+}
+
+// Missing (pre-feature) drafts decode to an empty list rather than failing the whole draft.
+function hydrateBrowserElementsFromPersisted(
+  persisted: ReadonlyArray<PersistedBrowserElementDraft> | undefined,
+): BrowserElementDraft[] {
+  if (!persisted || persisted.length === 0) {
+    return [];
+  }
+  return persisted.map((element) => ({
+    ...element,
+    classNames: [...element.classNames],
+    rect: { ...element.rect },
+    computedStyles: { ...element.computedStyles },
+  }));
+}
+
 function hydrateQueuedTurnsFromPersisted(
   threadId: ThreadId,
   queuedTurns: ReadonlyArray<PersistedQueuedComposerTurn> | undefined,
@@ -1274,6 +1431,9 @@ function hydrateQueuedTurnsFromPersisted(
         assistantSelections: normalizeAssistantSelections(queuedTurn.assistantSelections ?? []),
         terminalContexts: normalizeTerminalContextsForThread(threadId, queuedTurn.terminalContexts),
         fileComments: normalizeFileComments(queuedTurn.fileComments ?? []),
+        browserElements: normalizeBrowserElements(
+          hydrateBrowserElementsFromPersisted(queuedTurn.browserElements),
+        ),
         pastedTexts: hydratePastedTextsFromPersisted(queuedTurn.pastedTexts),
         skills: [...queuedTurn.skills],
         mentions: [...queuedTurn.mentions],
@@ -1318,6 +1478,9 @@ function hydratePromptHistorySavedDraft(
         text: "",
       })) ?? [],
     fileComments: normalizeFileComments(savedDraft.fileComments ?? []),
+    browserElements: normalizeBrowserElements(
+      hydrateBrowserElementsFromPersisted(savedDraft.browserElements),
+    ),
     pastedTexts: hydratePastedTextsFromPersisted(savedDraft.pastedTexts),
     skills: [...(savedDraft.skills ?? [])],
     mentions: [...(savedDraft.mentions ?? [])],
@@ -1347,6 +1510,9 @@ export function toHydratedThreadDraft(
         text: "",
       })) ?? [],
     fileComments: normalizeFileComments(persistedDraft.fileComments ?? []),
+    browserElements: normalizeBrowserElements(
+      hydrateBrowserElementsFromPersisted(persistedDraft.browserElements),
+    ),
     pastedTexts: hydratePastedTextsFromPersisted(persistedDraft.pastedTexts),
     skills: [...(persistedDraft.skills ?? [])],
     mentions: [...(persistedDraft.mentions ?? [])],

@@ -137,6 +137,11 @@ export const CheckCircle2Icon: LucideIcon = centralIconWrapper("check-circle-2")
 export const CircleQuestionIcon: LucideIcon = centralIconWrapper("circle-questionmark");
 export const ArrowUpCircleIcon: LucideIcon = centralIconWrapper("arrow-up-circle");
 export const CloudSyncIcon = centralIconWrapper("cloud-sync");
+// Browser element picking: the pointer-with-click glyph marks both the toolbar
+// toggle and the composer/transcript chips for a picked page element.
+export const CursorClickIcon: LucideIcon = centralIconWrapper("cursor-click");
+// Annotation toolbar rectangle tool (the eraser/clear glyph is EraserIcon above).
+export const SquareOutlineIcon: LucideIcon = centralIconWrapper("form-square");
 export const Columns2Icon = adaptIcon(IconColumns2);
 export const ChangesIcon = centralIconWrapper("changes");
 export const CopyIcon = centralIconWrapper("square-behind-square-6");
