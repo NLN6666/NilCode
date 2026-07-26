@@ -168,27 +168,41 @@ export function buildExternalMcpSetupPrompt(input: {
   return sections.join("\n\n");
 }
 
-export function describeExternalMcpProjects(input: {
-  readonly projectScope?: ExternalMcpProjectScope | undefined;
-  readonly allowedProjects: ReadonlyArray<{ readonly title: string }>;
-}): string {
-  if (input.projectScope === "all") return "All projects, including future ones";
+/** Structural subset of the `settings.integrations.describe` catalog group. */
+export type ExternalMcpDescribeCopy = {
+  readonly allProjects: string;
+  readonly noProjects: string;
+  readonly ownTasks: string;
+  readonly readProjectTasks: string;
+  readonly localCheckout: string;
+  readonly fullAccess: string;
+};
+
+export function describeExternalMcpProjects(
+  input: {
+    readonly projectScope?: ExternalMcpProjectScope | undefined;
+    readonly allowedProjects: ReadonlyArray<{ readonly title: string }>;
+  },
+  copy: ExternalMcpDescribeCopy,
+): string {
+  if (input.projectScope === "all") return copy.allProjects;
   const titles = input.allowedProjects.map((project) => project.title);
-  return titles.length > 0 ? titles.join(", ") : "No projects";
+  return titles.length > 0 ? titles.join(", ") : copy.noProjects;
 }
 
 export function describeExternalMcpPermissions(
   capabilities: ReadonlyArray<ExternalMcpCapability>,
+  copy: ExternalMcpDescribeCopy,
 ): string {
-  const descriptions = ["Create and follow its own tasks"];
+  const descriptions = [copy.ownTasks];
   if (capabilities.includes("tasks:read-project")) {
-    descriptions.push("Read other tasks in selected projects");
+    descriptions.push(copy.readProjectTasks);
   }
   if (capabilities.includes("runtime:local")) {
-    descriptions.push("Use the shared local checkout");
+    descriptions.push(copy.localCheckout);
   }
   if (capabilities.includes("runtime:full-access")) {
-    descriptions.push("Run without approval prompts");
+    descriptions.push(copy.fullAccess);
   }
   return descriptions.join(" · ");
 }

@@ -411,6 +411,150 @@ export const settings = {
     deleteFailedTitle: "Could not delete thread",
     deleteFailedDescription: "Unable to delete the thread.",
   },
+  integrations: {
+    connect: {
+      title: "Connect a coding agent",
+      name: {
+        title: "Name",
+        description:
+          "How this connection appears in Synara. Works with Codex, Claude, and any other MCP-capable agent.",
+        defaultValue: "Coding agent",
+      },
+      allProjects: {
+        title: "Access all of Synara",
+        description:
+          "The agent can discover and work in every project, including ones you add later. Turn off to pick specific projects.",
+      },
+      noProjects: "No projects are available.",
+      advanced: {
+        title: "Advanced permissions",
+        description:
+          "Optional access for existing tasks, shared checkouts, or execution without approvals. The safe defaults are recommended.",
+        review: "Review",
+        readOtherTasks: {
+          title: "Read other project tasks",
+          description: "Without this permission, the agent can read only tasks it creates.",
+        },
+        sharedCheckout: {
+          title: "Use the shared local checkout",
+          description:
+            "High impact. Tasks may modify the checkout you are actively using instead of an isolated worktree.",
+        },
+        noApprovals: {
+          title: "Run without approval prompts",
+          description:
+            "High impact. The external agent may start full-access execution without asking you to approve tool actions.",
+        },
+      },
+      create: {
+        title: "Create connection",
+        description:
+          "The connection lasts 30 days and can be revoked at any time. The next screen gives you one prompt to paste into your agent.",
+        action: "Create connection",
+        pending: "Creating...",
+      },
+    },
+    setup: {
+      title: (name: string) => `Connect ${name}`,
+      status: {
+        revoked: "Revoked",
+        expired: "Expired",
+        connected: "Connected",
+        pairedWaiting: "Paired — waiting for first use",
+        pairingExpired: "Pairing code expired",
+        waiting: "Waiting for pairing",
+        pairedNotUsed: "Paired — not used yet",
+      },
+      description: {
+        revoked: "This connection has been revoked and can no longer access Synara.",
+        expired: "This connection has expired and can no longer access Synara.",
+        connected: "Synara received a request from this agent. Setup is complete.",
+        paired:
+          "The private credential is stored locally. If the agent has not registered Synara yet, give it the setup prompt below.",
+        pairingExpired:
+          "The one-time pairing code was not used in time. Resume pairing to issue a fresh code without replacing this connection.",
+        waiting:
+          "Paste the setup prompt into your agent. This page updates automatically when pairing succeeds.",
+      },
+      lastConnected: (when: string) => `Last connected ${when}.`,
+      connectionExpires: (when: string) => `Connection expires ${when}.`,
+      revokeAndRestart: "Revoke and start over",
+      resumePairing: "Resume pairing",
+      resuming: "Resuming...",
+      back: "Back",
+      done: "Done",
+      pairingAlreadyCompleted: "Pairing already completed",
+      prompt: {
+        title: "1. Give your agent this prompt",
+        description:
+          "Copy the prompt and paste it into the agent you want to connect (Codex, Claude Code, or any MCP-capable app). The agent pairs this computer, registers Synara in its own configuration, and verifies the connection by itself.",
+        pairedStatus: "Paired. The prompt now covers only registration and verification.",
+        pairingExpires: (when: string) => `Pairing code expires ${when}.`,
+        copy: "Copy setup prompt",
+        copied: "Setup prompt copied",
+      },
+      manual: {
+        title: "Set up by hand instead",
+        description:
+          "For apps without a terminal or chat, like Claude Desktop: run the pairing command in Terminal, then add the JSON below to the app's MCP configuration.",
+        show: "Show",
+        pairingCommand: "Pairing command (run in Terminal)",
+        pairingCommandCopied: "Pairing command copied",
+        configuration: "MCP configuration (JSON)",
+        configurationCopied: "Configuration copied",
+        copy: "Copy",
+      },
+      tryIt: {
+        title: "2. Try it",
+        description:
+          "Open a new chat in the agent you just connected and send this editable example. You never need to copy project IDs, model IDs, or request IDs yourself.",
+        verified: "Connection verified by Synara.",
+        pending: "Synara will show Connected after the agent makes its first request.",
+        copy: "Copy example prompt",
+        copied: "Example prompt copied",
+      },
+    },
+    connected: {
+      title: "Connected agents",
+      loading: "Loading connections...",
+      projects: (value: string) => `Projects: ${value}`,
+      permissions: (value: string) => `Permissions: ${value}`,
+      timeline: (created: string, lastUsed: string, expires: string) =>
+        `Created ${created} · Last used ${lastUsed} · Expires ${expires}`,
+      continueSetup: "Continue setup",
+      revoke: "Revoke",
+      emptyTitle: "No connected agents",
+      emptyDescription:
+        "Connect Codex, Claude, or another local MCP agent to create and follow Synara tasks.",
+    },
+    // Consumed by `describeExternalMcpProjects` / `describeExternalMcpPermissions`.
+    describe: {
+      allProjects: "All projects, including future ones",
+      noProjects: "No projects",
+      ownTasks: "Create and follow its own tasks",
+      readProjectTasks: "Read other tasks in selected projects",
+      localCheckout: "Use the shared local checkout",
+      fullAccess: "Run without approval prompts",
+    },
+    never: "Never",
+    toasts: {
+      readyTitle: "Connection ready",
+      readyDescription: "Give your agent the setup prompt before the one-time code expires.",
+      createFailedTitle: "Could not create connection",
+      createFailedDescription: "External MCP setup failed.",
+      revokedTitle: "Connection revoked",
+      revokedDescription: "Its credential stops working immediately.",
+      revokeFailedTitle: "Could not revoke connection",
+      revokeFailedDescription: "Revocation failed.",
+      pairingReadyTitle: "New pairing code ready",
+      pairingReadyDescription:
+        "Copy the refreshed setup prompt. The new one-time code lasts 10 minutes.",
+      pairingFailedTitle: "Could not resume pairing",
+      pairingFailedDescription: "Pairing refresh failed.",
+      copyFailedTitle: "Could not copy",
+      copyFailedDescription: "Clipboard access failed.",
+    },
+  },
   providers: {
     updates: {
       title: "Updates",

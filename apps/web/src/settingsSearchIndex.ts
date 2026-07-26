@@ -481,7 +481,9 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "integrations",
     title: "External MCP integrations",
     keywords:
-      "Pair Codex Claude and other local MCP clients with scoped project access. revoke credential task create wait read worktree approval",
+      "Pair Codex Claude and other local MCP clients with scoped project access. revoke credential task create wait read worktree approval 外部 MCP 集成 配对 撤销",
+    // The panel swaps between a create form and a setup flow, so no row is always mounted.
+    target: null,
   },
   {
     id: "advanced:version",

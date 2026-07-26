@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "../../i18n/locales/en";
+
 import {
   buildExternalMcpClientConfiguration,
   buildExternalMcpExamplePrompt,
@@ -8,6 +10,9 @@ import {
   describeExternalMcpProjects,
   externalMcpSetupAction,
 } from "./externalMcpSetup";
+
+// The real English catalog, exactly what the panel passes in.
+const DESCRIBE = en.settings.integrations.describe;
 
 const stdio = {
   command: "/Applications/Synara.app/Contents/MacOS/Synara",
@@ -97,24 +102,27 @@ describe("external MCP guided setup", () => {
 
   it("describes project access for both scopes", () => {
     expect(
-      describeExternalMcpProjects({ projectScope: "all", allowedProjects: [{ title: "One" }] }),
+      describeExternalMcpProjects(
+        { projectScope: "all", allowedProjects: [{ title: "One" }] },
+        DESCRIBE,
+      ),
     ).toBe("All projects, including future ones");
     expect(
-      describeExternalMcpProjects({
-        projectScope: "selected",
-        allowedProjects: [{ title: "One" }, { title: "Two" }],
-      }),
+      describeExternalMcpProjects(
+        {
+          projectScope: "selected",
+          allowedProjects: [{ title: "One" }, { title: "Two" }],
+        },
+        DESCRIBE,
+      ),
     ).toBe("One, Two");
   });
 
   it("describes scopes without exposing capability identifiers", () => {
-    const description = describeExternalMcpPermissions([
-      "projects:read",
-      "tasks:create",
-      "tasks:wait",
-      "tasks:read",
-      "runtime:local",
-    ]);
+    const description = describeExternalMcpPermissions(
+      ["projects:read", "tasks:create", "tasks:wait", "tasks:read", "runtime:local"],
+      DESCRIBE,
+    );
 
     expect(description).toBe("Create and follow its own tasks · Use the shared local checkout");
     expect(description).not.toContain("runtime:local");
