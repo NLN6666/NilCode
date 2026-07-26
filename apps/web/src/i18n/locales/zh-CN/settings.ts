@@ -7,6 +7,16 @@
 import type { Settings } from "../en/settings";
 
 export const settings: Settings = {
+  searchTitles: {
+    fontSmoothing: "字体平滑",
+    keyboardShortcuts: "键盘快捷键",
+    managedWorktrees: "受管工作树",
+    archivedThreads: "已归档会话",
+    usageAndBilling: "用量与账单",
+    codexMcpServers: "Codex MCP 服务器",
+    claudeMcpServers: "Claude MCP 服务器",
+    externalMcpIntegrations: "外部 MCP 集成",
+  },
   controls: {
     resetTooltip: "重置为默认值",
     resetAriaLabel: (label) => `将${label}重置为默认值`,

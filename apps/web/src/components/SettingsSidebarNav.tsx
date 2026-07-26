@@ -78,7 +78,7 @@ function SettingsSearchResultRow(props: {
         )}
         onClick={() => onSelect(entry)}
       >
-        <span className="min-w-0 truncate">{entry.title}</span>
+        <span className="min-w-0 truncate">{entry.title(m)}</span>
       </button>
     </li>
   );
@@ -94,11 +94,7 @@ export function SettingsSidebarNav(props: {
   const [query, setQuery] = useState("");
   const trimmedQuery = query.trim();
   const isSearching = trimmedQuery.length > 0;
-  const results = rankSettingsSearchEntries(
-    trimmedQuery,
-    SETTINGS_SEARCH_RESULTS_LIMIT,
-    (section) => m.settingsNav.sections[section].label,
-  );
+  const results = rankSettingsSearchEntries(trimmedQuery, SETTINGS_SEARCH_RESULTS_LIMIT, m);
 
   const handleSelectResult = (entry: SettingsSearchEntry) => {
     const target = settingsSearchEntryTarget(entry);

@@ -14,6 +14,18 @@
 import { pluralize } from "@synara/shared/text";
 
 export const settings = {
+  // Titles for search results whose row has no catalog entry of its own — panel-level results
+  // and rows that live outside the settings panels.
+  searchTitles: {
+    fontSmoothing: "Font smoothing",
+    keyboardShortcuts: "Keyboard Shortcuts",
+    managedWorktrees: "Managed worktrees",
+    archivedThreads: "Archived threads",
+    usageAndBilling: "Usage and billing",
+    codexMcpServers: "Codex MCP servers",
+    claudeMcpServers: "Claude MCP servers",
+    externalMcpIntegrations: "External MCP integrations",
+  },
   controls: {
     resetTooltip: "Reset to default",
     /** A function, not a template with a placeholder: word order around `label` differs per language. */

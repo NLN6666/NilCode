@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { SettingsSidebarNav } from "./SettingsSidebarNav";
-import { settingRowAnchorId, type SettingsSectionId } from "../settingsNavigation";
+import { settingRowAnchorId } from "../settingsNavigation";
 import {
   SETTINGS_SEARCH_ENTRIES,
   rankSettingsSearchEntries,
@@ -15,27 +15,27 @@ import {
 } from "../settingsSearchIndex";
 import { en } from "../i18n/locales/en";
 
-/** Rank against the real English labels, matching what the sidebar passes in at runtime. */
-const sectionLabel = (section: SettingsSectionId) => en.settingsNav.sections[section].label;
+/** Rank against the real English catalog, matching what the sidebar passes in at runtime. */
+const m = en;
 
 describe("rankSettingsSearchEntries", () => {
   it("returns nothing for an empty query", () => {
-    expect(rankSettingsSearchEntries("", 12, sectionLabel)).toHaveLength(0);
-    expect(rankSettingsSearchEntries("   ", 12, sectionLabel)).toHaveLength(0);
+    expect(rankSettingsSearchEntries("", 12, m)).toHaveLength(0);
+    expect(rankSettingsSearchEntries("   ", 12, m)).toHaveLength(0);
   });
 
   it("ranks an exact title match first", () => {
-    const [top] = rankSettingsSearchEntries("theme", 12, sectionLabel);
+    const [top] = rankSettingsSearchEntries("theme", 12, m);
     expect(top?.id).toBe("appearance:theme");
   });
 
   it("matches on description keywords, not just titles", () => {
-    const results = rankSettingsSearchEntries("wrap", 12, sectionLabel);
+    const results = rankSettingsSearchEntries("wrap", 12, m);
     expect(results.some((entry) => entry.id === "behavior:diff-line-wrapping")).toBe(true);
   });
 
   it("includes the activity toasts notification row", () => {
-    const results = rankSettingsSearchEntries("toasts", 12, sectionLabel);
+    const results = rankSettingsSearchEntries("toasts", 12, m);
     expect(results.some((entry) => entry.id === "notifications:activity-toasts")).toBe(true);
   });
 
@@ -46,42 +46,36 @@ describe("rankSettingsSearchEntries", () => {
   });
 
   it("surfaces every row in a section when searching the section label", () => {
-    const results = rankSettingsSearchEntries(
-      "appearance",
-      SETTINGS_SEARCH_ENTRIES.length,
-      sectionLabel,
-    );
+    const results = rankSettingsSearchEntries("appearance", SETTINGS_SEARCH_ENTRIES.length, m);
     expect(results.some((entry) => entry.section === "appearance")).toBe(true);
   });
 
   it("respects the result limit", () => {
-    expect(rankSettingsSearchEntries("e", 3, sectionLabel)).toHaveLength(3);
+    expect(rankSettingsSearchEntries("e", 3, m)).toHaveLength(3);
   });
 
-  it("derives a deep-link anchor target from each entry's id or title", () => {
-    // Migrated rows anchor on their locale-independent id; the rest still slug their English title.
-    for (const entry of SETTINGS_SEARCH_ENTRIES) {
-      if (entry.target === null) {
-        expect(settingsSearchEntryTarget(entry)).toBeNull();
-        continue;
-      }
-      const anchorSource = entry.localizedTitle ? entry.id : entry.title;
-      expect(settingsSearchEntryTarget(entry)).toBe(settingRowAnchorId(anchorSource));
+  it("anchors every row on its id so translation cannot collapse the slug", () => {
+    // Ids are locale-independent; a title-derived anchor would slug every Chinese title down to
+    // the bare `setting-` prefix and collide.
+    const anchored = SETTINGS_SEARCH_ENTRIES.filter((entry) => entry.target !== null);
+    expect(anchored.length).toBeGreaterThan(0);
+
+    for (const entry of anchored) {
+      expect(settingsSearchEntryTarget(entry)).toBe(settingRowAnchorId(entry.id));
       expect(settingsSearchEntryTarget(entry)?.startsWith("setting-")).toBe(true);
     }
+    const targets = anchored.map((entry) => settingsSearchEntryTarget(entry));
+    expect(new Set(targets).size).toBe(anchored.length);
+
+    for (const entry of SETTINGS_SEARCH_ENTRIES) {
+      if (entry.target === null) expect(settingsSearchEntryTarget(entry)).toBeNull();
+    }
   });
 
-  it("anchors localized-title rows on their id so translation cannot collapse the slug", () => {
-    const localized = SETTINGS_SEARCH_ENTRIES.filter((entry) => entry.localizedTitle);
-    expect(localized.length).toBeGreaterThan(0);
-
-    // Ids are locale-independent, so these anchors survive translation; a title-derived anchor
-    // would slug every Chinese title down to the bare `setting-` prefix and collide.
-    for (const entry of localized) {
-      expect(settingsSearchEntryTarget(entry)).toBe(settingRowAnchorId(entry.id));
+  it("resolves every result title from the active catalog", () => {
+    for (const entry of SETTINGS_SEARCH_ENTRIES) {
+      expect(entry.title(m)).not.toBe("");
     }
-    const targets = localized.map((entry) => settingsSearchEntryTarget(entry));
-    expect(new Set(targets).size).toBe(localized.length);
   });
 });
 
