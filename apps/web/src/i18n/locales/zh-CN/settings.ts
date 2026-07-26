@@ -387,6 +387,116 @@ export const settings: Settings = {
     deleteFailedTitle: "无法删除会话",
     deleteFailedDescription: "无法删除该会话。",
   },
+  notifications: {
+    activityAlerts: "活动提醒",
+    toasts: {
+      title: "应用内提示",
+      description: "当对话或受管终端代理完成任务或需要输入时，在应用内弹出提示。",
+      resetLabel: "应用内提示",
+      ariaLabel: "应用内活动提示",
+    },
+    desktop: {
+      title: "桌面通知",
+      description: "当应用在后台时，对话或受管终端代理完成任务或需要输入会发送系统通知。",
+      resetLabel: "桌面通知",
+      ariaLabel: "桌面活动通知",
+    },
+    test: "测试",
+    testTitle: "活动通知",
+    testBody: "针对对话与终端代理的通知测试。",
+    unavailableTitle: "桌面通知不可用",
+    testSentTitle: "测试通知已发送",
+    testUnavailableTitle: "通知不可用",
+    testShownOs: "你的操作系统应该会显示该通知。",
+    testShownBrowser: "你的浏览器应该会显示该通知。",
+    testUnsupported: "此设备不支持桌面通知。",
+    support: {
+      electron: "桌面应用的通知会使用操作系统的通知中心。",
+      granted: "此应用的浏览器通知已启用。",
+      denied: "浏览器通知已被阻止。请在浏览器的站点设置中重新启用。",
+      insecure: "浏览器通知需要安全上下文。localhost 可以，纯 HTTP 不行。",
+      unsupported: "此浏览器不支持桌面通知。",
+      default: "允许浏览器通知，即可在后台收到对话或终端代理完成任务或需要输入的提醒。",
+    },
+  },
+  appSnap: {
+    intro: {
+      title: "用 AppSnap 把另一个应用的窗口展示给你的代理",
+      description:
+        "在任意应用处于最前时按下你的双键快捷键。Synara 会把该窗口截取为图片、将自身切回前台，并把截图附加到任务输入框——在你发送消息之前，截图只保存在本机。",
+    },
+    unsupportedFallback: "AppSnap 仅在 macOS 桌面应用中可用。",
+    requiresDesktop: "AppSnap 需要 macOS 上的 Synara 桌面应用。",
+    status: {
+      desktopOnly: "在 Synara 桌面应用中可用",
+      macOnly: "仅在 macOS 上可用",
+      listening: (shortcut) => `正在监听 —— 按 ${shortcut} 截图`,
+      theShortcut: "快捷键",
+      off: "已关闭",
+      starting: "正在启动截图监听…",
+      permissionRequired: "需要完成权限设置",
+    },
+    capture: {
+      title: "截图",
+      enable: {
+        title: "启用 AppSnap",
+        description: "Synara 打开期间，在后台运行截图监听。",
+        resetLabel: "AppSnap",
+        ariaLabel: "启用 AppSnap",
+      },
+      shortcut: {
+        title: "快捷键",
+        description:
+          "只能选两个键：一个修饰键加一个其他键。保存前 Synara 会检查自身绑定，并向 macOS 确认该快捷键是否已被其他应用占用。",
+      },
+      destination: {
+        title: "目标位置",
+        description:
+          "截图会归入你最近一分钟内交互过的任务，连续截图会归在一起。否则 Synara 会新建一个任务并附上截图。",
+        automatic: "自动",
+      },
+      sound: {
+        title: "截图提示音",
+        description: "截取窗口时播放一声短促的快门音。",
+        resetLabel: "截图提示音",
+        ariaLabel: "截取 AppSnap 时播放提示音",
+        preview: "试听",
+      },
+    },
+    permissions: {
+      title: "macOS 权限",
+      inputMonitoring: {
+        title: "输入监控",
+        description:
+          "让 Synara 在其他应用占用键盘时也能察觉双 Option 组合键。你输入的内容不会被记录。",
+      },
+      screenRecording: {
+        title: "屏幕录制",
+        description:
+          "让 Synara 截取最前方窗口的图像。只截取你所选的那一个窗口，且仅在你按下组合键的那一刻。",
+      },
+      status: {
+        title: "权限状态",
+        description:
+          "在「系统设置 → 隐私与安全性」中把这两项权限授予 Synara，然后回到这里重新检查。macOS 可能要求更改后重启应用。",
+      },
+      recheck: "重新检查权限",
+      labels: {
+        granted: "已授予",
+        denied: "已拒绝",
+        "not-determined": "尚未请求",
+        restricted: "受限",
+        unknown: "未知",
+      },
+    },
+    unavailableTitle: "AppSnap 不可用",
+    finishSetupTitle: "请完成 AppSnap 设置",
+    finishSetupDescription: "请授予所需的 macOS 权限后重试。",
+    setupFailedTitle: "AppSnap 设置失败",
+    setupFailedDescription: "无法配置 AppSnap。",
+    permissionCheckFailedTitle: "无法检查 AppSnap 权限",
+    permissionCheckFailedDescription: "权限检查失败。",
+  },
   profile: {
     loadFailed: "无法加载你的本地统计数据。",
     tryAgain: "重试",

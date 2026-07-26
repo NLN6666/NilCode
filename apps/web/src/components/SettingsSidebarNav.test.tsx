@@ -58,20 +58,16 @@ describe("rankSettingsSearchEntries", () => {
     expect(rankSettingsSearchEntries("e", 3, sectionLabel)).toHaveLength(3);
   });
 
-  it("derives a deep-link anchor target from each entry's title", () => {
-    // A row still rendering its English title; migrated rows anchor on their id instead.
-    const toastsEntry = SETTINGS_SEARCH_ENTRIES.find(
-      (entry) => entry.id === "notifications:activity-toasts",
-    )!;
-    expect(toastsEntry.localizedTitle).toBeUndefined();
-    expect(settingsSearchEntryTarget(toastsEntry)).toBe("setting-activity-toasts");
+  it("derives a deep-link anchor target from each entry's id or title", () => {
+    // Migrated rows anchor on their locale-independent id; the rest still slug their English title.
     for (const entry of SETTINGS_SEARCH_ENTRIES) {
       if (entry.target === null) {
         expect(settingsSearchEntryTarget(entry)).toBeNull();
-      } else if (!entry.localizedTitle) {
-        expect(settingsSearchEntryTarget(entry)).toBe(settingRowAnchorId(entry.title));
-        expect(settingsSearchEntryTarget(entry)?.startsWith("setting-")).toBe(true);
+        continue;
       }
+      const anchorSource = entry.localizedTitle ? entry.id : entry.title;
+      expect(settingsSearchEntryTarget(entry)).toBe(settingRowAnchorId(anchorSource));
+      expect(settingsSearchEntryTarget(entry)?.startsWith("setting-")).toBe(true);
     }
   });
 

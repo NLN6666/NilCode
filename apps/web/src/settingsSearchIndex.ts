@@ -237,14 +237,16 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "notifications",
     title: "Activity toasts",
     keywords:
-      "Show an in-app toast when a chat or managed terminal agent finishes or needs input. alerts",
+      "Show an in-app toast when a chat or managed terminal agent finishes or needs input. alerts 应用内提示 活动提醒",
+    localizedTitle: true,
   },
   {
     id: "notifications:desktop-notifications",
     section: "notifications",
     title: "Desktop notifications",
     keywords:
-      "Show an OS notification when a chat or managed terminal agent finishes or needs input while the app is in the background. alerts toast",
+      "Show an OS notification when a chat or managed terminal agent finishes or needs input while the app is in the background. alerts toast 桌面通知 系统通知",
+    localizedTitle: true,
   },
 
   // ── AppSnap ───────────────────────────────────────────────────────────────────
@@ -253,26 +255,32 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "appsnap",
     title: "Enable AppSnap",
     keywords:
-      "Capture the frontmost macOS app window with a configurable two-key shortcut and add it to a recent task. appshot screenshot snap window capture hotkey",
+      "Capture the frontmost macOS app window with a configurable two-key shortcut and add it to a recent task. appshot screenshot snap window capture hotkey 截图 窗口捕获",
+    localizedTitle: true,
   },
   {
     id: "appsnap:shortcut",
     section: "appsnap",
     title: "Shortcut",
-    keywords: "Press the left and right Option keys at the same time. hotkey chord alt keys",
+    keywords:
+      "Press the left and right Option keys at the same time. hotkey chord alt keys 快捷键 组合键",
+    localizedTitle: true,
   },
   {
     id: "appsnap:destination",
     section: "appsnap",
     title: "Destination",
     keywords:
-      "Snaps join the task you interacted with in the last minute, otherwise a fresh task opens. automatic target composer",
+      "Snaps join the task you interacted with in the last minute, otherwise a fresh task opens. automatic target composer 目标位置 自动",
+    localizedTitle: true,
   },
   {
     id: "appsnap:capture-sound",
     section: "appsnap",
     title: "Capture sound",
-    keywords: "Play a short shutter cue when a window is captured. sound effect audio mute",
+    keywords:
+      "Play a short shutter cue when a window is captured. sound effect audio mute 截图提示音 快门音",
+    localizedTitle: true,
   },
   {
     id: "appsnap:permissions",

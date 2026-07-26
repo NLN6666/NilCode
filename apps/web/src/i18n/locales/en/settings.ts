@@ -411,6 +411,121 @@ export const settings = {
     deleteFailedTitle: "Could not delete thread",
     deleteFailedDescription: "Unable to delete the thread.",
   },
+  notifications: {
+    activityAlerts: "Activity alerts",
+    toasts: {
+      title: "Activity toasts",
+      description:
+        "Show an in-app toast when a chat or managed terminal agent finishes or needs input.",
+      resetLabel: "activity toasts",
+      ariaLabel: "Activity toast notifications",
+    },
+    desktop: {
+      title: "Desktop notifications",
+      description:
+        "Show an OS notification when a chat or managed terminal agent finishes or needs input while the app is in the background.",
+      resetLabel: "desktop notifications",
+      ariaLabel: "Desktop activity notifications",
+    },
+    test: "Test",
+    testTitle: "Activity notification",
+    testBody: "Notification test for chats and terminal agents.",
+    unavailableTitle: "Desktop notifications unavailable",
+    testSentTitle: "Test notification sent",
+    testUnavailableTitle: "Notifications unavailable",
+    testShownOs: "Your operating system should show the notification.",
+    testShownBrowser: "Your browser should show the notification.",
+    testUnsupported: "Desktop notifications are not supported on this device.",
+    // Keyed by `BrowserNotificationPermissionState`; `buildNotificationSettingsSupportText` picks one.
+    support: {
+      electron: "Desktop app notifications use your operating system notification center.",
+      granted: "Browser notifications are enabled for this app.",
+      denied: "Browser notifications are blocked. Re-enable them in your browser site settings.",
+      insecure:
+        "Browser notifications need a secure context. Localhost works; plain HTTP does not.",
+      unsupported: "This browser does not support desktop notifications.",
+      default:
+        "Allow browser notifications to get alerts when chats or terminal agents finish or need input in the background.",
+    },
+  },
+  appSnap: {
+    intro: {
+      title: "Take an AppSnap to show your agent another app's window",
+      description:
+        "Press your two-key shortcut while any app is frontmost. Synara captures that window as an image, brings itself forward, and attaches the snap to a task composer — the capture stays on this device until you send the message.",
+    },
+    unsupportedFallback: "AppSnap is available only in the macOS desktop app.",
+    requiresDesktop: "AppSnap requires the Synara desktop app on macOS.",
+    status: {
+      desktopOnly: "Available in the Synara desktop app",
+      macOnly: "Available on macOS only",
+      listening: (shortcut: string) => `Listening — press ${shortcut} to snap`,
+      theShortcut: "the shortcut",
+      off: "Off",
+      starting: "Starting the capture listener…",
+      permissionRequired: "Permission setup required",
+    },
+    capture: {
+      title: "Capture",
+      enable: {
+        title: "Enable AppSnap",
+        description: "Run the capture listener in the background while Synara is open.",
+        resetLabel: "AppSnap",
+        ariaLabel: "Enable AppSnap",
+      },
+      shortcut: {
+        title: "Shortcut",
+        description:
+          "Choose exactly two keys: one modifier and one other key. Synara checks its own bindings and asks macOS whether another app already owns the shortcut before saving it.",
+      },
+      destination: {
+        title: "Destination",
+        description:
+          "Snaps join the task you interacted with in the last minute, and consecutive snaps stay together. Otherwise Synara opens a fresh task with the capture attached.",
+        automatic: "Automatic",
+      },
+      sound: {
+        title: "Capture sound",
+        description: "Play a short shutter cue when a window is captured.",
+        resetLabel: "capture sound",
+        ariaLabel: "Play a sound when an AppSnap is captured",
+        preview: "Preview",
+      },
+    },
+    permissions: {
+      title: "macOS permissions",
+      inputMonitoring: {
+        title: "Input Monitoring",
+        description:
+          "Lets Synara notice the double-Option chord while another app owns the keyboard. Nothing you type is recorded.",
+      },
+      screenRecording: {
+        title: "Screen Recording",
+        description:
+          "Lets Synara capture an image of the frontmost window. Only the single window you snap is captured, only at the moment you press the chord.",
+      },
+      status: {
+        title: "Permission status",
+        description:
+          "Grant both permissions to Synara under System Settings → Privacy & Security, then recheck here. macOS may require relaunching the app after a change.",
+      },
+      recheck: "Recheck permissions",
+      labels: {
+        granted: "Granted",
+        denied: "Denied",
+        "not-determined": "Not requested yet",
+        restricted: "Restricted",
+        unknown: "Unknown",
+      },
+    },
+    unavailableTitle: "AppSnap unavailable",
+    finishSetupTitle: "Finish AppSnap setup",
+    finishSetupDescription: "Allow the required macOS permissions, then try again.",
+    setupFailedTitle: "AppSnap setup failed",
+    setupFailedDescription: "Could not configure AppSnap.",
+    permissionCheckFailedTitle: "Could not check AppSnap permissions",
+    permissionCheckFailedDescription: "Permission check failed.",
+  },
   profile: {
     loadFailed: "Couldn’t load your local stats.",
     tryAgain: "Try again",
