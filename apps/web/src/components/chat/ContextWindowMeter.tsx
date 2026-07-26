@@ -16,6 +16,13 @@ export function ContextWindowMeter(props: {
   const m = useMessages();
   const { usage, cumulativeCostUsd, activeWindowLabel, pendingWindowLabel } = props;
   const display = deriveContextWindowMeterDisplay(usage);
+  const modelWindowTokens = usage.contextWindowTokens ?? null;
+  // Only worth its own line when the session gets less than the model holds;
+  // an equal pair would just repeat the row above it.
+  const showsCompactionBudget =
+    typeof modelWindowTokens === "number" &&
+    typeof usage.maxTokens === "number" &&
+    usage.maxTokens < modelWindowTokens;
   const radius = 6;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference - (display.normalizedPercentage / 100) * circumference;
@@ -97,9 +104,26 @@ export function ContextWindowMeter(props: {
               {display.tokenUsageLabel} {m.chat.contextWindow.tokensUsedSoFar}
             </div>
           )}
-          {usage.maxTokens !== null ? (
+          {/*
+            `maxTokens` is the budget the bar fills toward, which providers may
+            set below the model's capacity (Claude compacts at 200k by default,
+            even on a 1M model). Name the model window only when the runtime
+            reported it; where it did not, `maxTokens` *is* the model window —
+            Codex reads its own `model_context_window` straight from the
+            app-server — so the original line stays correct for those providers.
+          */}
+          {modelWindowTokens !== null ? (
+            <div className="text-xs text-muted-foreground">
+              {m.chat.contextWindow.modelWindow(formatContextWindowTokens(modelWindowTokens))}
+            </div>
+          ) : usage.maxTokens !== null ? (
             <div className="text-xs text-muted-foreground">
               {m.chat.contextWindow.modelWindow(formatContextWindowTokens(usage.maxTokens))}
+            </div>
+          ) : null}
+          {showsCompactionBudget ? (
+            <div className="text-xs text-muted-foreground">
+              {m.chat.contextWindow.compactsAt(formatContextWindowTokens(usage.maxTokens))}
             </div>
           ) : null}
           {pendingWindowLabel ? (

@@ -5174,7 +5174,10 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
           usage: {
             usedTokens: 321,
             lastUsedTokens: 321,
+            // The pair matters: 200k is where this session compacts, 1M is what
+            // the model holds. Collapsing them reported Opus 5 as a 200k model.
             maxTokens: 200_000,
+            contextWindowTokens: 1_000_000,
             toolUses: 2,
             durationMs: 654,
           },
@@ -5248,6 +5251,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
             inputTokens: 23863,
             outputTokens: 679,
             maxTokens: 200000,
+            contextWindowTokens: 1_000_000,
           },
         });
       }
@@ -5311,6 +5315,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
             lastUsedTokens: 200000,
             totalProcessedTokens: 535000,
             maxTokens: 200000,
+            contextWindowTokens: 1_000_000,
           },
         });
       }
@@ -5391,6 +5396,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
               lastUsedTokens: 190000,
               totalProcessedTokens: 535000,
               maxTokens: 200000,
+              contextWindowTokens: 1_000_000,
             },
           });
         }
@@ -5470,6 +5476,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
             lastUsedTokens: 190000,
             totalProcessedTokens: 535000,
             maxTokens: 200000,
+            contextWindowTokens: 1_000_000,
           },
         });
       }
@@ -5547,6 +5554,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
             usedTokens: 190000,
             lastUsedTokens: 190000,
             maxTokens: 200_000,
+            contextWindowTokens: 1_000_000,
             totalProcessedTokens: 535000,
           },
         });
@@ -7533,6 +7541,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
             usedTokens: 23_000,
             lastUsedTokens: 23_000,
             maxTokens: 1_000_000,
+            contextWindowTokens: 1_000_000,
           },
         });
       }
@@ -7616,6 +7625,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
             usedTokens: 23_000,
             lastUsedTokens: 23_000,
             maxTokens: 1_000_000,
+            contextWindowTokens: 1_000_000,
           },
         });
       }

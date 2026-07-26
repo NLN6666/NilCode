@@ -33,6 +33,8 @@ export const chat = {
     /** Trails a bare token count when no window size is known. */
     tokensUsedSoFar: "tokens used so far",
     modelWindow: (tokens: string) => `Model window: ${tokens} tokens`,
+    /** Shown only when the session compacts below the model's full window. */
+    compactsAt: (tokens: string) => `Compacts at: ${tokens} tokens`,
     totalProcessed: (tokens: string) => `Total processed: ${tokens} tokens`,
     autoCompacts: "Automatically compacts its context when needed.",
     sessionCost: (cost: string) => `Session cost: ${cost}`,

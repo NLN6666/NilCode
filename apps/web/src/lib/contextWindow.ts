@@ -89,6 +89,7 @@ function deriveLatestUsageContextWindowSnapshot(
       usedPercent: payloadUsedPercent,
       totalProcessedTokens: asFiniteNumber(payload?.totalProcessedTokens),
       maxTokens,
+      contextWindowTokens: asFiniteNumber(payload?.contextWindowTokens),
       remainingTokens,
       usedPercentage,
       remainingPercentage,
@@ -160,6 +161,10 @@ export function deriveLatestContextWindowSnapshot(
     usedPercent: usageSnapshot?.usedPercent ?? null,
     totalProcessedTokens: usageSnapshot?.totalProcessedTokens ?? null,
     maxTokens,
+    // Deliberately not backfilled from `maxTokens`: the configured session
+    // window is a compaction budget, and presenting it as the model's capacity
+    // is the misreport this field exists to end.
+    contextWindowTokens: usageSnapshot?.contextWindowTokens ?? null,
     remainingTokens,
     usedPercentage,
     remainingPercentage,

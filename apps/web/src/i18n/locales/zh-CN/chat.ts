@@ -28,6 +28,7 @@ export const chat: Chat = {
     contextUsed: "上下文已使用",
     tokensUsedSoFar: "token 已使用",
     modelWindow: (tokens) => `模型窗口：${tokens} token`,
+    compactsAt: (tokens) => `压缩阈值：${tokens} token`,
     totalProcessed: (tokens) => `累计处理：${tokens} token`,
     autoCompacts: "需要时会自动压缩上下文。",
     sessionCost: (cost) => `会话费用：${cost}`,

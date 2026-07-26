@@ -115,6 +115,7 @@ import {
   resolveSelectedClaudeAutoCompactWindow,
   snapshotFromClaudeContextUsage,
   stripClaudeContextWindowSuffix,
+  withClaudeModelContextWindow,
 } from "../claudeTokenUsage.ts";
 import {
   applyClaudeTaskToolResult,
@@ -579,6 +580,18 @@ function claudeEffectiveContextBudget(context: ClaudeSessionContext): number | u
     context.currentAutoCompactWindow,
     context.lastKnownContextWindow,
   );
+}
+
+/**
+ * Every snapshot this adapter emits carries the compaction budget as
+ * `maxTokens`; pair it with the model's real capacity so the UI never has to
+ * infer one from the other.
+ */
+function claudeUsageWithModelWindow(
+  context: ClaudeSessionContext,
+  usage: ThreadTokenUsageSnapshot,
+): ThreadTokenUsageSnapshot {
+  return withClaudeModelContextWindow(usage, context.lastKnownContextWindow);
 }
 
 // Safeguard reroutes (e.g. Fable 5 refusal -> Opus fallback) stream as an
@@ -2324,7 +2337,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
               createdAt: usageStamp.createdAt,
               threadId: context.session.threadId,
               payload: {
-                usage: usageSnapshot,
+                usage: claudeUsageWithModelWindow(context, usageSnapshot),
               },
               providerRefs: {},
             });
@@ -2410,7 +2423,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             threadId: context.session.threadId,
             turnId: turnState.turnId,
             payload: {
-              usage: usageSnapshot,
+              usage: claudeUsageWithModelWindow(context, usageSnapshot),
             },
             providerRefs: nativeProviderRefs(context),
           });
@@ -3195,7 +3208,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
               createdAt: usageStamp.createdAt,
               threadId: context.session.threadId,
               ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
-              payload: { usage: normalizedPerCallUsage },
+              payload: { usage: claudeUsageWithModelWindow(context, normalizedPerCallUsage) },
               providerRefs: nativeProviderRefs(context),
               raw: {
                 source: "claude.sdk.message",
@@ -3265,7 +3278,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           threadId: target.session.threadId,
           ...(target.turnState ? { turnId: asCanonicalTurnId(target.turnState.turnId) } : {}),
           payload: {
-            usage: normalizedUsage,
+            usage: claudeUsageWithModelWindow(target, normalizedUsage),
           },
           providerRefs: nativeProviderRefs(target),
           raw: {

@@ -6,6 +6,7 @@ import {
   clearCloudModelCatalogCacheForTests,
   fetchCloudModelCatalog,
   projectCloudModelCatalog,
+  readCachedCloudModelContextWindow,
 } from "./cloudModelCatalog.ts";
 
 vi.mock("@synara/shared/outboundHttp", () => ({
@@ -167,6 +168,27 @@ describe("fetchCloudModelCatalog", () => {
 
     expect(first.codex?.map((entry) => entry.slug)).toEqual(["gpt-5.6-sol"]);
     expect(second).toEqual(first);
+    expect(requestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads a cached context window without touching the network", async () => {
+    // A cold cache must answer `undefined` rather than fetch: this runs on the
+    // turn path, where a network read would stall a turn behind models.dev.
+    expect(readCachedCloudModelContextWindow("claudeAgent", "claude-opus-5")).toBeUndefined();
+    expect(requestMock).not.toHaveBeenCalled();
+
+    nextResponse({
+      anthropic: {
+        models: {
+          "claude-opus-5": model({ id: "claude-opus-5", limit: { context: 1_000_000 } }),
+        },
+      },
+    });
+    await fetchCloudModelCatalog();
+
+    expect(readCachedCloudModelContextWindow("claudeAgent", "claude-opus-5")).toBe(1_000_000);
+    expect(readCachedCloudModelContextWindow("claudeAgent", "claude-not-a-model")).toBeUndefined();
+    expect(readCachedCloudModelContextWindow("codex", "claude-opus-5")).toBeUndefined();
     expect(requestMock).toHaveBeenCalledTimes(1);
   });
 
