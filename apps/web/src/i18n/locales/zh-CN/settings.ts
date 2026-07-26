@@ -387,6 +387,142 @@ export const settings: Settings = {
     deleteFailedTitle: "无法删除会话",
     deleteFailedDescription: "无法删除该会话。",
   },
+  providers: {
+    updates: {
+      title: "更新",
+      autoChecks: {
+        title: "自动检查 CLI 更新",
+        description: "在后台检查 Codex、Claude 等提供商 CLI 是否有新版本。",
+        resetLabel: "CLI 更新检查",
+        ariaLabel: "自动检查 CLI 更新",
+      },
+      providerUpdates: {
+        title: "提供商更新",
+        description: "查看 Synara 可以安全更新的已安装提供商工具。",
+      },
+      manualUpdate: "手动更新",
+    },
+    checkStatus: {
+      off: "已关闭自动检查",
+      available: (count) => `有 ${count} 项更新可用`,
+      none: "未发现提供商更新",
+    },
+    picker: {
+      title: "提供商选择器",
+      visible: {
+        title: "可见提供商",
+        description:
+          "拖动排出你偏好的选择器顺序，并隐藏用不到的提供商。当前会话正在使用的提供商始终可见。",
+        resetLabel: "提供商选择器",
+      },
+      hiddenCount: (count) => `已隐藏 ${count} 个提供商`,
+      customOrder: "自定义顺序",
+      allVisible: "所有提供商均可见",
+      reorder: (name) => `重新排序 ${name}`,
+      showInPicker: (name) => `在提供商选择器中显示 ${name}`,
+    },
+    tools: {
+      title: "提供商工具",
+      installed: {
+        title: "已安装的 CLI",
+        description: "查看提供商版本并更新工具。只有需要覆盖可执行文件路径时才展开某一行。",
+        resetLabel: "提供商工具",
+      },
+      custom: "已自定义",
+      cliDocs: "CLI 文档",
+      command: "命令：",
+      noSafeCommand: "有新版本可用，但 Synara 无法为此安装方式确定安全的一键更新命令。",
+      passwordConfigured: "已配置 —— 输入新值以替换，或留空保持不变",
+    },
+    update: {
+      action: "更新",
+      queued: "更新已排队",
+      running: "正在更新",
+      succeeded: "已更新",
+      failed: "更新失败",
+      unchanged: "仍是旧版本",
+      latest: (version) => `最新 ${version}`,
+      current: (version) => `当前 ${version}`,
+      runCommand: (command) => `执行 ${command}`,
+      didNotComplete: "提供商更新未完成。",
+      failedTitle: (provider) => `无法更新 ${provider}`,
+      manualHint: (failure) => `${failure}\n\n复制下面的命令，在终端中手动更新。`,
+      finishedTitle: (provider) => `${provider} 更新完成`,
+      finishedDescription: "新会话将使用更新后的提供商。",
+      requestFailed: "提供商更新失败。",
+    },
+    docs: {
+      install: "安装",
+      update: "更新",
+      config: "配置",
+      reference: "参考",
+      hooks: "钩子",
+      headless: "无头模式",
+      quickstart: "快速开始",
+    },
+    binaryHint: (binary) => `留空则使用 PATH 中的 ${binary}。`,
+    cursorBinaryHint: (binary) =>
+      `留空则使用 PATH 中的 ${binary}。也接受 Cursor 编辑器的 CLI 路径。`,
+    fields: {
+      codexBinaryPath: { label: "Codex 可执行文件路径", placeholder: "Codex 可执行文件路径" },
+      codexHomePath: {
+        label: "CODEX_HOME 路径",
+        placeholder: "CODEX_HOME",
+        description: "可选的自定义 Codex 主目录与配置目录。",
+      },
+      claudeBinaryPath: { label: "Claude 可执行文件路径", placeholder: "Claude 可执行文件路径" },
+      cursorBinaryPath: {
+        label: "Cursor 可执行文件路径",
+        placeholder: "Cursor Agent 或 Cursor CLI 路径",
+      },
+      cursorApiEndpoint: {
+        label: "Cursor API 端点",
+        placeholder: "https://api2.cursor.sh",
+        description: "可选的 Cursor API 端点覆盖，会传给 `cursor-agent -e`。",
+      },
+      antigravityBinaryPath: {
+        label: "Antigravity 可执行文件路径",
+        placeholder: "Antigravity CLI 可执行文件路径",
+      },
+      grokBinaryPath: { label: "Grok 可执行文件路径", placeholder: "Grok 可执行文件路径" },
+      droidBinaryPath: { label: "Droid 可执行文件路径", placeholder: "droid" },
+      kiloBinaryPath: { label: "Kilo 可执行文件路径", placeholder: "Kilo 可执行文件路径" },
+      kiloServerUrl: {
+        label: "Kilo 服务器地址",
+        placeholder: "http://127.0.0.1:4096",
+        description: "可选的现有 Kilo 服务器地址。留空则启动本地服务器。",
+      },
+      kiloServerPassword: {
+        label: "Kilo 服务器密码",
+        placeholder: "Kilo 服务器密码",
+        description: "外部托管的 Kilo 服务器可选密码。",
+      },
+      openCodeBinaryPath: {
+        label: "OpenCode 可执行文件路径",
+        placeholder: "OpenCode 可执行文件路径",
+      },
+      openCodeServerUrl: {
+        label: "OpenCode 服务器地址",
+        placeholder: "http://127.0.0.1:4096",
+        description: "可选的现有 OpenCode 服务器地址。留空则启动本地服务器。",
+      },
+      openCodeServerPassword: {
+        label: "OpenCode 服务器密码",
+        placeholder: "OpenCode 服务器密码",
+        description: "外部托管的 OpenCode 服务器可选密码。",
+      },
+      openCodeExperimentalWebSockets: {
+        label: "OpenAI 响应 WebSocket",
+        description: "对受管本地服务器使用 Opencode 实验性的 OpenAI 响应 WebSocket 传输。",
+      },
+      piBinaryPath: { label: "Pi 可执行文件路径", placeholder: "Pi 可执行文件路径" },
+      piAgentDir: {
+        label: "Pi 代理目录",
+        placeholder: "Pi 代理目录",
+        description: "可选的自定义 Pi 代理目录，用于认证、模型、技能和命令。",
+      },
+    },
+  },
   notifications: {
     activityAlerts: "活动提醒",
     toasts: {

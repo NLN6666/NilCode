@@ -411,6 +411,148 @@ export const settings = {
     deleteFailedTitle: "Could not delete thread",
     deleteFailedDescription: "Unable to delete the thread.",
   },
+  providers: {
+    updates: {
+      title: "Updates",
+      autoChecks: {
+        title: "Automatic CLI update checks",
+        description:
+          "Check Codex, Claude, and other provider CLIs for newer versions in the background.",
+        resetLabel: "CLI update checks",
+        ariaLabel: "Automatic CLI update checks",
+      },
+      providerUpdates: {
+        title: "Provider updates",
+        description: "Review installed provider tools that Synara can safely update.",
+      },
+      manualUpdate: "Manual update",
+    },
+    /** Shared by the Provider updates and Installed CLIs rows. */
+    checkStatus: {
+      off: "Automatic checks off",
+      available: (count: number) => `${count} ${pluralize(count, "update")} available`,
+      none: "No provider updates detected",
+    },
+    picker: {
+      title: "Provider picker",
+      visible: {
+        title: "Visible providers",
+        description:
+          "Drag providers into your preferred picker order and hide the ones you don't use. The provider you're currently using on a thread always stays visible.",
+        resetLabel: "provider picker",
+      },
+      hiddenCount: (count: number) => `${count} ${pluralize(count, "provider")} hidden`,
+      customOrder: "Custom order",
+      allVisible: "All providers visible",
+      reorder: (name: string) => `Reorder ${name}`,
+      showInPicker: (name: string) => `Show ${name} in the provider picker`,
+    },
+    tools: {
+      title: "Provider tools",
+      installed: {
+        title: "Installed CLIs",
+        description:
+          "Review provider versions and update tools. Open a row only when you need binary overrides.",
+        resetLabel: "provider tools",
+      },
+      custom: "Custom",
+      cliDocs: "CLI docs",
+      command: "Command: ",
+      noSafeCommand:
+        "A newer version is available, but Synara could not identify a safe one-click update command for this installation.",
+      passwordConfigured: "Configured — enter a replacement or leave blank",
+    },
+    update: {
+      action: "Update",
+      queued: "Update queued",
+      running: "Updating",
+      succeeded: "Updated",
+      failed: "Update failed",
+      unchanged: "Still outdated",
+      latest: (version: string) => `Latest ${version}`,
+      current: (version: string) => `Current ${version}`,
+      runCommand: (command: string) => `Run ${command}`,
+      didNotComplete: "The provider update did not complete.",
+      failedTitle: (provider: string) => `Could not update ${provider}`,
+      manualHint: (failure: string) =>
+        `${failure}\n\nCopy the command below to update manually in a terminal.`,
+      finishedTitle: (provider: string) => `${provider} update finished`,
+      finishedDescription: "New sessions will use the refreshed provider.",
+      requestFailed: "The provider update failed.",
+    },
+    docs: {
+      install: "Install",
+      update: "Update",
+      config: "Config",
+      reference: "Reference",
+      hooks: "Hooks",
+      headless: "Headless",
+      quickstart: "Quickstart",
+    },
+    // One entry per install field, keyed by its settings key. `binaryHint` descriptions name the
+    // executable; the schema marks which word to render as inline code so the styling survives
+    // any word order.
+    binaryHint: (binary: string) => `Leave blank to use ${binary} from your PATH.`,
+    cursorBinaryHint: (binary: string) =>
+      `Leave blank to use ${binary} from your PATH. Cursor editor CLI paths are accepted too.`,
+    fields: {
+      codexBinaryPath: { label: "Codex binary path", placeholder: "Codex binary path" },
+      codexHomePath: {
+        label: "CODEX_HOME path",
+        placeholder: "CODEX_HOME",
+        description: "Optional custom Codex home and config directory.",
+      },
+      claudeBinaryPath: { label: "Claude binary path", placeholder: "Claude binary path" },
+      cursorBinaryPath: {
+        label: "Cursor binary path",
+        placeholder: "Cursor Agent or Cursor CLI path",
+      },
+      cursorApiEndpoint: {
+        label: "Cursor API endpoint",
+        placeholder: "https://api2.cursor.sh",
+        description: "Optional Cursor API endpoint override passed to `cursor-agent -e`.",
+      },
+      antigravityBinaryPath: {
+        label: "Antigravity binary path",
+        placeholder: "Antigravity CLI binary path",
+      },
+      grokBinaryPath: { label: "Grok binary path", placeholder: "Grok binary path" },
+      droidBinaryPath: { label: "Droid binary path", placeholder: "droid" },
+      kiloBinaryPath: { label: "Kilo binary path", placeholder: "Kilo binary path" },
+      kiloServerUrl: {
+        label: "Kilo server URL",
+        placeholder: "http://127.0.0.1:4096",
+        description: "Optional existing Kilo server URL. Leave blank to spawn a local server.",
+      },
+      kiloServerPassword: {
+        label: "Kilo server password",
+        placeholder: "Kilo server password",
+        description: "Optional password for an externally managed Kilo server.",
+      },
+      openCodeBinaryPath: { label: "OpenCode binary path", placeholder: "OpenCode binary path" },
+      openCodeServerUrl: {
+        label: "OpenCode server URL",
+        placeholder: "http://127.0.0.1:4096",
+        description: "Optional existing OpenCode server URL. Leave blank to spawn a local server.",
+      },
+      openCodeServerPassword: {
+        label: "OpenCode server password",
+        placeholder: "OpenCode server password",
+        description: "Optional password for an externally managed OpenCode server.",
+      },
+      openCodeExperimentalWebSockets: {
+        label: "OpenAI response WebSockets",
+        description:
+          "Use Opencode's experimental OpenAI response WebSocket transport for managed local servers.",
+      },
+      piBinaryPath: { label: "Pi binary path", placeholder: "Pi binary path" },
+      piAgentDir: {
+        label: "Pi agent directory",
+        placeholder: "Pi agent directory",
+        description: "Optional custom Pi agent directory for auth, models, skills, and commands.",
+      },
+    },
+  },
   notifications: {
     activityAlerts: "Activity alerts",
     toasts: {

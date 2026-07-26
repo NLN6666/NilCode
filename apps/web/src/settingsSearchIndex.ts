@@ -397,26 +397,32 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "providers",
     title: "Automatic CLI update checks",
     keywords:
-      "Check Codex Claude and other provider CLIs for newer versions in the background. updates upgrade disable nags",
+      "Check Codex Claude and other provider CLIs for newer versions in the background. updates upgrade disable nags 自动检查更新",
+    localizedTitle: true,
   },
   {
     id: "providers:visible-providers",
     section: "providers",
     title: "Visible providers",
     keywords:
-      "Drag providers into your preferred picker order and hide the ones you don't use. visibility order",
+      "Drag providers into your preferred picker order and hide the ones you don't use. visibility order 可见提供商 隐藏 排序",
+    localizedTitle: true,
   },
   {
     id: "providers:provider-updates",
     section: "providers",
     title: "Provider updates",
-    keywords: "Update installed provider tools that Synara can safely update. upgrade cli",
+    keywords:
+      "Update installed provider tools that Synara can safely update. upgrade cli 提供商更新",
+    localizedTitle: true,
   },
   {
     id: "providers:installed-clis",
     section: "providers",
     title: "Installed CLIs",
-    keywords: "Review provider versions and update tools. binary overrides path install",
+    keywords:
+      "Review provider versions and update tools. binary overrides path install 已安装的 CLI 可执行文件路径",
+    localizedTitle: true,
   },
 
   // ── Skills ────────────────────────────────────────────────────────────────────
