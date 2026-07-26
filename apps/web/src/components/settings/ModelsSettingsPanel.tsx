@@ -21,6 +21,7 @@ import {
   isGitTextGenerationSettingsDirty,
   patchCustomModels,
 } from "~/appSettings";
+import { useMessages } from "../../i18n/context";
 import { useProviderModelCatalog } from "~/hooks/useProviderModelCatalog";
 import { PlusIcon, XIcon } from "~/lib/icons";
 import { resolveProviderDiscoveryCwd } from "~/lib/providerDiscovery";
@@ -45,9 +46,12 @@ import {
 } from "./SettingControls";
 import { SettingsRow, SettingsSection, SettingsSelectPopup } from "./SettingsPanelPrimitives";
 
+/** Locale-free reason a custom slug was rejected; the panel maps it to copy. */
+export type CustomModelValidationError = "empty" | "builtIn" | "tooLong" | "duplicate";
+
 type CustomModelValidationResult =
   | { readonly model: string; readonly error?: never }
-  | { readonly model?: never; readonly error: string };
+  | { readonly model?: never; readonly error: CustomModelValidationError };
 
 const GIT_WRITING_DISCOVERY_PROVIDERS = ["codex", "kilo", "opencode"] as const;
 
@@ -58,16 +62,16 @@ export function validateCustomModelInput(input: {
 }): CustomModelValidationResult {
   const normalized = normalizeModelSlug(input.value, input.provider);
   if (!normalized) {
-    return { error: "Enter a model slug." };
+    return { error: "empty" };
   }
   if (getModelOptions(input.provider).some((option) => option.slug === normalized)) {
-    return { error: "That model is already built in." };
+    return { error: "builtIn" };
   }
   if (normalized.length > MAX_CUSTOM_MODEL_LENGTH) {
-    return { error: `Model slugs must be ${MAX_CUSTOM_MODEL_LENGTH} characters or less.` };
+    return { error: "tooLong" };
   }
   if (input.savedModels.includes(normalized)) {
-    return { error: "That custom model is already saved." };
+    return { error: "duplicate" };
   }
   return { model: normalized };
 }
@@ -83,6 +87,7 @@ export function ModelsSettingsPanel({
   resetEpoch,
   active,
 }: AppSettingsBinding & { readonly resetEpoch: number; readonly active: boolean }) {
+  const m = useMessages();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const queryClient = useQueryClient();
   const [selectedCustomModelProvider, setSelectedCustomModelProvider] =
@@ -91,7 +96,7 @@ export function ModelsSettingsPanel({
     Partial<Record<ProviderKind, string>>
   >({});
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
-    Partial<Record<ProviderKind, string | null>>
+    Partial<Record<ProviderKind, CustomModelValidationError | null>>
   >({});
   const [showAllCustomModels, setShowAllCustomModels] = useState(false);
   const [visibilityProvider, setVisibilityProvider] = useState<ProviderKind>("claudeAgent");
@@ -176,7 +181,15 @@ export function ModelsSettingsPanel({
     (config) => config.provider === selectedCustomModelProvider,
   )!;
   const selectedCustomModelInput = customModelInputByProvider[selectedCustomModelProvider] ?? "";
-  const selectedCustomModelError = customModelErrorByProvider[selectedCustomModelProvider] ?? null;
+  const selectedCustomModelErrorKey =
+    customModelErrorByProvider[selectedCustomModelProvider] ?? null;
+  const customModelErrors = m.settings.models.custom.errors;
+  const selectedCustomModelError =
+    selectedCustomModelErrorKey === null
+      ? null
+      : selectedCustomModelErrorKey === "tooLong"
+        ? customModelErrors.tooLong(MAX_CUSTOM_MODEL_LENGTH)
+        : customModelErrors[selectedCustomModelErrorKey];
   const savedCustomModelRows = useMemo(
     () =>
       CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS.flatMap((config) =>
@@ -259,7 +272,7 @@ export function ModelsSettingsPanel({
       <button
         type="button"
         className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 hover:opacity-100"
-        aria-label={`Remove ${row.slug}`}
+        aria-label={m.settings.models.custom.remove(row.slug)}
         onClick={() => removeCustomModel(row.provider, row.slug)}
       >
         <XIcon className="size-3.5 text-muted-foreground hover:text-foreground" />
@@ -293,20 +306,23 @@ export function ModelsSettingsPanel({
         modelCount > 0
           ? {
               type: "success",
-              title: "Model catalog refreshed",
-              description: `${modelCount} cloud ${modelCount === 1 ? "model is" : "models are"} available.`,
+              title: m.settings.models.catalog.refreshedTitle,
+              description: m.settings.models.catalog.refreshedDescription(modelCount),
             }
           : {
               type: "warning",
-              title: "Model catalog is unavailable",
-              description: "models.dev could not be reached. Built-in models are still available.",
+              title: m.settings.models.catalog.unavailableTitle,
+              description: m.settings.models.catalog.unavailableDescription,
             },
       ),
     onError: (error: unknown) =>
       toastManager.add({
         type: "error",
-        title: "Could not refresh the model catalog",
-        description: error instanceof Error ? error.message : "The refresh request failed.",
+        title: m.settings.models.catalog.refreshFailedTitle,
+        description:
+          error instanceof Error
+            ? error.message
+            : m.settings.models.catalog.refreshFailedDescription,
       }),
   });
 
@@ -314,10 +330,11 @@ export function ModelsSettingsPanel({
 
   return (
     <div className="space-y-6">
-      <SettingsSection title="Model catalog">
+      <SettingsSection title={m.settings.models.catalog.title}>
         <SettingsRow
-          title="Cloud model catalog"
-          description="Synara reads the public models.dev catalog so newly released models show up without waiting for an update. Refresh to pull it again right now."
+          title={m.settings.models.catalog.cloud.title}
+          anchorKey="models:cloud-catalog"
+          description={m.settings.models.catalog.cloud.description}
           control={
             <Button
               size="xs"
@@ -325,20 +342,23 @@ export function ModelsSettingsPanel({
               disabled={refreshCatalogMutation.isPending}
               onClick={() => refreshCatalogMutation.mutate()}
             >
-              {refreshCatalogMutation.isPending ? "Refreshing..." : "Refresh"}
+              {refreshCatalogMutation.isPending
+                ? m.settings.models.catalog.refreshing
+                : m.settings.models.catalog.refresh}
             </Button>
           }
         />
       </SettingsSection>
 
-      <SettingsSection title="Generation defaults">
+      <SettingsSection title={m.settings.models.generationDefaults.title}>
         <SettingsRow
-          title="Git writing model"
-          description="Used for generated commit messages, PR titles, and branch names."
+          title={m.settings.models.generationDefaults.gitWritingModel.title}
+          anchorKey="models:git-writing-model"
+          description={m.settings.models.generationDefaults.gitWritingModel.description}
           resetAction={
             isGitTextGenerationModelDirty ? (
               <SettingResetButton
-                label="git writing model"
+                label={m.settings.models.generationDefaults.gitWritingModel.resetLabel}
                 onClick={() =>
                   updateSettings({
                     textGenerationProvider: defaults.textGenerationProvider,
@@ -362,7 +382,7 @@ export function ModelsSettingsPanel({
                   textGenerationModel: model,
                 });
               }}
-              ariaLabel="Git text generation model"
+              ariaLabel={m.settings.models.generationDefaults.gitWritingModel.ariaLabel}
               triggerClassName="w-full sm:w-52"
               valueContent={selectedGitTextGenerationModelLabel}
             >
@@ -380,14 +400,15 @@ export function ModelsSettingsPanel({
         />
       </SettingsSection>
 
-      <SettingsSection title="Visible models">
+      <SettingsSection title={m.settings.models.visible.title}>
         <SettingsRow
-          title="Models shown in the picker"
-          description="Turn off the models you never reach for. The model a conversation is already using stays visible so a thread is never stranded."
+          title={m.settings.models.visible.picker.title}
+          anchorKey="models:visible-models"
+          description={m.settings.models.visible.picker.description}
           resetAction={
             settings.hiddenModels.length > 0 ? (
               <SettingResetButton
-                label="visible models"
+                label={m.settings.models.visible.picker.resetLabel}
                 onClick={() => updateSettings({ hiddenModels: [] })}
               />
             ) : null
@@ -400,7 +421,11 @@ export function ModelsSettingsPanel({
                 if (value) setVisibilityProvider(value as ProviderKind);
               }}
             >
-              <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Provider">
+              <SelectTrigger
+                size="sm"
+                className="w-full sm:w-40"
+                aria-label={m.settings.models.visible.providerAriaLabel}
+              >
                 <SelectValue>{PROVIDER_DISPLAY_NAMES[visibilityProvider]}</SelectValue>
               </SelectTrigger>
               <SettingsSelectPopup align="start">
@@ -430,7 +455,7 @@ export function ModelsSettingsPanel({
                       <Switch
                         checked={visible}
                         onCheckedChange={(next) => toggleModelVisibility(model.slug, next)}
-                        aria-label={`Show ${model.name}`}
+                        aria-label={m.settings.models.visible.showModel(model.name)}
                       />
                     </div>
                   );
@@ -438,20 +463,24 @@ export function ModelsSettingsPanel({
               </div>
             ) : (
               <p className="mt-3 text-xs text-muted-foreground">
-                No models discovered for this provider yet.
+                {m.settings.models.visible.noModels}
               </p>
             )}
           </div>
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection title="Custom models">
+      <SettingsSection title={m.settings.models.custom.title}>
         <SettingsRow
-          title="Saved model slugs"
-          description="Add custom model slugs for supported providers."
+          title={m.settings.models.custom.saved.title}
+          anchorKey="models:saved-model-slugs"
+          description={m.settings.models.custom.saved.description}
           resetAction={
             savedCustomModelRows.length > 0 ? (
-              <SettingResetButton label="custom models" onClick={resetCustomModels} />
+              <SettingResetButton
+                label={m.settings.models.custom.saved.resetLabel}
+                onClick={resetCustomModels}
+              />
             ) : null
           }
         >
@@ -468,7 +497,7 @@ export function ModelsSettingsPanel({
                 <SelectTrigger
                   size="sm"
                   className="w-full sm:w-40"
-                  aria-label="Custom model provider"
+                  aria-label={m.settings.models.custom.providerAriaLabel}
                 >
                   <SelectValue>{selectedCustomModelProviderSettings.title}</SelectValue>
                 </SelectTrigger>
@@ -512,7 +541,7 @@ export function ModelsSettingsPanel({
                 onClick={() => addCustomModel(selectedCustomModelProvider)}
               >
                 <PlusIcon className="size-3.5" />
-                Add
+                {m.settings.models.custom.add}
               </Button>
             </div>
 
@@ -537,8 +566,8 @@ export function ModelsSettingsPanel({
                       onClick={() => setShowAllCustomModels((value) => !value)}
                     >
                       {showAllCustomModels
-                        ? "Show less"
-                        : `Show more (${overflowCustomModelRows.length})`}
+                        ? m.settings.models.custom.showLess
+                        : m.settings.models.custom.showMore(overflowCustomModelRows.length)}
                     </button>
                   </>
                 ) : null}

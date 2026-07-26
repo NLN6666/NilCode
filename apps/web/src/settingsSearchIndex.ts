@@ -355,13 +355,32 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     id: "models:git-writing-model",
     section: "models",
     title: "Git writing model",
-    keywords: "Used for generated commit messages, PR titles, and branch names.",
+    keywords:
+      "Used for generated commit messages, PR titles, and branch names. Git 文案模型 提交信息 分支名",
+    localizedTitle: true,
   },
   {
     id: "models:saved-model-slugs",
     section: "models",
     title: "Saved model slugs",
-    keywords: "Add custom model slugs for supported providers. custom model",
+    keywords: "Add custom model slugs for supported providers. custom model 自定义模型 模型标识",
+    localizedTitle: true,
+  },
+  {
+    id: "models:cloud-catalog",
+    section: "models",
+    title: "Cloud model catalog",
+    keywords:
+      "Synara reads the public models.dev catalog so newly released models show up without waiting for an update. refresh 云端模型目录 刷新",
+    localizedTitle: true,
+  },
+  {
+    id: "models:visible-models",
+    section: "models",
+    title: "Models shown in the picker",
+    keywords:
+      "Turn off the models you never reach for. hide visibility picker 可见模型 隐藏 选择器",
+    localizedTitle: true,
   },
 
   // ── Providers ─────────────────────────────────────────────────────────────────

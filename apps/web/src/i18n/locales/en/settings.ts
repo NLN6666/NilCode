@@ -411,6 +411,99 @@ export const settings = {
     deleteFailedTitle: "Could not delete thread",
     deleteFailedDescription: "Unable to delete the thread.",
   },
+  profile: {
+    loadFailed: "Couldn’t load your local stats.",
+    tryAgain: "Try again",
+    share: "Share",
+    edit: "Edit",
+    lifetimeTokens: "Lifetime tokens",
+    peakDay: "Peak day",
+    totalPrompts: "Total prompts",
+    currentStreak: "Current streak",
+    longestStreak: "Longest streak",
+    activity: "Activity",
+    activityInsights: "Activity insights",
+    mostUsedProvider: "Most used provider",
+    mostUsedReasoning: "Most used reasoning",
+    mostActiveHour: "Most active hour",
+    mostWorkedProject: "Most worked project",
+    skillsExplored: "Skills explored",
+    totalSkillsUsed: "Total skills used",
+    totalThreads: "Total threads",
+    mostUsedPlugins: "Most used plugins",
+    noSkills: "No skills or agents used yet.",
+    modelUsage: "Model usage",
+    noModelActivity: "No model activity yet.",
+    /** Shown wherever a stat has no value yet; an em dash reads the same in every locale. */
+    noValue: "—",
+    runs: (count: string) => `${count} runs`,
+    projectPrompts: (title: string, count: number, formattedCount: string) =>
+      `${title} · ${formattedCount} ${pluralize(count, "prompt")}`,
+    meridiem: { am: "AM", pm: "PM" },
+    hour: (hour12: number, meridiem: string) => `${hour12} ${meridiem}`,
+  },
+  models: {
+    catalog: {
+      title: "Model catalog",
+      cloud: {
+        title: "Cloud model catalog",
+        description:
+          "Synara reads the public models.dev catalog so newly released models show up without waiting for an update. Refresh to pull it again right now.",
+      },
+      refresh: "Refresh",
+      refreshing: "Refreshing...",
+      refreshedTitle: "Model catalog refreshed",
+      refreshedDescription: (count: number) =>
+        `${count} cloud ${pluralize(count, "model is", "models are")} available.`,
+      unavailableTitle: "Model catalog is unavailable",
+      unavailableDescription:
+        "models.dev could not be reached. Built-in models are still available.",
+      refreshFailedTitle: "Could not refresh the model catalog",
+      refreshFailedDescription: "The refresh request failed.",
+    },
+    generationDefaults: {
+      title: "Generation defaults",
+      gitWritingModel: {
+        title: "Git writing model",
+        description: "Used for generated commit messages, PR titles, and branch names.",
+        resetLabel: "git writing model",
+        ariaLabel: "Git text generation model",
+      },
+    },
+    visible: {
+      title: "Visible models",
+      picker: {
+        title: "Models shown in the picker",
+        description:
+          "Turn off the models you never reach for. The model a conversation is already using stays visible so a thread is never stranded.",
+        resetLabel: "visible models",
+      },
+      providerAriaLabel: "Provider",
+      showModel: (name: string) => `Show ${name}`,
+      noModels: "No models discovered for this provider yet.",
+    },
+    custom: {
+      title: "Custom models",
+      saved: {
+        title: "Saved model slugs",
+        description: "Add custom model slugs for supported providers.",
+        resetLabel: "custom models",
+      },
+      providerAriaLabel: "Custom model provider",
+      add: "Add",
+      remove: (slug: string) => `Remove ${slug}`,
+      showLess: "Show less",
+      showMore: (count: number) => `Show more (${count})`,
+      // `validateCustomModelInput` returns these keys instead of copy, so the validator stays
+      // locale-free and unit-testable while the panel does the wording.
+      errors: {
+        empty: "Enter a model slug.",
+        builtIn: "That model is already built in.",
+        tooLong: (max: number) => `Model slugs must be ${max} characters or less.`,
+        duplicate: "That custom model is already saved.",
+      },
+    },
+  },
   shortcuts: {
     searchPlaceholder: "Search shortcuts...",
     searchAriaLabel: "Search shortcuts",

@@ -12,6 +12,8 @@ import {
   serverProfileStatsQueryOptions,
   serverProfileTokenStatsQueryOptions,
 } from "~/lib/serverReactQuery";
+import { useMessages } from "../../i18n/context";
+import type { Messages } from "../../i18n/locales/en";
 import { CentralIcon } from "~/lib/central-icons";
 import { ProviderIcon } from "~/components/ProviderIcon";
 import { Button } from "~/components/ui/button";
@@ -37,6 +39,7 @@ import {
 } from "../profile/profileFormatting";
 
 export function ProfileSettingsPanel() {
+  const m = useMessages();
   const coreQuery = useQuery(serverProfileStatsQueryOptions());
   const tokenQuery = useQuery(serverProfileTokenStatsQueryOptions());
 
@@ -46,9 +49,9 @@ export function ProfileSettingsPanel() {
   if (coreQuery.isError || !coreQuery.data) {
     return (
       <div className="flex flex-col items-center gap-3 py-24 text-center">
-        <p className="text-sm text-muted-foreground">Couldn’t load your local stats.</p>
+        <p className="text-sm text-muted-foreground">{m.settings.profile.loadFailed}</p>
         <Button variant="outline" size="sm" onClick={() => void coreQuery.refetch()}>
-          Try again
+          {m.settings.profile.tryAgain}
         </Button>
       </div>
     );
@@ -72,6 +75,7 @@ function ProfileContent({
   tokenStats: ProfileTokenStats | null;
   tokensPending: boolean;
 }) {
+  const m = useMessages();
   const [shareOpen, setShareOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
 
@@ -85,8 +89,8 @@ function ProfileContent({
   const heatmap = selectProfileHeatmap(stats, tokenStats);
   const topProvider = selectProfileTopProvider(stats, tokenStats);
   const modelUsage = selectProfileModelUsage(stats, tokenStats);
-  const peakHourLabel = formatPeakHourLabel(stats.activeHours.startHour);
-  const mostWorkedProjectLabel = formatMostWorkedProjectLabel(stats.mostWorkedProject);
+  const peakHourLabel = formatPeakHourLabel(stats.activeHours.startHour, m);
+  const mostWorkedProjectLabel = formatMostWorkedProjectLabel(stats.mostWorkedProject, m);
 
   return (
     <div className="flex min-w-0 flex-col gap-7">
@@ -94,11 +98,11 @@ function ProfileContent({
       <div className="flex items-center justify-end gap-2">
         <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}>
           <CentralIcon name="share-os" />
-          Share
+          {m.settings.profile.share}
         </Button>
         <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
           <CentralIcon name="pencil" />
-          Edit
+          {m.settings.profile.edit}
         </Button>
       </div>
 
@@ -126,21 +130,30 @@ function ProfileContent({
       {/* Stat tiles */}
       <div className="grid grid-cols-2 divide-x divide-y divide-border/50 overflow-hidden rounded-2xl border border-border/60 sm:grid-cols-3 lg:grid-cols-5 lg:divide-y-0">
         <StatTile
-          label="Lifetime tokens"
+          label={m.settings.profile.lifetimeTokens}
           value={tokensPending ? null : formatCompact(tokenStats?.lifetimeTotalTokens ?? null)}
         />
         <StatTile
-          label="Peak day"
+          label={m.settings.profile.peakDay}
           value={tokensPending ? null : formatCompact(tokenStats?.peakDayTokens ?? null)}
         />
-        <StatTile label="Total prompts" value={formatNumber(stats.activity.totalPromptsSent)} />
-        <StatTile label="Current streak" value={formatDays(stats.activity.currentStreakDays)} />
-        <StatTile label="Longest streak" value={formatDays(stats.activity.longestStreakDays)} />
+        <StatTile
+          label={m.settings.profile.totalPrompts}
+          value={formatNumber(stats.activity.totalPromptsSent)}
+        />
+        <StatTile
+          label={m.settings.profile.currentStreak}
+          value={formatDays(stats.activity.currentStreakDays)}
+        />
+        <StatTile
+          label={m.settings.profile.longestStreak}
+          value={formatDays(stats.activity.longestStreakDays)}
+        />
       </div>
 
       {/* Heatmap */}
       <section className="flex min-w-0 flex-col gap-3">
-        <h3 className="text-sm font-medium">Activity</h3>
+        <h3 className="text-sm font-medium">{m.settings.profile.activity}</h3>
         {tokensPending ? (
           <Skeleton className="h-28 w-full rounded-lg" />
         ) : (
@@ -160,20 +173,20 @@ function ProfileContent({
       {/* Insights + plugins */}
       <div className="grid gap-x-12 gap-y-7 md:grid-cols-2">
         <section className="flex flex-col gap-3">
-          <h3 className="text-sm font-medium">Activity insights</h3>
+          <h3 className="text-sm font-medium">{m.settings.profile.activityInsights}</h3>
           <dl className="flex flex-col gap-2.5">
             <InsightRow
-              label="Most used provider"
+              label={m.settings.profile.mostUsedProvider}
               value={
                 topProvider.provider
                   ? `${formatProviderLabel(topProvider.provider)}${
                       topProvider.percent !== null ? ` · ${topProvider.percent}%` : ""
                     }`
-                  : "—"
+                  : m.settings.profile.noValue
               }
             />
             <InsightRow
-              label="Most used reasoning"
+              label={m.settings.profile.mostUsedReasoning}
               value={
                 stats.insights.topReasoning
                   ? `${capitalize(stats.insights.topReasoning)}${
@@ -181,25 +194,31 @@ function ProfileContent({
                         ? ` · ${stats.insights.topReasoningPercent}%`
                         : ""
                     }`
-                  : "—"
+                  : m.settings.profile.noValue
               }
             />
-            <InsightRow label="Most active hour" value={peakHourLabel} />
-            <InsightRow label="Most worked project" value={mostWorkedProjectLabel} />
+            <InsightRow label={m.settings.profile.mostActiveHour} value={peakHourLabel} />
             <InsightRow
-              label="Skills explored"
+              label={m.settings.profile.mostWorkedProject}
+              value={mostWorkedProjectLabel}
+            />
+            <InsightRow
+              label={m.settings.profile.skillsExplored}
               value={formatNumber(stats.insights.skillsExplored)}
             />
             <InsightRow
-              label="Total skills used"
+              label={m.settings.profile.totalSkillsUsed}
               value={formatNumber(stats.insights.totalSkillsUsed)}
             />
-            <InsightRow label="Total threads" value={formatNumber(stats.activity.totalThreads)} />
+            <InsightRow
+              label={m.settings.profile.totalThreads}
+              value={formatNumber(stats.activity.totalThreads)}
+            />
           </dl>
         </section>
 
         <section className="flex flex-col gap-3">
-          <h3 className="text-sm font-medium">Most used plugins</h3>
+          <h3 className="text-sm font-medium">{m.settings.profile.mostUsedPlugins}</h3>
           {stats.skills.length > 0 ? (
             <ul className="flex flex-col gap-2.5">
               {stats.skills.slice(0, 6).map((skill) => (
@@ -217,20 +236,20 @@ function ProfileContent({
                     <span className="truncate text-sm">{skill.displayName}</span>
                   </span>
                   <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-                    {formatNumber(skill.runCount)} runs
+                    {m.settings.profile.runs(formatNumber(skill.runCount))}
                   </span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">No skills or agents used yet.</p>
+            <p className="text-sm text-muted-foreground">{m.settings.profile.noSkills}</p>
           )}
         </section>
       </div>
 
       {/* Model usage */}
       <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium">Model usage</h3>
+        <h3 className="text-sm font-medium">{m.settings.profile.modelUsage}</h3>
         {modelUsage.entries.length > 0 ? (
           <ul className="grid grid-cols-1 gap-x-12 gap-y-3 sm:grid-cols-2">
             {modelUsage.entries.slice(0, 6).map((entry) => (
@@ -243,7 +262,7 @@ function ProfileContent({
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-muted-foreground">No model activity yet.</p>
+          <p className="text-sm text-muted-foreground">{m.settings.profile.noModelActivity}</p>
         )}
       </section>
 
@@ -308,23 +327,32 @@ function InsightRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatHour(hour: number): string {
+function formatHour(hour: number, m: Messages): string {
   const normalized = ((hour % 24) + 24) % 24;
-  if (normalized === 0) return "12 AM";
-  if (normalized === 12) return "12 PM";
-  return normalized < 12 ? `${normalized} AM` : `${normalized - 12} PM`;
+  const { am, pm } = m.settings.profile.meridiem;
+  if (normalized === 0) return m.settings.profile.hour(12, am);
+  if (normalized === 12) return m.settings.profile.hour(12, pm);
+  return normalized < 12
+    ? m.settings.profile.hour(normalized, am)
+    : m.settings.profile.hour(normalized - 12, pm);
 }
 
-function formatPeakHourLabel(startHour: number | null): string {
-  return startHour === null ? "—" : formatHour(startHour);
+function formatPeakHourLabel(startHour: number | null, m: Messages): string {
+  return startHour === null ? m.settings.profile.noValue : formatHour(startHour, m);
 }
 
-function formatMostWorkedProjectLabel(project: ProfileStats["mostWorkedProject"]): string {
+function formatMostWorkedProjectLabel(
+  project: ProfileStats["mostWorkedProject"],
+  m: Messages,
+): string {
   if (!project) {
-    return "—";
+    return m.settings.profile.noValue;
   }
-  const promptLabel = project.promptCount === 1 ? "prompt" : "prompts";
-  return `${project.title} · ${formatNumber(project.promptCount)} ${promptLabel}`;
+  return m.settings.profile.projectPrompts(
+    project.title,
+    project.promptCount,
+    formatNumber(project.promptCount),
+  );
 }
 
 function formatProviderLabel(provider: ProviderKind): string {
