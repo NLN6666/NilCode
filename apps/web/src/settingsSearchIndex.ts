@@ -416,14 +416,16 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "advanced",
     title: "Keybindings",
     keywords:
-      "Open the persisted keybindings.json file to edit advanced bindings directly. shortcuts",
+      "Open the persisted keybindings.json file to edit advanced bindings directly. shortcuts 按键绑定 快捷键",
+    localizedTitle: true,
   },
   {
     id: "advanced:recovery-tools",
     section: "advanced",
     title: "Recovery tools",
     keywords:
-      "Rebuild local project indexes without clearing existing chats when the local state gets out of sync.",
+      "Rebuild local project indexes without clearing existing chats when the local state gets out of sync. 恢复工具 修复状态 重建索引",
+    localizedTitle: true,
   },
   {
     id: "mcpServers:codex",
@@ -452,14 +454,16 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     id: "advanced:version",
     section: "advanced",
     title: "Version",
-    keywords: "Current application version. about",
+    keywords: "Current application version. about 版本 关于",
+    localizedTitle: true,
   },
   {
     id: "advanced:release-history",
     section: "advanced",
     title: "Release history",
     keywords:
-      "A running log of every update, newest first. changelog what's new about release notes",
+      "A running log of every update, newest first. changelog what's new about release notes 更新历史 发行说明",
+    localizedTitle: true,
   },
 ] as const;
 

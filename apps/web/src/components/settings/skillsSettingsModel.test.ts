@@ -5,7 +5,11 @@
 import type { ProviderSkillDescriptor } from "@synara/contracts";
 import { describe, expect, it } from "vitest";
 
+import { en } from "../../i18n/locales/en";
 import { buildSettingsSkillGroups, buildSettingsSkillSections } from "./skillsSettingsModel";
+
+// Rank/title assertions read against the real English catalog, exactly what the panel passes in.
+const SKILL_LABELS = en.settings.skills;
 
 function skill(partial: Partial<ProviderSkillDescriptor>): ProviderSkillDescriptor {
   return {
@@ -18,25 +22,28 @@ function skill(partial: Partial<ProviderSkillDescriptor>): ProviderSkillDescript
 
 describe("buildSettingsSkillGroups", () => {
   it("renders duplicate provider copies as one shared skill group", () => {
-    const groups = buildSettingsSkillGroups([
-      skill({
-        name: "check-code",
-        description: "Codex copy",
-        path: "/Users/test/.codex/skills/check-code/SKILL.md",
-        scope: "codex",
-      }),
-      skill({
-        name: "check-code",
-        description: "Claude copy",
-        path: "/Users/test/.claude/skills/check-code/SKILL.md",
-        scope: "claude",
-      }),
-      skill({
-        name: "cursor-only",
-        path: "/Users/test/.cursor/skills/cursor-only/SKILL.md",
-        scope: "cursor",
-      }),
-    ]);
+    const groups = buildSettingsSkillGroups(
+      [
+        skill({
+          name: "check-code",
+          description: "Codex copy",
+          path: "/Users/test/.codex/skills/check-code/SKILL.md",
+          scope: "codex",
+        }),
+        skill({
+          name: "check-code",
+          description: "Claude copy",
+          path: "/Users/test/.claude/skills/check-code/SKILL.md",
+          scope: "claude",
+        }),
+        skill({
+          name: "cursor-only",
+          path: "/Users/test/.cursor/skills/cursor-only/SKILL.md",
+          scope: "cursor",
+        }),
+      ],
+      SKILL_LABELS,
+    );
 
     const shared = groups.find((group) => group.key === "check-code");
     expect(shared?.section).toBe("shared");
@@ -53,14 +60,17 @@ describe("buildSettingsSkillGroups", () => {
   });
 
   it("does not show provider icons for shared alias-only skills", () => {
-    const groups = buildSettingsSkillGroups([
-      skill({
-        name: "portable-review",
-        description: "Shared standard copy",
-        path: "/Users/test/.agents/skills/portable-review/SKILL.md",
-        scope: "agents",
-      }),
-    ]);
+    const groups = buildSettingsSkillGroups(
+      [
+        skill({
+          name: "portable-review",
+          description: "Shared standard copy",
+          path: "/Users/test/.agents/skills/portable-review/SKILL.md",
+          scope: "agents",
+        }),
+      ],
+      SKILL_LABELS,
+    );
 
     expect(groups[0]?.providers).toEqual([]);
     expect(groups[0]?.section).toBe("agents");
@@ -69,23 +79,26 @@ describe("buildSettingsSkillGroups", () => {
 
 describe("buildSettingsSkillSections", () => {
   it("places shared skill groups before provider-only sections", () => {
-    const sections = buildSettingsSkillSections([
-      skill({
-        name: "logic-consolidator",
-        path: "/Users/test/.codex/skills/logic-consolidator/SKILL.md",
-        scope: "codex",
-      }),
-      skill({
-        name: "logic-consolidator",
-        path: "/Users/test/.claude/skills/logic-consolidator/SKILL.md",
-        scope: "claude",
-      }),
-      skill({
-        name: "cursor-only",
-        path: "/Users/test/.cursor/skills/cursor-only/SKILL.md",
-        scope: "cursor",
-      }),
-    ]);
+    const sections = buildSettingsSkillSections(
+      [
+        skill({
+          name: "logic-consolidator",
+          path: "/Users/test/.codex/skills/logic-consolidator/SKILL.md",
+          scope: "codex",
+        }),
+        skill({
+          name: "logic-consolidator",
+          path: "/Users/test/.claude/skills/logic-consolidator/SKILL.md",
+          scope: "claude",
+        }),
+        skill({
+          name: "cursor-only",
+          path: "/Users/test/.cursor/skills/cursor-only/SKILL.md",
+          scope: "cursor",
+        }),
+      ],
+      SKILL_LABELS,
+    );
 
     expect(sections.map((section) => section.title)).toEqual(["Shared skills", "From Cursor"]);
     expect(sections[0]?.groups.map((group) => group.key)).toEqual(["logic-consolidator"]);

@@ -27,6 +27,7 @@ import {
   serverAllProviderUsageQueryOptions,
   serverQueryKeys,
 } from "~/lib/serverReactQuery";
+import { useMessages } from "../../i18n/context";
 import { cn } from "~/lib/utils";
 import {
   SETTINGS_PANEL_SECTION_CLASS_NAME,
@@ -162,6 +163,7 @@ function mergeProviderUsageRefresh(
 }
 
 export function ProviderUsageSettingsPanel() {
+  const m = useMessages();
   const queryClient = useQueryClient();
   const { settings } = useAppSettings();
   const codexHomePath = settings.codexHomePath || null;
@@ -196,7 +198,7 @@ export function ProviderUsageSettingsPanel() {
   return (
     <section className={SETTINGS_PANEL_SECTION_CLASS_NAME}>
       <div className="flex items-center justify-between gap-2">
-        <h2 className={SETTINGS_SECTION_LABEL_CLASS_NAME}>Provider usage</h2>
+        <h2 className={SETTINGS_SECTION_LABEL_CLASS_NAME}>{m.settings.providerUsage.title}</h2>
         <Button
           size="xs"
           variant="outline"
@@ -205,13 +207,15 @@ export function ProviderUsageSettingsPanel() {
           onClick={() => refreshMutation.mutate()}
         >
           <RotateCcwIcon className={cn("size-3.5", isRefreshing && "animate-spin")} />
-          Refresh
+          {m.settings.providerUsage.refresh}
         </Button>
       </div>
 
       {showInitialLoading ? (
         <SettingsCard>
-          <div className="px-4 py-3.5 text-xs text-muted-foreground">Loading provider usage…</div>
+          <div className="px-4 py-3.5 text-xs text-muted-foreground">
+            {m.settings.providerUsage.loading}
+          </div>
         </SettingsCard>
       ) : (
         <div className="flex flex-col gap-3">
@@ -227,9 +231,7 @@ export function ProviderUsageSettingsPanel() {
       )}
 
       <p className="px-2 text-[11px] leading-relaxed text-muted-foreground">
-        Usage is read locally from each provider CLI&apos;s stored credentials and fetched directly
-        from the provider. OAuth providers may refresh short-lived tokens through their official
-        token endpoint; if a provider shows “Not signed in”, re-authenticate with its CLI.
+        {m.settings.providerUsage.footnote}
       </p>
     </section>
   );

@@ -16,6 +16,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
 import { toastManager } from "~/components/ui/toast";
+import { useMessages } from "../../i18n/context";
+import type { Messages } from "../../i18n/locales/en";
 import { ensureNativeApi } from "~/nativeApi";
 import { SettingsListRow, SettingsSection } from "./SettingsPanelPrimitives";
 
@@ -26,21 +28,11 @@ const PROVIDER_LABELS: Record<AgentMcpProvider, string> = {
   claudeAgent: "Claude",
 };
 
-const EMPTY_DESCRIPTIONS: Record<AgentMcpProvider, string> = {
-  codex: "No MCP servers are declared in this Codex config.",
-  claudeAgent: "No MCP servers are declared in this Claude config.",
-};
-
-const UNAVAILABLE_DESCRIPTIONS: Record<AgentMcpProvider, string> = {
-  codex: "No Codex configuration was found on this machine.",
-  claudeAgent: "No Claude configuration was found on this machine.",
-};
-
 /**
  * One line describing how the server is launched. Values are never available here: the server
  * sends key names only, so a config full of plaintext API keys renders as `Env: CONTEXT7_API_KEY`.
  */
-function describeTransport(transport: AgentMcpServerDescriptor["transport"]): string {
+function describeTransport(transport: AgentMcpServerDescriptor["transport"], m: Messages): string {
   if (transport._tag === "http") {
     const headers = transport.headerKeys.length
       ? ` · Headers: ${transport.headerKeys.join(", ")}`
@@ -49,7 +41,7 @@ function describeTransport(transport: AgentMcpServerDescriptor["transport"]): st
   }
   const command = [transport.command, ...transport.args].join(" ").trim();
   const env = transport.envKeys.length ? ` · Env: ${transport.envKeys.join(", ")}` : "";
-  return `${command || "(no command)"}${env}`;
+  return `${command || m.settings.agentMcp.noCommand}${env}`;
 }
 
 function withServerEnabled(catalog: AgentMcpCatalog, input: AgentMcpSetEnabledInput) {
@@ -73,29 +65,28 @@ function AgentMcpSourceSection(props: {
   pendingName: string | null;
   onToggle: (server: AgentMcpServerDescriptor, enabled: boolean) => void;
 }) {
+  const m = useMessages();
   const { source, pendingName, onToggle } = props;
   const readOnly = source.parseError !== undefined;
 
   return (
-    <SettingsSection title={`${PROVIDER_LABELS[source.provider]} MCP servers`}>
+    <SettingsSection title={m.settings.agentMcp.sourceTitle(PROVIDER_LABELS[source.provider])}>
       <SettingsListRow
         align="start"
         title={<span className="font-normal text-muted-foreground">{source.configPath}</span>}
         description={
-          readOnly
-            ? `This file could not be parsed, so its servers cannot be changed: ${source.parseError}`
-            : undefined
+          readOnly ? m.settings.agentMcp.parseError(String(source.parseError)) : undefined
         }
       />
       {!source.available ? (
         <SettingsListRow
-          title="Not configured"
-          description={UNAVAILABLE_DESCRIPTIONS[source.provider]}
+          title={m.settings.agentMcp.notConfigured}
+          description={m.settings.agentMcp.unavailable[source.provider]}
         />
       ) : source.servers.length === 0 ? (
         <SettingsListRow
-          title="No servers"
-          description={readOnly ? undefined : EMPTY_DESCRIPTIONS[source.provider]}
+          title={m.settings.agentMcp.noServers}
+          description={readOnly ? undefined : m.settings.agentMcp.empty[source.provider]}
         />
       ) : (
         source.servers.map((server) => (
@@ -104,7 +95,7 @@ function AgentMcpSourceSection(props: {
             align="start"
             title={server.name}
             description={
-              <span className="block break-all">{describeTransport(server.transport)}</span>
+              <span className="block break-all">{describeTransport(server.transport, m)}</span>
             }
             actions={
               <Switch
@@ -121,6 +112,7 @@ function AgentMcpSourceSection(props: {
 }
 
 export function AgentMcpSettingsPanel(props: { active: boolean }) {
+  const m = useMessages();
   const queryClient = useQueryClient();
 
   // No file watching: `.claude.json` is rewritten constantly with unrelated fields, so the
@@ -175,8 +167,9 @@ export function AgentMcpSettingsPanel(props: { active: boolean }) {
       void queryClient.invalidateQueries({ queryKey: AGENT_MCP_QUERY_KEY });
       toastManager.add({
         type: "error",
-        title: "Could not update the MCP server",
-        description: error instanceof Error ? error.message : "The config file was not changed.",
+        title: m.settings.agentMcp.updateFailedTitle,
+        description:
+          error instanceof Error ? error.message : m.settings.agentMcp.updateFailedDescription,
       });
     },
   });
@@ -189,10 +182,10 @@ export function AgentMcpSettingsPanel(props: { active: boolean }) {
 
   return (
     <div className="space-y-6">
-      <SettingsSection title="MCP servers">
+      <SettingsSection title={m.settings.agentMcp.sectionTitle}>
         <SettingsListRow
-          title="Agent MCP servers"
-          description="Servers your local Codex and Claude agents can call. Turning one off edits that agent's own config file; Synara never starts these servers itself."
+          title={m.settings.agentMcp.overview.title}
+          description={m.settings.agentMcp.overview.description}
           actions={
             <Button
               size="xs"
@@ -200,24 +193,26 @@ export function AgentMcpSettingsPanel(props: { active: boolean }) {
               disabled={catalogQuery.isFetching}
               onClick={() => void catalogQuery.refetch()}
             >
-              {catalogQuery.isFetching ? "Refreshing..." : "Refresh"}
+              {catalogQuery.isFetching
+                ? m.settings.agentMcp.refreshing
+                : m.settings.agentMcp.refresh}
             </Button>
           }
         />
       </SettingsSection>
 
       {catalogQuery.isLoading ? (
-        <SettingsSection title="MCP servers">
-          <SettingsListRow title="Loading MCP servers..." />
+        <SettingsSection title={m.settings.agentMcp.sectionTitle}>
+          <SettingsListRow title={m.settings.agentMcp.loading} />
         </SettingsSection>
       ) : catalogQuery.isError ? (
-        <SettingsSection title="MCP servers">
+        <SettingsSection title={m.settings.agentMcp.sectionTitle}>
           <SettingsListRow
-            title="Could not read the agent configs"
+            title={m.settings.agentMcp.readFailedTitle}
             description={
               catalogQuery.error instanceof Error
                 ? catalogQuery.error.message
-                : "Reading the local agent configuration failed."
+                : m.settings.agentMcp.readFailedDescription
             }
           />
         </SettingsSection>

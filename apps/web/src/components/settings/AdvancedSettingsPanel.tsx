@@ -13,6 +13,7 @@ import { DisclosureChevron } from "~/components/ui/DisclosureChevron";
 import { DisclosureRegion } from "~/components/ui/DisclosureRegion";
 import { Button } from "~/components/ui/button";
 import { toastManager } from "~/components/ui/toast";
+import { useMessages } from "../../i18n/context";
 import { ensureNativeApi, readNativeApi } from "~/nativeApi";
 import { serverAuthSessionQueryOptions, serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { cn } from "~/lib/utils";
@@ -27,6 +28,7 @@ export function AdvancedSettingsPanel(props: {
   onOpenReleaseHistory: () => void;
   resetEpoch: number;
 }) {
+  const m = useMessages();
   const configQuery = useQuery(serverConfigQueryOptions());
   const authSessionQuery = useQuery(serverAuthSessionQueryOptions());
   const syncServerReadModel = useStore((store) => store.syncServerReadModel);
@@ -60,7 +62,7 @@ export function AdvancedSettingsPanel(props: {
     setIsOpeningKeybindings(true);
     const editor = resolveAndPersistPreferredEditor(availableEditors ?? []);
     if (!editor) {
-      setOpenKeybindingsError("No available editors found.");
+      setOpenKeybindingsError(m.settings.advanced.developerTools.noEditors);
       setIsOpeningKeybindings(false);
       return;
     }
@@ -68,24 +70,18 @@ export function AdvancedSettingsPanel(props: {
       .shell.openInEditor(keybindingsConfigPath, editor)
       .catch((error) => {
         setOpenKeybindingsError(
-          error instanceof Error ? error.message : "Unable to open keybindings file.",
+          error instanceof Error ? error.message : m.settings.advanced.developerTools.openFailed,
         );
       })
       .finally(() => {
         setIsOpeningKeybindings(false);
       });
-  }, [availableEditors, keybindingsConfigPath]);
+  }, [availableEditors, keybindingsConfigPath, m]);
 
   const repairLocalState = useCallback(async () => {
     if (isRepairingLocalState) return;
     const api = readNativeApi() ?? ensureNativeApi();
-    const confirmed = await api.dialogs.confirm(
-      [
-        "Repair local state?",
-        "This rebuilds local project indexes and refreshes project snapshots.",
-        "It keeps existing chats in place, but it may take a moment.",
-      ].join("\n"),
-    );
+    const confirmed = await api.dialogs.confirm(m.settings.advanced.developerTools.repairConfirm);
     if (!confirmed) return;
 
     setIsRepairingLocalState(true);
@@ -95,53 +91,59 @@ export function AdvancedSettingsPanel(props: {
         syncServerReadModel(snapshot);
         toastManager.add({
           type: "success",
-          title: "Local state repaired",
-          description: "Project indexes were rebuilt without clearing existing chats.",
+          title: m.settings.advanced.developerTools.repairedTitle,
+          description: m.settings.advanced.developerTools.repairedDescription,
         });
       })
       .catch((error: unknown) => {
         toastManager.add({
           type: "error",
-          title: "Repair failed",
-          description: error instanceof Error ? error.message : "Unable to repair local state.",
+          title: m.settings.advanced.developerTools.repairFailedTitle,
+          description:
+            error instanceof Error
+              ? error.message
+              : m.settings.advanced.developerTools.repairFailedDescription,
         });
       })
       .finally(() => {
         setIsRepairingLocalState(false);
       });
-  }, [isRepairingLocalState, syncServerReadModel]);
+  }, [isRepairingLocalState, m, syncServerReadModel]);
 
   const logoutCurrentSession = useCallback(async () => {
     if (isLoggingOut) return;
     const api = readNativeApi() ?? ensureNativeApi();
     setIsLoggingOut(true);
     const result = await logoutCurrentBrowserSession({
-      confirm: () =>
-        api.dialogs.confirm(
-          "Sign out this browser?\n\nIts session and every live connection opened with it will be revoked.",
-        ),
+      confirm: () => api.dialogs.confirm(m.settings.advanced.session.signOutConfirm),
       logout: () => api.server.logoutAuthSession(),
       navigate: (path) => window.location.assign(path),
       onError: (error) =>
         toastManager.add({
           type: "error",
-          title: "Sign out failed",
-          description: error instanceof Error ? error.message : "Unable to revoke this session.",
+          title: m.settings.advanced.session.signOutFailedTitle,
+          description:
+            error instanceof Error
+              ? error.message
+              : m.settings.advanced.session.signOutFailedDescription,
         }),
     });
     if (result !== "redirecting") setIsLoggingOut(false);
-  }, [isLoggingOut]);
+  }, [isLoggingOut, m]);
 
   if (!props.active) return null;
 
   return (
     <div className="space-y-6">
       {authSessionQuery.data?.authenticated ? (
-        <SettingsSection title="Session">
+        <SettingsSection title={m.settings.advanced.session.title}>
           <SettingsRow
-            title="This browser"
-            description="Revoke this browser session and close every live Synara connection it owns. A fresh pairing link is required to reconnect."
-            status={`Authenticated as ${authSessionQuery.data.role ?? "client"}.`}
+            title={m.settings.advanced.session.thisBrowser.title}
+            anchorKey="advanced:this-browser"
+            description={m.settings.advanced.session.thisBrowser.description}
+            status={m.settings.advanced.session.authenticatedAs(
+              authSessionQuery.data.role ?? "client",
+            )}
             control={
               <Button
                 size="xs"
@@ -149,26 +151,31 @@ export function AdvancedSettingsPanel(props: {
                 disabled={isLoggingOut}
                 onClick={() => void logoutCurrentSession()}
               >
-                {isLoggingOut ? "Signing out..." : "Sign out"}
+                {isLoggingOut
+                  ? m.settings.advanced.session.signingOut
+                  : m.settings.advanced.session.signOut}
               </Button>
             }
           />
         </SettingsSection>
       ) : null}
 
-      <SettingsSection title="Developer tools">
+      <SettingsSection title={m.settings.advanced.developerTools.title}>
         <SettingsRow
-          title="Keybindings"
-          description="Open the persisted `keybindings.json` file to edit advanced bindings directly."
+          title={m.settings.advanced.developerTools.keybindings.title}
+          anchorKey="advanced:keybindings"
+          description={m.settings.advanced.developerTools.keybindings.description}
           status={
             <>
               <span className="block break-all font-mono text-[11px] text-foreground">
-                {keybindingsConfigPath ?? "Resolving keybindings path..."}
+                {keybindingsConfigPath ?? m.settings.advanced.developerTools.resolvingPath}
               </span>
               {openKeybindingsError ? (
                 <span className="mt-1 block text-destructive">{openKeybindingsError}</span>
               ) : (
-                <span className="mt-1 block">Opens in your preferred editor.</span>
+                <span className="mt-1 block">
+                  {m.settings.advanced.developerTools.opensInEditor}
+                </span>
               )}
             </>
           }
@@ -179,18 +186,21 @@ export function AdvancedSettingsPanel(props: {
               disabled={!keybindingsConfigPath || isOpeningKeybindings}
               onClick={openKeybindingsFile}
             >
-              {isOpeningKeybindings ? "Opening..." : "Open file"}
+              {isOpeningKeybindings
+                ? m.settings.advanced.developerTools.opening
+                : m.settings.advanced.developerTools.openFile}
             </Button>
           }
         />
 
         <SettingsRow
-          title="Recovery tools"
-          description="Rebuild local project indexes without clearing existing chats when the local state gets out of sync."
+          title={m.settings.advanced.developerTools.recovery.title}
+          anchorKey="advanced:recovery-tools"
+          description={m.settings.advanced.developerTools.recovery.description}
           status={
             shouldOfferRecoveryTools
-              ? "Visible because projects exist but no chat history is currently available."
-              : "Shown automatically only when recovery actions are relevant."
+              ? m.settings.advanced.developerTools.recoveryVisible
+              : m.settings.advanced.developerTools.recoveryHidden
           }
           control={
             <Button
@@ -199,7 +209,9 @@ export function AdvancedSettingsPanel(props: {
               disabled={!shouldOfferRecoveryTools || isRepairingLocalState}
               onClick={() => void repairLocalState()}
             >
-              {isRepairingLocalState ? "Repairing..." : "Repair state"}
+              {isRepairingLocalState
+                ? m.settings.advanced.developerTools.repairing
+                : m.settings.advanced.developerTools.repairState}
             </Button>
           }
         >
@@ -211,7 +223,9 @@ export function AdvancedSettingsPanel(props: {
                 aria-expanded={showRecoveryTools}
                 onClick={() => setShowRecoveryTools((current) => !current)}
               >
-                <span className="text-xs font-medium text-muted-foreground">What this does</span>
+                <span className="text-xs font-medium text-muted-foreground">
+                  {m.settings.advanced.developerTools.whatThisDoes}
+                </span>
                 <DisclosureChevron
                   open={showRecoveryTools}
                   className="size-4 shrink-0 text-muted-foreground"
@@ -224,28 +238,27 @@ export function AdvancedSettingsPanel(props: {
                   SETTINGS_INSET_LIST_CLASS_NAME,
                 )}
               >
-                <div>
-                  Rebuilds local project indexes and refreshes project snapshots. Existing chats
-                  stay in place.
-                </div>
+                <div>{m.settings.advanced.developerTools.whatThisDoesBody}</div>
               </DisclosureRegion>
             </div>
           ) : null}
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection title="About">
+      <SettingsSection title={m.settings.advanced.about.title}>
         <SettingsRow
-          title="Version"
-          description="Current application version."
+          title={m.settings.advanced.about.version.title}
+          anchorKey="advanced:version"
+          description={m.settings.advanced.about.version.description}
           control={<code className="text-xs font-medium text-muted-foreground">{APP_VERSION}</code>}
         />
         <SettingsRow
-          title="Release history"
-          description="A running log of every update, newest first. Same notes the post-update dialog shows, kept here so you can revisit them any time."
+          title={m.settings.advanced.about.releaseHistory.title}
+          anchorKey="advanced:release-history"
+          description={m.settings.advanced.about.releaseHistory.description}
           control={
             <Button size="sm" variant="outline" onClick={props.onOpenReleaseHistory}>
-              View release history
+              {m.settings.advanced.about.viewReleaseHistory}
             </Button>
           }
         />

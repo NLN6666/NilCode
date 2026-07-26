@@ -8,6 +8,7 @@ import type { ResolvedKeybindingsConfig } from "@synara/contracts";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { useMessages } from "../../i18n/context";
 import { Input } from "~/components/ui/input";
 import { ShortcutKbd } from "~/components/ui/shortcut-kbd";
 import { CentralIcon } from "~/lib/central-icons";
@@ -39,6 +40,7 @@ const SETTINGS_SHORTCUT_CONTEXT: ShortcutSheetContext = {
 };
 
 export function KeyboardShortcutsSettingsPanel() {
+  const m = useMessages();
   const [query, setQuery] = useState("");
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const keybindings = serverConfigQuery.data?.keybindings ?? EMPTY_KEYBINDINGS;
@@ -63,9 +65,9 @@ export function KeyboardShortcutsSettingsPanel() {
           size="sm"
           variant="soft"
           nativeInput
-          placeholder="Search shortcuts..."
+          placeholder={m.settings.shortcuts.searchPlaceholder}
           value={query}
-          aria-label="Search shortcuts"
+          aria-label={m.settings.shortcuts.searchAriaLabel}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Escape" && query.length > 0) {
@@ -87,8 +89,8 @@ export function KeyboardShortcutsSettingsPanel() {
           className={cn(SETTINGS_CARD_CLASS_NAME, "divide-y divide-[color:var(--color-border)]")}
         >
           <div className="flex items-center justify-between gap-4 px-3 py-2 text-[11px] font-medium text-muted-foreground">
-            <span>Command</span>
-            <span>Keybinding</span>
+            <span>{m.settings.shortcuts.command}</span>
+            <span>{m.settings.shortcuts.keybinding}</span>
           </div>
           {filteredSections.flatMap((section) => {
             const muted = section.tone === "muted";
@@ -121,7 +123,7 @@ export function KeyboardShortcutsSettingsPanel() {
             "px-4 py-10 text-center text-sm text-muted-foreground",
           )}
         >
-          No shortcuts match &ldquo;{query}&rdquo;.
+          {m.settings.shortcuts.noMatches(query)}
         </div>
       )}
     </div>

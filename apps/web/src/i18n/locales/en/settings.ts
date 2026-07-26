@@ -7,6 +7,11 @@
 //
 // On/off rows carry the exact four keys `renderBooleanSettingRow` needs, so a call site is just
 // `renderBooleanSettingRow({ settingKey: "…", ...m.settings.general.sidebarSections.chats })`.
+//
+// This file is long because it is pure data — one group per settings tab, navigated by key rather
+// than read top to bottom. Splitting it would only move the keys somewhere else.
+
+import { pluralize } from "@synara/shared/text";
 
 export const settings = {
   controls: {
@@ -235,6 +240,213 @@ export const settings = {
       resetLabel: "terminal close confirmation",
       ariaLabel: "Confirm terminal tab close",
     },
+  },
+  advanced: {
+    session: {
+      title: "Session",
+      thisBrowser: {
+        title: "This browser",
+        description:
+          "Revoke this browser session and close every live Synara connection it owns. A fresh pairing link is required to reconnect.",
+      },
+      authenticatedAs: (role: string) => `Authenticated as ${role}.`,
+      signOut: "Sign out",
+      signingOut: "Signing out...",
+      signOutConfirm:
+        "Sign out this browser?\n\nIts session and every live connection opened with it will be revoked.",
+      signOutFailedTitle: "Sign out failed",
+      signOutFailedDescription: "Unable to revoke this session.",
+    },
+    developerTools: {
+      title: "Developer tools",
+      keybindings: {
+        title: "Keybindings",
+        description:
+          "Open the persisted `keybindings.json` file to edit advanced bindings directly.",
+      },
+      resolvingPath: "Resolving keybindings path...",
+      opensInEditor: "Opens in your preferred editor.",
+      openFile: "Open file",
+      opening: "Opening...",
+      noEditors: "No available editors found.",
+      openFailed: "Unable to open keybindings file.",
+      recovery: {
+        title: "Recovery tools",
+        description:
+          "Rebuild local project indexes without clearing existing chats when the local state gets out of sync.",
+      },
+      recoveryVisible: "Visible because projects exist but no chat history is currently available.",
+      recoveryHidden: "Shown automatically only when recovery actions are relevant.",
+      repairState: "Repair state",
+      repairing: "Repairing...",
+      whatThisDoes: "What this does",
+      whatThisDoesBody:
+        "Rebuilds local project indexes and refreshes project snapshots. Existing chats stay in place.",
+      repairConfirm: [
+        "Repair local state?",
+        "This rebuilds local project indexes and refreshes project snapshots.",
+        "It keeps existing chats in place, but it may take a moment.",
+      ].join("\n"),
+      repairedTitle: "Local state repaired",
+      repairedDescription: "Project indexes were rebuilt without clearing existing chats.",
+      repairFailedTitle: "Repair failed",
+      repairFailedDescription: "Unable to repair local state.",
+    },
+    about: {
+      title: "About",
+      version: { title: "Version", description: "Current application version." },
+      releaseHistory: {
+        title: "Release history",
+        description:
+          "A running log of every update, newest first. Same notes the post-update dialog shows, kept here so you can revisit them any time.",
+      },
+      viewReleaseHistory: "View release history",
+    },
+  },
+  skills: {
+    portable: "Portable skills",
+    folder: {
+      title: "Synara skills folder",
+      description:
+        "Skills placed here are available on every provider. When a provider already ships its own copy of a skill, that copy is used; otherwise Synara's copy is the fallback.",
+    },
+    scanning: "Scanning…",
+    enabledCount: (enabled: number, total: number) =>
+      `${enabled} of ${total} ${pluralize(total, "skill")} enabled`,
+    sectionTitle: "Skills",
+    discoveryFailed: {
+      title: "Skill discovery failed",
+      description:
+        "Synara could not scan the skill folders. Retry after checking that the server is running.",
+    },
+    noneFound: {
+      title: "No skills found",
+      description:
+        "Add a skill folder containing a SKILL.md to the Synara skills folder above, or install skills for any supported provider.",
+    },
+    providerCopies: (count: number, names: string) =>
+      `Provider ${pluralize(count, "copy", "copies")}: ${names}`,
+    enableSkill: (name: string) => `Enable the ${name} skill`,
+    // Consumed as `SettingsSkillLabels` by skillsSettingsModel, which groups and titles the list.
+    sharedSkills: "Shared skills",
+    fromOrigin: (label: string) => `From ${label}`,
+    noDescription: "No description.",
+    origins: { shared: "Shared (.agents)", project: "Project", personal: "Personal" },
+  },
+  agentMcp: {
+    sectionTitle: "MCP servers",
+    overview: {
+      title: "Agent MCP servers",
+      description:
+        "Servers your local Codex and Claude agents can call. Turning one off edits that agent's own config file; Synara never starts these servers itself.",
+    },
+    refresh: "Refresh",
+    refreshing: "Refreshing...",
+    loading: "Loading MCP servers...",
+    readFailedTitle: "Could not read the agent configs",
+    readFailedDescription: "Reading the local agent configuration failed.",
+    sourceTitle: (provider: string) => `${provider} MCP servers`,
+    parseError: (message: string) =>
+      `This file could not be parsed, so its servers cannot be changed: ${message}`,
+    notConfigured: "Not configured",
+    noServers: "No servers",
+    empty: {
+      codex: "No MCP servers are declared in this Codex config.",
+      claudeAgent: "No MCP servers are declared in this Claude config.",
+    },
+    unavailable: {
+      codex: "No Codex configuration was found on this machine.",
+      claudeAgent: "No Claude configuration was found on this machine.",
+    },
+    noCommand: "(no command)",
+    updateFailedTitle: "Could not update the MCP server",
+    updateFailedDescription: "The config file was not changed.",
+  },
+  worktrees: {
+    loading: "Loading managed worktrees...",
+    loadFailed: "Unable to load worktrees.",
+    empty: "No app-managed worktrees found yet.",
+    worktree: "Worktree",
+    conversations: "Conversations",
+    noLinkedConversations: "No conversations linked to this worktree.",
+    delete: "Delete",
+    linkedWarning: "Linked conversations exist. Deleting will ask for confirmation.",
+    verifyFailedTitle: "Could not verify linked conversations",
+    verifyFailedDescription: "Retry once the app reconnects to the server.",
+    deleteConfirm: (name: string, activeCount: number, archivedCount: number) =>
+      [
+        `Delete worktree "${name}"?`,
+        "",
+        `${activeCount} active and ${archivedCount} archived ${pluralize(activeCount + archivedCount, "conversation is", "conversations are")} linked to this worktree.`,
+        archivedCount > 0
+          ? "Archived conversations will be deleted first."
+          : "Deleting it can break reopening those chats in the same workspace.",
+        "",
+        "Delete the worktree anyway?",
+      ].join("\n"),
+    deleteConfirmUnlinked: (name: string) =>
+      [`Delete worktree "${name}"?`, "This removes the Git worktree from disk."].join("\n"),
+    deletedTitle: "Worktree deleted",
+    deletedDescription: (name: string) => `${name} was removed.`,
+    deletedWithArchived: (name: string, archivedCount: number) =>
+      `${name} was removed and ${archivedCount} archived ${pluralize(archivedCount, "conversation")} were deleted.`,
+    deleteFailedTitle: "Could not delete worktree",
+    deleteFailedDescription: "Unable to delete the worktree.",
+  },
+  archived: {
+    emptyTitle: "No archived threads",
+    emptyDescription: "Archived threads will appear here and can be restored to the sidebar.",
+    unknownProject: "Unknown project",
+    archivedAt: (relative: string) => `Archived ${relative}`,
+    restore: "Restore",
+    delete: "Delete",
+    restoredTitle: "Thread restored",
+    restoredDescription: "The thread has been moved back to the sidebar.",
+    restoreFailedTitle: "Could not restore thread",
+    restoreFailedDescription: "Unable to restore the thread.",
+    deleteConfirm: (title: string) =>
+      `Permanently delete "${title}"?\n\nThis will remove the thread and its conversation history forever.`,
+    deletedTitle: "Thread deleted",
+    deletedDescription: "The archived thread has been permanently removed.",
+    deleteFailedTitle: "Could not delete thread",
+    deleteFailedDescription: "Unable to delete the thread.",
+  },
+  shortcuts: {
+    searchPlaceholder: "Search shortcuts...",
+    searchAriaLabel: "Search shortcuts",
+    command: "Command",
+    keybinding: "Keybinding",
+    noMatches: (query: string) => `No shortcuts match “${query}”.`,
+  },
+  providerUsage: {
+    title: "Provider usage",
+    refresh: "Refresh",
+    loading: "Loading provider usage…",
+    footnote:
+      "Usage is read locally from each provider CLI's stored credentials and fetched directly from the provider. OAuth providers may refresh short-lived tokens through their official token endpoint; if a provider shows “Not signed in”, re-authenticate with its CLI.",
+  },
+  appSnapShortcut: {
+    recordAriaLabel: "Record AppSnap shortcut",
+    pressTwoKeys: "Press two keys…",
+    save: "Save",
+    reset: "Reset",
+    nowPressOther: "Now press the other key…",
+    holdModifier: "Hold a modifier, then press one other key. Esc cancels.",
+    checking: "Checking macOS and other apps…",
+    available: "Available — save to apply.",
+    checkBeforeSaving: "Check a new combination before saving.",
+    availableReserved: "Available and reserved",
+    current: "Current shortcut",
+    conflictCommand: (label: string) => `Synara already uses this for “${label}”.`,
+    requiresDesktop: "Requires the Synara desktop app on macOS.",
+    checkFailed: "Could not check this shortcut.",
+    unsupportedKey: "That key isn't supported — try another.",
+    holdModifierFirst: "Hold ⌘, ⌃, ⌥ or ⇧ first, then press the other key.",
+    holdOnlyOne: "Hold only one modifier.",
+    savedTitle: "AppSnap shortcut saved",
+    savedEnabled: "The shortcut is reserved while AppSnap is enabled.",
+    savedDisabled: "The shortcut will be reserved when you enable AppSnap.",
+    savedUnavailableTitle: "AppSnap shortcut saved, but unavailable",
   },
 };
 
