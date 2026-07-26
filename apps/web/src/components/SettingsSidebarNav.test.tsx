@@ -59,8 +59,12 @@ describe("rankSettingsSearchEntries", () => {
   });
 
   it("derives a deep-link anchor target from each entry's title", () => {
-    const themeEntry = SETTINGS_SEARCH_ENTRIES.find((entry) => entry.id === "appearance:theme")!;
-    expect(settingsSearchEntryTarget(themeEntry)).toBe("setting-theme");
+    // A row still rendering its English title; migrated rows anchor on their id instead.
+    const toastsEntry = SETTINGS_SEARCH_ENTRIES.find(
+      (entry) => entry.id === "notifications:activity-toasts",
+    )!;
+    expect(toastsEntry.localizedTitle).toBeUndefined();
+    expect(settingsSearchEntryTarget(toastsEntry)).toBe("setting-activity-toasts");
     for (const entry of SETTINGS_SEARCH_ENTRIES) {
       if (entry.target === null) {
         expect(settingsSearchEntryTarget(entry)).toBeNull();

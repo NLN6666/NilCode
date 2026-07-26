@@ -42,6 +42,7 @@ import {
 } from "~/components/settings/ProvidersSettingsPanel";
 import { LOCALE_LABELS } from "../i18n/catalogs";
 import { useMessages } from "../i18n/context";
+import type { Messages } from "../i18n/locales/en";
 import { ProviderOptionLabel } from "../components/ProviderIcon";
 import ReleaseHistoryDialog from "../components/ReleaseHistoryDialog";
 import { KeyboardShortcutsSettingsPanel } from "../components/settings/KeyboardShortcutsSettingsPanel";
@@ -52,6 +53,7 @@ import { AgentMcpSettingsPanel } from "../components/settings/AgentMcpSettingsPa
 import {
   SettingResetButton,
   SettingsSegmentedControl,
+  type SettingsSegmentedOption,
   SettingsSelectControl,
 } from "../components/settings/SettingControls";
 import {
@@ -99,56 +101,31 @@ import {
 
 // ── Settings taxonomy ──────────────────────────────────────────────────────
 
-const UI_DENSITY_OPTIONS = [
-  {
-    value: "compact",
-    label: "Compact",
-    description: "Tighter spacing in the sidebar, composer, and settings rows.",
-  },
-  {
-    value: "comfortable",
-    label: "Comfortable",
-    description: "Balanced spacing for everyday use.",
-  },
-  {
-    value: "spacious",
-    label: "Spacious",
-    description: "More breathing room across the main workspace surfaces.",
-  },
-] as const satisfies ReadonlyArray<{
-  value: UiDensity;
-  label: string;
-  description: string;
-}>;
-
-const THEME_OPTIONS = [
-  {
-    value: "light",
-    label: "Light",
-    description: "Always use the light theme.",
-    icon: <SunIcon />,
-  },
-  {
-    value: "dark",
-    label: "Dark",
-    description: "Always use the dark theme.",
-    icon: <MoonIcon />,
-  },
-  {
-    value: "system",
-    label: "System",
-    description: "Match your OS appearance setting.",
-    icon: <DeviceLaptopIcon />,
-  },
-] as const;
-
 const PROVIDER_SELECT_OPTIONS = PROVIDER_DESCRIPTORS.map((descriptor) => descriptor.kind);
 
-const TIMESTAMP_FORMAT_LABELS = {
-  locale: "System default",
-  "12-hour": "12-hour",
-  "24-hour": "24-hour",
-} as const;
+// Option rows carry translated labels, so they are derived from the active catalog rather than
+// declared as module constants. Icons stay here because they never change with locale.
+function themeOptions(
+  m: Messages,
+): readonly SettingsSegmentedOption<"light" | "dark" | "system">[] {
+  return [
+    { value: "light", label: m.settings.appearance.theme.options.light, icon: <SunIcon /> },
+    { value: "dark", label: m.settings.appearance.theme.options.dark, icon: <MoonIcon /> },
+    {
+      value: "system",
+      label: m.settings.appearance.theme.options.system,
+      icon: <DeviceLaptopIcon />,
+    },
+  ];
+}
+
+function uiDensityOptions(m: Messages): readonly SettingsSegmentedOption<UiDensity>[] {
+  return [
+    { value: "compact", label: m.settings.appearance.uiDensity.options.compact },
+    { value: "comfortable", label: m.settings.appearance.uiDensity.options.comfortable },
+    { value: "spacious", label: m.settings.appearance.uiDensity.options.spacious },
+  ];
+}
 
 // ── Settings UI primitives ────────────────────────────────────────────────
 
@@ -626,14 +603,20 @@ function SettingsRouteView() {
   const renderAppearancePanel = () => (
     <div className="space-y-6">
       <section className={SETTINGS_PANEL_SECTION_CLASS_NAME}>
-        <h2 className={SETTINGS_SECTION_LABEL_CLASS_NAME}>Theme and typography</h2>
+        <h2 className={SETTINGS_SECTION_LABEL_CLASS_NAME}>
+          {m.settings.appearance.themeAndTypography}
+        </h2>
         <SettingsCard>
           <SettingsRow
-            title="Theme"
-            description="Choose how Synara looks across the app."
+            anchorKey="appearance:theme"
+            title={m.settings.appearance.theme.title}
+            description={m.settings.appearance.theme.description}
             resetAction={
               theme !== "system" ? (
-                <SettingResetButton label="theme" onClick={() => setTheme("system")} />
+                <SettingResetButton
+                  label={m.settings.appearance.theme.resetLabel}
+                  onClick={() => setTheme("system")}
+                />
               ) : null
             }
             control={
@@ -643,24 +626,28 @@ function SettingsRouteView() {
                   if (value !== "system" && value !== "light" && value !== "dark") return;
                   setTheme(value);
                 }}
-                ariaLabel="Theme preference"
-                options={THEME_OPTIONS}
+                ariaLabel={m.settings.appearance.theme.ariaLabel}
+                options={themeOptions(m)}
               />
             }
           />
           <SettingsRow
-            title="Use system UI font"
-            description="Ignore the theme's custom UI font and render the interface with the native system font (SF Pro on macOS)."
+            anchorKey="appearance:system-ui-font"
+            title={m.settings.appearance.systemUiFont.title}
+            description={m.settings.appearance.systemUiFont.description}
             resetAction={
               !systemUiFont ? (
-                <SettingResetButton label="system UI font" onClick={() => setSystemUiFont(true)} />
+                <SettingResetButton
+                  label={m.settings.appearance.systemUiFont.resetLabel}
+                  onClick={() => setSystemUiFont(true)}
+                />
               ) : null
             }
             control={
               <Switch
                 checked={systemUiFont}
                 onCheckedChange={(checked) => setSystemUiFont(Boolean(checked))}
-                aria-label="Use system UI font"
+                aria-label={m.settings.appearance.systemUiFont.ariaLabel}
               />
             }
           />
@@ -682,12 +669,13 @@ function SettingsRouteView() {
 
         <SettingsCard>
           <SettingsRow
-            title="UI density"
-            description="Control spacing in the sidebar, composer, chat gutters, and settings rows without changing font size."
+            anchorKey="appearance:ui-density"
+            title={m.settings.appearance.uiDensity.title}
+            description={m.settings.appearance.uiDensity.description}
             resetAction={
               settings.uiDensity !== defaults.uiDensity ? (
                 <SettingResetButton
-                  label="UI density"
+                  label={m.settings.appearance.uiDensity.resetLabel}
                   onClick={() =>
                     updateSettings({
                       uiDensity: DEFAULT_UI_DENSITY,
@@ -705,19 +693,20 @@ function SettingsRouteView() {
                   }
                   updateSettings({ uiDensity: value });
                 }}
-                ariaLabel="UI density"
-                options={UI_DENSITY_OPTIONS}
+                ariaLabel={m.settings.appearance.uiDensity.ariaLabel}
+                options={uiDensityOptions(m)}
               />
             }
           />
 
           <SettingsRow
-            title="Base font size"
-            description="Adjust the app text base in pixels. Chat and UI typography scale proportionally from this value."
+            anchorKey="appearance:base-font-size"
+            title={m.settings.appearance.baseFontSize.title}
+            description={m.settings.appearance.baseFontSize.description}
             resetAction={
               settings.chatFontSizePx !== defaults.chatFontSizePx ? (
                 <SettingResetButton
-                  label="base font size"
+                  label={m.settings.appearance.baseFontSize.resetLabel}
                   onClick={() =>
                     updateSettings({
                       chatFontSizePx: defaults.chatFontSizePx,
@@ -745,7 +734,7 @@ function SettingsRouteView() {
                       chatFontSizePx: normalizeChatFontSizePx(Number(nextValue)),
                     });
                   }}
-                  aria-label="Base font size in pixels"
+                  aria-label={m.settings.appearance.baseFontSize.ariaLabel}
                 />
                 <span className="text-xs text-muted-foreground">px</span>
               </div>
@@ -753,12 +742,13 @@ function SettingsRouteView() {
           />
 
           <SettingsRow
-            title="Terminal font size"
-            description="Adjust terminal text independently from the app and chat font size."
+            anchorKey="appearance:terminal-font-size"
+            title={m.settings.appearance.terminalFontSize.title}
+            description={m.settings.appearance.terminalFontSize.description}
             resetAction={
               settings.terminalFontSizePx !== defaults.terminalFontSizePx ? (
                 <SettingResetButton
-                  label="terminal font size"
+                  label={m.settings.appearance.terminalFontSize.resetLabel}
                   onClick={() =>
                     updateSettings({
                       terminalFontSizePx: defaults.terminalFontSizePx,
@@ -786,7 +776,7 @@ function SettingsRouteView() {
                       terminalFontSizePx: normalizeTerminalFontSizePx(Number(nextValue)),
                     });
                   }}
-                  aria-label="Terminal font size in pixels"
+                  aria-label={m.settings.appearance.terminalFontSize.ariaLabel}
                 />
                 <span className="text-xs text-muted-foreground">px</span>
               </div>
@@ -794,12 +784,13 @@ function SettingsRouteView() {
           />
 
           <SettingsRow
-            title="Terminal font"
-            description="Type any monospace font installed on this device (e.g. Fira Code). Leave empty for the default. Fonts that aren't installed fall back to the system monospace."
+            anchorKey="appearance:terminal-font"
+            title={m.settings.appearance.terminalFont.title}
+            description={m.settings.appearance.terminalFont.description}
             resetAction={
               settings.terminalFontFamily !== defaults.terminalFontFamily ? (
                 <SettingResetButton
-                  label="terminal font"
+                  label={m.settings.appearance.terminalFont.resetLabel}
                   onClick={() =>
                     updateSettings({
                       terminalFontFamily: defaults.terminalFontFamily,
@@ -828,9 +819,9 @@ function SettingsRouteView() {
                     showClear={settings.terminalFontFamily.length > 0}
                     spellCheck={false}
                     autoComplete="off"
-                    placeholder="Default (JetBrains Mono)"
+                    placeholder={m.settings.appearance.terminalFont.placeholder}
                     className="w-full sm:w-56"
-                    aria-label="Terminal font family"
+                    aria-label={m.settings.appearance.terminalFont.ariaLabel}
                   />
                   <AutocompletePopup className="w-56 min-w-56 font-system-ui">
                     <AutocompleteList>
@@ -849,7 +840,9 @@ function SettingsRouteView() {
                           {suggestion}
                         </AutocompleteItem>
                       ))}
-                      <AutocompleteEmpty>No matching suggested fonts.</AutocompleteEmpty>
+                      <AutocompleteEmpty>
+                        {m.settings.appearance.terminalFont.noSuggestions}
+                      </AutocompleteEmpty>
                     </AutocompleteList>
                   </AutocompletePopup>
                 </Autocomplete>
@@ -869,14 +862,15 @@ function SettingsRouteView() {
         </SettingsCard>
       </section>
 
-      <SettingsSection title="Time and reading">
+      <SettingsSection title={m.settings.appearance.timeAndReading}>
         <SettingsRow
-          title="Time format"
-          description="System default follows your browser or OS clock preference."
+          anchorKey="appearance:time-format"
+          title={m.settings.appearance.timeFormat.title}
+          description={m.settings.appearance.timeFormat.description}
           resetAction={
             settings.timestampFormat !== defaults.timestampFormat ? (
               <SettingResetButton
-                label="time format"
+                label={m.settings.appearance.timeFormat.resetLabel}
                 onClick={() =>
                   updateSettings({
                     timestampFormat: defaults.timestampFormat,
@@ -898,16 +892,16 @@ function SettingsRouteView() {
               }}
               ariaLabel="Timestamp format"
               triggerClassName="w-full sm:w-40"
-              valueContent={TIMESTAMP_FORMAT_LABELS[settings.timestampFormat]}
+              valueContent={m.settings.appearance.timeFormat.options[settings.timestampFormat]}
             >
               <SelectItem hideIndicator value="locale">
-                {TIMESTAMP_FORMAT_LABELS.locale}
+                {m.settings.appearance.timeFormat.options.locale}
               </SelectItem>
               <SelectItem hideIndicator value="12-hour">
-                {TIMESTAMP_FORMAT_LABELS["12-hour"]}
+                {m.settings.appearance.timeFormat.options["12-hour"]}
               </SelectItem>
               <SelectItem hideIndicator value="24-hour">
-                {TIMESTAMP_FORMAT_LABELS["24-hour"]}
+                {m.settings.appearance.timeFormat.options["24-hour"]}
               </SelectItem>
             </SettingsSelectControl>
           }
@@ -918,48 +912,37 @@ function SettingsRouteView() {
 
   const renderBehaviorPanel = () => (
     <div className="space-y-6">
-      <SettingsSection title="Runtime behavior">
+      <SettingsSection title={m.settings.behavior.runtimeBehavior}>
         {renderBooleanSettingRow({
           settingKey: "enableAssistantStreaming",
-          title: "Assistant output",
-          description: "Show token-by-token output while a response is in progress.",
-          resetLabel: "assistant output",
-          ariaLabel: "Stream assistant messages",
+          anchorKey: "behavior:assistant-output",
+          ...m.settings.behavior.assistantOutput,
         })}
 
         {renderBooleanSettingRow({
           settingKey: "diffWordWrap",
-          title: "Diff line wrapping",
-          description:
-            "Set the default wrap state when the diff panel opens. The in-panel wrap toggle only affects the current diff session.",
-          resetLabel: "diff line wrapping",
-          ariaLabel: "Wrap diff lines by default",
+          anchorKey: "behavior:diff-line-wrapping",
+          ...m.settings.behavior.diffLineWrapping,
         })}
       </SettingsSection>
 
-      <SettingsSection title="Safety confirmations">
+      <SettingsSection title={m.settings.behavior.safetyConfirmations}>
         {renderBooleanSettingRow({
           settingKey: "confirmThreadDelete",
-          title: "Delete confirmation",
-          description: "Ask before deleting a thread and its chat history.",
-          resetLabel: "delete confirmation",
-          ariaLabel: "Confirm thread deletion",
+          anchorKey: "behavior:delete-confirmation",
+          ...m.settings.behavior.deleteConfirmation,
         })}
 
         {renderBooleanSettingRow({
           settingKey: "confirmThreadArchive",
-          title: "Archive confirmation",
-          description: "Ask before archiving a thread.",
-          resetLabel: "archive confirmation",
-          ariaLabel: "Confirm thread archive",
+          anchorKey: "behavior:archive-confirmation",
+          ...m.settings.behavior.archiveConfirmation,
         })}
 
         {renderBooleanSettingRow({
           settingKey: "confirmTerminalTabClose",
-          title: "Terminal close confirmation",
-          description: "Ask before closing a terminal tab and clearing its history.",
-          resetLabel: "terminal close confirmation",
-          ariaLabel: "Confirm terminal tab close",
+          anchorKey: "behavior:terminal-close-confirmation",
+          ...m.settings.behavior.terminalCloseConfirmation,
         })}
       </SettingsSection>
     </div>
@@ -1043,7 +1026,7 @@ function SettingsRouteView() {
                     onClick={() => void restoreDefaults()}
                   >
                     <RotateCcwIcon className="size-3.5" />
-                    Restore defaults
+                    {m.settings.appearance.restoreDefaults}
                   </Button>
                 </div>
               ) : null}

@@ -174,40 +174,46 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     id: "appearance:theme",
     section: "appearance",
     title: "Theme",
-    keywords: "Choose how Synara looks across the app. dark light system color",
+    keywords: "Choose how Synara looks across the app. dark light system color 主题 深色 浅色 外观",
+    localizedTitle: true,
   },
   {
     id: "appearance:system-ui-font",
     section: "appearance",
     title: "Use system UI font",
-    keywords: "Use the operating system interface font throughout Synara.",
+    keywords: "Use the operating system interface font throughout Synara. 系统界面字体 字体",
+    localizedTitle: true,
   },
   {
     id: "appearance:ui-density",
     section: "appearance",
     title: "UI density",
     keywords:
-      "Control spacing in the sidebar, composer, chat gutters, and settings rows without changing font size. compact comfortable",
+      "Control spacing in the sidebar, composer, chat gutters, and settings rows without changing font size. compact comfortable 界面密度 紧凑 宽松 间距",
+    localizedTitle: true,
   },
   {
     id: "appearance:base-font-size",
     section: "appearance",
     title: "Base font size",
     keywords:
-      "Adjust the app text base in pixels. Chat and UI typography scale proportionally. font",
+      "Adjust the app text base in pixels. Chat and UI typography scale proportionally. font 基础字号 字体大小",
+    localizedTitle: true,
   },
   {
     id: "appearance:terminal-font-size",
     section: "appearance",
     title: "Terminal font size",
-    keywords: "Adjust terminal text independently from the app and chat font size.",
+    keywords: "Adjust terminal text independently from the app and chat font size. 终端字号",
+    localizedTitle: true,
   },
   {
     id: "appearance:terminal-font",
     section: "appearance",
     title: "Terminal font",
     keywords:
-      "Type any monospace font installed on this device e.g. Fira Code. system monospace family",
+      "Type any monospace font installed on this device e.g. Fira Code. system monospace family 终端字体 等宽字体",
+    localizedTitle: true,
   },
   {
     id: "appearance:font-smoothing",
@@ -221,7 +227,8 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "appearance",
     title: "Time format",
     keywords:
-      "System default follows your browser or OS clock preference. timestamp 12-hour 24-hour locale",
+      "System default follows your browser or OS clock preference. timestamp 12-hour 24-hour locale 时间格式 12 小时制 24 小时制",
+    localizedTitle: true,
   },
 
   // ── Notifications ─────────────────────────────────────────────────────────────
@@ -282,31 +289,37 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     id: "behavior:assistant-output",
     section: "behavior",
     title: "Assistant output",
-    keywords: "Show token-by-token output while a response is in progress. streaming",
+    keywords: "Show token-by-token output while a response is in progress. streaming 助手输出 流式",
+    localizedTitle: true,
   },
   {
     id: "behavior:diff-line-wrapping",
     section: "behavior",
     title: "Diff line wrapping",
-    keywords: "Set the default wrap state when the diff panel opens. word wrap",
+    keywords: "Set the default wrap state when the diff panel opens. word wrap 差异自动换行",
+    localizedTitle: true,
   },
   {
     id: "behavior:delete-confirmation",
     section: "behavior",
     title: "Delete confirmation",
-    keywords: "Ask before deleting a thread and its chat history. safety confirm",
+    keywords: "Ask before deleting a thread and its chat history. safety confirm 删除确认",
+    localizedTitle: true,
   },
   {
     id: "behavior:archive-confirmation",
     section: "behavior",
     title: "Archive confirmation",
-    keywords: "Ask before archiving a thread. safety confirm",
+    keywords: "Ask before archiving a thread. safety confirm 归档确认",
+    localizedTitle: true,
   },
   {
     id: "behavior:terminal-close-confirmation",
     section: "behavior",
     title: "Terminal close confirmation",
-    keywords: "Ask before closing a terminal tab and clearing its history. safety confirm",
+    keywords:
+      "Ask before closing a terminal tab and clearing its history. safety confirm 终端关闭确认",
+    localizedTitle: true,
   },
 
   // ── Keyboard Shortcuts ────────────────────────────────────────────────────────

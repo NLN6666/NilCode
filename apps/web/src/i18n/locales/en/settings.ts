@@ -146,6 +146,96 @@ export const settings = {
       },
     },
   },
+  appearance: {
+    themeAndTypography: "Theme and typography",
+    theme: {
+      title: "Theme",
+      description: "Choose how Synara looks across the app.",
+      ariaLabel: "Theme preference",
+      resetLabel: "theme",
+      options: { light: "Light", dark: "Dark", system: "System" },
+    },
+    systemUiFont: {
+      title: "Use system UI font",
+      description:
+        "Ignore the theme's custom UI font and render the interface with the native system font (SF Pro on macOS).",
+      ariaLabel: "Use system UI font",
+      resetLabel: "system UI font",
+    },
+    uiDensity: {
+      title: "UI density",
+      description:
+        "Control spacing in the sidebar, composer, chat gutters, and settings rows without changing font size.",
+      ariaLabel: "UI density",
+      resetLabel: "UI density",
+      options: { compact: "Compact", comfortable: "Comfortable", spacious: "Spacious" },
+    },
+    baseFontSize: {
+      title: "Base font size",
+      description:
+        "Adjust the app text base in pixels. Chat and UI typography scale proportionally from this value.",
+      ariaLabel: "Base font size in pixels",
+      resetLabel: "base font size",
+    },
+    terminalFontSize: {
+      title: "Terminal font size",
+      description: "Adjust terminal text independently from the app and chat font size.",
+      ariaLabel: "Terminal font size in pixels",
+      resetLabel: "terminal font size",
+    },
+    terminalFont: {
+      title: "Terminal font",
+      description:
+        "Type any monospace font installed on this device (e.g. Fira Code). Leave empty for the default. Fonts that aren't installed fall back to the system monospace.",
+      ariaLabel: "Terminal font family",
+      resetLabel: "terminal font",
+      placeholder: "Default (JetBrains Mono)",
+      noSuggestions: "No matching suggested fonts.",
+    },
+    timeAndReading: "Time and reading",
+    timeFormat: {
+      title: "Time format",
+      description: "System default follows your browser or OS clock preference.",
+      resetLabel: "time format",
+      options: { locale: "System default", "12-hour": "12-hour", "24-hour": "24-hour" },
+    },
+    restoreDefaults: "Restore defaults",
+  },
+  behavior: {
+    runtimeBehavior: "Runtime behavior",
+    assistantOutput: {
+      title: "Assistant output",
+      description: "Show token-by-token output while a response is in progress.",
+      resetLabel: "assistant output",
+      ariaLabel: "Stream assistant messages",
+    },
+    diffLineWrapping: {
+      title: "Diff line wrapping",
+      description:
+        "Set the default wrap state when the diff panel opens. The in-panel wrap toggle only affects the current diff session.",
+      resetLabel: "diff line wrapping",
+      ariaLabel: "Wrap diff lines by default",
+    },
+    safetyConfirmations: "Safety confirmations",
+    deleteConfirmation: {
+      title: "Delete confirmation",
+      description: "Ask before deleting a thread and its chat history.",
+      resetLabel: "delete confirmation",
+      ariaLabel: "Confirm thread deletion",
+    },
+    archiveConfirmation: {
+      title: "Archive confirmation",
+      description: "Ask before archiving a thread.",
+      resetLabel: "archive confirmation",
+      ariaLabel: "Confirm thread archive",
+    },
+    terminalCloseConfirmation: {
+      title: "Terminal close confirmation",
+      description: "Ask before closing a terminal tab and clearing its history.",
+      resetLabel: "terminal close confirmation",
+      ariaLabel: "Confirm terminal tab close",
+    },
+  },
 };
 
 export type Settings = typeof settings;
