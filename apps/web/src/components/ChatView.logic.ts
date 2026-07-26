@@ -955,10 +955,14 @@ export function hasServerAcknowledgedLocalDispatch(input: {
   }
 
   if (input.localDispatch.sessionOrchestrationStatus !== nextSessionOrchestrationStatus) {
-    if (
-      input.localDispatch.sessionOrchestrationStatus === null &&
-      nextSessionOrchestrationStatus === "ready"
-    ) {
+    // A session that only reached "ready" is idle and still awaiting a turn, so
+    // it is never evidence the server accepted this dispatch. Releasing the
+    // optimistic busy flag here blanks the "Thinking" indicator for the whole
+    // window between provider startup and the turn actually starting, because
+    // "ready" maps to phase "ready" — neither `hasLiveTurn` nor `isConnecting`.
+    // Every other status either keeps the indicator lit on its own ("starting",
+    // "running") or is a terminal outcome that should stop it.
+    if (nextSessionOrchestrationStatus === "ready") {
       return false;
     }
     return true;

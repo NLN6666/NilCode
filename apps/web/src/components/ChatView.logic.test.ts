@@ -1776,6 +1776,57 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
     ).toBe(false);
   });
 
+  // A reaped provider (an older thread reopened) boots straight back to "ready"
+  // before the dispatched turn starts. Treating that as acknowledgement blanked
+  // the "Thinking" indicator until the session finally flipped to "running".
+  it.each([
+    ["stopped" as const],
+    ["idle" as const],
+    ["starting" as const],
+    ["interrupted" as const],
+    ["error" as const],
+  ])("keeps the optimistic timer alive when a %s session boots back to ready", (from) => {
+    expect(
+      hasServerAcknowledgedLocalDispatch({
+        localDispatch: { ...localDispatch, sessionOrchestrationStatus: from },
+        phase: "ready",
+        latestTurn: null,
+        session: {
+          provider: "codex",
+          status: "ready",
+          orchestrationStatus: "ready",
+          createdAt: "2026-04-13T00:00:00.000Z",
+          updatedAt: "2026-04-13T00:00:01.000Z",
+        },
+        hasPendingApproval: false,
+        hasPendingUserInput: false,
+        threadError: null,
+      }),
+    ).toBe(false);
+  });
+
+  // "starting" maps to phase "connecting", which lights the indicator on its
+  // own, so acknowledging there is correct and must not regress.
+  it("acknowledges a ready session that transitions into starting", () => {
+    expect(
+      hasServerAcknowledgedLocalDispatch({
+        localDispatch,
+        phase: "connecting",
+        latestTurn: null,
+        session: {
+          provider: "codex",
+          status: "connecting",
+          orchestrationStatus: "starting",
+          createdAt: "2026-04-13T00:00:00.000Z",
+          updatedAt: "2026-04-13T00:00:01.000Z",
+        },
+        hasPendingApproval: false,
+        hasPendingUserInput: false,
+        threadError: null,
+      }),
+    ).toBe(true);
+  });
+
   it("still acknowledges non-ready session transitions without a latest turn snapshot", () => {
     expect(
       hasServerAcknowledgedLocalDispatch({
