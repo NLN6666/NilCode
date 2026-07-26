@@ -21,6 +21,7 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "../ui/menu";
+import { useMessages } from "~/i18n/context";
 
 export const ComposerExtrasMenu = function ComposerExtrasMenu(props: {
   interactionMode: ProviderInteractionMode;
@@ -30,6 +31,7 @@ export const ComposerExtrasMenu = function ComposerExtrasMenu(props: {
   onToggleFastMode: () => void;
   onSetPlanMode: (enabled: boolean) => void;
 }) {
+  const copy = useMessages().composer.extras;
   const inputId = useId();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -61,7 +63,7 @@ export const ComposerExtrasMenu = function ComposerExtrasMenu(props: {
               size="icon-sm"
               variant="chrome"
               className="shrink-0 rounded-md"
-              aria-label="Composer extras"
+              aria-label={copy.menu}
             />
           }
         >
@@ -74,7 +76,7 @@ export const ComposerExtrasMenu = function ComposerExtrasMenu(props: {
             }}
           >
             <PaperclipIcon className="size-4 shrink-0" />
-            Add image
+            {copy.addImage}
           </MenuItem>
 
           <MenuSeparator />
@@ -87,7 +89,7 @@ export const ComposerExtrasMenu = function ComposerExtrasMenu(props: {
           >
             <span className="inline-flex items-center gap-2">
               <GoTasklist className="size-4 shrink-0" />
-              Plan mode
+              {copy.planMode}
             </span>
           </MenuCheckboxItem>
 
@@ -95,7 +97,7 @@ export const ComposerExtrasMenu = function ComposerExtrasMenu(props: {
             <>
               <MenuSeparator />
               <MenuSub>
-                <MenuSubTrigger>Fast</MenuSubTrigger>
+                <MenuSubTrigger>{copy.fast}</MenuSubTrigger>
                 <ComposerPickerMenuSubPopup>
                   <MenuRadioGroup
                     value={props.fastModeEnabled ? "fast" : "normal"}
@@ -105,8 +107,8 @@ export const ComposerExtrasMenu = function ComposerExtrasMenu(props: {
                       props.onToggleFastMode();
                     }}
                   >
-                    <MenuRadioItem value="normal">Default</MenuRadioItem>
-                    <MenuRadioItem value="fast">Fast</MenuRadioItem>
+                    <MenuRadioItem value="normal">{copy.default}</MenuRadioItem>
+                    <MenuRadioItem value="fast">{copy.fast}</MenuRadioItem>
                   </MenuRadioGroup>
                 </ComposerPickerMenuSubPopup>
               </MenuSub>

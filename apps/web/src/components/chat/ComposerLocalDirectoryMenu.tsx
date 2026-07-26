@@ -26,6 +26,7 @@ import {
   COMPOSER_COMMAND_MENU_SURFACE_CLASS_NAME,
   COMPOSER_PICKER_MENU_POPUP_BODY_CLASS_NAME,
 } from "./composerPickerStyles";
+import { useMessages } from "~/i18n/context";
 
 type EntriesByPath = Record<string, readonly ProjectFileSystemEntry[] | undefined>;
 
@@ -129,6 +130,7 @@ export function ComposerLocalDirectoryMenu(props: {
   onNavigateFolder: (absolutePath: string) => void;
   handleRef?: Ref<ComposerLocalDirectoryMenuHandle>;
 }) {
+  const copy = useMessages().composer.directory;
   const { mentionQuery, rootLabel, homeDir, onSelectEntry, onNavigateFolder, handleRef } = props;
   const [entriesByPath, setEntriesByPath] = useState<EntriesByPath>({});
   const [loadingPaths, setLoadingPaths] = useState<ReadonlySet<string>>(() => new Set());
@@ -378,7 +380,7 @@ export function ComposerLocalDirectoryMenu(props: {
           {parent ? (
             <button
               type="button"
-              aria-label="Go up one directory"
+              aria-label={copy.goUp}
               onMouseDown={(event) => event.preventDefault()}
               onClick={handleGoUp}
               className="inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-[var(--color-background-elevated-secondary)] hover:text-foreground"
@@ -398,7 +400,7 @@ export function ComposerLocalDirectoryMenu(props: {
               onClick={handleSelectCurrentDirectory}
               className="shrink-0 rounded-md px-1.5 py-0.5 text-[10.5px] text-muted-foreground/70 transition-colors hover:bg-[var(--color-background-elevated-secondary)] hover:text-foreground"
             >
-              Use this folder
+              {copy.useThisFolder}
             </button>
           ) : null}
         </div>
@@ -466,7 +468,7 @@ export function ComposerLocalDirectoryMenu(props: {
                 ) : null}
                 <CommandGroup>
                   <CommandGroupLabel className="px-2 pt-1.5 pb-1 text-[10px] font-semibold text-muted-foreground/55">
-                    Matches deeper
+                    {copy.matchesDeeper}
                   </CommandGroupLabel>
                   {searchRows.map((entry, searchIndex) => {
                     const absoluteIndex = searchRowStartIndex + searchIndex;
@@ -488,25 +490,19 @@ export function ComposerLocalDirectoryMenu(props: {
           </CommandList>
         </div>
         {isAwaitingHomeDir ? (
-          <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">
-            Waiting for home directory from server…
-          </p>
+          <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">{copy.awaitingHomeDir}</p>
         ) : isLoading && visibleCount === 0 ? (
-          <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">Loading local files…</p>
+          <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">{copy.loading}</p>
         ) : errorMessage ? (
           <p className="px-2 py-1.5 text-destructive/80 text-[11px]">{errorMessage}</p>
         ) : isSearchPending ? (
-          <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">
-            Searching nested files…
-          </p>
+          <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">{copy.searching}</p>
         ) : visibleCount === 0 ? (
           <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">
-            {filter.trim().length > 0 ? "No matches." : "No files or folders here."}
+            {filter.trim().length > 0 ? copy.noMatches : copy.empty}
           </p>
         ) : searchQuery.data?.truncated ? (
-          <p className="px-2 py-1 text-muted-foreground/40 text-[10.5px]">
-            Showing top matches. Keep typing to narrow.
-          </p>
+          <p className="px-2 py-1 text-muted-foreground/40 text-[10.5px]">{copy.topMatches}</p>
         ) : null}
       </div>
     </Command>
@@ -521,6 +517,7 @@ function UseCurrentFolderRow(props: {
   onActivate: () => void;
 }) {
   const { directoryLabel, index, isHighlighted, onHighlight, onActivate } = props;
+  const copy = useMessages().composer.directory;
   return (
     <CommandItem
       data-highlight-index={index}
@@ -541,7 +538,7 @@ function UseCurrentFolderRow(props: {
       <FolderClosed className="size-3.5 text-muted-foreground/60" />
       <div className="min-w-0 flex flex-1 items-center gap-1.5 overflow-hidden">
         <span className="shrink-0 text-[11.5px] font-medium text-foreground/80">
-          Use this folder
+          {copy.useThisFolder}
         </span>
         <span className="truncate text-[11px] text-muted-foreground/55">{directoryLabel}</span>
       </div>

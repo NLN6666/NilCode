@@ -13,6 +13,7 @@ import { CheckIcon, ChevronLeftIcon, ChevronRightIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { ComposerChoiceRow } from "./ComposerChoiceRow";
 import { COMPOSER_INPUT_SURFACE_CLASS_NAME } from "./composerPickerStyles";
+import { useMessages } from "~/i18n/context";
 
 interface PendingUserInputPanelProps {
   pendingUserInputs: PendingUserInput[];
@@ -77,6 +78,7 @@ function ComposerPendingUserInputCard({
   onPrevious: () => void;
   onCancel: () => void;
 }) {
+  const copy = useMessages().composer.pendingInput;
   const progress = derivePendingUserInputProgress(prompt.questions, answers, questionIndex);
   const activeQuestion = progress.activeQuestion;
   const selectedOptionLabelSet = new Set(progress.selectedOptionLabels);
@@ -166,19 +168,19 @@ function ComposerPendingUserInputCard({
               disabled={!canGoBack || isResponding}
               onClick={onPrevious}
               className={NAV_BUTTON_CLASS_NAME}
-              aria-label="Previous question"
+              aria-label={copy.previousQuestion}
             >
               <ChevronLeftIcon className="size-3.5" />
             </button>
             <span className="px-0.5 text-[11px] tabular-nums">
-              {progress.questionIndex + 1} of {questionCount}
+              {copy.progress(progress.questionIndex + 1, questionCount)}
             </span>
             <button
               type="button"
               disabled={!canGoForward || isResponding}
               onClick={() => onAdvance()}
               className={NAV_BUTTON_CLASS_NAME}
-              aria-label="Next question"
+              aria-label={copy.nextQuestion}
             >
               <ChevronRightIcon className="size-3.5" />
             </button>
@@ -186,7 +188,7 @@ function ComposerPendingUserInputCard({
         ) : null}
       </div>
       {activeQuestion.multiSelect ? (
-        <p className="mt-1 text-[11px] text-muted-foreground/55">Select one or more.</p>
+        <p className="mt-1 text-[11px] text-muted-foreground/55">{copy.selectMultiple}</p>
       ) : null}
       {activeQuestion.options.length > 0 ? (
         <div className="mt-2.5 space-y-0.5">
@@ -222,7 +224,7 @@ function ComposerPendingUserInputCard({
               isResponding && "cursor-not-allowed opacity-50",
             )}
           >
-            Cancel
+            {copy.cancel}
           </button>
         </div>
       )}

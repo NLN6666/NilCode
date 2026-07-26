@@ -39,6 +39,7 @@ import {
   COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME,
   COMPOSER_STACKED_PANEL_ICON_CLASS_NAME,
 } from "./composerStackedPanelStyles";
+import { useMessages } from "~/i18n/context";
 
 interface ComposerSubagentStripProps {
   items: ReadonlyArray<ComposerSubagentStripRow>;
@@ -61,6 +62,7 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
   onStopAll,
   attachedToPrevious = false,
 }: ComposerSubagentStripProps) {
+  const copy = useMessages().composer.subagents;
   const subagentItems = items.filter(
     (item): item is ComposerSubagentStripItem => item.kind === "subagent",
   );
@@ -92,8 +94,8 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
             size="icon-xs"
             className={cn("shrink-0", COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME)}
             onClick={onStopAll}
-            aria-label="Stop all subagents"
-            title="Stop all running subagents"
+            aria-label={copy.stopAll}
+            title={copy.stopAllTitle}
           >
             <StopIcon className="size-3" />
           </Button>
@@ -197,8 +199,8 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
                       COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME,
                     )}
                     onClick={() => onBackgroundItem(item)}
-                    aria-label="Run in background (ctrl+b)"
-                    title="Run in background (ctrl+b)"
+                    aria-label={copy.runInBackground}
+                    title={copy.runInBackground}
                   >
                     <BackgroundTrayIcon className="size-3" />
                   </Button>
@@ -213,8 +215,8 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
                       COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME,
                     )}
                     onClick={() => onStopItem(item)}
-                    aria-label="Stop subagent"
-                    title="Stop subagent"
+                    aria-label={copy.stop}
+                    title={copy.stop}
                   >
                     <StopIcon className="size-3" />
                   </Button>

@@ -13,6 +13,7 @@ import { type PendingApproval } from "../../session-logic";
 import { cn } from "~/lib/utils";
 import { ComposerChoiceRow, type ComposerChoiceTone } from "./ComposerChoiceRow";
 import { COMPOSER_INPUT_SURFACE_CLASS_NAME } from "./composerPickerStyles";
+import { useMessages } from "~/i18n/context";
 
 interface ComposerPendingApprovalPanelProps {
   approval: PendingApproval;
@@ -144,6 +145,7 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
 };
 
 function ApprovalDetail({ parsed }: { parsed: ParsedApproval }) {
+  const copy = useMessages().composer.pendingApproval;
   if (parsed.fileName) {
     return (
       <div className="mt-2">
@@ -177,9 +179,7 @@ function ApprovalDetail({ parsed }: { parsed: ParsedApproval }) {
     );
   }
 
-  return (
-    <p className="mt-2 text-[12px] text-muted-foreground/65">Review the request to continue.</p>
-  );
+  return <p className="mt-2 text-[12px] text-muted-foreground/65">{copy.reviewToContinue}</p>;
 }
 
 /**

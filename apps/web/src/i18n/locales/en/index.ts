@@ -4,6 +4,7 @@
 import { automations } from "./automations";
 import { browser } from "./browser";
 import { chat } from "./chat";
+import { composer } from "./composer";
 import { diff } from "./diff";
 import { git } from "./git";
 import { pullRequests } from "./pullRequests";
@@ -16,6 +17,7 @@ export const en = {
   automations,
   browser,
   chat,
+  composer,
   diff,
   git,
   pullRequests,

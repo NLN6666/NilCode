@@ -52,6 +52,7 @@ import {
   COMPOSER_COMMAND_MENU_ITEM_CLASS_NAME,
   COMPOSER_COMMAND_MENU_SURFACE_CLASS_NAME,
 } from "./composerPickerStyles";
+import { useMessages } from "~/i18n/context";
 
 function humanizeProviderCommandName(command: string): string {
   return command
@@ -358,6 +359,7 @@ export function ComposerCommandMenu(props: {
   onHighlightedItemChange: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
 }) {
+  const composerCopy = useMessages().composer;
   const itemRefs = useRef<Record<string, HTMLElement | null>>({});
   const groups = groupCommandItems(
     props.items,
@@ -421,10 +423,10 @@ export function ComposerCommandMenu(props: {
                     "px-2 py-0 font-medium text-muted-foreground text-xs",
                   )}
                 >
-                  Files
+                  {composerCopy.commandMenu.files}
                 </p>
                 <p className="px-2 pt-0.5 text-[11px] text-muted-foreground/55">
-                  Type to search for files
+                  {composerCopy.commandMenu.filesHint}
                 </p>
               </div>
             </>
