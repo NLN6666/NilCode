@@ -8,6 +8,7 @@ import {
   AutomationProposalActions,
   automationProposalListQueryKey,
 } from "~/components/automation/AutomationProposalActions";
+import { useMessages } from "~/i18n/context";
 import { Button } from "~/components/ui/button";
 import { ClockIcon } from "~/lib/icons";
 import { ensureNativeApi } from "~/nativeApi";
@@ -31,6 +32,7 @@ export function AutomationCreatedCard({
   readonly metaFontSizePx?: number;
   readonly onOpen?: () => void;
 }) {
+  const copy = useMessages().automations;
   const [currentProposalState, setCurrentProposalState] = useState(proposalState);
   const proposalListQuery = useQuery({
     queryKey: automationProposalListQueryKey,
@@ -69,10 +71,10 @@ export function AutomationCreatedCard({
             className="truncate text-[var(--color-text-foreground-secondary)]"
             style={metaFontSizePx ? { fontSize: `${metaFontSizePx}px` } : undefined}
           >
-            {currentProposalState === "pending" ? "Suggested · " : ""}
+            {currentProposalState === "pending" ? copy.proposal.suggestedPrefix : ""}
             {cadenceLabel}
-            {currentProposalState === "accepted" ? " · Accepted" : ""}
-            {currentProposalState === "dismissed" ? " · Dismissed" : ""}
+            {currentProposalState === "accepted" ? copy.proposal.acceptedSuffix : ""}
+            {currentProposalState === "dismissed" ? copy.proposal.dismissedSuffix : ""}
           </p>
         ) : null}
       </div>
@@ -84,7 +86,7 @@ export function AutomationCreatedCard({
       ) : null}
       {onOpen && currentProposalState !== "pending" ? (
         <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={onOpen}>
-          Open
+          {copy.actions.open}
         </Button>
       ) : null}
     </div>

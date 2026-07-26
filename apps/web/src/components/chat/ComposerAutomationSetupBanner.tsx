@@ -6,23 +6,24 @@
 // Layer: Chat composer UI
 // Exports: ComposerAutomationSetupBanner
 
+import { useMessages } from "~/i18n/context";
+
 export const ComposerAutomationSetupBanner = function ComposerAutomationSetupBanner({
   onCancel,
 }: {
   onCancel: () => void;
 }) {
+  const copy = useMessages().automations.setupBanner;
   return (
     <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-4 sm:px-6 sm:pt-4.5 sm:pb-5">
-      <span className="text-[11px] font-semibold text-muted-foreground/50">
-        Setting up automation
-      </span>
+      <span className="text-[11px] font-semibold text-muted-foreground/50">{copy.title}</span>
       <button
         type="button"
-        aria-label="Cancel automation setup"
+        aria-label={copy.cancelLabel}
         onClick={onCancel}
         className="rounded-full border border-[color:var(--color-border-light)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-foreground-secondary)] transition-colors duration-150 hover:bg-[var(--color-background-button-secondary-hover)] hover:text-[var(--color-text-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-border)]"
       >
-        Cancel
+        {copy.cancel}
       </button>
     </div>
   );
