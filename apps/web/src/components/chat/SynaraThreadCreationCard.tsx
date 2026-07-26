@@ -10,6 +10,7 @@ import type { WorkLogSynaraThreadCreation } from "../../session-logic";
 import { ProviderIcon } from "../ProviderIcon";
 import { SynaraLogo } from "../SynaraLogo";
 import { Button } from "../ui/button";
+import { useMessages } from "~/i18n/context";
 
 function threadMeta(thread: WorkLogSynaraThreadCreation["threads"][number]): string {
   const model = formatModelDisplayName(thread.model) ?? thread.model;
@@ -24,6 +25,7 @@ export const SynaraThreadCreationCard = memo(function SynaraThreadCreationCard({
   readonly creation: WorkLogSynaraThreadCreation;
   readonly onOpenThread?: (threadId: string) => void;
 }) {
+  const copy = useMessages().chat.message;
   const singleThread = creation.threads.length === 1 ? creation.threads[0] : undefined;
   const title = singleThread ? "Thread created" : `${creation.createdCount} threads created`;
   const summary = singleThread
@@ -61,7 +63,7 @@ export const SynaraThreadCreationCard = memo(function SynaraThreadCreationCard({
             className="shrink-0"
             onClick={() => onOpenThread(singleThread.threadId)}
           >
-            Open thread
+            {copy.openThread}
           </Button>
         ) : null}
       </div>
@@ -90,7 +92,7 @@ export const SynaraThreadCreationCard = memo(function SynaraThreadCreationCard({
                   className="shrink-0"
                   onClick={() => onOpenThread(thread.threadId)}
                 >
-                  Open
+                  {copy.open}
                 </Button>
               ) : null}
             </div>

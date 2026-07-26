@@ -5,6 +5,7 @@
 import type { ReactNode } from "react";
 import { MessageCircleIcon, PencilIcon, TextWrapIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
+import { useMessages } from "~/i18n/context";
 
 interface TranscriptSelectionActionProps {
   left: number;
@@ -49,13 +50,14 @@ function TranscriptSelectionToolbarButton({
 }
 
 export function TranscriptSelectionAction(props: TranscriptSelectionActionProps) {
+  const copy = useMessages().chat.selection;
   return (
     <div
       data-transcript-selection-action="true"
       className="pointer-events-none fixed z-50"
       style={{ left: props.left, top: props.top }}
       role="toolbar"
-      aria-label="Selection actions"
+      aria-label={copy.label}
     >
       <div
         className={cn(
@@ -64,16 +66,16 @@ export function TranscriptSelectionAction(props: TranscriptSelectionActionProps)
         )}
       >
         {props.onHighlight ? (
-          <TranscriptSelectionToolbarButton label="Highlight" onClick={props.onHighlight}>
+          <TranscriptSelectionToolbarButton label={copy.highlight} onClick={props.onHighlight}>
             <PencilIcon className="size-3.5" />
           </TranscriptSelectionToolbarButton>
         ) : null}
         {props.onUnderline ? (
-          <TranscriptSelectionToolbarButton label="Underline" onClick={props.onUnderline}>
+          <TranscriptSelectionToolbarButton label={copy.underline} onClick={props.onUnderline}>
             <TextWrapIcon className="size-3.5" />
           </TranscriptSelectionToolbarButton>
         ) : null}
-        <TranscriptSelectionToolbarButton label="Add to chat" onClick={props.onAddToChat}>
+        <TranscriptSelectionToolbarButton label={copy.addToChat} onClick={props.onAddToChat}>
           <MessageCircleIcon className="size-3.5" />
         </TranscriptSelectionToolbarButton>
       </div>

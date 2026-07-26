@@ -15,6 +15,7 @@ import {
   EnvironmentRow,
   EnvironmentSectionLabel,
 } from "./EnvironmentRow";
+import { useMessages } from "~/i18n/context";
 
 export interface EnvironmentAutomationPanelItem {
   readonly definition: AutomationDefinition;
@@ -27,15 +28,16 @@ export function EnvironmentAutomationsSection({
   readonly automations: readonly EnvironmentAutomationPanelItem[];
   readonly onOpenAutomation: (definition: AutomationDefinition) => void;
 }) {
+  const copy = useMessages().chat.environment;
   if (automations.length === 0) {
     return null;
   }
 
   return (
     <div className="flex flex-col gap-0.5">
-      <EnvironmentSectionLabel>Automations</EnvironmentSectionLabel>
+      <EnvironmentSectionLabel>{copy.automations}</EnvironmentSectionLabel>
       {automations.map(({ definition }) => {
-        const cadence = definition.enabled ? formatCadence(definition.schedule) : "Paused";
+        const cadence = definition.enabled ? formatCadence(definition.schedule) : copy.paused;
         return (
           <EnvironmentRow
             key={definition.id}

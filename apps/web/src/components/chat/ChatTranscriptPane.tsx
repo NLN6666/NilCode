@@ -29,6 +29,7 @@ import { MessageTrail } from "./MessageTrail";
 import { createActiveTrailStore, deriveMessageTrailItems } from "./messageTrail.logic";
 import { AgentActivityDetailView } from "./AgentActivityDetailView";
 import type { AgentActivityDetail } from "./agentActivity.logic";
+import { useMessages } from "~/i18n/context";
 
 interface ChatTranscriptPaneProps {
   activeThreadId: string;
@@ -147,6 +148,7 @@ export function ChatTranscriptPane({
   workspaceRoot,
   worktreeSetup,
 }: ChatTranscriptPaneProps) {
+  const messageCopy = useMessages().chat.message;
   const scrollButtonFrameStyle: CSSProperties | undefined = contentInsetRightPx
     ? { paddingRight: contentInsetRightPx }
     : undefined;
@@ -266,7 +268,7 @@ export function ChatTranscriptPane({
               type="button"
               onClick={onScrollToBottom}
               data-scroll-anchor-ignore
-              aria-label="Scroll to bottom"
+              aria-label={messageCopy.scrollToBottom}
               aria-hidden={!scrollButtonVisible}
               tabIndex={scrollButtonVisible ? 0 : -1}
               className={cn(

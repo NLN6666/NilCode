@@ -7,6 +7,7 @@ import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { IconButton } from "../ui/icon-button";
 import { CircleAlertIcon, XIcon } from "~/lib/icons";
 import { ChatColumnBannerFrame } from "./ChatColumnBannerFrame";
+import { useMessages } from "~/i18n/context";
 
 export function ThreadErrorBanner({
   error,
@@ -15,6 +16,7 @@ export function ThreadErrorBanner({
   error: string | null;
   onDismiss?: () => void;
 }) {
+  const copy = useMessages().chat.message;
   if (!error) return null;
   return (
     <ChatColumnBannerFrame>
@@ -26,7 +28,7 @@ export function ThreadErrorBanner({
         {onDismiss && (
           <AlertAction>
             <IconButton
-              label="Dismiss error"
+              label={copy.dismissError}
               className="size-6 text-destructive/60 hover:text-destructive sm:size-6"
               onClick={onDismiss}
             >

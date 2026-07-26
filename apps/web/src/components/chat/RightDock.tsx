@@ -48,6 +48,7 @@ import {
   resolveRightDockPaneLabel,
 } from "./rightDockPaneMeta";
 import { useDesktopTopBarWindowControlsGutterClassName } from "~/hooks/useDesktopTopBarGutter";
+import { useMessages } from "~/i18n/context";
 
 // Shared sizing defaults for dock hosts: the resize floor for a single readable pane and the
 // "half the shell, but never cramped" opening width. The thread route tunes its own values
@@ -141,6 +142,7 @@ function useKeepMountedPaneIds(
 }
 
 export function RightDock(props: RightDockProps) {
+  const paneCopy = useMessages().chat.panes;
   const activePane = resolveActivePane(props.state);
   const onSelectPane = props.onSelectPane;
   const activePaneRuntimeMode = props.activePaneRuntimeMode ?? "live";
@@ -257,8 +259,8 @@ export function RightDock(props: RightDockProps) {
                     <Button
                       variant="chrome"
                       size="icon-xs"
-                      aria-label="Add panel"
-                      title="Add panel"
+                      aria-label={paneCopy.addPanel}
+                      title={paneCopy.addPanel}
                       className={DOCK_HEADER_ICON_BUTTON_CLASS}
                     />
                   }
@@ -281,8 +283,8 @@ export function RightDock(props: RightDockProps) {
             <IconButton
               variant="chrome"
               size="icon-xs"
-              label="Collapse panel"
-              tooltip="Collapse panel"
+              label={paneCopy.collapsePanel}
+              tooltip={paneCopy.collapsePanel}
               tooltipSide="bottom"
               className={DOCK_HEADER_ICON_BUTTON_CLASS}
               onClick={props.onCollapse}

@@ -13,6 +13,7 @@ import {
 import { CircleAlertIcon, TriangleAlertIcon, XIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { ChatColumnBannerFrame } from "./ChatColumnBannerFrame";
+import { useMessages } from "~/i18n/context";
 
 export const ProviderHealthBanner = function ProviderHealthBanner({
   onDismiss,
@@ -21,6 +22,7 @@ export const ProviderHealthBanner = function ProviderHealthBanner({
   onDismiss?: () => void;
   status: ServerProviderStatus | null;
 }) {
+  const copy = useMessages().chat.message;
   if (!status || status.status === "ready") {
     return null;
   }
@@ -51,8 +53,8 @@ export const ProviderHealthBanner = function ProviderHealthBanner({
           <AlertAction className="absolute top-2 right-2">
             <IconButton
               className="size-6 rounded-full text-[var(--notification-fg)]/65 hover:bg-[var(--notification-fg)]/10 hover:text-[var(--notification-fg)] focus-visible:ring-[var(--notification-fg)]/35 sm:size-6"
-              label="Dismiss provider status"
-              title="Dismiss provider status"
+              label={copy.dismissProviderStatus}
+              title={copy.dismissProviderStatus}
               onClick={onDismiss}
             >
               <XIcon className="size-3.5" />

@@ -38,6 +38,7 @@ import {
   type TickStyle,
   type TrailGeometry,
 } from "./messageTrail.logic";
+import { useMessages } from "~/i18n/context";
 
 interface MessageTrailProps {
   items: readonly MessageTrailItem[];
@@ -79,6 +80,7 @@ const TOOLTIP_ESTIMATED_H_PX = 56;
 const TOOLTIP_OFFSET_X_PX = 8;
 
 export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps) {
+  const copy = useMessages().chat.message;
   const rootRef = useRef<HTMLElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -523,7 +525,7 @@ export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps
   return (
     <nav
       ref={rootRef}
-      aria-label="Message navigation"
+      aria-label={copy.navigation}
       aria-hidden={!visible}
       onKeyDown={handleKeyDown}
       onBlur={handleRailBlur}

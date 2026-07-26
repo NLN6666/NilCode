@@ -154,6 +154,115 @@ export const chat = {
     askWhyChanged: "Ask why this changed",
   },
 
+  /** Chat environment side panel and its collapsible sections. */
+  environment: {
+    title: "Environment",
+    toggle: "Toggle environment panel",
+    panelSections: "Panel sections",
+    recap: "Recap",
+    changes: "Changes",
+    repository: "Repository",
+    editor: "Editor",
+    editorView: "Editor view",
+    notepad: "Notepad",
+    notepadPlaceholder: "Type here",
+    projectInstructions: "Project instructions",
+    projectInstructionsPlaceholder: "Architecture notes, conventions, repo links",
+    markers: "Markers",
+    pinned: "Pinned",
+    output: "Output",
+    usage: "Usage",
+    automations: "Automations",
+    paused: "Paused",
+    localServers: "Local Servers",
+    refreshLocalServers: "Refresh local servers",
+    refresh: "Refresh",
+    scanningPorts: "Scanning local ports",
+    scanFailed: "Couldn't scan local ports",
+    noServers: "No servers running",
+    noServersHint: "Local dev servers will appear here.",
+  },
+
+  /** Message-level affordances in the transcript. */
+  message: {
+    copy: "Copy message",
+    copyTooltip: "Copy to clipboard",
+    scrollToBottom: "Scroll to bottom",
+    navigation: "Message navigation",
+    showInTextField: "Show in text field",
+    sentFromAnotherThread: "Sent by Synara from another thread",
+    openSourceThread: "Open source thread",
+    dismissError: "Dismiss error",
+    dismissProviderStatus: "Dismiss provider status",
+    dismissRateLimitStatus: "Dismiss rate limit status",
+    openThread: "Open thread",
+    open: "Open",
+  },
+
+  /** Floating toolbar shown over a transcript text selection. */
+  selection: {
+    label: "Selection actions",
+    highlight: "Highlight",
+    underline: "Underline",
+    addToChat: "Add to chat",
+  },
+
+  /** Expanded image lightbox and generated-image affordances. */
+  image: {
+    preview: "Expanded image preview",
+    close: "Close image preview",
+    previous: "Previous image",
+    next: "Next image",
+    expand: "Expand",
+    expandGenerated: "Expand generated image",
+    download: "Download",
+    downloadGenerated: "Download generated image",
+  },
+
+  /** Inline "comment on this line" box in the file viewer. */
+  lineComment: {
+    localComment: "Local comment",
+    commentOn: (line: string) => `Comment on ${line}`,
+    placeholder: "Request change",
+    cancel: "Cancel",
+    submit: "Comment",
+  },
+
+  tasks: {
+    completed: (done: number, total: number) => `${done} out of ${total} tasks completed`,
+    openSidebar: "Open tasks sidebar",
+  },
+
+  openIn: {
+    group: "Open in editor",
+    open: "Open",
+    options: "Editor options",
+    noEditors: "No installed editors found",
+  },
+
+  hydration: {
+    loading: "Loading conversation",
+    failed: "This conversation didn't load.",
+    retry: "Try again",
+  },
+
+  modelPicker: {
+    loading: "Loading models",
+    comingSoon: "Coming soon",
+    change: "Change model",
+  },
+
+  emptyState: {
+    logo: "Synara logo",
+    letsBuild: "Let's build",
+  },
+
+  plan: {
+    badge: "Plan",
+    downloadToPlanFolder: "Download to .plan folder",
+    exportMarkdown: "Export markdown file",
+  },
+
   header: {
     chatHistory: "Chat history",
     noChatsInProject: "No chats in this project yet",

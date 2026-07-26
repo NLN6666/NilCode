@@ -141,6 +141,110 @@ export const chat: Chat = {
     askWhyChanged: "询问为什么改动",
   },
 
+  environment: {
+    title: "环境",
+    toggle: "切换环境面板",
+    panelSections: "面板分区",
+    recap: "回顾",
+    changes: "改动",
+    repository: "仓库",
+    editor: "编辑器",
+    editorView: "编辑器视图",
+    notepad: "记事本",
+    notepadPlaceholder: "在这里输入",
+    projectInstructions: "项目说明",
+    projectInstructionsPlaceholder: "架构笔记、约定、仓库链接",
+    markers: "标记",
+    pinned: "已置顶",
+    output: "输出",
+    usage: "用量",
+    automations: "自动化",
+    paused: "已暂停",
+    localServers: "本地服务",
+    refreshLocalServers: "刷新本地服务",
+    refresh: "刷新",
+    scanningPorts: "正在扫描本地端口",
+    scanFailed: "无法扫描本地端口",
+    noServers: "没有运行中的服务",
+    noServersHint: "本地开发服务会显示在这里。",
+  },
+
+  message: {
+    copy: "复制消息",
+    copyTooltip: "复制到剪贴板",
+    scrollToBottom: "滚动到底部",
+    navigation: "消息导航",
+    showInTextField: "在输入框中显示",
+    sentFromAnotherThread: "由 Synara 从另一个会话发出",
+    openSourceThread: "打开来源会话",
+    dismissError: "忽略错误",
+    dismissProviderStatus: "忽略提供商状态",
+    dismissRateLimitStatus: "忽略速率限制提示",
+    openThread: "打开会话",
+    open: "打开",
+  },
+
+  selection: {
+    label: "选区操作",
+    highlight: "高亮",
+    underline: "下划线",
+    addToChat: "添加到对话",
+  },
+
+  image: {
+    preview: "放大的图片预览",
+    close: "关闭图片预览",
+    previous: "上一张图片",
+    next: "下一张图片",
+    expand: "放大",
+    expandGenerated: "放大生成的图片",
+    download: "下载",
+    downloadGenerated: "下载生成的图片",
+  },
+
+  lineComment: {
+    localComment: "本地批注",
+    commentOn: (line) => `批注 ${line}`,
+    placeholder: "提出修改建议",
+    cancel: "取消",
+    submit: "提交批注",
+  },
+
+  tasks: {
+    completed: (done, total) => `已完成 ${done} / ${total} 项任务`,
+    openSidebar: "打开任务侧边栏",
+  },
+
+  openIn: {
+    group: "在编辑器中打开",
+    open: "打开",
+    options: "编辑器选项",
+    noEditors: "没有找到已安装的编辑器",
+  },
+
+  hydration: {
+    loading: "正在加载对话",
+    failed: "这个对话没能加载出来。",
+    retry: "重试",
+  },
+
+  modelPicker: {
+    loading: "正在加载模型",
+    comingSoon: "即将推出",
+    change: "更换模型",
+  },
+
+  emptyState: {
+    logo: "Synara 标志",
+    letsBuild: "开始构建",
+  },
+
+  plan: {
+    badge: "计划",
+    downloadToPlanFolder: "下载到 .plan 目录",
+    exportMarkdown: "导出 Markdown 文件",
+  },
+
   header: {
     chatHistory: "对话历史",
     noChatsInProject: "此项目还没有对话",

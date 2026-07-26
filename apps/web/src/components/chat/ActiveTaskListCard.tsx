@@ -27,6 +27,7 @@ import {
   COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME,
   COMPOSER_STACKED_PANEL_ICON_CLASS_NAME,
 } from "./composerStackedPanelStyles";
+import { useMessages } from "~/i18n/context";
 
 interface ActiveTaskListCardProps {
   activeTaskList: ActiveTaskListState;
@@ -54,6 +55,7 @@ export function ActiveTaskListCard({
   onCompactChange,
   onOpenSidebar,
 }: ActiveTaskListCardProps) {
+  const copy = useMessages().chat.tasks;
   const totalCount = activeTaskList.tasks.length;
   const completedCount = activeTaskList.tasks.filter((task) => task.status === "completed").length;
   const hasInProgressTask = activeTaskList.tasks.some((task) => task.status === "inProgress");
@@ -69,7 +71,7 @@ export function ActiveTaskListCard({
             <PiSlidersHorizontal className={COMPOSER_STACKED_PANEL_ICON_CLASS_NAME} />
           )}
           <ComposerStackedPanelRowLabel tone="meta">
-            {completedCount} out of {totalCount} tasks completed
+            {copy.completed(completedCount, totalCount)}
           </ComposerStackedPanelRowLabel>
         </ComposerStackedPanelRowMain>
         <div className="flex shrink-0 items-center gap-0.5">
@@ -79,8 +81,8 @@ export function ActiveTaskListCard({
             size="icon-xs"
             className={COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME}
             onClick={onOpenSidebar}
-            aria-label="Open tasks sidebar"
-            title="Open tasks sidebar"
+            aria-label={copy.openSidebar}
+            title={copy.openSidebar}
           >
             <PiSidebarSimple className="size-3" />
           </Button>

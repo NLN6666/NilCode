@@ -64,6 +64,7 @@ import {
   EnvironmentRow,
   EnvironmentSectionDivider,
 } from "./EnvironmentRow";
+import { useMessages } from "~/i18n/context";
 
 // Horizontal space (px) the docked card reserves on the right edge of the chat area.
 // Mirrors the card footprint — w-72 (288px) plus the p-3 wrapper gutters — so insetting
@@ -181,8 +182,9 @@ function EnvironmentRecapSection({
   recap: NonNullable<EnvironmentPanelProps["recap"]>;
   markdownCwd: string | undefined;
 }) {
+  const recapCopy = useMessages().chat.environment;
   return (
-    <EnvironmentCollapsibleSection label="Recap">
+    <EnvironmentCollapsibleSection label={recapCopy.recap}>
       <div className="flex flex-col gap-1.5 pb-1.5">
         {recap.text ? (
           <div className="px-2">
@@ -251,6 +253,7 @@ export function EnvironmentPanel({
   onClose,
   onRegisterCommitAndPushTrigger,
 }: EnvironmentPanelProps) {
+  const copy = useMessages().chat.environment;
   const navigate = useNavigate();
   const { settings } = useAppSettings();
   const { additions, deletions, hasChanges } = diffTotals;
@@ -282,15 +285,15 @@ export function EnvironmentPanel({
       ) : null}
 
       <div className="flex items-center justify-between gap-2 px-2 pb-0.5 pt-0.5">
-        <EnvironmentPanelTitle>Environment</EnvironmentPanelTitle>
+        <EnvironmentPanelTitle>{copy.title}</EnvironmentPanelTitle>
         {/*
           icon-xs centers the 14px gear inside a 28/24px box, insetting it ~7/5px from the
           content edge; pull it back so the glyph's right edge lines up with the rows' chevrons
           (which sit flush against the same px-2 gutter).
         */}
         <IconButton
-          label="Panel sections"
-          tooltip="Panel sections"
+          label={copy.panelSections}
+          tooltip={copy.panelSections}
           className="-mr-[7px] sm:-mr-[5px]"
           onClick={() =>
             void navigate({
@@ -340,7 +343,7 @@ export function EnvironmentPanel({
       {isGitRepo ? (
         <EnvironmentRow
           icon={<ChangesIcon className={ENVIRONMENT_ROW_ICON_CLASS_NAME} aria-hidden />}
-          label="Changes"
+          label={copy.changes}
           trailing={
             hasChanges ? (
               <>
@@ -378,7 +381,7 @@ export function EnvironmentPanel({
       {settings.showEnvironmentUsage ? <EnvironmentUsageSection provider={activeProvider} /> : null}
 
       {settings.showEnvironmentRepository && githubRepository && onOpenGithubRepository ? (
-        <EnvironmentLabeledSection label="Repository">
+        <EnvironmentLabeledSection label={copy.repository}>
           <EnvironmentRow
             icon={<GitHubIcon className={ENVIRONMENT_ROW_ICON_CLASS_NAME} aria-hidden />}
             label={<span className="truncate">{githubRepository.nameWithOwner}</span>}

@@ -20,6 +20,7 @@ import {
   EnvironmentLabeledSection,
   EnvironmentRowChevron,
 } from "./EnvironmentRow";
+import { useMessages } from "~/i18n/context";
 
 export function EnvironmentEditorSection({
   keybindings,
@@ -33,6 +34,7 @@ export function EnvironmentEditorSection({
   /** Open the in-app editor workspace view; omitted on surfaces that can't host it. */
   onOpenEditorView?: () => void;
 }) {
+  const copy = useMessages().chat.environment;
   const {
     options,
     preferredEditor,
@@ -56,11 +58,11 @@ export function EnvironmentEditorSection({
   const ActiveIcon = activeOption?.Icon;
 
   return (
-    <EnvironmentLabeledSection label="Editor">
+    <EnvironmentLabeledSection label={copy.editor}>
       {onOpenEditorView ? (
         <EnvironmentRow
           icon={<LayoutSidebarIcon aria-hidden className={ENVIRONMENT_ROW_ICON_CLASS_NAME} />}
-          label="Editor view"
+          label={copy.editorView}
           onClick={onOpenEditorView}
         />
       ) : null}

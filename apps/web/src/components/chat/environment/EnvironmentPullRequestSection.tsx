@@ -301,7 +301,7 @@ export function EnvironmentPullRequestSection({
             <span className="truncate">{`#${displayPr.number} ${displayPr.title}`}</span>
             {displayPr.isDraft ? (
               <span className="shrink-0 rounded-full bg-[var(--color-background-elevated-secondary)] px-1.5 py-px text-[length:var(--app-font-size-ui-xs,10px)] text-muted-foreground">
-                Draft
+                {copy.status.draft}
               </span>
             ) : null}
           </span>

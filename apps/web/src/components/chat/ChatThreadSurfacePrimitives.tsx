@@ -14,6 +14,7 @@ import type { SplitViewPanePanelState } from "../../splitViewStore";
 import { CHAT_SURFACE_HEADER_ROW_CLASS_NAME } from "./chatHeaderControls";
 import { CHAT_BACKGROUND_CLASS_NAME } from "./composerPickerStyles";
 import { cn } from "~/lib/utils";
+import { useMessages } from "~/i18n/context";
 
 const DiffPanel = lazy(() => import("../DiffPanel"));
 export const LazyBrowserPanel = lazy(() => import("../BrowserPanel"));
@@ -21,12 +22,13 @@ export const LazyBrowserPanel = lazy(() => import("../BrowserPanel"));
 export const noopChatSurfaceAction = () => {};
 
 function DiffLoadingFallback(props: { mode: DiffPanelMode; hideHeader?: boolean }) {
+  const copy = useMessages().chat.panes;
   return (
     <DiffPanelShell
       mode={props.mode}
       header={props.hideHeader ? null : <DiffPanelHeaderSkeleton />}
     >
-      <DiffPanelLoadingState label="Loading diff viewer..." />
+      <DiffPanelLoadingState label={copy.loadingDiffViewer} />
     </DiffPanelShell>
   );
 }

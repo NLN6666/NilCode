@@ -9,6 +9,7 @@ import { displayLabelFor } from "~/pinnedMessages";
 
 import { EnvironmentEditableChecklistRow } from "./EnvironmentEditableChecklistRow";
 import { EnvironmentCollapsibleSection } from "./EnvironmentRow";
+import { useMessages } from "~/i18n/context";
 
 interface EnvironmentPinnedSectionProps {
   pins: readonly PinnedMessage[];
@@ -28,11 +29,12 @@ export function EnvironmentPinnedSection({
   onUnpin,
   onRename,
 }: EnvironmentPinnedSectionProps) {
+  const copy = useMessages().chat.environment;
   if (pins.length === 0) {
     return null;
   }
   return (
-    <EnvironmentCollapsibleSection label="Pinned">
+    <EnvironmentCollapsibleSection label={copy.pinned}>
       <ul className="flex flex-col">
         {pins.map((pin) => (
           <PinnedMessageRow

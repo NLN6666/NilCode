@@ -11,6 +11,7 @@ import { Button } from "~/components/ui/button";
 import { CopyIcon } from "~/lib/icons";
 
 import { EnvironmentCollapsibleSection } from "./EnvironmentRow";
+import { useMessages } from "~/i18n/context";
 
 const PROJECT_INSTRUCTIONS_AUTOSAVE_DEBOUNCE_MS = 500;
 
@@ -143,6 +144,7 @@ export function EnvironmentProjectInstructionsSection({
   onInstructionsChange: (projectId: ProjectId, instructions: string) => void;
   onCopyToThreadNotes: () => void;
 }) {
+  const copy = useMessages().chat.environment;
   const autosave = useProjectInstructionsAutosave({
     projectId,
     instructions,
@@ -152,7 +154,7 @@ export function EnvironmentProjectInstructionsSection({
   const copyLabel = threadNotes.trim().length === 0 ? "Copy to notepad" : "Append to notepad";
 
   return (
-    <EnvironmentCollapsibleSection label="Project instructions" defaultOpen={hasInstructions}>
+    <EnvironmentCollapsibleSection label={copy.projectInstructions} defaultOpen={hasInstructions}>
       <div className="flex flex-col gap-2 px-2 pb-1">
         <Textarea
           unstyled
@@ -161,7 +163,7 @@ export function EnvironmentProjectInstructionsSection({
           onChange={autosave.onChange}
           onFocus={autosave.onFocus}
           onBlur={autosave.onBlur}
-          placeholder="Architecture notes, conventions, repo links"
+          placeholder={copy.projectInstructionsPlaceholder}
           maxLength={THREAD_NOTES_MAX_CHARS}
           disabled={!projectId}
         />
