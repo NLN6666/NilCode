@@ -16,6 +16,8 @@ import { Dialog, DialogHeader, DialogPopup, DialogTitle } from "./ui/dialog";
 import { Spinner } from "./ui/spinner";
 import { Textarea } from "./ui/textarea";
 import { toastManager } from "./ui/toast";
+import { useMessages } from "~/i18n/context";
+import { dialogs as defaultDialogCopy } from "~/i18n/locales/en/dialogs";
 
 export interface FeedbackDialogProps {
   open: boolean;
@@ -24,6 +26,7 @@ export interface FeedbackDialogProps {
 }
 
 export function FeedbackDialog({ open, context, onOpenChange }: FeedbackDialogProps) {
+  const copy = useMessages().dialogs.feedback;
   const [isSending, setIsSending] = useState(false);
 
   const handleSubmit = async (category: FeedbackCategory | null, details: string) => {
@@ -34,16 +37,15 @@ export function FeedbackDialog({ open, context, onOpenChange }: FeedbackDialogPr
       onOpenChange(false);
       toastManager.add({
         type: "success",
-        title: "Feedback sent",
-        description: "Thanks for helping make Synara better.",
+        title: defaultDialogCopy.feedback.sent,
+        description: defaultDialogCopy.feedback.sentHint,
       });
     } catch (error) {
       setIsSending(false);
       toastManager.add({
         type: "error",
-        title: "Could not send feedback",
-        description:
-          error instanceof Error ? error.message : "An unexpected delivery error occurred.",
+        title: defaultDialogCopy.feedback.failed,
+        description: error instanceof Error ? error.message : defaultDialogCopy.feedback.failedHint,
       });
     }
   };
@@ -57,7 +59,7 @@ export function FeedbackDialog({ open, context, onOpenChange }: FeedbackDialogPr
     >
       <DialogPopup className="max-w-xl" showCloseButton={!isSending}>
         <DialogHeader className="gap-0 px-5 pt-5 pb-3">
-          <DialogTitle className="text-xl tracking-[-0.01em]">Share feedback</DialogTitle>
+          <DialogTitle className="text-xl tracking-[-0.01em]">{copy.title}</DialogTitle>
         </DialogHeader>
         {/* The form state lives below DialogPopup, which unmounts its children
             once the close transition ends — every open starts from a blank
@@ -75,6 +77,7 @@ function FeedbackDialogForm({
   isSending: boolean;
   onSubmit: (category: FeedbackCategory | null, details: string) => Promise<void>;
 }) {
+  const formCopy = useMessages().dialogs.feedback;
   const [category, setCategory] = useState<FeedbackCategory | null>(null);
   const [details, setDetails] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -99,7 +102,7 @@ function FeedbackDialogForm({
         void handleSubmit();
       }}
     >
-      <div className="flex flex-wrap gap-1.5" aria-label="Feedback category">
+      <div className="flex flex-wrap gap-1.5" aria-label={formCopy.category}>
         {FEEDBACK_CATEGORIES.map((option) => {
           const selected = category === option.value;
           return (
@@ -129,26 +132,23 @@ function FeedbackDialogForm({
         ref={textareaRef}
         value={details}
         maxLength={5_000}
-        placeholder="Share details (required)"
-        aria-label="Feedback details"
+        placeholder={formCopy.detailsPlaceholder}
+        aria-label={formCopy.detailsLabel}
         disabled={isSending}
         className="[&_[data-slot=textarea]]:min-h-32 [&_[data-slot=textarea]]:resize-y"
         onChange={(event) => setDetails(event.target.value)}
       />
 
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Diagnostics include app version, OS, provider/model, modes, and session state — never
-        prompts, messages, paths, or logs.
-      </p>
+      <p className="text-xs leading-relaxed text-muted-foreground">{formCopy.diagnosticsHint}</p>
 
       <Button type="submit" className="w-full" disabled={!canSubmit}>
         {isSending ? (
           <>
             <Spinner />
-            Sending…
+            {formCopy.sending}
           </>
         ) : (
-          "Submit"
+          formCopy.submit
         )}
       </Button>
     </form>

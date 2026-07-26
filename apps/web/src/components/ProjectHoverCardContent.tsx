@@ -16,6 +16,7 @@ import {
   SIDEBAR_HOVER_CARD_CONTAINER_PADDING_CLASS_NAME,
   SIDEBAR_HOVER_CARD_ROW_CLASS_NAME,
 } from "./sidebarHoverCardStyles";
+import { useMessages } from "~/i18n/context";
 
 export type ProjectHoverCardContentProps = {
   name: string;
@@ -49,6 +50,7 @@ export function ProjectHoverCardContent({
   onTogglePin,
   onEditProject,
 }: ProjectHoverCardContentProps) {
+  const copy = useMessages().dialogs.projectHoverCard;
   return (
     <div
       className={cn("flex w-full flex-col gap-0", SIDEBAR_HOVER_CARD_CONTAINER_PADDING_CLASS_NAME)}
@@ -88,7 +90,7 @@ export function ProjectHoverCardContent({
         )}
       >
         <SettingsIcon className={ICON_CLASS_NAME} aria-hidden />
-        <span className="min-w-0 truncate">Edit project</span>
+        <span className="min-w-0 truncate">{copy.editProject}</span>
       </button>
     </div>
   );

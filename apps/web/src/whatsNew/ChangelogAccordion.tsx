@@ -15,6 +15,7 @@ import { cn } from "~/lib/utils";
 
 import { FeatureSection } from "./FeatureSection";
 import type { WhatsNewEntry } from "./logic";
+import { useMessages } from "~/i18n/context";
 
 export interface ChangelogAccordionProps {
   readonly entries: readonly WhatsNewEntry[];
@@ -33,12 +34,9 @@ export function ChangelogAccordion({
   defaultExpandedVersion = null,
   className,
 }: ChangelogAccordionProps) {
+  const copy = useMessages().dialogs.whatsNew;
   if (entries.length === 0) {
-    return (
-      <p className={cn("text-xs text-muted-foreground", className)}>
-        No release notes yet — check back after the next update.
-      </p>
-    );
+    return <p className={cn("text-xs text-muted-foreground", className)}>{copy.noReleaseNotes}</p>;
   }
 
   return (
@@ -64,6 +62,7 @@ function ChangelogAccordionRow({
   readonly defaultOpen: boolean;
   readonly isLast: boolean;
 }) {
+  const rowCopy = useMessages().dialogs.whatsNew;
   const [open, setOpen] = useState(defaultOpen);
 
   const featureCount = entry.features.length;
@@ -76,7 +75,9 @@ function ChangelogAccordionRow({
           <DisclosureChevron open={open} />
           <span className="flex flex-1 items-baseline gap-2">
             <span className="text-xs text-muted-foreground">{entry.date}</span>
-            <span className="text-sm font-semibold text-foreground">Version {entry.version}</span>
+            <span className="text-sm font-semibold text-foreground">
+              {rowCopy.version(entry.version)}
+            </span>
             <span className="text-xs text-muted-foreground/70">({featureLabel})</span>
           </span>
         </CollapsibleTrigger>

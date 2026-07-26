@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Input } from "./ui/input";
+import { useMessages } from "~/i18n/context";
 
 interface ThreadWorktreeHandoffDialogProps {
   open: boolean;
@@ -28,6 +29,7 @@ export function ThreadWorktreeHandoffDialog({
   onOpenChange,
   onConfirm,
 }: ThreadWorktreeHandoffDialogProps) {
+  const copy = useMessages().dialogs.worktreeHandoff;
   const worktreeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -60,10 +62,8 @@ export function ThreadWorktreeHandoffDialog({
     >
       <DialogPopup className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Hand off to worktree</DialogTitle>
-          <DialogDescription>
-            Create a detached worktree from the current branch to continue working in parallel.
-          </DialogDescription>
+          <DialogTitle>{copy.title}</DialogTitle>
+          <DialogDescription>{copy.description}</DialogDescription>
         </DialogHeader>
         <DialogPanel>
           <form
@@ -73,7 +73,7 @@ export function ThreadWorktreeHandoffDialog({
             }}
           >
             <label className="grid gap-1.5">
-              <span className="text-xs font-medium text-foreground">Worktree name</span>
+              <span className="text-xs font-medium text-foreground">{copy.nameLabel}</span>
               <Input
                 ref={worktreeInputRef}
                 value={worktreeName}
@@ -85,17 +85,17 @@ export function ThreadWorktreeHandoffDialog({
                     onOpenChange(false);
                   }
                 }}
-                placeholder="synara/feature-name"
+                placeholder={copy.namePlaceholder}
               />
             </label>
           </form>
         </DialogPanel>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={busy}>
-            Cancel
+            {copy.cancel}
           </Button>
           <Button size="sm" onClick={handleSubmit} disabled={!canSubmit}>
-            {busy ? "Handing off..." : "Hand off"}
+            {busy ? copy.handingOff : copy.handOff}
           </Button>
         </DialogFooter>
       </DialogPopup>

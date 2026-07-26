@@ -36,6 +36,8 @@ import { ComposerPickerSelectPopup } from "./chat/ComposerPickerMenuPopup";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/input-group";
 import { Select, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { CentralIcon } from "~/lib/central-icons";
+import { useMessages } from "~/i18n/context";
+import { dialogs as defaultDialogCopy } from "~/i18n/locales/en/dialogs";
 
 // Inputs share one fixed height + radius so every control in the dialog reads
 // as the same size (mirrors EditProfileDialog's field styling).
@@ -52,11 +54,11 @@ function resolveDroppedFolder(dataTransfer: DataTransfer): DroppedFolderResult |
   const file = item?.getAsFile() ?? dataTransfer.files[0] ?? null;
   if (!item || !file) return null;
   if (!isDroppedComposerDirectory(item)) {
-    return { error: "Drop a folder, not a file." };
+    return { error: defaultDialogCopy.createProject.dropFolderNotFile };
   }
   const absolutePath = resolveDroppedFileAbsolutePath(file);
   if (!absolutePath) {
-    return { error: "Could not read the folder's path. Use browse or type it instead." };
+    return { error: defaultDialogCopy.createProject.pathUnreadable };
   }
   return { path: absolutePath };
 }
@@ -76,6 +78,7 @@ export function CreateProjectDialog(props: {
   onOpenChange: (open: boolean) => void;
   onSubmit: (value: CreateProjectSubmitValue) => Promise<void>;
 }) {
+  const copy = useMessages().dialogs.createProject;
   const [path, setPath] = useState("");
   /**
    * The last path delivered verbatim by the native picker or an OS drop. Those
@@ -145,7 +148,7 @@ export function CreateProjectDialog(props: {
     if (isPickingFolder || submitting) return;
     const api = readNativeApi();
     if (!api) {
-      setFormError("The app server is unavailable.");
+      setFormError(copy.serverUnavailable);
       return;
     }
     setIsPickingFolder(true);
@@ -154,7 +157,7 @@ export function CreateProjectDialog(props: {
       const picked = await api.dialogs.pickFolder();
       if (picked) applyPickedFolder(picked);
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Unable to open the folder picker.");
+      setFormError(error instanceof Error ? error.message : copy.pickerFailed);
     }
     setIsPickingFolder(false);
   };
@@ -211,7 +214,7 @@ export function CreateProjectDialog(props: {
     // The confirm button stays enabled (and white) like the reference dialog;
     // an empty submit explains what is missing instead of being unclickable.
     if (trimmedPath.length === 0) {
-      setFormError("Type a folder path, or drop a folder above.");
+      setFormError(copy.typePathHint);
       return;
     }
     setSubmitting(true);
@@ -224,9 +227,7 @@ export function CreateProjectDialog(props: {
       });
       props.onOpenChange(false);
     } catch (error) {
-      setFormError(
-        error instanceof Error ? error.message : "An error occurred while adding the project.",
-      );
+      setFormError(error instanceof Error ? error.message : copy.addFailed);
       setSubmitting(false);
     }
   };
@@ -241,7 +242,7 @@ export function CreateProjectDialog(props: {
   // as the destination, so one Create click ships the project into it.
   const handleCreateSpace = async (value: SpaceEditorValue) => {
     const api = readNativeApi();
-    if (!api) throw new Error("The app server is unavailable.");
+    if (!api) throw new Error(copy.serverUnavailable);
     const { spaceId } = await createSpace({ api, name: value.name, icon: value.icon });
     const createdAt = new Date().toISOString();
     setCreatedSpace({
@@ -267,7 +268,7 @@ export function CreateProjectDialog(props: {
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogPopup>
         <DialogHeader className="px-5 pt-5">
-          <DialogTitle>Create project</DialogTitle>
+          <DialogTitle>{copy.title}</DialogTitle>
         </DialogHeader>
         <DialogPanel className="space-y-4 px-5">
           <InputGroup className={cn(fieldControlClassName, "mt-4")}>
@@ -277,10 +278,10 @@ export function CreateProjectDialog(props: {
             <InputGroupInput
               id={pathInputId}
               value={path}
-              aria-label="Project folder path"
+              aria-label={copy.pathLabel}
               aria-invalid={formError ? true : undefined}
               {...(formError ? { "aria-describedby": errorId } : {})}
-              placeholder="/path/to/project"
+              placeholder={copy.pathPlaceholder}
               spellCheck={false}
               autoCorrect="off"
               autoCapitalize="off"
@@ -302,7 +303,7 @@ export function CreateProjectDialog(props: {
                   "text-[length:var(--app-font-size-ui,12px)] text-foreground",
                 )}
               >
-                Source folder
+                {copy.sourceFolder}
               </span>
               <button
                 type="button"
@@ -317,7 +318,7 @@ export function CreateProjectDialog(props: {
               >
                 <CentralIcon name="folder-add-left" className="size-4.5" aria-hidden="true" />
                 {isPickingFolder ? (
-                  "Opening the folder picker…"
+                  copy.openingPicker
                 ) : pickedFolderName ? (
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate">{pickedFolderName}</span>
@@ -326,7 +327,7 @@ export function CreateProjectDialog(props: {
                     </span>
                   </span>
                 ) : (
-                  "Drop a folder here, or browse"
+                  copy.dropHere
                 )}
               </button>
             </div>
@@ -341,7 +342,7 @@ export function CreateProjectDialog(props: {
                 "text-[length:var(--app-font-size-ui,12px)] text-foreground",
               )}
             >
-              Space
+              {copy.space}
             </span>
             <div className="flex items-center gap-2">
               <Select
@@ -384,7 +385,7 @@ export function CreateProjectDialog(props: {
               <Button
                 variant="outline"
                 size="icon"
-                aria-label="New space"
+                aria-label={copy.newSpace}
                 disabled={submitting}
                 className={cn(fieldControlClassName, "w-9 shrink-0 sm:h-9")}
                 onClick={() => setSpaceEditorOpen(true)}
@@ -415,7 +416,7 @@ export function CreateProjectDialog(props: {
             onClick={() => props.onOpenChange(false)}
             disabled={submitting}
           >
-            Cancel
+            {copy.cancel}
           </Button>
           <Button
             id={submitButtonId}
@@ -424,7 +425,7 @@ export function CreateProjectDialog(props: {
             onClick={() => void submit()}
             disabled={submitting}
           >
-            {submitting ? "Creating…" : "Create project"}
+            {submitting ? copy.creating : copy.submit}
           </Button>
         </DialogFooter>
         <SpaceEditorDialog

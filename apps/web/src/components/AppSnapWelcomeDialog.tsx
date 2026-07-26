@@ -26,6 +26,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "./ui/dialog";
+import { useMessages } from "~/i18n/context";
 
 const APP_SNAP_WELCOME_STORAGE_KEY = "synara:appsnap-welcome:v1";
 
@@ -37,6 +38,7 @@ type AppSnapWelcomeStorage = typeof AppSnapWelcomeStorageSchema.Type;
 const INITIAL_STORAGE: AppSnapWelcomeStorage = { acknowledged: false };
 
 export function AppSnapWelcomeDialog() {
+  const copy = useMessages().dialogs.appSnapWelcome;
   const navigate = useNavigate();
   const [storage, setStorage] = useLocalStorage(
     APP_SNAP_WELCOME_STORAGE_KEY,
@@ -114,23 +116,20 @@ export function AppSnapWelcomeDialog() {
           </span>
 
           <DialogHeader className="gap-2 p-0">
-            <DialogTitle className="text-[19px] leading-tight">
-              Synara AppSnaps are live!
-            </DialogTitle>
+            <DialogTitle className="text-[19px] leading-tight">{copy.title}</DialogTitle>
             {/* Two lines at 378px wide is the reference sheet's proportion; longer copy
                 wraps to three and throws the whole vertical rhythm off. */}
             <DialogDescription className="text-[14px] leading-[19.5px]">
-              Press both Option keys (⌥&thinsp;⌥) to snap any app&rsquo;s window into the task
-              you&rsquo;re working in.
+              {copy.description}
             </DialogDescription>
           </DialogHeader>
 
           <DialogFooter className="gap-2 p-0 pt-3">
             <Button variant="ghost" className="rounded-[10px]" onClick={acknowledge}>
-              Not now
+              {copy.notNow}
             </Button>
             <Button className="rounded-[10px]" onClick={openSettings}>
-              Set up AppSnap
+              {copy.setUp}
             </Button>
           </DialogFooter>
         </div>

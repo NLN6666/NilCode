@@ -24,6 +24,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "./ui/dialog";
+import { useMessages } from "~/i18n/context";
 
 type View = "current" | "changelog";
 
@@ -88,6 +89,7 @@ function WhatsNewDialogContent({
   readonly currentVersion: string;
   readonly onOpenChange: (open: boolean) => void;
 }) {
+  const copy = useMessages().dialogs.whatsNew;
   const [view, setView] = useState<View>("current");
 
   return (
@@ -120,11 +122,11 @@ function WhatsNewDialogContent({
             className="gap-1 text-muted-foreground"
             onClick={() => setView("changelog")}
           >
-            View changelog
+            {copy.viewChangelog}
             <ArrowRightIcon className="size-3" />
           </Button>
           <Button size="sm" onClick={() => onOpenChange(false)}>
-            Got it
+            {copy.gotIt}
           </Button>
         </DialogFooter>
       )}
@@ -139,11 +141,12 @@ function CurrentHeader({
   readonly entry: WhatsNewEntry;
   readonly currentVersion: string;
 }) {
+  const headerCopy = useMessages().dialogs.whatsNew;
   return (
     <div className="flex items-center gap-3">
       <SynaraLogo aria-hidden className="size-8 shrink-0 text-foreground" />
       <div className="flex min-w-0 flex-col">
-        <DialogTitle className="text-base">What&rsquo;s new?</DialogTitle>
+        <DialogTitle className="text-base">{headerCopy.title}</DialogTitle>
         <DialogDescription className="text-xs">
           v{currentVersion}
           <span aria-hidden="true"> · </span>
@@ -155,15 +158,16 @@ function CurrentHeader({
 }
 
 function ChangelogHeader({ onBack }: { readonly onBack: () => void }) {
+  const changelogCopy = useMessages().dialogs.whatsNew;
   return (
     <div className="flex items-center gap-3">
-      <Button size="icon-sm" variant="ghost" aria-label="Back to What's new" onClick={onBack}>
+      <Button size="icon-sm" variant="ghost" aria-label={changelogCopy.back} onClick={onBack}>
         <ArrowLeftIcon className="size-4" />
       </Button>
       <div className="flex min-w-0 flex-col">
-        <DialogTitle className="text-base">Complete changelog</DialogTitle>
+        <DialogTitle className="text-base">{changelogCopy.changelogTitle}</DialogTitle>
         <DialogDescription className="text-xs">
-          Every curated release, newest first.
+          {changelogCopy.changelogDescription}
         </DialogDescription>
       </div>
     </div>

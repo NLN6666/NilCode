@@ -3,6 +3,7 @@
 // Layer: Shared app loading presentation
 
 import { SynaraLogo } from "~/components/SynaraLogo";
+import { useMessages } from "~/i18n/context";
 
 export function SplashScreen({
   errorMessage,
@@ -11,6 +12,7 @@ export function SplashScreen({
   errorMessage?: string | null;
   onRetry?: (() => void) | null;
 }) {
+  const copy = useMessages().dialogs.splash;
   const showRetry = Boolean(errorMessage && onRetry);
 
   return (
@@ -27,7 +29,7 @@ export function SplashScreen({
                 className="rounded-md border border-border/70 px-3 py-1.5 text-sm text-foreground/85 transition-colors hover:bg-[var(--sidebar-accent)]"
                 onClick={onRetry ?? undefined}
               >
-                Retry
+                {copy.retry}
               </button>
             ) : null}
           </div>

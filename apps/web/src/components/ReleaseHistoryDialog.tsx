@@ -19,6 +19,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "./ui/dialog";
+import { useMessages } from "~/i18n/context";
 
 export interface ReleaseHistoryDialogProps {
   readonly open: boolean;
@@ -41,6 +42,7 @@ export default function ReleaseHistoryDialog({
   entries = WHATS_NEW_ENTRIES,
   defaultExpandedVersion = null,
 }: ReleaseHistoryDialogProps) {
+  const copy = useMessages().dialogs.releaseHistory;
   // Sort at render time so the source of truth (`entries.ts`) stays free of
   // ordering rules — authors can prepend, append, or reorder entries freely.
   const sorted = sortEntriesByVersionDesc(entries);
@@ -49,10 +51,8 @@ export default function ReleaseHistoryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup className="max-w-lg gap-0 p-0">
         <DialogHeader className="gap-1 p-4 pr-12">
-          <DialogTitle className="text-base">Release history</DialogTitle>
-          <DialogDescription className="text-xs">
-            Every curated release, newest first.
-          </DialogDescription>
+          <DialogTitle className="text-base">{copy.title}</DialogTitle>
+          <DialogDescription className="text-xs">{copy.description}</DialogDescription>
         </DialogHeader>
 
         <DialogPanel className="max-h-[min(62vh,520px)] px-4 py-3">
@@ -61,7 +61,7 @@ export default function ReleaseHistoryDialog({
 
         <DialogFooter>
           <Button size="sm" onClick={() => onOpenChange(false)}>
-            Close
+            {copy.close}
           </Button>
         </DialogFooter>
       </DialogPopup>

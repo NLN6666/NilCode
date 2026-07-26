@@ -6,6 +6,7 @@ import { automations } from "./automations";
 import { browser } from "./browser";
 import { chat } from "./chat";
 import { composer } from "./composer";
+import { dialogs } from "./dialogs";
 import { diff } from "./diff";
 import { editor } from "./editor";
 import { git } from "./git";
@@ -21,6 +22,7 @@ export const zhCN: Messages = {
   browser,
   chat,
   composer,
+  dialogs,
   diff,
   editor,
   git,
