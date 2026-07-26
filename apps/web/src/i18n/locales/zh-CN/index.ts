@@ -8,6 +8,7 @@ import { chat } from "./chat";
 import { diff } from "./diff";
 import { git } from "./git";
 import { pullRequests } from "./pullRequests";
+import { projectTools } from "./projectTools";
 import { settings } from "./settings";
 import { sidebar } from "./sidebar";
 import { settingsNav } from "./settingsNav";
@@ -19,6 +20,7 @@ export const zhCN: Messages = {
   diff,
   git,
   pullRequests,
+  projectTools,
   settings,
   settingsNav,
   sidebar,

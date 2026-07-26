@@ -58,16 +58,18 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Menu, MenuItem, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
+import { useMessages } from "../i18n/context";
 import { Switch } from "./ui/switch";
 import { Textarea } from "./ui/textarea";
 
-const SCRIPT_ICONS: Array<{ id: ProjectScriptIcon; label: string }> = [
-  { id: "play", label: "Play" },
-  { id: "test", label: "Test" },
-  { id: "lint", label: "Lint" },
-  { id: "configure", label: "Configure" },
-  { id: "build", label: "Build" },
-  { id: "debug", label: "Debug" },
+/** Icon order is locale-free; the labels resolve against the active catalog. */
+const SCRIPT_ICON_IDS: ReadonlyArray<ProjectScriptIcon> = [
+  "play",
+  "test",
+  "lint",
+  "configure",
+  "build",
+  "debug",
 ];
 
 function ScriptIcon({
@@ -167,6 +169,7 @@ export default function ProjectScriptsControl({
   onUpdateScript,
   onDeleteScript,
 }: ProjectScriptsControlProps) {
+  const copy = useMessages().projectTools.scripts;
   const addScriptFormId = React.useId();
   const [editingScriptId, setEditingScriptId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -208,11 +211,11 @@ export default function ProjectScriptsControl({
     const trimmedName = name.trim();
     const trimmedCommand = command.trim();
     if (trimmedName.length === 0) {
-      setValidationError("Name is required.");
+      setValidationError(copy.nameRequired);
       return;
     }
     if (trimmedCommand.length === 0) {
-      setValidationError("Command is required.");
+      setValidationError(copy.commandRequired);
       return;
     }
 
@@ -243,7 +246,7 @@ export default function ProjectScriptsControl({
       setDialogOpen(false);
       setIconPickerOpen(false);
     } catch (error) {
-      setValidationError(error instanceof Error ? error.message : "Failed to save action.");
+      setValidationError(error instanceof Error ? error.message : copy.saveFailed);
     }
   };
 
@@ -281,7 +284,7 @@ export default function ProjectScriptsControl({
   return (
     <>
       {showInlineControls && primaryScript ? (
-        <ChatHeaderSplitGroup label="Project actions">
+        <ChatHeaderSplitGroup label={copy.group}>
           <ChatHeaderButton
             className={cn(
               CHAT_HEADER_SPLIT_LEADING_CLASS_NAME,
@@ -289,8 +292,8 @@ export default function ProjectScriptsControl({
               hideInlineLabel ? "px-2" : "max-w-44",
             )}
             onClick={() => onRunScript(primaryScript)}
-            aria-label={`Run ${primaryScript.name}`}
-            title={`Run ${primaryScript.name}`}
+            aria-label={copy.run(primaryScript.name)}
+            title={copy.run(primaryScript.name)}
           >
             <ScriptIcon icon={primaryScript.icon} className="size-3.5 shrink-0" />
             <span
@@ -307,7 +310,7 @@ export default function ProjectScriptsControl({
             <MenuTrigger
               render={
                 <ChatHeaderIconButton
-                  label="Script actions"
+                  label={copy.menu}
                   tone="outline"
                   className={CHAT_HEADER_SPLIT_TRAILING_CLASS_NAME}
                 />
@@ -361,7 +364,7 @@ export default function ProjectScriptsControl({
               })}
               <MenuItem className={actionMenuItemClassName} onClick={openAddDialog}>
                 <PlusIcon className="size-4 text-muted-foreground" />
-                <span className="col-span-2 min-w-0 truncate">Add action</span>
+                <span className="col-span-2 min-w-0 truncate">{copy.add}</span>
               </MenuItem>
             </ComposerPickerMenuPopup>
           </Menu>
@@ -370,12 +373,12 @@ export default function ProjectScriptsControl({
         <ChatHeaderButton
           className={cn("gap-1.5 px-2.5", hideInlineLabel && "px-2")}
           onClick={openAddDialog}
-          aria-label="Add action"
-          title="Add action"
+          aria-label={copy.add}
+          title={copy.add}
         >
           <PlusIcon className="size-3.5" />
           <span className={cn("font-normal", hideInlineLabel ? "sr-only" : "hidden sm:inline")}>
-            Add action
+            {copy.add}
           </span>
         </ChatHeaderButton>
       ) : null}
@@ -401,15 +404,13 @@ export default function ProjectScriptsControl({
       >
         <DialogPopup>
           <DialogHeader>
-            <DialogTitle>{isEditing ? "Edit Action" : "Add Action"}</DialogTitle>
-            <DialogDescription>
-              Actions are project-scoped commands you can run from the top bar or keybindings.
-            </DialogDescription>
+            <DialogTitle>{isEditing ? copy.editTitle : copy.addTitle}</DialogTitle>
+            <DialogDescription>{copy.description}</DialogDescription>
           </DialogHeader>
           <DialogPanel>
             <form id={addScriptFormId} className="space-y-4" onSubmit={submitAddScript}>
               <div className="space-y-1.5">
-                <Label htmlFor="script-name">Name</Label>
+                <Label htmlFor="script-name">{copy.name}</Label>
                 <div className="flex items-center gap-2">
                   <Popover onOpenChange={setIconPickerOpen} open={iconPickerOpen}>
                     <PopoverTrigger
@@ -418,7 +419,7 @@ export default function ProjectScriptsControl({
                           type="button"
                           variant="outline"
                           className="size-9 shrink-0 hover:bg-popover active:bg-popover data-pressed:bg-popover"
-                          aria-label="Choose icon"
+                          aria-label={copy.chooseIcon}
                         />
                       }
                     >
@@ -426,11 +427,11 @@ export default function ProjectScriptsControl({
                     </PopoverTrigger>
                     <PopoverPopup align="start">
                       <div className="grid grid-cols-3 gap-2">
-                        {SCRIPT_ICONS.map((entry) => {
-                          const isSelected = entry.id === icon;
+                        {SCRIPT_ICON_IDS.map((entryId) => {
+                          const isSelected = entryId === icon;
                           return (
                             <button
-                              key={entry.id}
+                              key={entryId}
                               type="button"
                               className={`relative flex flex-col items-center gap-2 rounded-md border px-2 py-2 text-xs ${
                                 isSelected
@@ -438,12 +439,12 @@ export default function ProjectScriptsControl({
                                   : "border-[color:var(--color-border-light)] hover:bg-[var(--sidebar-accent)]"
                               }`}
                               onClick={() => {
-                                setIcon(entry.id);
+                                setIcon(entryId);
                                 setIconPickerOpen(false);
                               }}
                             >
-                              <ScriptIcon icon={entry.id} className="size-4" />
-                              <span>{entry.label}</span>
+                              <ScriptIcon icon={entryId} className="size-4" />
+                              <span>{copy.icons[entryId]}</span>
                             </button>
                           );
                         })}
@@ -453,36 +454,37 @@ export default function ProjectScriptsControl({
                   <Input
                     id="script-name"
                     autoFocus
-                    placeholder="Test"
+                    placeholder={copy.namePlaceholder}
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                   />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="script-keybinding">Keybinding</Label>
+                <Label htmlFor="script-keybinding">{copy.keybinding}</Label>
                 <Input
                   id="script-keybinding"
-                  placeholder="Press shortcut"
+                  placeholder={copy.keybindingPlaceholder}
                   value={keybinding}
                   readOnly
                   onKeyDown={captureKeybinding}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Press a shortcut. Use <code>Backspace</code> to clear.
+                  {copy.keybindingHintBefore} <code>{copy.keybindingHintKey}</code>{" "}
+                  {copy.keybindingHintAfter}
                 </p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="script-command">Command</Label>
+                <Label htmlFor="script-command">{copy.command}</Label>
                 <Textarea
                   id="script-command"
-                  placeholder="bun test"
+                  placeholder={copy.commandPlaceholder}
                   value={command}
                   onChange={(event) => setCommand(event.target.value)}
                 />
               </div>
               <label className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-sm">
-                <span>Run automatically on worktree creation</span>
+                <span>{copy.runOnWorktreeCreate}</span>
                 <Switch
                   checked={runOnWorktreeCreate}
                   onCheckedChange={(checked) => setRunOnWorktreeCreate(Boolean(checked))}
@@ -499,7 +501,7 @@ export default function ProjectScriptsControl({
                 className="mr-auto"
                 onClick={() => setDeleteConfirmOpen(true)}
               >
-                Delete
+                {copy.delete}
               </Button>
             )}
             <Button
@@ -510,10 +512,10 @@ export default function ProjectScriptsControl({
                 setDialogOpen(false);
               }}
             >
-              Cancel
+              {copy.cancel}
             </Button>
             <Button form={addScriptFormId} type="submit" size="sm">
-              {isEditing ? "Save changes" : "Save action"}
+              {isEditing ? copy.saveChanges : copy.save}
             </Button>
           </DialogFooter>
         </DialogPopup>
@@ -522,15 +524,15 @@ export default function ProjectScriptsControl({
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete action "{name}"?</AlertDialogTitle>
-            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+            <AlertDialogTitle>{copy.deleteConfirmTitle(name)}</AlertDialogTitle>
+            <AlertDialogDescription>{copy.deleteConfirmDescription}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogClose render={<Button variant="outline" size="sm" />}>
-              Cancel
+              {copy.cancel}
             </AlertDialogClose>
             <Button variant="destructive" size="sm" onClick={confirmDeleteScript}>
-              Delete action
+              {copy.deleteConfirm}
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>
