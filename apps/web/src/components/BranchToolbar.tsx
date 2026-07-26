@@ -58,6 +58,7 @@ import {
   MenuTrigger,
 } from "./ui/menu";
 import type { ThreadWorkspacePatch } from "../types";
+import { useMessages } from "~/i18n/context";
 
 function WorktreeGlyph({ className }: { className?: string }) {
   return <WorktreeIcon className={className} />;
@@ -135,6 +136,7 @@ export function RuntimeUsageControls({
   className,
   hideLabel = false,
 }: RuntimeUsageControlsProps) {
+  const copy = useMessages().git.toolbar;
   return (
     <div
       className={cn(
@@ -155,9 +157,7 @@ export function RuntimeUsageControls({
                   runtimeMode === "full-access" && RUNTIME_FULL_ACCESS_ACCENT_CLASS_NAME,
                 )}
                 title={
-                  runtimeMode === "full-access"
-                    ? "Full access — click to change permissions"
-                    : "Default permissions — click to change permissions"
+                  runtimeMode === "full-access" ? copy.fullAccessHint : copy.defaultPermissionsHint
                 }
               />
             }
@@ -169,7 +169,7 @@ export function RuntimeUsageControls({
                 <HiOutlineHandRaised className="size-3.5 shrink-0" />
               )}
               <span className={cn("truncate", hideLabel ? "sr-only" : "@max-[480px]:sr-only")}>
-                {runtimeMode === "full-access" ? "Full access" : "Default permissions"}
+                {runtimeMode === "full-access" ? copy.fullAccess : copy.defaultPermissions}
               </span>
               <ChevronDownIcon
                 className={cn(
@@ -199,13 +199,13 @@ export function RuntimeUsageControls({
               >
                 <span className="inline-flex items-center gap-2">
                   <CentralIcon name="shield-access" className="size-4 shrink-0" />
-                  Full access
+                  {copy.fullAccess}
                 </span>
               </MenuRadioItem>
               <MenuRadioItem value="approval-required">
                 <span className="inline-flex items-center gap-2">
                   <HiOutlineHandRaised className="size-4 shrink-0" />
-                  Default permissions
+                  {copy.defaultPermissions}
                 </span>
               </MenuRadioItem>
             </MenuRadioGroup>
@@ -230,6 +230,7 @@ export default function BranchToolbar({
   showBranchSelector = true,
   fixedLocalWorkspaceCwd,
 }: BranchToolbarProps) {
+  const toolbarCopy = useMessages().git.toolbar;
   const isPanel = variant === "panel";
   const setThreadWorkspaceAction = useStore((store) => store.setThreadWorkspace);
   const draftThread = useComposerDraftStore((store) => store.getDraftThread(threadId));
@@ -478,7 +479,7 @@ export default function BranchToolbar({
               className="w-60 min-w-60"
             >
               <MenuGroup>
-                <MenuGroupLabel>Continue in</MenuGroupLabel>
+                <MenuGroupLabel>{toolbarCopy.continueIn}</MenuGroupLabel>
                 {environmentPresentation.mode === "local" ? (
                   <ContinueInMenuItem
                     icon={<CentralIcon name="macbook-air" className={ENV_MENU_ICON_CLASS_NAME} />}
@@ -495,7 +496,7 @@ export default function BranchToolbar({
                 {canSwitchToWorktree ? (
                   <ContinueInMenuItem
                     icon={<WorktreeGlyph className={ENV_MENU_ICON_CLASS_NAME} />}
-                    label="New worktree"
+                    label={toolbarCopy.newWorktree}
                     onSelect={() => onEnvModeChange("worktree")}
                   />
                 ) : null}
@@ -509,7 +510,7 @@ export default function BranchToolbar({
                 {canHandoffToWorktree && onHandoffToWorktree ? (
                   <ContinueInMenuItem
                     icon={<WorktreeGlyph className={ENV_MENU_ICON_CLASS_NAME} />}
-                    label="Hand off to new worktree"
+                    label={toolbarCopy.handOffToNewWorktree}
                     disabled={handoffBusy}
                     onSelect={() => onHandoffToWorktree()}
                   />
@@ -517,7 +518,7 @@ export default function BranchToolbar({
                 {canHandoffToLocal && onHandoffToLocal ? (
                   <ContinueInMenuItem
                     icon={<HandoffIcon className={ENV_MENU_ICON_CLASS_NAME} />}
-                    label="Hand off to local"
+                    label={toolbarCopy.handOffToLocal}
                     disabled={handoffBusy}
                     onSelect={() => onHandoffToLocal()}
                   />
@@ -529,7 +530,7 @@ export default function BranchToolbar({
               <Collapsible open={rateLimitsOpen} onOpenChange={setRateLimitsOpen}>
                 <MenuItem closeOnClick={false} onClick={() => setRateLimitsOpen((open) => !open)}>
                   <CentralIcon name="clock" className="size-3.5 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate">Rate limits remaining</span>
+                  <span className="min-w-0 flex-1 truncate">{toolbarCopy.rateLimitsRemaining}</span>
                   <DisclosureChevron
                     open={rateLimitsOpen}
                     className="text-[var(--color-text-foreground-secondary)]"
