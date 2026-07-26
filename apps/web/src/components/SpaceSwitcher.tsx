@@ -44,6 +44,7 @@ import {
 } from "./sidebarContextMenuStyles";
 import { Menu, MenuGroup, MenuItem } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { useMessages } from "~/i18n/context";
 
 export type SpaceActivityTone = "attention" | "running" | "completed";
 
@@ -315,6 +316,7 @@ function SpaceNameLabel(props: {
   existingNames: ReadonlyArray<string>;
   onRename: (space: Space, name: string) => void;
 }) {
+  const copy = useMessages().workspace.spaces;
   const [draft, setDraft] = useState<string | null>(null);
   const space = props.activeSpace;
 
@@ -348,7 +350,7 @@ function SpaceNameLabel(props: {
       value={draft}
       autoFocus
       maxLength={SPACE_NAME_MAX_LENGTH}
-      aria-label="Space name"
+      aria-label={copy.nameLabel}
       aria-invalid={!isValid}
       onFocus={(event) => event.currentTarget.select()}
       onChange={(event) => setDraft(event.target.value)}
@@ -396,6 +398,7 @@ export function SpaceSwitcher(props: SpaceSwitcherProps) {
 }
 
 function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
+  const copy = useMessages().workspace.spaces;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const [contextState, setContextState] = useState<{
     space: Space;
@@ -482,7 +485,7 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
       <div className="flex items-center gap-1 px-1">
         <div
           role="tablist"
-          aria-label="Spaces"
+          aria-label={copy.label}
           aria-orientation="horizontal"
           className="flex min-w-0 flex-1 items-center gap-1"
           onKeyDown={handleTabStripKeyDown}
@@ -553,7 +556,7 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
             render={
               <button
                 type="button"
-                aria-label="New space"
+                aria-label={copy.newSpace}
                 onClick={props.onCreate}
                 className={cn(SPACE_TAB_CLASS_NAME, "text-muted-foreground/55")}
               />
@@ -561,7 +564,7 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
           >
             <PlusIcon className="size-3.5" />
           </TooltipTrigger>
-          <TooltipPopup side="bottom">New space</TooltipPopup>
+          <TooltipPopup side="bottom">{copy.newSpace}</TooltipPopup>
         </Tooltip>
       </div>
 
@@ -583,7 +586,7 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
                 }}
               >
                 <SidebarContextMenuIcon icon={PencilIcon} />
-                <span>Edit space…</span>
+                <span>{copy.editSpace}</span>
               </MenuItem>
               {/* Neutral, not red: deleting a space only files its projects back into
                   Void, and the sibling project menu keeps its harder "Delete project"
@@ -596,7 +599,7 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
                 }}
               >
                 <SidebarContextMenuIcon icon={Trash2} />
-                <span>Delete space</span>
+                <span>{copy.deleteSpace}</span>
               </MenuItem>
             </MenuGroup>
           </ComposerPickerMenuPopup>

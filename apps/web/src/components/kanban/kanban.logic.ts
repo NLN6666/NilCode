@@ -15,15 +15,20 @@ import {
 } from "../../session-logic";
 import type { Project, SidebarThreadSummary } from "../../types";
 
+import { workspace as defaultWorkspaceCopy } from "~/i18n/locales/en/workspace";
+
 export type KanbanColumnKey = "draft" | "inProgress" | "done";
 
-export const KANBAN_COLUMN_LABELS: Record<KanbanColumnKey, string> = {
-  draft: "Draft",
-  inProgress: "In Progress",
-  done: "Done",
-};
+/** The `workspace.kanban` catalog group; defaults to English so board logic tests stay copy-free. */
+export type KanbanCopy = typeof defaultWorkspaceCopy.kanban;
 
-export const KANBAN_FALLBACK_DRAFT_TITLE = "New thread";
+export function kanbanColumnLabels(
+  copy: KanbanCopy = defaultWorkspaceCopy.kanban,
+): Record<KanbanColumnKey, string> {
+  return copy.columns;
+}
+
+export const KANBAN_FALLBACK_DRAFT_TITLE = defaultWorkspaceCopy.kanban.fallbackDraftTitle;
 
 /** Pending composer content for one thread, projected from the composer draft store. */
 export interface KanbanComposerDraftSnapshot {

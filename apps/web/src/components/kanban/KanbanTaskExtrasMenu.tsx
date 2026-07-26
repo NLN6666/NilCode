@@ -18,6 +18,7 @@ import {
 import { CentralIcon } from "~/lib/central-icons";
 import { ListTodoIcon, PlusIcon, WorktreeIcon } from "~/lib/icons";
 import type { DraftThreadEnvMode } from "../../composerDraftStore";
+import { useMessages } from "~/i18n/context";
 
 interface KanbanTaskExtrasMenuProps {
   readonly interactionMode: ProviderInteractionMode;
@@ -37,6 +38,7 @@ export function KanbanTaskExtrasMenu({
   envMode,
   onEnvModeChange,
 }: KanbanTaskExtrasMenuProps) {
+  const copy = useMessages().workspace.kanban;
   return (
     <Menu>
       <MenuTrigger
@@ -45,7 +47,7 @@ export function KanbanTaskExtrasMenu({
             size="icon-sm"
             variant="chrome"
             className="shrink-0 rounded-md"
-            aria-label="Task options"
+            aria-label={copy.taskOptions}
           />
         }
       >
@@ -61,7 +63,7 @@ export function KanbanTaskExtrasMenu({
         >
           <span className="inline-flex items-center gap-2">
             <ListTodoIcon className="size-4 shrink-0" />
-            Plan mode
+            {copy.planMode}
           </span>
         </MenuCheckboxItem>
         <MenuSeparator />
@@ -76,13 +78,13 @@ export function KanbanTaskExtrasMenu({
           <MenuRadioItem value="local">
             <span className="inline-flex items-center gap-2">
               <CentralIcon name="macbook-air" className="size-4 shrink-0" />
-              Local
+              {copy.local}
             </span>
           </MenuRadioItem>
           <MenuRadioItem value="worktree">
             <span className="inline-flex items-center gap-2">
               <WorktreeIcon className="size-4 shrink-0" aria-hidden />
-              Worktree
+              {copy.worktree}
             </span>
           </MenuRadioItem>
         </MenuRadioGroup>

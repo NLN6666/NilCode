@@ -20,6 +20,7 @@ import {
 import { Input } from "./ui/input";
 import { SPACE_ICON_OPTIONS, SpaceIcon } from "./SpaceIcon";
 import { cn } from "~/lib/utils";
+import { useMessages } from "~/i18n/context";
 
 const DEFAULT_SPACE_ICON: SpaceIconName = "bag";
 
@@ -41,6 +42,7 @@ export function SpaceEditorDialog(props: {
   onOpenChange: (open: boolean) => void;
   onSubmit: (value: SpaceEditorValue) => Promise<void> | void;
 }) {
+  const copy = useMessages().workspace.spaces;
   const [name, setName] = useState("");
   const [icon, setIcon] = useState<SpaceIconName>(DEFAULT_SPACE_ICON);
   /**
@@ -82,11 +84,11 @@ export function SpaceEditorDialog(props: {
   );
   const nameError =
     trimmedName.length === 0
-      ? "Enter a space name."
+      ? copy.nameRequired
       : trimmedName.toLowerCase() === "void"
-        ? "Void is reserved for unassigned projects."
+        ? copy.nameReserved
         : duplicateName
-          ? "A space with this name already exists."
+          ? copy.nameDuplicate
           : null;
   // An empty field is a starting point, not a mistake — only speak up once there is input.
   const visibleNameError = name.length > 0 ? nameError : null;
@@ -99,7 +101,7 @@ export function SpaceEditorDialog(props: {
       await props.onSubmit({ name: trimmedName, icon });
       props.onOpenChange(false);
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Unable to save the space.");
+      setSubmitError(error instanceof Error ? error.message : copy.saveFailed);
       setSubmitting(false);
     }
   };
@@ -137,11 +139,9 @@ export function SpaceEditorDialog(props: {
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogPopup className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>{props.mode === "create" ? "New space" : "Edit space"}</DialogTitle>
+          <DialogTitle>{props.mode === "create" ? copy.createTitle : copy.editTitle}</DialogTitle>
           <DialogDescription>
-            {props.mode === "create"
-              ? "Group projects into a focused work context. Projects you add while a space is open land in it."
-              : "Rename this space or give it a different icon. Its projects stay where they are."}
+            {props.mode === "create" ? copy.createDescription : copy.editDescription}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-4">
@@ -151,7 +151,7 @@ export function SpaceEditorDialog(props: {
               and then repeat the message as its description. */}
           <div className="space-y-1.5">
             <label htmlFor={nameInputId} className={cn("block", FIELD_LABEL_CLASS_NAME)}>
-              Name
+              {copy.name}
             </label>
             <Input
               id={nameInputId}
@@ -171,7 +171,7 @@ export function SpaceEditorDialog(props: {
                   void submit();
                 }
               }}
-              placeholder="Work"
+              placeholder={copy.namePlaceholder}
             />
             {visibleNameError ? (
               <p
@@ -186,7 +186,7 @@ export function SpaceEditorDialog(props: {
 
           <fieldset>
             <legend id={iconLegendId} className={cn("mb-2", FIELD_LABEL_CLASS_NAME)}>
-              Icon
+              {copy.icon}
             </legend>
             <div
               role="radiogroup"
@@ -234,10 +234,10 @@ export function SpaceEditorDialog(props: {
         </DialogPanel>
         <DialogFooter>
           <Button variant="ghost" onClick={() => props.onOpenChange(false)} disabled={submitting}>
-            Cancel
+            {copy.cancel}
           </Button>
           <Button onClick={() => void submit()} disabled={Boolean(nameError) || submitting}>
-            {submitting ? "Saving…" : props.mode === "create" ? "Create space" : "Save"}
+            {submitting ? copy.saving : props.mode === "create" ? copy.createSpace : copy.save}
           </Button>
         </DialogFooter>
       </DialogPopup>

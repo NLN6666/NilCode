@@ -9,6 +9,7 @@ import type { ProjectId } from "@synara/contracts";
 import { ProjectMenuPicker } from "~/components/ProjectMenuPicker";
 import { Button } from "~/components/ui/button";
 import { ChevronDownIcon } from "~/lib/icons";
+import { useMessages } from "~/i18n/context";
 
 interface KanbanTaskProjectOption {
   readonly id: ProjectId;
@@ -26,6 +27,7 @@ export function KanbanTaskProjectPicker({
   selectedProjectId,
   onProjectIdChange,
 }: KanbanTaskProjectPickerProps) {
+  const copy = useMessages().workspace.kanban;
   const selectedProjectOption =
     projectOptions.find((option) => option.id === selectedProjectId) ?? null;
 
@@ -39,7 +41,7 @@ export function KanbanTaskProjectPicker({
           size="xs"
           variant="chrome-outline"
           disabled={projectOptions.length === 0}
-          aria-label="Choose the project for this task"
+          aria-label={copy.chooseProject}
           // Override the xs size variant's sm:10px so the project name matches
           // the 12px "New task" title instead of reading smaller.
           className="max-w-56 gap-1.5 font-medium text-[length:var(--app-font-size-ui,12px)] text-[var(--color-text-foreground)] sm:text-[length:var(--app-font-size-ui,12px)]"

@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { SearchInput } from "./ui/search-input";
+import { useMessages } from "~/i18n/context";
 
 export function SpaceProjectPickerDialog(props: {
   open: boolean;
@@ -35,6 +36,7 @@ export function SpaceProjectPickerDialog(props: {
     projectIds: ReadonlyArray<ProjectId>,
   ) => Promise<ReadonlyArray<ProjectId> | void> | ReadonlyArray<ProjectId> | void;
 }) {
+  const copy = useMessages().workspace.spaces;
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<ProjectId>>(() => new Set());
   const [submitting, setSubmitting] = useState(false);
@@ -101,14 +103,17 @@ export function SpaceProjectPickerDialog(props: {
       if (failedProjectIds.length > 0) {
         setSelectedIds(new Set(failedProjectIds));
         setError(
-          `${failedProjectIds.length} could not be moved. Projects processed before the failure remain in ${props.targetSpace?.name ?? "the target space"}. Try again.`,
+          copy.movePartialFailure(
+            failedProjectIds.length,
+            props.targetSpace?.name ?? copy.targetSpaceFallback,
+          ),
         );
         setSubmitting(false);
         return;
       }
       props.onOpenChange(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to move the selected projects.");
+      setError(cause instanceof Error ? cause.message : copy.moveFailed);
       setSubmitting(false);
     }
   };
@@ -116,26 +121,26 @@ export function SpaceProjectPickerDialog(props: {
   // Three different nothings: no projects at all, none left to move, none matching the search.
   const emptyMessage =
     props.projects.length === 0
-      ? "No projects yet."
+      ? copy.noProjects
       : movableProjects.length === 0
-        ? `Every project is already in ${props.targetSpace?.name ?? "this space"}.`
-        : "No matching projects.";
+        ? copy.allAlreadyHere(props.targetSpace?.name ?? copy.thisSpace)
+        : copy.noMatchingProjects;
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogPopup className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Move projects to {props.targetSpace?.name ?? "space"}</DialogTitle>
-          <DialogDescription>
-            Choose existing projects. Their chats and pinned state move with them.
-          </DialogDescription>
+          <DialogTitle>
+            {copy.moveTitle(props.targetSpace?.name ?? copy.moveFallbackSpace)}
+          </DialogTitle>
+          <DialogDescription>{copy.moveDescription}</DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-3">
           <SearchInput
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search projects"
-            aria-label="Search projects"
+            placeholder={copy.searchProjects}
+            aria-label={copy.searchProjects}
           />
           <div className="max-h-72 space-y-3 overflow-y-auto">
             {candidates.length === 0 ? (
@@ -209,14 +214,14 @@ export function SpaceProjectPickerDialog(props: {
         </DialogPanel>
         <DialogFooter>
           <Button variant="ghost" onClick={() => props.onOpenChange(false)} disabled={submitting}>
-            Cancel
+            {copy.cancel}
           </Button>
           <Button onClick={() => void submit()} disabled={selectedIds.size === 0 || submitting}>
             {submitting
-              ? "Moving…"
+              ? copy.moving
               : selectedIds.size === 0
-                ? "Move projects"
-                : `Move ${selectedIds.size} project${selectedIds.size === 1 ? "" : "s"}`}
+                ? copy.moveProjects
+                : copy.moveCount(selectedIds.size)}
           </Button>
         </DialogFooter>
       </DialogPopup>

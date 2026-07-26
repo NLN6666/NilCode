@@ -11,6 +11,7 @@ import { pullRequests } from "./pullRequests";
 import { projectTools } from "./projectTools";
 import { settings } from "./settings";
 import { sidebar } from "./sidebar";
+import { workspace } from "./workspace";
 import { settingsNav } from "./settingsNav";
 
 export const en = {
@@ -25,6 +26,7 @@ export const en = {
   settings,
   settingsNav,
   sidebar,
+  workspace,
 };
 
 /** Structural contract for every locale catalog. Adding a key here obligates all translations. */

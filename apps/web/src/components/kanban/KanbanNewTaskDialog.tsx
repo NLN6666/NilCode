@@ -81,6 +81,7 @@ import { KanbanTaskProjectPicker } from "./KanbanTaskProjectPicker";
 import { useKanbanTaskComposerMenu } from "./useKanbanTaskComposerMenu";
 import { useKanbanTaskScratchDraft } from "./useKanbanTaskScratchDraft";
 import { useKanbanTaskSubmit } from "./useKanbanTaskSubmit";
+import { useMessages } from "~/i18n/context";
 
 const EMPTY_COMPOSER_FILES: ReadonlyArray<ComposerFileAttachment> = [];
 
@@ -110,6 +111,7 @@ export function KanbanNewTaskDialog({
   initialProjectId,
   initialSendAsDraft = false,
 }: KanbanNewTaskDialogProps) {
+  const copy = useMessages().workspace.kanban;
   const { settings } = useAppSettings();
   const { resolvedTheme } = useTheme();
   const assistantDeliveryMode = resolveAssistantDeliveryMode(settings);
@@ -345,11 +347,8 @@ export function KanbanNewTaskDialog({
       onUnsupportedFiles: (files) => {
         toastManager.add({
           type: "warning",
-          title: "Only images can be attached to new tasks.",
-          description:
-            files.length === 1
-              ? "That file was not added."
-              : `${files.length} files were not added.`,
+          title: copy.imagesOnly,
+          description: files.length === 1 ? copy.oneFileRejected : copy.filesRejected(files.length),
         });
       },
     },
@@ -400,13 +399,10 @@ export function KanbanNewTaskDialog({
             />
             <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
             <DialogTitle className="font-system-ui truncate font-medium text-[length:var(--app-font-size-ui,12px)] leading-none">
-              New task
+              {copy.newTask}
             </DialogTitle>
           </div>
-          <DialogDescription className="sr-only">
-            Draft a prompt and place it in the board&apos;s Draft column. Drag it to In Progress to
-            send it.
-          </DialogDescription>
+          <DialogDescription className="sr-only">{copy.newTaskDescription}</DialogDescription>
         </DialogHeader>
         {/* Flush, borderless composer body: same Lexical prompt editor and attachment row as chat. */}
         <DialogPanel
@@ -427,7 +423,7 @@ export function KanbanNewTaskDialog({
                 {isLocalFolderBrowserOpen ? (
                   <ComposerLocalDirectoryMenu
                     mentionQuery={mentionTriggerQuery}
-                    rootLabel={localFolderBrowseRootPath ?? "Local folders unavailable"}
+                    rootLabel={localFolderBrowseRootPath ?? copy.localFoldersUnavailable}
                     homeDir={serverConfigQuery.data?.homeDir ?? null}
                     onSelectEntry={(absolutePath) =>
                       handleSelectLocalDirectoryMention(absolutePath)
@@ -467,7 +463,7 @@ export function KanbanNewTaskDialog({
               terminalContexts={composerTerminalContexts}
               mentionReferences={composerMentions}
               disabled={voice.isVoiceTranscribing}
-              placeholder="Describe the task, @tag files/folders, paste images, or use / for skills"
+              placeholder={copy.promptPlaceholder}
               className={cn(
                 COMPOSER_EDITOR_MIN_HEIGHT_CLASS_NAME,
                 COMPOSER_EDITOR_TYPOGRAPHY_CLASS_NAME,
@@ -560,8 +556,8 @@ export function KanbanNewTaskDialog({
                   size="icon-sm"
                   variant="ghost"
                   className="mr-1 shrink-0 text-muted-foreground/70 hover:text-foreground"
-                  aria-label="Attach images"
-                  title="Attach images"
+                  aria-label={copy.attachImages}
+                  title={copy.attachImages}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <PaperclipIcon className="size-4" />
@@ -583,10 +579,10 @@ export function KanbanNewTaskDialog({
                   checked={sendAsDraft}
                   onCheckedChange={(checked) => setSendAsDraft(checked === true)}
                 />
-                Send as draft
+                {copy.sendAsDraft}
               </label>
               <Button size="sm" onClick={handleCreateRequest} disabled={!canCreate}>
-                {isCreating ? "Creating..." : "Create task"}
+                {isCreating ? copy.creating : copy.createTask}
               </Button>
             </div>
           </div>
