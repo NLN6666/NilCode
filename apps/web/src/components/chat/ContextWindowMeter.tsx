@@ -4,6 +4,7 @@ import {
   formatContextWindowTokens,
   formatCostUsd,
 } from "~/lib/contextWindow";
+import { useMessages } from "~/i18n/context";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 
 export function ContextWindowMeter(props: {
@@ -12,6 +13,7 @@ export function ContextWindowMeter(props: {
   activeWindowLabel?: string | null | undefined;
   pendingWindowLabel?: string | null | undefined;
 }) {
+  const m = useMessages();
   const { usage, cumulativeCostUsd, activeWindowLabel, pendingWindowLabel } = props;
   const display = deriveContextWindowMeterDisplay(usage);
   const radius = 6;
@@ -64,10 +66,14 @@ export function ContextWindowMeter(props: {
       />
       <PopoverPopup tooltipStyle side="top" align="end" className="w-max max-w-none px-3 py-2">
         <div className="space-y-1.5 leading-tight">
-          <div className="text-[11px] font-medium text-muted-foreground">Context window</div>
+          <div className="text-[11px] font-medium text-muted-foreground">
+            {m.chat.contextWindow.title}
+          </div>
           {pendingWindowLabel ? (
             <div className="text-xs text-muted-foreground">
-              Current session: {activeWindowLabel ?? "Unknown"}
+              {m.chat.contextWindow.currentSession(
+                activeWindowLabel ?? m.chat.contextWindow.unknown,
+              )}
             </div>
           ) : null}
           {display.usedPercentageLabel ? (
@@ -78,40 +84,43 @@ export function ContextWindowMeter(props: {
                   <span className="mx-1">⋅</span>
                   <span>{display.tokenUsageLabel}</span>
                   <span>/</span>
-                  <span>{formatContextWindowTokens(usage.maxTokens)} context used</span>
+                  <span>
+                    {formatContextWindowTokens(usage.maxTokens)} {m.chat.contextWindow.contextUsed}
+                  </span>
                 </>
               ) : (
-                <span className="ml-1">context used</span>
+                <span className="ml-1">{m.chat.contextWindow.contextUsed}</span>
               )}
             </div>
           ) : (
             <div className="text-sm text-foreground">
-              {display.tokenUsageLabel} tokens used so far
+              {display.tokenUsageLabel} {m.chat.contextWindow.tokensUsedSoFar}
             </div>
           )}
           {usage.maxTokens !== null ? (
             <div className="text-xs text-muted-foreground">
-              Model window: {formatContextWindowTokens(usage.maxTokens)} tokens
+              {m.chat.contextWindow.modelWindow(formatContextWindowTokens(usage.maxTokens))}
             </div>
           ) : null}
           {pendingWindowLabel ? (
-            <div className="text-xs text-muted-foreground">Next turn: {pendingWindowLabel}</div>
+            <div className="text-xs text-muted-foreground">
+              {m.chat.contextWindow.nextTurn(pendingWindowLabel)}
+            </div>
           ) : null}
           {(usage.totalProcessedTokens ?? null) !== null &&
           (usage.totalProcessedTokens ?? 0) > usage.usedTokens ? (
             <div className="text-xs text-muted-foreground">
-              Total processed: {formatContextWindowTokens(usage.totalProcessedTokens ?? null)}{" "}
-              tokens
+              {m.chat.contextWindow.totalProcessed(
+                formatContextWindowTokens(usage.totalProcessedTokens ?? null),
+              )}
             </div>
           ) : null}
           {usage.compactsAutomatically ? (
-            <div className="text-xs text-muted-foreground">
-              Automatically compacts its context when needed.
-            </div>
+            <div className="text-xs text-muted-foreground">{m.chat.contextWindow.autoCompacts}</div>
           ) : null}
           {cumulativeCostUsd !== null && cumulativeCostUsd !== undefined ? (
             <div className="text-xs text-muted-foreground">
-              Session cost: {formatCostUsd(cumulativeCostUsd)}
+              {m.chat.contextWindow.sessionCost(formatCostUsd(cumulativeCostUsd))}
             </div>
           ) : null}
         </div>

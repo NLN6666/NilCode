@@ -148,6 +148,7 @@ import {
   USER_MESSAGE_COLLAPSED_MAX_LINES,
   userMessageLikelyOverflows,
 } from "./userMessageCollapse";
+import { useMessages } from "~/i18n/context";
 import { observeUserMessageOverflow } from "./userMessageOverflowObserver";
 import {
   resolveActiveTrailSnapshot,
@@ -286,12 +287,13 @@ function WorktreeSetupStepGlyph({ status }: { status: WorktreeSetupStep["status"
 // git-branch header and a connected stepper. Hugs its content so it reads as a
 // status chip rather than a full-width block.
 function WorktreeSetupCard({ steps }: { steps: ReadonlyArray<WorktreeSetupStep> }) {
+  const m = useMessages();
   return (
     <div className="w-fit max-w-full rounded-xl border border-[color:var(--color-border-light)] bg-[var(--color-background-elevated-primary)] px-3.5 py-3 font-system-ui shadow-xs">
       <div className="flex items-center gap-2">
         <WorktreeIcon className="size-3.5 shrink-0 text-[var(--color-text-foreground-tertiary)]" />
         <span className="shimmer text-[13px] font-medium text-[var(--color-text-foreground-secondary)]">
-          Preparing worktree...
+          {m.chat.timeline.preparingWorktree}
         </span>
       </div>
       <ol className="mt-2 flex flex-col">
@@ -455,6 +457,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   emptyStateContent,
   contentInsetRightPx,
 }: MessagesTimelineProps) {
+  const m = useMessages();
   const normalizedChatFontSizePx = normalizeChatFontSizePx(chatFontSizePx);
   // Inset rows from the right (overriding the gutter's right padding) without moving the
   // scroll viewport, so the scrollbar stays pinned to the far right while content clears
@@ -1254,8 +1257,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         )}
                         {showEditUserMessage && (
                           <MessageActionButton
-                            label="Edit message"
-                            tooltip="Edit and resend"
+                            label={m.chat.timeline.editMessage}
+                            tooltip={m.chat.timeline.editAndResend}
                             disabled={isRevertingCheckpoint}
                             className={cn(
                               MESSAGE_HOVER_REVEAL_CLASS_NAME,
@@ -1268,8 +1271,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         )}
                         {canRevertAgentWork ? (
                           <MessageActionButton
-                            label="Revert to this message"
-                            tooltip="Revert to this message"
+                            label={m.chat.timeline.revertToMessage}
+                            tooltip={m.chat.timeline.revertToMessage}
                             disabled={isRevertingCheckpoint || isWorking}
                             className={cn(
                               MESSAGE_HOVER_REVEAL_CLASS_NAME,
@@ -1871,7 +1874,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                               style={{ fontSize: chatTypographyStyle.fontSize }}
                               onClick={() => onUndoTurnFiles(checkpointTurnCounts)}
                             >
-                              Undo
+                              {m.chat.timeline.undo}
                               <Undo2Icon className="size-3" />
                             </button>
                           )}
@@ -1962,7 +1965,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             className="-ml-0.5 pb-2 text-muted-foreground/70"
             style={{ fontSize: chatTypographyStyle.fontSize }}
           >
-            Working for{" "}
+            {m.chat.timeline.workingFor}{" "}
             {nowIso ? (
               (formatClockElapsed(row.createdAt, nowIso) ?? "0s")
             ) : (
@@ -1978,7 +1981,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           className="shimmer pt-0.5 text-muted-foreground/70 font-system-ui"
           style={{ fontSize: `${appTypographyScale.chatPx}px` }}
         >
-          Thinking
+          {m.chat.timeline.thinking}
         </div>
       )}
 
@@ -2001,9 +2004,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground/30">
-          Send a message to start the conversation.
-        </p>
+        <p className="text-sm text-muted-foreground/30">{m.chat.timeline.emptyConversation}</p>
       </div>
     );
   }
@@ -2573,6 +2574,7 @@ const UserMessageEditForm = memo(function UserMessageEditForm(props: {
   onCancel: () => void;
   onSubmit: (value: string) => void;
 }) {
+  const m = useMessages();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraft] = useState(props.initialValue);
   const canSubmit = draft.trim().length > 0 && !props.disabled;
@@ -2628,7 +2630,7 @@ const UserMessageEditForm = memo(function UserMessageEditForm(props: {
         value={draft}
         disabled={props.disabled}
         rows={1}
-        aria-label="Edit message"
+        aria-label={m.chat.timeline.editMessage}
         className="max-h-60 min-h-0 w-full resize-none overflow-y-auto border-0 bg-transparent p-0 font-system-ui text-foreground outline-none placeholder:text-muted-foreground/45 disabled:opacity-70"
         style={props.chatTypographyStyle}
         onChange={(event) => setDraft(event.target.value)}
@@ -2644,7 +2646,7 @@ const UserMessageEditForm = memo(function UserMessageEditForm(props: {
           disabled={props.disabled}
           onClick={props.onCancel}
         >
-          Cancel
+          {m.chat.timeline.cancel}
         </Button>
         <Button
           type="submit"
@@ -2653,7 +2655,7 @@ const UserMessageEditForm = memo(function UserMessageEditForm(props: {
           style={props.chatTypographyStyle}
           disabled={!canSubmit}
         >
-          Send
+          {m.chat.timeline.send}
         </Button>
       </div>
     </form>

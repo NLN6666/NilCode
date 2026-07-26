@@ -62,6 +62,7 @@ import { useOpenFavoriteEditorShortcut } from "~/hooks/useOpenFavoriteEditorShor
 import type { RepoDiffTotals } from "~/hooks/useRepoDiffTotals";
 import { ProviderIcon } from "../ProviderIcon";
 import { ProviderUsageMenuControl } from "../ProviderUsageMenuControl";
+import { useMessages } from "~/i18n/context";
 import { EnvironmentToggle, type EnvironmentToggleState } from "./environment/EnvironmentToggle";
 
 /**
@@ -167,6 +168,7 @@ function EditorChatHistoryMenu(props: {
   activeThreadId: ThreadId;
   onNavigateToThread: (threadId: ThreadId) => void;
 }) {
+  const m = useMessages();
   const { settings } = useAppSettings();
   const selectDisplayThreads = createSidebarDisplayThreadsSelector();
   const displayThreads = useStore(selectDisplayThreads);
@@ -182,8 +184,8 @@ function EditorChatHistoryMenu(props: {
           <IconButton
             variant="ghost"
             size="icon-xs"
-            label="Chat history"
-            title="Chat history"
+            label={m.chat.header.chatHistory}
+            title={m.chat.header.chatHistory}
             className="size-5 shrink-0 text-muted-foreground hover:text-foreground"
           >
             <HistoryIcon className="size-3.5" />
@@ -192,7 +194,7 @@ function EditorChatHistoryMenu(props: {
       />
       <ComposerPickerMenuPopup align="start" side="bottom" sideOffset={6} className="w-72 min-w-72">
         {historyThreads.length === 0 ? (
-          <MenuItem disabled>No chats in this project yet</MenuItem>
+          <MenuItem disabled>{m.chat.header.noChatsInProject}</MenuItem>
         ) : (
           historyThreads.map((thread) => (
             <MenuItem
@@ -239,6 +241,7 @@ function EditorRailTabs(props: {
   onCloseTerminal: () => void;
   onNavigateToThread: (threadId: ThreadId) => void;
 }) {
+  const m = useMessages();
   const { settings } = useAppSettings();
   const [openChatTabs, setOpenChatTabs] = useState<ReadonlyArray<EditorRailChatTab>>(() => {
     const storedTabs = readEditorRailChatTabs(props.projectId);
@@ -401,7 +404,7 @@ function EditorRailTabs(props: {
               <IconButton
                 variant="ghost"
                 size="icon-xs"
-                label="New editor rail item"
+                label={m.chat.header.newEditorRailItem}
                 title="New"
                 className="size-5 shrink-0 text-muted-foreground hover:text-foreground"
               >
@@ -417,11 +420,11 @@ function EditorRailTabs(props: {
           >
             <MenuItem onClick={props.onNewChat}>
               <MessageCircleIcon className="size-3.5 shrink-0 text-muted-foreground" />
-              <span>New chat</span>
+              <span>{m.chat.header.newChat}</span>
             </MenuItem>
             <MenuItem onClick={newTerminalTab}>
               <TerminalIcon className="size-3.5 shrink-0 text-muted-foreground" />
-              <span>New terminal</span>
+              <span>{m.chat.header.newTerminal}</span>
             </MenuItem>
           </ComposerPickerMenuPopup>
         </Menu>
@@ -458,8 +461,8 @@ function EditorRailTabs(props: {
           {terminalTabVisible ? (
             <SurfaceTabChip
               active={props.activeSurface === "terminal"}
-              title="Terminal"
-              label="Terminal"
+              title={m.chat.header.terminal}
+              label={m.chat.header.terminal}
               labelClassName="max-w-24"
               icon={<TerminalIcon className="size-3 shrink-0 text-[var(--color-text-accent)]" />}
               trailing={
@@ -536,6 +539,7 @@ export function ChatHeader({
   onRenameThread,
   onCloseThreadPane,
 }: ChatHeaderProps) {
+  const m = useMessages();
   const { isMobile, state } = useSidebar();
   const headerRef = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
@@ -598,7 +602,7 @@ export function ChatHeader({
             )}
             pressed={diffOpen}
             onPressedChange={onToggleDiff}
-            aria-label="Toggle diff panel"
+            aria-label={m.chat.header.toggleDiffPanel}
             variant="default"
             size="xs"
             disabled={!isGitRepo || (diffDisabledReason !== null && !diffOpen)}
@@ -702,8 +706,8 @@ export function ChatHeader({
                   <IconButton
                     variant="chrome"
                     size="icon-xs"
-                    label="Close selected Side"
-                    tooltip="Close selected Side"
+                    label={m.chat.header.closeSelectedSide}
+                    tooltip={m.chat.header.closeSelectedSide}
                     tooltipSide="bottom"
                     className="size-5 rounded-lg [-webkit-app-region:no-drag] [&_svg]:size-3"
                     onClick={(event) => {
@@ -778,7 +782,9 @@ export function ChatHeader({
                     }
                   >
                     <HandoffIcon className="size-[1em] shrink-0 opacity-80" />
-                    {!compact ? <span className="truncate font-normal">Hand off</span> : null}
+                    {!compact ? (
+                      <span className="truncate font-normal">{m.chat.header.handOff}</span>
+                    ) : null}
                   </MenuTrigger>
                 }
               />
@@ -789,7 +795,7 @@ export function ChatHeader({
                 <MenuItem key={provider} onClick={() => onCreateHandoff(provider)}>
                   {/* opacity-100 opts brand icons out of the option row's 80% icon dim. */}
                   {renderProviderIcon(provider, "size-3.5 shrink-0 opacity-100")}
-                  <span>Handoff to {PROVIDER_DISPLAY_NAMES[provider]}</span>
+                  <span>{m.chat.header.handoffTo(PROVIDER_DISPLAY_NAMES[provider])}</span>
                 </MenuItem>
               ))}
             </ComposerPickerMenuPopup>
