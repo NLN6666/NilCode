@@ -55,6 +55,7 @@ import {
   withStableCheckKeys,
   type PullRequestChecksTone,
 } from "./environmentPullRequest.logic";
+import { useMessages } from "~/i18n/context";
 
 function checksToneIcon(tone: PullRequestChecksTone) {
   const colorClass = PULL_REQUEST_CHECKS_TONE_TEXT_CLASS[tone];
@@ -204,6 +205,7 @@ export function EnvironmentPullRequestSection({
   onOpenUrl: (url: string) => void;
   onClose: () => void;
 }) {
+  const copy = useMessages().pullRequests;
   const openPane = useRightDockStore((store) => store.openPane);
   // Shares the cached git status the git block already fetches — no extra RPC.
   const { data: gitStatus } = useQuery(gitStatusQueryOptions(gitCwd));
@@ -291,7 +293,7 @@ export function EnvironmentPullRequestSection({
   };
 
   return (
-    <EnvironmentLabeledSection label="Pull request">
+    <EnvironmentLabeledSection label={copy.environment.label}>
       <EnvironmentRow
         icon={<GitPullRequestIcon className={ENVIRONMENT_ROW_ICON_CLASS_NAME} aria-hidden />}
         label={
@@ -324,7 +326,7 @@ export function EnvironmentPullRequestSection({
             </span>
           }
           trailing={<ArrowUpRightIcon className={ENVIRONMENT_ROW_ICON_CLASS_NAME} aria-hidden />}
-          title="Open pull request file changes"
+          title={copy.environment.openFileChanges}
           onClick={() => {
             openPullRequest("code");
           }}
@@ -349,10 +351,10 @@ export function EnvironmentPullRequestSection({
             <button
               type="button"
               onClick={handleResolveConflicts}
-              title="Drafts a prompt in the composer asking the agent to resolve the merge conflicts — review it, then send"
+              title={copy.environment.resolveConflictsHint}
               className="shrink-0 cursor-pointer rounded-md px-2 py-1 text-[length:var(--app-font-size-ui,12px)] text-[var(--color-text-foreground)] transition-colors hover:bg-[var(--color-background-elevated-secondary)]"
             >
-              Fix
+              {copy.environment.fix}
             </button>
           ) : null}
         </div>
@@ -373,7 +375,9 @@ export function EnvironmentPullRequestSection({
               />
             )
           }
-          label={settledState === "merged" ? "Merged on GitHub" : "Closed on GitHub"}
+          label={
+            settledState === "merged" ? copy.status.mergedOnGitHub : copy.status.closedOnGitHub
+          }
           trailing={<ArrowUpRightIcon className={ENVIRONMENT_ROW_ICON_CLASS_NAME} aria-hidden />}
           onClick={() => {
             openPullRequest();
@@ -387,14 +391,14 @@ export function EnvironmentPullRequestSection({
               aria-hidden
             />
           }
-          label="Couldn't load PR data"
+          label={copy.environment.loadFailed}
           trailing={
             <RefreshCwIcon
               className={cn("size-3 shrink-0", snapshotQuery.isFetching && "animate-spin")}
               aria-hidden
             />
           }
-          title="Retry loading checks and review comments"
+          title={copy.environment.retryHint}
           onClick={() => void snapshotQuery.refetch()}
         />
       ) : (
@@ -416,13 +420,13 @@ export function EnvironmentPullRequestSection({
                     checksToneIcon(checksSummary.tone)
                   )
                 }
-                label={loading ? "Loading checks…" : checksSummary.label}
+                label={loading ? copy.environment.loadingChecks : checksSummary.label}
                 trailing={<EnvironmentRowChevron />}
               />
             </MenuTrigger>
             <ComposerPickerMenuPopup align="start" side="bottom" className="w-72 min-w-72">
               {checks.length === 0 ? (
-                <MenuPlaceholder text="No checks reported for this PR." />
+                <MenuPlaceholder text={copy.environment.noChecks} />
               ) : (
                 <div className="flex flex-col gap-0.5">
                   {withStableCheckKeys(checks).map(({ key, check }) => (
@@ -456,9 +460,9 @@ export function EnvironmentPullRequestSection({
                   icon={<ChatBubbleIcon className={ENVIRONMENT_ROW_ICON_CLASS_NAME} aria-hidden />}
                   label={
                     loading
-                      ? "Loading comments…"
+                      ? copy.environment.loadingComments
                       : commentsError
-                        ? "Comments unavailable"
+                        ? copy.environment.commentsUnavailable
                         : summarizePullRequestComments(comments.length, commentsTruncated)
                   }
                   trailing={<EnvironmentRowChevron />}
@@ -466,13 +470,13 @@ export function EnvironmentPullRequestSection({
               </MenuTrigger>
               <ComposerPickerMenuPopup align="start" side="bottom" className="w-80 min-w-80">
                 {commentsError ? (
-                  <MenuPlaceholder text={`Couldn't load review comments: ${commentsError}`} />
+                  <MenuPlaceholder text={copy.environment.commentsLoadFailed(commentsError)} />
                 ) : comments.length === 0 ? (
                   <MenuPlaceholder
                     text={
                       commentsTruncated
-                        ? "Review comments may be hidden by the bounded preview. Open the PR on GitHub."
-                        : "No unresolved review comments."
+                        ? copy.environment.commentsHidden
+                        : copy.environment.noUnresolvedComments
                     }
                   />
                 ) : (
@@ -488,7 +492,7 @@ export function EnvironmentPullRequestSection({
                       />
                     ))}
                     {commentsTruncated ? (
-                      <MenuPlaceholder text="More review comments may be available on GitHub." />
+                      <MenuPlaceholder text={copy.environment.moreComments} />
                     ) : null}
                   </div>
                 )}
@@ -498,10 +502,10 @@ export function EnvironmentPullRequestSection({
               <button
                 type="button"
                 onClick={handleFixComments}
-                title="Draft one prompt containing all visible review comments"
+                title={copy.environment.draftAllCommentsHint}
                 className="shrink-0 cursor-pointer rounded-md px-2 py-1 text-[length:var(--app-font-size-ui,12px)] text-[var(--color-text-foreground)] transition-colors hover:bg-[var(--color-background-elevated-secondary)]"
               >
-                Fix
+                {copy.environment.fix}
               </button>
             ) : null}
           </div>

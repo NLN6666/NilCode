@@ -14,6 +14,7 @@ import {
   pullRequestDetailInputKey,
 } from "./pullRequestDetail.logic";
 import { PullRequestDetailPanel } from "./PullRequestDetailPanel";
+import { useMessages } from "~/i18n/context";
 
 export function PullRequestDockPane({
   pane,
@@ -24,9 +25,10 @@ export function PullRequestDockPane({
   onClose?: (() => void) | undefined;
   pollingEnabled?: boolean;
 }) {
+  const copy = useMessages().pullRequests;
   const input = pullRequestDetailInputFromPane(pane);
   if (!input) {
-    return <PanelStateMessage>Select a pull request to open it here.</PanelStateMessage>;
+    return <PanelStateMessage>{copy.selectOne}</PanelStateMessage>;
   }
   return (
     <PullRequestDetailPanel
