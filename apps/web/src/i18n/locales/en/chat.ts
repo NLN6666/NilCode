@@ -38,6 +38,122 @@ export const chat = {
     sessionCost: (cost: string) => `Session cost: ${cost}`,
   },
 
+  /** Workflow run card in the composer stack. */
+  workflow: {
+    openThread: "Open thread",
+    prompt: "Prompt",
+    recent: "Recent",
+    resume: "Resume workflow",
+    dismiss: "Dismiss workflow panel",
+    pause: "Pause workflow",
+    pauseHint: "Pause workflow (resume replays completed agents from cache)",
+    stop: "Stop workflow",
+    noAgents: "No agents yet",
+    saved: "Saved",
+    copyScriptPath: "Copy script path and run id",
+  },
+
+  /** Expanded tool-call payload dialog. */
+  toolCall: {
+    noPayload: "No detailed payload was available for this tool call.",
+    arguments: "Arguments",
+    files: "Files",
+    diff: "Diff",
+    edits: "Edits",
+    before: "Before",
+    after: "After",
+    writtenContent: "Written Content",
+    exitCode: (code: number) => `Exit code ${code}`,
+    truncated: "Truncated",
+    output: "Output",
+    stdout: "Stdout",
+    stderr: "Stderr",
+  },
+
+  /** Effort / context / speed picker in the composer toolbar. */
+  traits: {
+    fastMode: "Fast mode",
+    thinking: "Thinking",
+    onDefault: "On (default)",
+    off: "Off",
+    context: "Context",
+    variant: "Variant",
+    effort: "Effort",
+    ultrathinkLocked: "Remove Ultrathink from the prompt to change effort.",
+    speed: "Speed",
+    default: "Default",
+    fast: "Fast",
+    trigger: "Change effort, context, and speed",
+    options: "Options",
+  },
+
+  /** Right-dock panes and split-surface placeholders. */
+  panes: {
+    comingSoon: (label: string) => `${label} panel is coming soon.`,
+    loadingBrowser: "Loading browser...",
+    loadingPullRequest: "Loading pull request...",
+    terminalSleeping: "Terminal is sleeping. Restoring shortly.",
+    loadingTerminal: "Loading terminal...",
+    loadingGit: "Loading Git...",
+    loadingExplorer: "Loading explorer...",
+    loadingFile: "Loading file...",
+    loadingDiffViewer: "Loading diff viewer...",
+    selectFileFromTree: "Select a file from the tree to view it.",
+    clickFileToPreview: "Click a file in the chat to preview it here.",
+    addPanel: "Add panel",
+    collapsePanel: "Collapse panel",
+  },
+
+  split: {
+    selectChat: "Select a chat",
+    chooseChat: "Choose Chat",
+    chooseChatHint: "Pick which chat should appear in the focused split pane.",
+    cancel: "Cancel",
+  },
+
+  /** Workspace file explorer in the dock. */
+  explorer: {
+    loadingDirectory: "Loading directory...",
+    noWorkspace: "No workspace.",
+    searchPlaceholder: "Search files...",
+    searchLabel: "Search files",
+    noMatches: "No matching files.",
+    topMatches: "Showing the top matches. Refine the search to narrow them down.",
+    searchHint: "Search files by name or path.",
+  },
+
+  /** Subagent activity detail view. */
+  activity: {
+    back: "Back",
+    prompt: "Prompt",
+    result: "Result",
+    agents: "Agents",
+    activity: "Activity",
+    open: "Open",
+  },
+
+  /** Rows inside the work timeline. */
+  work: {
+    summary: "Summary",
+    rawCall: "Raw call",
+    latest: "Latest",
+    moreToolUses: (count: number) => `+${count} more tool uses`,
+    openThread: "Open thread",
+    edited: "Edited",
+  },
+
+  /** Header above a previewed workspace file. */
+  filePreview: {
+    filePath: "File path",
+    shownPartially: "Shown partially",
+    markdownView: "Markdown view",
+    source: "Source",
+    sourceHint: "Source view — select text to reference exact lines in chat",
+    moreActions: "More actions",
+    referenceInChat: "Reference in chat",
+    askWhyChanged: "Ask why this changed",
+  },
+
   header: {
     chatHistory: "Chat history",
     noChatsInProject: "No chats in this project yet",

@@ -30,6 +30,7 @@ import {
   formatAgentActivityEntryTitle,
   isReasoningUpdateWorkEntry,
 } from "./agentActivity.logic";
+import { useMessages } from "~/i18n/context";
 
 const DETAIL_BOTTOM_INSET_PX = 64;
 
@@ -54,6 +55,7 @@ export function AgentActivityDetailView({
   onOpenThread,
   timestampFormat,
 }: AgentActivityDetailViewProps) {
+  const copy = useMessages().chat.activity;
   const chatTypographyStyle = getChatTranscriptTextStyle(chatFontSizePx);
   const footerTextStyle = getChatMessageFooterTextStyle(chatFontSizePx);
   const scrollStyle: CSSProperties = {
@@ -84,7 +86,7 @@ export function AgentActivityDetailView({
           onClick={onBack}
         >
           <ChevronLeftIcon className="size-3.5" />
-          <span>Back</span>
+          <span>{copy.back}</span>
         </button>
 
         <div className="mt-3 border-b border-border/55 pb-4">
@@ -111,7 +113,7 @@ export function AgentActivityDetailView({
         </div>
 
         {prompt ? (
-          <AgentActivitySection title="Prompt">
+          <AgentActivitySection title={copy.prompt}>
             <ChatMarkdown
               text={prompt}
               cwd={markdownCwd}
@@ -123,7 +125,7 @@ export function AgentActivityDetailView({
         ) : null}
 
         {result ? (
-          <AgentActivitySection title="Result">
+          <AgentActivitySection title={copy.result}>
             <ChatMarkdown
               text={result}
               cwd={markdownCwd}
@@ -135,7 +137,7 @@ export function AgentActivityDetailView({
         ) : null}
 
         {subagents.length > 0 ? (
-          <AgentActivitySection title="Agents">
+          <AgentActivitySection title={copy.agents}>
             <div className="space-y-2">
               {subagents.map((subagent) => (
                 <SubagentDetailRow
@@ -149,7 +151,7 @@ export function AgentActivityDetailView({
           </AgentActivitySection>
         ) : null}
 
-        <AgentActivitySection title="Activity">
+        <AgentActivitySection title={copy.activity}>
           <div className="divide-y divide-border/45">
             {detail.entries.map((entry) => (
               <AgentActivityEventRow
@@ -220,6 +222,7 @@ function SubagentDetailRow(props: {
   textStyle: CSSProperties;
   onOpenThread?: (threadId: ThreadId) => void;
 }) {
+  const rowCopy = useMessages().chat.activity;
   const presentation = resolveSubagentPresentation({
     nickname: props.subagent.nickname,
     role: props.subagent.role,
@@ -271,7 +274,7 @@ function SubagentDetailRow(props: {
           )
         }
       >
-        Open
+        {rowCopy.open}
       </button>
     </div>
   );

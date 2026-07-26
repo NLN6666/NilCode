@@ -79,6 +79,8 @@ import {
   normalizeSubagentStatusKind,
   resolveSubagentPresentation,
 } from "../../lib/subagentPresentation";
+import { useMessages } from "~/i18n/context";
+import type { Messages } from "~/i18n/locales/en";
 
 const TRANSCRIPT_DISCLOSURE_TRANSITION_MS = 220;
 const TRANSCRIPT_DISCLOSURE_CLEANUP_BUFFER_MS = 40;
@@ -406,6 +408,9 @@ function subagentSecondaryLabel(
   return parts.join(" • ");
 }
 
+/** The `chat.work` catalog group, passed into the locale-free tooltip builders. */
+type WorkCopy = Messages["chat"]["work"];
+
 function subagentStatusClasses(
   statusLabel: string | undefined,
   rawStatus: string | undefined,
@@ -444,16 +449,16 @@ function subagentCardMeta(workEntry: TimelineWorkEntry): string | null {
   return modelLabel ?? workEntry.subagentAction?.prompt ?? null;
 }
 
-function commandTooltipContent(command: string, displayText: string) {
+function commandTooltipContent(command: string, displayText: string, copy: WorkCopy) {
   return (
     <div className="max-w-96 whitespace-pre-wrap leading-tight">
       <div className="space-y-2">
         <div className="space-y-0.5">
-          <div className="text-muted-foreground/70">Summary</div>
+          <div className="text-muted-foreground/70">{copy.summary}</div>
           <div>{displayText}</div>
         </div>
         <div className="space-y-0.5">
-          <div className="text-muted-foreground/70">Raw call</div>
+          <div className="text-muted-foreground/70">{copy.rawCall}</div>
           <code className="block whitespace-pre-wrap break-words font-chat-code text-[11px] text-foreground/92">
             {command}
           </code>
@@ -470,9 +475,10 @@ function toolRowTooltipContent(
   rawCommand: string | null | undefined,
   displayText: string,
   fallback: string | undefined,
+  copy: WorkCopy,
 ): ReactNode {
   if (rawCommand) {
-    return commandTooltipContent(rawCommand, displayText);
+    return commandTooltipContent(rawCommand, displayText, copy);
   }
   return fallback ? <span className="whitespace-pre-wrap">{fallback}</span> : null;
 }
@@ -510,6 +516,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
   onOpenAutomation?: (automationId: string) => void;
   subagentToolTraceByThreadId?: ReadonlyMap<string, SubagentToolTrace>;
 }) {
+  const rowCopy = useMessages().chat.work;
   const {
     workEntry,
     chatMetaFontSizePx,
@@ -800,7 +807,9 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
                           style={{ fontSize: `${Math.max(10, rowFontSizePx - 2)}px` }}
                           title={subagent.latestUpdate}
                         >
-                          <span className="shrink-0 text-muted-foreground/30">Latest</span>
+                          <span className="shrink-0 text-muted-foreground/30">
+                            {rowCopy.latest}
+                          </span>
                           <span className="truncate">{subagent.latestUpdate}</span>
                         </div>
                       ) : null}
@@ -832,7 +841,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
                               className="pl-[18px] text-muted-foreground/36"
                               style={{ fontSize: `${Math.max(10, rowFontSizePx - 2)}px` }}
                             >
-                              +{toolTrace.overflowCount} more tool uses
+                              {rowCopy.moreToolUses(toolTrace.overflowCount)}
                             </div>
                           ) : null}
                         </div>
@@ -868,7 +877,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
                           )
                         }
                       >
-                        Open thread
+                        {rowCopy.openThread}
                       </button>
                     </div>
                   </div>
@@ -955,7 +964,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
               <ToolDetailsDisclosure
                 details={workEntry.toolDetails}
                 compact={compact}
-                tooltip={toolRowTooltipContent(rawCommand, displayText, displayText)}
+                tooltip={toolRowTooltipContent(rawCommand, displayText, displayText, rowCopy)}
               >
                 {rowContentChildren}
               </ToolDetailsDisclosure>
@@ -972,6 +981,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
                 rawCommand,
                 displayText,
                 canOpenReadFile ? (readFilePath ?? hoverText) : hoverText,
+                rowCopy,
               )}
             >
               {rowContentChildren}
@@ -996,6 +1006,7 @@ export function EditedFileRowContent(props: {
   fontSizePx: number;
   compact: boolean;
 }) {
+  const editedCopy = useMessages().chat.work;
   const { filePath, additions, deletions, fontSizePx, compact } = props;
   const hasStat = (additions ?? 0) + (deletions ?? 0) > 0;
   return (
@@ -1014,7 +1025,7 @@ export function EditedFileRowContent(props: {
         className={cn("font-system-ui shrink-0", WORK_ROW_MUTED_HOVER_TONE["file-row"])}
         style={{ fontSize: `${fontSizePx}px` }}
       >
-        Edited
+        {editedCopy.edited}
       </span>
       <span
         className={cn(

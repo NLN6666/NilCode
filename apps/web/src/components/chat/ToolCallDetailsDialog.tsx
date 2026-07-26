@@ -9,6 +9,7 @@ import { createMarkdownCodeFence, formatShellTranscript } from "~/lib/toolCallDe
 import { cn } from "~/lib/utils";
 import type { WorkLogToolDetails, WorkLogToolOutputDetails } from "../../lib/toolCallDetails";
 import ChatMarkdown from "../ChatMarkdown";
+import { useMessages } from "~/i18n/context";
 
 const DETAIL_HEADER_CLASS_NAME = "border-b border-border/45 px-3 py-2 text-[10px] font-medium";
 const DETAIL_CODE_BLOCK_CLASS_NAME =
@@ -17,10 +18,11 @@ const TOOL_DETAILS_MARKDOWN_CLASS_NAME =
   "text-[length:var(--app-font-size-ui,12px)] leading-relaxed";
 
 export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetails | undefined }) {
+  const copy = useMessages().chat.toolCall;
   if (!details) {
     return (
       <div className="rounded-lg border border-border/45 bg-background/60 px-3 py-2 text-sm text-muted-foreground">
-        No detailed payload was available for this tool call.
+        {copy.noPayload}
       </div>
     );
   }
@@ -28,7 +30,7 @@ export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetail
   return (
     <>
       {details.arguments ? (
-        <ToolDetailSection title="Arguments">
+        <ToolDetailSection title={copy.arguments}>
           <MarkdownToolCodeBlock language={toolArgumentsLanguage(details.arguments)}>
             {details.arguments}
           </MarkdownToolCodeBlock>
@@ -45,7 +47,7 @@ export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetail
       ) : null}
 
       {details.files?.length ? (
-        <ToolDetailSection title="Files">
+        <ToolDetailSection title={copy.files}>
           <div className="flex flex-wrap gap-1.5">
             {details.files.map((file) => (
               <span
@@ -61,13 +63,13 @@ export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetail
       ) : null}
 
       {details.diff ? (
-        <ToolDetailSection title="Diff">
+        <ToolDetailSection title={copy.diff}>
           <DiffCodeBlock>{details.diff}</DiffCodeBlock>
         </ToolDetailSection>
       ) : null}
 
       {details.edits?.length ? (
-        <ToolDetailSection title="Edits">
+        <ToolDetailSection title={copy.edits}>
           <div className="space-y-3">
             {details.edits.map((edit, index) => (
               <div
@@ -81,12 +83,12 @@ export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetail
                 ) : null}
                 <div className="grid gap-0 md:grid-cols-2">
                   {edit.oldText !== undefined ? (
-                    <TextChangeBlock title="Before" tone="remove">
+                    <TextChangeBlock title={copy.before} tone="remove">
                       {edit.oldText}
                     </TextChangeBlock>
                   ) : null}
                   {edit.newText !== undefined ? (
-                    <TextChangeBlock title="After" tone="add">
+                    <TextChangeBlock title={copy.after} tone="add">
                       {edit.newText}
                     </TextChangeBlock>
                   ) : null}
@@ -98,7 +100,7 @@ export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetail
       ) : null}
 
       {details.content ? (
-        <ToolDetailSection title="Written Content">
+        <ToolDetailSection title={copy.writtenContent}>
           <MarkdownToolCodeBlock language="text">{details.content}</MarkdownToolCodeBlock>
         </ToolDetailSection>
       ) : null}
@@ -134,6 +136,7 @@ function ToolDetailSection(props: { title: string; children: ReactNode }) {
 }
 
 function ToolOutputMetadata({ output }: { output: WorkLogToolOutputDetails }) {
+  const copy = useMessages().chat.toolCall;
   if (output.exitCode === undefined && !output.truncated) {
     return null;
   }
@@ -141,12 +144,12 @@ function ToolOutputMetadata({ output }: { output: WorkLogToolOutputDetails }) {
     <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground/68">
       {output.exitCode !== undefined ? (
         <span className="rounded-full border border-border/45 px-2 py-0.5">
-          Exit code {output.exitCode}
+          {copy.exitCode(output.exitCode)}
         </span>
       ) : null}
       {output.truncated ? (
         <span className="rounded-full border border-amber-500/30 bg-amber-500/8 px-2 py-0.5 text-amber-200/90">
-          Truncated
+          {copy.truncated}
         </span>
       ) : null}
     </div>
@@ -154,19 +157,20 @@ function ToolOutputMetadata({ output }: { output: WorkLogToolOutputDetails }) {
 }
 
 function ToolOutputSection({ output }: { output: WorkLogToolOutputDetails }) {
+  const copy = useMessages().chat.toolCall;
   return (
-    <ToolDetailSection title="Output">
+    <ToolDetailSection title={copy.output}>
       <div className="space-y-3">
         {output.output ? (
           <MarkdownToolCodeBlock language="text">{output.output}</MarkdownToolCodeBlock>
         ) : null}
         {output.stdout ? (
-          <LabeledCodeBlock title="Stdout" tone="output">
+          <LabeledCodeBlock title={copy.stdout} tone="output">
             {output.stdout}
           </LabeledCodeBlock>
         ) : null}
         {output.stderr ? (
-          <LabeledCodeBlock title="Stderr" tone="error">
+          <LabeledCodeBlock title={copy.stderr} tone="error">
             {output.stderr}
           </LabeledCodeBlock>
         ) : null}

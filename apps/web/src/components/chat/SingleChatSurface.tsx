@@ -97,6 +97,7 @@ import {
   stripEditorViewSearchParams,
 } from "../../routes/-chatThreadRoute.logic";
 import { cn } from "~/lib/utils";
+import { useMessages } from "~/i18n/context";
 
 const PullRequestDockPane = lazy(() => import("../pullRequest/PullRequestDockPane"));
 const EditorWorkspaceView = lazy(() =>
@@ -150,8 +151,9 @@ function shouldAcceptDockWidth({
 }
 
 function RightDockPanePlaceholder(props: { kind: RightDockPaneKind }) {
+  const copy = useMessages().chat.panes;
   const { label } = getRightDockPaneMeta(props.kind);
-  return <PanelStateMessage>{label} panel is coming soon.</PanelStateMessage>;
+  return <PanelStateMessage>{copy.comingSoon(label)}</PanelStateMessage>;
 }
 
 // Embedded dock chats (side chats) manage their own panels through the dock, so the
@@ -169,6 +171,7 @@ export function SingleChatSurface(props: {
   search: DiffRouteSearch;
   projectId: ProjectId | null;
 }) {
+  const paneCopy = useMessages().chat.panes;
   const navigate = useNavigate();
   const createSplitView = useSplitViewStore((store) => store.createFromThread);
   const createSplitViewFromDrop = useSplitViewStore((store) => store.createFromDrop);
@@ -657,7 +660,7 @@ export function SingleChatSurface(props: {
     switch (pane.kind) {
       case "browser":
         return (
-          <Suspense fallback={<PanelStateMessage>Loading browser...</PanelStateMessage>}>
+          <Suspense fallback={<PanelStateMessage>{paneCopy.loadingBrowser}</PanelStateMessage>}>
             <LazyBrowserPanel
               mode="sidebar"
               threadId={props.threadId}
@@ -669,7 +672,7 @@ export function SingleChatSurface(props: {
         );
       case "pullRequest":
         return (
-          <Suspense fallback={<PanelStateMessage>Loading pull request...</PanelStateMessage>}>
+          <Suspense fallback={<PanelStateMessage>{paneCopy.loadingPullRequest}</PanelStateMessage>}>
             <PullRequestDockPane
               pane={pane}
               pollingEnabled={context.isVisible}
@@ -700,7 +703,7 @@ export function SingleChatSurface(props: {
         );
       case "terminal":
         if (context.runtimeMode === "preview") {
-          return <PanelStateMessage>Terminal is sleeping. Restoring shortly.</PanelStateMessage>;
+          return <PanelStateMessage>{paneCopy.terminalSleeping}</PanelStateMessage>;
         }
         // Kept mounted across tab switches; visibility toggles the xterm runtime
         // instead of detaching/reattaching it (avoids the open-lag + fit flicker).
@@ -708,7 +711,7 @@ export function SingleChatSurface(props: {
         // mounted (offcanvas is CSS-only), so without this the off-screen terminal
         // would keep WebGL + resize observers alive for nothing.
         return (
-          <Suspense fallback={<PanelStateMessage>Loading terminal...</PanelStateMessage>}>
+          <Suspense fallback={<PanelStateMessage>{paneCopy.loadingTerminal}</PanelStateMessage>}>
             <DockTerminalPane
               hostThreadId={props.threadId}
               projectId={props.projectId}
@@ -718,7 +721,7 @@ export function SingleChatSurface(props: {
         );
       case "git":
         return (
-          <Suspense fallback={<PanelStateMessage>Loading Git...</PanelStateMessage>}>
+          <Suspense fallback={<PanelStateMessage>{paneCopy.loadingGit}</PanelStateMessage>}>
             <GitPanel
               hostThreadId={props.threadId}
               projectId={props.projectId}
@@ -728,7 +731,7 @@ export function SingleChatSurface(props: {
         );
       case "explorer":
         return (
-          <Suspense fallback={<PanelStateMessage>Loading explorer...</PanelStateMessage>}>
+          <Suspense fallback={<PanelStateMessage>{paneCopy.loadingExplorer}</PanelStateMessage>}>
             <DockExplorerPane
               workspaceRoot={workspaceRoot}
               onReferenceInChat={handleReferenceInChat}
@@ -739,7 +742,7 @@ export function SingleChatSurface(props: {
         );
       case "file":
         return (
-          <Suspense fallback={<PanelStateMessage>Loading file...</PanelStateMessage>}>
+          <Suspense fallback={<PanelStateMessage>{paneCopy.loadingFile}</PanelStateMessage>}>
             <DockFilePane
               workspaceRoot={workspaceRoot}
               filePath={pane.filePath}

@@ -40,6 +40,7 @@ import { EXPLORER_ROW_PROPS, useExplorerListNavigation } from "./explorerListNav
 import { FileEntryIcon } from "./FileEntryIcon";
 import { fileRowClassName, fileRowIndentStyle } from "./fileRowStyles";
 import { PanelStateMessage } from "./PanelStateMessage";
+import { useMessages } from "~/i18n/context";
 
 const EXPLORER_HIDDEN_DIRECTORY_NAMES = new Set([
   ".cache",
@@ -195,12 +196,13 @@ const ExplorerRow = forwardRef<
 const EXPLORER_SKELETON_ROW_WIDTHS = ["w-9/12", "w-6/12", "w-7/12"];
 
 function ExplorerLoadingRows(props: { depth: number }) {
+  const copy = useMessages().chat.explorer;
   return (
     <div
       className="space-y-1.5 py-1.5 pr-2"
       style={fileRowIndentStyle(props.depth)}
       role="status"
-      aria-label="Loading directory..."
+      aria-label={copy.loadingDirectory}
     >
       {EXPLORER_SKELETON_ROW_WIDTHS.map((width) => (
         <div key={width} className="flex h-5 items-center gap-1.5">
@@ -332,6 +334,7 @@ function WorkspaceFilesTreeBody(props: {
   onPrefetchEntry: (entry: ProjectFileSystemEntry) => void;
   onEntryContextMenu: (entry: ProjectFileSystemEntry, position: { x: number; y: number }) => void;
 }) {
+  const copy = useMessages().chat.explorer;
   return (
     <div className="min-h-0 flex-1 overflow-auto px-1 py-1">
       {props.workspaceRoot ? (
@@ -348,7 +351,7 @@ function WorkspaceFilesTreeBody(props: {
         />
       ) : (
         <PanelStateMessage density="compact" fill="flex">
-          <p>No workspace.</p>
+          <p>{copy.noWorkspace}</p>
         </PanelStateMessage>
       )}
     </div>
@@ -364,6 +367,7 @@ export function WorkspaceFilesSidebar(props: {
   onToggleDirectory: (path: string) => void;
   onReferenceInChat: ((reference: ChatFileReference) => void) | undefined;
 }) {
+  const copy = useMessages().chat.explorer;
   const prefetchEntry = useExplorerEntryPrefetch(props.workspaceRoot);
   const handleEntryContextMenu = useTreeEntryContextMenu(props.onReferenceInChat);
   const handleListKeyDown = useExplorerListNavigation();
@@ -485,6 +489,7 @@ function WorkspaceSearchInputHeader(props: {
   onQueryChange: (query: string) => void;
   onSelectFile: (path: string) => void;
 }) {
+  const copy = useMessages().chat.explorer;
   const { onQueryChange, onSelectFile, query, search } = props;
   const handleInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -512,8 +517,8 @@ function WorkspaceSearchInputHeader(props: {
         spellCheck={false}
         autoCorrect="off"
         autoCapitalize="off"
-        placeholder="Search files..."
-        aria-label="Search files"
+        placeholder={copy.searchPlaceholder}
+        aria-label={copy.searchLabel}
         onChange={(event) => onQueryChange(event.target.value)}
         onKeyDown={handleInputKeyDown}
       />
@@ -531,6 +536,7 @@ function WorkspaceSearchResultsBody(props: {
   onPrefetchEntry: (entry: Pick<ProjectFileSystemEntry, "path" | "kind">) => void;
   onEntryContextMenu: (path: string, position: { x: number; y: number }) => void;
 }) {
+  const copy = useMessages().chat.explorer;
   const { fileMatches } = props.search;
   return (
     <>
@@ -542,7 +548,7 @@ function WorkspaceSearchResultsBody(props: {
       >
         {!props.workspaceRoot ? (
           <PanelStateMessage density="compact" fill="flex">
-            <p>No workspace.</p>
+            <p>{copy.noWorkspace}</p>
           </PanelStateMessage>
         ) : props.search.searchResultsCurrent && props.search.error ? (
           <PanelStateMessage density="compact" fill="flex">
@@ -557,7 +563,7 @@ function WorkspaceSearchResultsBody(props: {
             <ExplorerLoadingRows depth={0} />
           ) : (
             <PanelStateMessage density="compact" fill="flex">
-              <p>No matching files.</p>
+              <p>{copy.noMatches}</p>
             </PanelStateMessage>
           )
         ) : (
@@ -575,7 +581,7 @@ function WorkspaceSearchResultsBody(props: {
       </div>
       {fileMatches.length > 0 && props.search.truncated ? (
         <p className="shrink-0 border-t border-border/45 px-3 py-1.5 text-[10px] text-muted-foreground/70">
-          Showing the top matches. Refine the search to narrow them down.
+          {copy.topMatches}
         </p>
       ) : null}
     </>
@@ -591,6 +597,7 @@ export function WorkspaceSearchSidebar(props: {
   onSelectFile: (path: string) => void;
   onReferenceInChat: ((reference: ChatFileReference) => void) | undefined;
 }) {
+  const copy = useMessages().chat.explorer;
   const prefetchEntry = useExplorerEntryPrefetch(props.workspaceRoot);
   const handleEntryContextMenu = useResultEntryContextMenu(props.onReferenceInChat);
   const handleListKeyDown = useExplorerListNavigation();
@@ -611,7 +618,7 @@ export function WorkspaceSearchSidebar(props: {
       {search.inputQuery.length === 0 ? (
         <div className="flex min-h-0 flex-1 flex-col px-1 py-1">
           <PanelStateMessage density="compact" fill="flex">
-            <p>Search files by name or path.</p>
+            <p>{copy.searchHint}</p>
           </PanelStateMessage>
         </div>
       ) : (
