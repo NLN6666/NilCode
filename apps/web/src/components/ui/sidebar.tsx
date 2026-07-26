@@ -20,6 +20,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { Schema } from "effect";
+import { useMessages } from "~/i18n/context";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -256,6 +257,7 @@ function Sidebar({
   innerClassName?: string;
   transparentSurface?: boolean;
 }) {
+  const copy = useMessages().app.ui;
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
   const resolvedResizable = React.useMemo<SidebarResolvedResizableOptions | null>(
     () => resolveSidebarResizable(resizable, { collapsible, isMobile }),
@@ -305,8 +307,8 @@ function Sidebar({
             }
           >
             <SheetHeader className="sr-only">
-              <SheetTitle>Sidebar</SheetTitle>
-              <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+              <SheetTitle>{copy.sidebar}</SheetTitle>
+              <SheetDescription>{copy.sidebarDescription}</SheetDescription>
             </SheetHeader>
             <div className={cn("flex h-full w-full flex-col", innerClassName)}>{children}</div>
           </SheetPopup>
@@ -378,6 +380,7 @@ function Sidebar({
 }
 
 function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
+  const triggerCopy = useMessages().app.ui;
   const { toggleSidebar } = useSidebar();
 
   return (
@@ -394,7 +397,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
       {...props}
     >
       <CentralIcon name="sidebar-hidden-left-wide" />
-      <span className="sr-only">Toggle Sidebar</span>
+      <span className="sr-only">{triggerCopy.toggleSidebar}</span>
     </Button>
   );
 }

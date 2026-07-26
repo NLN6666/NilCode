@@ -2,6 +2,7 @@
 // Purpose: Assemble the Simplified Chinese catalog against the Messages contract.
 
 import type { Messages } from "../en";
+import { app } from "./app";
 import { automations } from "./automations";
 import { browser } from "./browser";
 import { chat } from "./chat";
@@ -18,6 +19,7 @@ import { workspace } from "./workspace";
 import { settingsNav } from "./settingsNav";
 
 export const zhCN: Messages = {
+  app,
   automations,
   browser,
   chat,

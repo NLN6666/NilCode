@@ -36,6 +36,7 @@ import { shouldRenderTerminalWorkspace } from "../components/ChatView.logic";
 import { Button, dialogActionButtonClassName } from "../components/ui/button";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "../components/ui/toast";
 import { AppI18nProvider } from "../i18n/AppI18nProvider";
+import { useMessages } from "../i18n/context";
 import { useGitProgressToastPreview } from "../components/useGitProgressToastPreview";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { useFeatureFlags } from "../featureFlags";
@@ -205,25 +206,19 @@ function RootRouteView() {
 
   if (compatibilityIssue) {
     return (
-      <>
+      <AppI18nProvider>
         <TransportCompatibilityView issue={compatibilityIssue} />
         {desktopWindowControls}
-      </>
+      </AppI18nProvider>
     );
   }
 
   if (!readNativeApi()) {
     return (
-      <>
-        <div className="flex h-screen flex-col bg-background text-foreground">
-          <div className="flex flex-1 items-center justify-center">
-            <p className="text-sm text-muted-foreground">
-              Connecting to {APP_DISPLAY_NAME} server...
-            </p>
-          </div>
-        </div>
+      <AppI18nProvider>
+        <ConnectingScreen />
         {desktopWindowControls}
-      </>
+      </AppI18nProvider>
     );
   }
 
@@ -252,19 +247,33 @@ function RootRouteView() {
   );
 }
 
+// Rendered before the native API exists, so it lives inside AppI18nProvider (which only needs
+// the persisted settings store) rather than reading the English fallback catalog.
+function ConnectingScreen() {
+  const copy = useMessages().app.root;
+  return (
+    <div className="flex h-screen flex-col bg-background text-foreground">
+      <div className="flex flex-1 items-center justify-center">
+        <p className="text-sm text-muted-foreground">{copy.connecting(APP_DISPLAY_NAME)}</p>
+      </div>
+    </div>
+  );
+}
+
 function TransportCompatibilityView({ issue }: { issue: WsCompatibilityError }) {
+  const compatCopy = useMessages().app.root;
   const title =
     issue.action === "update-client"
-      ? "This Synara client needs an update."
+      ? compatCopy.updateClient
       : issue.action === "update-server"
-        ? "The Synara server needs an update."
-        : "Synara needs to reconnect with a matching build.";
+        ? compatCopy.updateServer
+        : compatCopy.reconnect;
   const guidance =
     issue.action === "update-client"
-      ? "Update or reload this client, then reconnect."
+      ? compatCopy.updateClientGuidance
       : issue.action === "update-server"
-        ? "Update or restart the server, then reload this client."
-        : "Reload the app. If this repeats, restart Synara so the client and server use matching builds.";
+        ? compatCopy.updateServerGuidance
+        : compatCopy.reconnectGuidance;
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
@@ -278,7 +287,7 @@ function TransportCompatibilityView({ issue }: { issue: WsCompatibilityError }) 
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{issue.message}</p>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{guidance}</p>
         <p className="mt-4 text-xs text-muted-foreground/80">
-          Client {APP_VERSION} · Server {issue.serverBuild}
+          {compatCopy.buildLine(APP_VERSION, issue.serverBuild)}
         </p>
         <div className="mt-5">
           <Button
@@ -286,7 +295,7 @@ function TransportCompatibilityView({ issue }: { issue: WsCompatibilityError }) 
             className={dialogActionButtonClassName}
             onClick={() => window.location.reload()}
           >
-            Reload app
+            {compatCopy.reloadApp}
           </Button>
         </div>
       </section>
@@ -708,6 +717,16 @@ function GlobalWhatsNewSurface() {
 }
 
 function RootRouteErrorView({ error, reset }: ErrorComponentProps) {
+  // The router swaps this in for RootComponent, so it never inherits that tree's provider.
+  return (
+    <AppI18nProvider>
+      <RootRouteErrorContent error={error} reset={reset} />
+    </AppI18nProvider>
+  );
+}
+
+function RootRouteErrorContent({ error, reset }: ErrorComponentProps) {
+  const errorCopy = useMessages().app.root;
   const message = errorMessage(error);
   const details = errorDetails(error);
 
@@ -720,12 +739,12 @@ function RootRouteErrorView({ error, reset }: ErrorComponentProps) {
 
       <section className="relative w-full max-w-xl rounded-2xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-8">
         <p className="text-[11px] font-semibold text-muted-foreground">{APP_DISPLAY_NAME}</p>
-        <h1 className="mt-3 text-2xl font-semibold sm:text-3xl">Something went wrong.</h1>
+        <h1 className="mt-3 text-2xl font-semibold sm:text-3xl">{errorCopy.somethingWentWrong}</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{message}</p>
 
         <div className="mt-5 flex flex-wrap gap-2">
           <Button size="sm" className={dialogActionButtonClassName} onClick={() => reset()}>
-            Try again
+            {errorCopy.tryAgain}
           </Button>
           <Button
             size="sm"
@@ -733,14 +752,14 @@ function RootRouteErrorView({ error, reset }: ErrorComponentProps) {
             className={dialogActionButtonClassName}
             onClick={() => window.location.reload()}
           >
-            Reload app
+            {errorCopy.reloadApp}
           </Button>
         </div>
 
         <details className="group mt-5 overflow-hidden rounded-lg border border-border/70 bg-background/55">
           <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-muted-foreground">
-            <span className="group-open:hidden">Show error details</span>
-            <span className="hidden group-open:inline">Hide error details</span>
+            <span className="group-open:hidden">{errorCopy.showErrorDetails}</span>
+            <span className="hidden group-open:inline">{errorCopy.hideErrorDetails}</span>
           </summary>
           <pre className="max-h-56 overflow-auto border-t border-border/70 bg-background/80 px-3 py-2 text-xs text-foreground/85">
             {details}

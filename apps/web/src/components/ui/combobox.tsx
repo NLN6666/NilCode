@@ -8,6 +8,7 @@ import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { APP_TRANSLUCENT_POPUP_SURFACE_BASE_CLASS_NAME } from "../chat/composerPickerStyles";
+import { useMessages } from "~/i18n/context";
 
 const ComboboxContext = React.createContext<{
   chipsRef: React.RefObject<Element | null> | null;
@@ -347,9 +348,10 @@ function ComboboxChip({ children, ...props }: ComboboxPrimitive.Chip.Props) {
 }
 
 function ComboboxChipRemove(props: ComboboxPrimitive.ChipRemove.Props) {
+  const copy = useMessages().app.ui;
   return (
     <ComboboxPrimitive.ChipRemove
-      aria-label="Remove"
+      aria-label={copy.remove}
       className="h-full shrink-0 cursor-pointer px-1.5 opacity-80 hover:opacity-100 [&_svg:not([class*='size-'])]:size-4 sm:[&_svg:not([class*='size-'])]:size-3.5"
       data-slot="combobox-chip-remove"
       {...props}

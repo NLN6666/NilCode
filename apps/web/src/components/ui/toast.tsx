@@ -31,6 +31,7 @@ import {
   resolveVisibleToastThreadIds,
   shouldRenderToastForVisibleThreads,
 } from "./toastRouteVisibility";
+import { useMessages } from "~/i18n/context";
 
 type ThreadToastData = {
   allowCrossThreadVisibility?: boolean;
@@ -274,10 +275,11 @@ function ToastCloseButton({
   onDismiss: () => void;
   onClose?: (() => void) | undefined;
 }) {
+  const copy = useMessages().app.toast;
   return (
     <button
       type="button"
-      aria-label="Dismiss toast"
+      aria-label={copy.dismiss}
       className={cn(
         // pointer-events-auto keeps the X clickable even when a stacked/collapsed
         // toast still gates its content with pointer-events-none.
@@ -289,7 +291,7 @@ function ToastCloseButton({
         onClose?.();
         onDismiss();
       }}
-      title="Dismiss toast"
+      title={copy.dismiss}
     >
       <XIcon className={compact ? "size-3" : "size-3.5"} />
     </button>
@@ -309,6 +311,7 @@ function ArchiveUndoToastSurface({
   hideCollapsedContent: boolean;
   onDismiss: () => void;
 }) {
+  const archiveCopy = useMessages().app.toast;
   const [undoPending, setUndoPending] = useState(false);
   // A pending Undo owns the next navigation; keep the Settings path idle until it settles.
   const actionsDisabled = undoPending;
@@ -363,9 +366,9 @@ function ArchiveUndoToastSurface({
             disabled={actionsDisabled}
             onClick={handleUndoClick}
           >
-            Undo
+            {archiveCopy.undo}
           </button>{" "}
-          or view archived chats in{" "}
+          {archiveCopy.orViewArchivedIn}{" "}
           <button
             type="button"
             className={ARCHIVE_UNDO_TOAST_LINK_CLASS_NAME}
@@ -373,7 +376,7 @@ function ArchiveUndoToastSurface({
             disabled={actionsDisabled}
             onClick={handleViewArchivedClick}
           >
-            Settings
+            {archiveCopy.settings}
           </button>
         </Toast.Title>
         <ToastCloseButton compact onDismiss={onDismiss} />

@@ -5,6 +5,7 @@ import { XIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { Button, dialogActionButtonClassName } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { useMessages } from "~/i18n/context";
 
 const DialogCreateHandle = DialogPrimitive.createHandle;
 
@@ -82,6 +83,7 @@ function DialogPopup({
   showCloseButton?: boolean;
   bottomStickOnMobile?: boolean;
 }) {
+  const copy = useMessages().app.ui;
   return (
     <DialogPortal>
       <DialogBackdrop />
@@ -101,7 +103,7 @@ function DialogPopup({
           {children}
           {showCloseButton && (
             <DialogPrimitive.Close
-              aria-label="Close"
+              aria-label={copy.close}
               className="absolute end-2 top-2"
               render={<Button size="icon-sm" variant="ghost" />}
             >

@@ -9,8 +9,10 @@ import { cn } from "~/lib/utils";
 import { IoIosArrowRoundBack, IoIosArrowRoundForward } from "react-icons/io";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { useMessages } from "~/i18n/context";
 
 export function AppNavigationButtons({ className }: { className?: string }) {
+  const copy = useMessages().app.nav;
   const { canGoBack, canGoForward } = useAppNavigationState();
   const platform = typeof navigator === "undefined" ? "" : navigator.platform;
   const isMac = /Mac|iPhone|iPad|iPod/i.test(platform);
@@ -36,7 +38,7 @@ export function AppNavigationButtons({ className }: { className?: string }) {
               variant="ghost"
               size="icon-sm"
               className="size-8 rounded-lg"
-              aria-label="Back"
+              aria-label={copy.back}
               disabled={!canGoBack}
               onClick={() => goBackInAppHistory()}
             />
@@ -44,7 +46,7 @@ export function AppNavigationButtons({ className }: { className?: string }) {
         >
           <IoIosArrowRoundBack className="size-6" />
         </TooltipTrigger>
-        <TooltipPopup side="bottom">Back ({backShortcutLabel})</TooltipPopup>
+        <TooltipPopup side="bottom">{copy.backWithShortcut(backShortcutLabel)}</TooltipPopup>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger
@@ -54,7 +56,7 @@ export function AppNavigationButtons({ className }: { className?: string }) {
               variant="ghost"
               size="icon-sm"
               className="size-8 rounded-lg"
-              aria-label="Forward"
+              aria-label={copy.forward}
               disabled={!canGoForward}
               onClick={() => goForwardInAppHistory()}
             />
@@ -62,7 +64,7 @@ export function AppNavigationButtons({ className }: { className?: string }) {
         >
           <IoIosArrowRoundForward className="size-6" />
         </TooltipTrigger>
-        <TooltipPopup side="bottom">Forward ({forwardShortcutLabel})</TooltipPopup>
+        <TooltipPopup side="bottom">{copy.forwardWithShortcut(forwardShortcutLabel)}</TooltipPopup>
       </Tooltip>
     </div>
   );

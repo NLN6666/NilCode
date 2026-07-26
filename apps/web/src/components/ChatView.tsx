@@ -568,6 +568,7 @@ import {
   isDuplicateProjectCreateError,
   waitForRecoverableProjectForDuplicateCreate,
 } from "../lib/projectCreateRecovery";
+import { useMessages } from "~/i18n/context";
 
 const ATTACHMENT_PREVIEW_HANDOFF_TTL_MS = 5000;
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
@@ -1006,16 +1007,19 @@ function ComposerControlSkeleton(props: { widthClassName: string }) {
 }
 
 function ComposerModelLoadingControl(props: { widthClassName: string }) {
+  const copy = useMessages().app.chat;
   return (
     <div
-      aria-label="Loading models"
+      aria-label={copy.loadingModels}
       className={cn(
         "flex h-8 shrink-0 items-center gap-2 rounded-md border border-border/50 px-2 text-muted-foreground",
         props.widthClassName,
       )}
     >
       <RefreshCwIcon aria-hidden="true" className="size-3.5 animate-spin" />
-      <span className="truncate text-[length:var(--app-font-size-ui-xs,11px)]">Loading models</span>
+      <span className="truncate text-[length:var(--app-font-size-ui-xs,11px)]">
+        {copy.loadingModels}
+      </span>
     </div>
   );
 }
@@ -1099,6 +1103,7 @@ export default function ChatView({
   onChangeThreadInSplitPane,
   onCloseThreadPane,
 }: ChatViewProps) {
+  const appChatCopy = useMessages().app.chat;
   const markThreadVisited = useStore((store) => store.markThreadVisited);
   const syncServerShellSnapshot = useStore((store) => store.syncServerShellSnapshot);
   const setStoreThreadError = useStore((store) => store.setError);
@@ -9873,7 +9878,7 @@ export default function ChatView({
             <div className="flex items-center gap-2">
               <SidebarHeaderTrigger className="size-7 shrink-0" />
               <span className="text-sm font-medium text-[var(--color-text-foreground)]">
-                Threads
+                {appChatCopy.threads}
               </span>
             </div>
           </header>
@@ -9888,12 +9893,12 @@ export default function ChatView({
             )}
           >
             <SidebarHeaderNavigationControls />
-            <span className="text-xs text-muted-foreground/50">No active thread</span>
+            <span className="text-xs text-muted-foreground/50">{appChatCopy.noActiveThread}</span>
           </div>
         )}
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
-            <p className="text-sm">Select a thread or create a new one to get started.</p>
+            <p className="text-sm">{appChatCopy.selectThread}</p>
           </div>
         </div>
       </div>
@@ -10106,12 +10111,8 @@ export default function ChatView({
           size="sm"
           aria-pressed={isThreadTemporary}
           onClick={toggleDraftTemporary}
-          title={
-            isThreadTemporary
-              ? "Temporary chat — deleted when you leave. Click to keep it."
-              : "Make this a temporary chat (deleted when you leave)"
-          }
-          aria-label="Temporary chat"
+          title={isThreadTemporary ? appChatCopy.temporaryOn : appChatCopy.temporaryOff}
+          aria-label={appChatCopy.temporaryChat}
           className={cn(
             "ml-auto shrink-0 gap-1.5 whitespace-nowrap px-2 text-[length:var(--app-font-size-ui-sm,11px)] font-normal transition-colors sm:px-2.5",
             isThreadTemporary
@@ -10120,7 +10121,7 @@ export default function ChatView({
           )}
         >
           <TemporaryThreadIcon className="size-3.5" />
-          <span className="sr-only sm:not-sr-only">Temporary</span>
+          <span className="sr-only sm:not-sr-only">{appChatCopy.temporary}</span>
         </Button>
       ) : null}
     </div>
@@ -10501,10 +10502,10 @@ export default function ChatView({
                               size="sm"
                               type="button"
                               onClick={toggleInteractionMode}
-                              title="Plan mode — click to return to normal build mode"
+                              title={appChatCopy.planModeActive}
                             >
                               <GoTasklist className="size-3.5" />
-                              <span className="sr-only sm:not-sr-only">Plan</span>
+                              <span className="sr-only sm:not-sr-only">{appChatCopy.plan}</span>
                             </Button>
                           ) : null}
 
@@ -10602,8 +10603,8 @@ export default function ChatView({
                           size="icon-xs"
                           className="sm:size-[26px]"
                           onClick={() => void onInterrupt()}
-                          aria-label="Stop generation"
-                          title="Stop the current response. On Mac, press Ctrl+C to interrupt."
+                          aria-label={appChatCopy.stopGeneration}
+                          title={appChatCopy.stopGenerationHint}
                         >
                           <span
                             aria-hidden="true"
@@ -10640,7 +10641,7 @@ export default function ChatView({
                                       size="sm"
                                       variant="default"
                                       className="h-9 rounded-l-none rounded-r-full border-l-white/12 px-2 sm:h-8"
-                                      aria-label="Implementation actions"
+                                      aria-label={appChatCopy.implementationActions}
                                       disabled={isSendBusy || isConnecting}
                                     />
                                   }
@@ -10652,7 +10653,7 @@ export default function ChatView({
                                     disabled={isSendBusy || isConnecting}
                                     onClick={() => void onImplementPlanInNewThread()}
                                   >
-                                    Implement in a new thread
+                                    {appChatCopy.implementInNewThread}
                                   </MenuItem>
                                 </ComposerPickerMenuPopup>
                               </Menu>
@@ -10942,16 +10943,16 @@ export default function ChatView({
                       CHAT_COLUMN_FRAME_CLASS_NAME,
                     )}
                   >
-                    <SynaraLogo aria-label="Synara logo" className="size-10" />
+                    <SynaraLogo aria-label={appChatCopy.synaraLogo} className="size-10" />
                     <h2
                       data-testid="empty-landing-heading"
                       className="text-[26px] font-normal leading-[1.15] tracking-[-0.015em] text-foreground/95 sm:text-[30px]"
                     >
                       {isEmptyChatLanding ? (
-                        "What should we work on?"
+                        appChatCopy.whatShouldWeWorkOn
                       ) : (
                         <>
-                          What should we do in{" "}
+                          {appChatCopy.whatShouldWeDoIn}{" "}
                           {showEmptyLandingProjectPicker ? (
                             <ProjectPicker
                               align="center"

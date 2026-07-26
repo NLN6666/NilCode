@@ -4,6 +4,7 @@ import type { DesktopWindowState } from "@synara/contracts";
 
 import { isElectron } from "~/env";
 import { cn, isWindowsPlatform } from "~/lib/utils";
+import { useMessages } from "~/i18n/context";
 
 const DEFAULT_WINDOW_STATE: DesktopWindowState = {
   isMaximized: false,
@@ -43,6 +44,7 @@ function CaptionGlyph({ glyph }: { glyph: string }) {
 }
 
 export function DesktopWindowControls({ className }: { className?: string }) {
+  const copy = useMessages().app.window;
   const [windowState, setWindowState] = useState<DesktopWindowState>(DEFAULT_WINDOW_STATE);
   const platform = typeof navigator === "undefined" ? "" : navigator.platform;
   const isWindowsDesktop = isWindowsPlatform(platform);
@@ -73,8 +75,8 @@ export function DesktopWindowControls({ className }: { className?: string }) {
     <div className={cn("flex h-[46px] items-stretch [-webkit-app-region:no-drag]", className)}>
       <button
         type="button"
-        aria-label="Minimize"
-        title="Minimize"
+        aria-label={copy.minimize}
+        title={copy.minimize}
         className={CAPTION_BUTTON_CLASS}
         onClick={() => {
           void controls.minimize();
@@ -95,8 +97,8 @@ export function DesktopWindowControls({ className }: { className?: string }) {
       </button>
       <button
         type="button"
-        aria-label="Close"
-        title="Close"
+        aria-label={copy.close}
+        title={copy.close}
         className={cn(CAPTION_BUTTON_CLASS, CLOSE_BUTTON_CLASS)}
         onClick={() => {
           void controls.close();

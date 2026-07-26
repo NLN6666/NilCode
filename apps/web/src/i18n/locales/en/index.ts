@@ -1,6 +1,7 @@
 // FILE: locales/en/index.ts
 // Purpose: Assemble the English catalog and derive the Messages contract every locale implements.
 
+import { app } from "./app";
 import { automations } from "./automations";
 import { browser } from "./browser";
 import { chat } from "./chat";
@@ -17,6 +18,7 @@ import { workspace } from "./workspace";
 import { settingsNav } from "./settingsNav";
 
 export const en = {
+  app,
   automations,
   browser,
   chat,

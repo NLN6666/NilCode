@@ -19,6 +19,7 @@ import { ProviderIcon } from "./ProviderIcon";
 import TerminalIdentityIcon from "./terminal/TerminalIdentityIcon";
 import { Kbd } from "./ui/kbd";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { useMessages } from "~/i18n/context";
 
 // Keycap hints rendered in the switcher footer. These mirror the real bindings:
 // the switcher cycles on literal Ctrl+Tab / Ctrl+Shift+Tab (see keybindings.ts —
@@ -85,6 +86,7 @@ export function RecentViewSwitcher(props: {
   entries: ReadonlyArray<RecentViewDisplayEntry>;
   selectedIndex: number;
 }) {
+  const copy = useMessages().app.recentViews;
   if (props.entries.length === 0) {
     return null;
   }
@@ -98,7 +100,7 @@ export function RecentViewSwitcher(props: {
     <div className="pointer-events-none fixed inset-0 z-[90] flex items-start justify-center pt-[14vh]">
       <div
         role="listbox"
-        aria-label="Recent views"
+        aria-label={copy.label}
         aria-activedescendant={`recent-view-switcher-${selectedIndex}`}
         className="w-[min(34rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-border/70 bg-popover/95 text-popover-foreground shadow-2xl shadow-black/30 backdrop-blur-xl"
       >
@@ -126,7 +128,7 @@ export function RecentViewSwitcher(props: {
                     <span className="truncate text-sm font-medium leading-5">{entry.title}</span>
                     {entry.isCurrent ? (
                       <span className="shrink-0 rounded-full border border-border/60 bg-muted/70 px-1.5 py-px text-[10px] font-medium leading-4 text-muted-foreground">
-                        Current
+                        {copy.current}
                       </span>
                     ) : null}
                   </div>
@@ -136,10 +138,10 @@ export function RecentViewSwitcher(props: {
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
                   {entry.isSplit ? (
-                    <PanelLeftIcon className="size-3.5" aria-label="Split view" />
+                    <PanelLeftIcon className="size-3.5" aria-label={copy.splitView} />
                   ) : null}
                   {entry.isPinned ? (
-                    <PinFilledIcon className="size-3.5" aria-label="Pinned" />
+                    <PinFilledIcon className="size-3.5" aria-label={copy.pinned} />
                   ) : null}
                 </div>
               </div>
