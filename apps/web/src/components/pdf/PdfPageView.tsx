@@ -17,6 +17,7 @@ import type { PdfLink } from "~/lib/pdf/pdfLinks";
 import { usePdfPageRender } from "~/lib/pdf/usePdfPageRender";
 import type { PdfPageIntrinsicSize } from "~/lib/pdf/pdfZoom";
 import { openExternalLink } from "~/lib/linkChips";
+import { useMessages } from "~/i18n/context";
 
 // Prerender pages within roughly one viewport above/below so scrolling reveals
 // already-painted pages instead of blank boxes.
@@ -43,6 +44,7 @@ export const PdfPageView = function PdfPageView({
   registerElement,
   onJumpToPage,
 }: PdfPageViewProps) {
+  const copy = useMessages().editor.pdf;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -116,7 +118,7 @@ export const PdfPageView = function PdfPageView({
       ) : null}
       {error ? (
         <div className="pdf-viewer-page__error" role="alert">
-          <span>Could not render page {pageNumber}</span>
+          <span>{copy.renderFailed(pageNumber)}</span>
           <span className="pdf-viewer-page__error-detail">{error}</span>
         </div>
       ) : null}

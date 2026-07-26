@@ -6,6 +6,7 @@ import { browser } from "./browser";
 import { chat } from "./chat";
 import { composer } from "./composer";
 import { diff } from "./diff";
+import { editor } from "./editor";
 import { git } from "./git";
 import { pullRequests } from "./pullRequests";
 import { projectTools } from "./projectTools";
@@ -20,6 +21,7 @@ export const en = {
   chat,
   composer,
   diff,
+  editor,
   git,
   pullRequests,
   projectTools,

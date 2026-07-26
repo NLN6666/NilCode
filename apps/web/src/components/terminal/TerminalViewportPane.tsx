@@ -32,6 +32,7 @@ import type {
 } from "../../types";
 import TerminalActivityIndicator from "./TerminalActivityIndicator";
 import TerminalIdentityIcon from "./TerminalIdentityIcon";
+import { useMessages } from "~/i18n/context";
 
 const MIN_TERMINAL_PANE_SIZE_PX = 180;
 
@@ -117,6 +118,7 @@ export default function TerminalViewportPane({
   onTogglePanel,
   isPanelOpen,
 }: TerminalViewportPaneProps) {
+  const copy = useMessages().editor.terminal;
   const renderNode = (node: ThreadTerminalLayoutNode): ReactNode => {
     if (node.type === "terminal") {
       const activePaneTerminalId = node.terminalIds.includes(node.activeTerminalId)
@@ -179,7 +181,7 @@ export default function TerminalViewportPane({
 
               {onNewTerminalTab ? (
                 <PaneActionButton
-                  label="New terminal tab"
+                  label={copy.newTab}
                   onClick={() => onNewTerminalTab(activePaneTerminalId)}
                 >
                   <Plus className="size-3.5" />
@@ -189,16 +191,13 @@ export default function TerminalViewportPane({
 
             <div className="flex shrink-0 items-center gap-0.5">
               {canMoveActiveTerminalToGroup ? (
-                <PaneActionButton
-                  label="Move to its own terminal tab"
-                  onClick={moveActiveTerminalToGroup}
-                >
+                <PaneActionButton label={copy.moveToOwnTab} onClick={moveActiveTerminalToGroup}>
                   <TerminalSquareIcon className="size-3.5" />
                 </PaneActionButton>
               ) : null}
               {onSplitTerminalRight ? (
                 <PaneActionButton
-                  label="Split right"
+                  label={copy.splitRight}
                   onClick={() => onSplitTerminalRight(activePaneTerminalId)}
                 >
                   <SquareSplitHorizontal className="size-3.5" />
@@ -206,7 +205,7 @@ export default function TerminalViewportPane({
               ) : null}
               {onSplitTerminalDown ? (
                 <PaneActionButton
-                  label="Split down"
+                  label={copy.splitDown}
                   onClick={() => onSplitTerminalDown(activePaneTerminalId)}
                 >
                   <SquareSplitVertical className="size-3.5" />
@@ -238,7 +237,7 @@ export default function TerminalViewportPane({
               ) : null}
               {onCloseTerminal ? (
                 <PaneActionButton
-                  label="Close active terminal tab"
+                  label={copy.closeTab}
                   onClick={() => onCloseTerminal(activePaneTerminalId)}
                 >
                   <Trash2 className="size-3.5" />

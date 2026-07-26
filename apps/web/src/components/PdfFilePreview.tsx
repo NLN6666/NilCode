@@ -23,6 +23,7 @@ import { usePdfZoomController } from "~/lib/pdf/usePdfZoomController";
 import { cn } from "~/lib/utils";
 import { PdfPageView } from "./pdf/PdfPageView";
 import { PdfViewerToolbar } from "./pdf/PdfViewerToolbar";
+import { useMessages } from "~/i18n/context";
 
 export function PdfFilePreview(props: {
   /**
@@ -36,6 +37,7 @@ export function PdfFilePreview(props: {
   openInTarget: string | null;
   className?: string;
 }) {
+  const copy = useMessages().editor.pdf;
   const previewUrl = buildLocalImageUrl({
     src: props.filePath,
     cwd: props.cwd ?? undefined,
@@ -124,7 +126,7 @@ export function PdfFilePreview(props: {
       <div
         className="flex min-h-0 flex-1 items-center justify-center"
         role="status"
-        aria-label="Loading PDF..."
+        aria-label={copy.loading}
       >
         <Loader2Icon className="size-4 animate-spin opacity-60" aria-hidden="true" />
       </div>

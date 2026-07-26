@@ -48,6 +48,7 @@ import TerminalViewportPane from "./terminal/TerminalViewportPane";
 import { useTerminalDrawerHeight } from "./terminal/useTerminalDrawerHeight";
 import { TerminalSearch } from "./TerminalSearch";
 import { TerminalScrollToBottom } from "./TerminalScrollToBottom";
+import { useMessages } from "~/i18n/context";
 
 function serializeRuntimeEnv(runtimeEnv: Record<string, string> | undefined): string {
   if (!runtimeEnv) return "";
@@ -91,6 +92,7 @@ function getTerminalSelectionRect(mountElement: HTMLElement): DOMRect | null {
 }
 
 function TerminalRuntimeStatusOverlay({ status }: { status: TerminalRuntimeStatus }) {
+  const copy = useMessages().editor.terminal;
   if (status !== "error") return null;
 
   return (
@@ -101,7 +103,7 @@ function TerminalRuntimeStatusOverlay({ status }: { status: TerminalRuntimeStatu
       )}
     >
       <TriangleAlertIcon className="size-3" />
-      <span className="truncate">Error</span>
+      <span className="truncate">{copy.error}</span>
     </div>
   );
 }

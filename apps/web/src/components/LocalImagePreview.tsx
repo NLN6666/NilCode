@@ -14,6 +14,7 @@ import { DownloadIcon, Loader2Icon, TriangleAlertIcon } from "~/lib/icons";
 import { buildLocalImageUrl, localImageFileName } from "~/lib/localImageUrls";
 import { cn } from "~/lib/utils";
 import { toastManager } from "./ui/toast";
+import { useMessages } from "~/i18n/context";
 
 export type LocalImagePreviewStatus = "loading" | "ready" | "error";
 
@@ -123,26 +124,25 @@ export function LocalImageErrorCard(props: {
   downloadAriaLabel?: string;
   onDownloadClick?: ((event: MouseEvent<HTMLElement>) => void) | undefined;
 }) {
+  const copy = useMessages().editor.image;
   return (
     <span className={cn("local-image-error", props.className)}>
       <span className="local-image-error__icon" aria-hidden="true">
         <TriangleAlertIcon className="size-4" />
       </span>
       <span className="local-image-error__body">
-        <span className="local-image-error__title">Couldn’t open this image</span>
-        <span className="local-image-error__subtitle">
-          The file may have moved or be unavailable.
-        </span>
+        <span className="local-image-error__title">{copy.openFailed}</span>
+        <span className="local-image-error__subtitle">{copy.openFailedHint}</span>
       </span>
       <a
         href={props.downloadUrl}
         download={props.downloadName}
         onClick={props.onDownloadClick}
         className="local-image-error__action"
-        aria-label={props.downloadAriaLabel ?? "Download image"}
+        aria-label={props.downloadAriaLabel ?? copy.downloadImage}
       >
         <DownloadIcon className="size-3.5" aria-hidden="true" />
-        <span>Download</span>
+        <span>{copy.download}</span>
       </a>
     </span>
   );
@@ -156,6 +156,7 @@ export function LocalImagePreview(props: {
   className?: string;
   imageClassName?: string;
 }) {
+  const previewCopy = useMessages().editor.image;
   const { downloadUrl, downloadName, status, imgProps } = useLocalImagePreview({
     src: props.src,
     cwd: props.cwd,
@@ -191,8 +192,8 @@ export function LocalImagePreview(props: {
         download={downloadName}
         onClick={handleDownloadClick}
         className="local-image-preview__download"
-        aria-label="Download image"
-        title="Download"
+        aria-label={previewCopy.downloadImage}
+        title={previewCopy.download}
       >
         <DownloadIcon className="size-3.5" aria-hidden="true" />
       </a>
