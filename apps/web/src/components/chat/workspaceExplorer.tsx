@@ -367,7 +367,6 @@ export function WorkspaceFilesSidebar(props: {
   onToggleDirectory: (path: string) => void;
   onReferenceInChat: ((reference: ChatFileReference) => void) | undefined;
 }) {
-  const copy = useMessages().chat.explorer;
   const prefetchEntry = useExplorerEntryPrefetch(props.workspaceRoot);
   const handleEntryContextMenu = useTreeEntryContextMenu(props.onReferenceInChat);
   const handleListKeyDown = useExplorerListNavigation();

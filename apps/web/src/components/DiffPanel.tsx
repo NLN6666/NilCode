@@ -1169,6 +1169,7 @@ export default function DiffPanel({
         </div>
       ) : null,
     [
+      copy,
       activeCwd,
       activePatchStat,
       activeThreadId,

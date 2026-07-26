@@ -101,7 +101,6 @@ function KanbanCardPrChip({
 }: {
   pr: NonNullable<NonNullable<KanbanCard["thread"]>["lastKnownPr"]>;
 }) {
-  const badgeCopy = useMessages().workspace.kanban;
   const presentation = resolvePrStatePresentation(pr);
   const PrIcon = PR_STATE_PRESENTATION_ICONS[presentation.iconKind];
   return (

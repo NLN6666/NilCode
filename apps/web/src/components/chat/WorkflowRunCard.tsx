@@ -218,7 +218,6 @@ function WorkflowAgentRowView({
   onToggle: () => void;
   onOpenThread: (threadId: ThreadId) => void;
 }) {
-  const copy = useMessages().chat.workflow;
   const meta = agentRowMeta(agent, nowMs);
 
   return (

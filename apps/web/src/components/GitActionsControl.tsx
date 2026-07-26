@@ -662,7 +662,7 @@ export default function GitActionsControl({
         data: threadToastData,
       });
     });
-  }, [gitStatusForActions, threadToastData]);
+  }, [gitCopy, gitStatusForActions, threadToastData]);
 
   const runSyncWithRemote = useCallback(() => {
     const promise = pullMutation.mutateAsync();
@@ -686,7 +686,7 @@ export default function GitActionsControl({
       }),
     });
     void promise.catch(() => undefined);
-  }, [pullMutation, threadToastData]);
+  }, [gitCopy, pullMutation, threadToastData]);
 
   const runGitActionWithToast = useCallback(
     async function runGitActionWithToast({
@@ -923,6 +923,7 @@ export default function GitActionsControl({
       }
     },
     [
+      gitCopy,
       defaultBranchName,
       gitStatusForActions,
       hasOriginRemote,
@@ -1125,6 +1126,7 @@ export default function GitActionsControl({
       }
     },
     [
+      gitCopy,
       activeThread?.worktreePath,
       activeThreadId,
       gitCwd,
@@ -1276,6 +1278,7 @@ export default function GitActionsControl({
 
     return items;
   }, [
+    gitCopy,
     gitActionMenuItems,
     gitStatusForActions,
     hasOriginRemote,
@@ -1328,7 +1331,7 @@ export default function GitActionsControl({
         });
       });
     },
-    [gitCwd, threadToastData],
+    [gitCopy, gitCwd, threadToastData],
   );
 
   if (!gitCwd) return null;

@@ -369,7 +369,7 @@ function PullRequestsRouteView() {
         });
       }
     },
-    [mutatePin, search.projectId],
+    [copy, mutatePin, search.projectId],
   );
   const refreshBlocked = refreshMutation.isPending || activeActionCount > 0;
   const handleManualRefresh = useCallback(() => {
@@ -382,7 +382,7 @@ function PullRequestsRouteView() {
           description: error instanceof Error ? error.message : copy.toast.refreshFailedDetail,
         }),
     });
-  }, [activeActionCount, listInput, mutateRefresh]);
+  }, [activeActionCount, copy, listInput, mutateRefresh]);
 
   const truncatedRepositoryCount =
     activeListData?.repositoryBatches.filter((batch) => batch.truncated).length ?? 0;

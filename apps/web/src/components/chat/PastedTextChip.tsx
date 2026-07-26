@@ -98,7 +98,6 @@ interface UserMessagePastedTextCardProps {
 // Transcript echo: the same card, but the action expands the full pasted content
 // in place (read-only) instead of editing.
 export function UserMessagePastedTextCard({ text, metrics }: UserMessagePastedTextCardProps) {
-  const copy = useMessages().chat.message;
   const [expanded, setExpanded] = useState(false);
 
   return (

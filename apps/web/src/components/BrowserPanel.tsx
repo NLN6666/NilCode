@@ -1477,7 +1477,7 @@ export function BrowserPanel({
         title: browserCopy.toast.screenshotCopied,
       });
     });
-  }, [activeTab, api, ensureLiveRuntime, runBrowserAction, threadId]);
+  }, [activeTab, api, browserCopy, ensureLiveRuntime, runBrowserAction, threadId]);
 
   const copyActiveTabLink = useCallback(() => {
     if (!activeTab) {
@@ -1507,7 +1507,7 @@ export function BrowserPanel({
         // Clipboard writes can reject without user gesture; nothing actionable to surface.
       },
     );
-  }, [activeTab, api, runBrowserAction, threadId]);
+  }, [activeTab, api, browserCopy, runBrowserAction, threadId]);
 
   // React chrome focus path: the native page handles the chord through the desktop main
   // process, so this only fires when the address bar/tab strip (not the page) is focused.
@@ -1552,7 +1552,7 @@ export function BrowserPanel({
       }
       toastManager.add({ type: "success", title: browserCopy.toast.linkCopied });
     });
-  }, [api, isLiveRuntime, threadId]);
+  }, [api, browserCopy, isLiveRuntime, threadId]);
 
   const onCloseTab = useCallback(
     (tabId: string) => {
