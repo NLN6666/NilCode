@@ -26,7 +26,6 @@ import {
   requestBrowserNotificationPermission,
 } from "~/notifications/taskCompletion";
 import {
-  SETTINGS_CARD_CLASS_NAME,
   SETTINGS_CARD_ROW_DESCRIPTION_CLASS_NAME,
   SETTINGS_CARD_ROW_TITLE_CLASS_NAME,
 } from "~/settingsPanelStyles";
@@ -36,7 +35,7 @@ import { toastManager } from "~/components/ui/toast";
 import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { AppSnapShortcutControl } from "./AppSnapShortcutControl";
 import { SettingResetButton } from "./SettingControls";
-import { SettingsRow, SettingsSection } from "./SettingsPanelPrimitives";
+import { SettingsCard, SettingsRow, SettingsSection } from "./SettingsPanelPrimitives";
 
 function appSnapStatusText(state: DesktopAppSnapState | null, m: Messages): string {
   const status = m.settings.appSnap.status;
@@ -343,7 +342,7 @@ export function AppSnapSettingsPanel({
 
   return (
     <div className="space-y-6">
-      <div className={cn(SETTINGS_CARD_CLASS_NAME, "flex items-start gap-3 px-4 py-3.5")}>
+      <SettingsCard divided={false} className="flex items-start gap-3 px-4 py-3.5">
         <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border border-[color:var(--color-border)] text-muted-foreground">
           <CentralIcon name="screen-capture" className="size-4" />
         </span>
@@ -360,7 +359,7 @@ export function AppSnapSettingsPanel({
             </p>
           ) : null}
         </div>
-      </div>
+      </SettingsCard>
 
       <SettingsSection title={m.settings.appSnap.capture.title}>
         <SettingsRow

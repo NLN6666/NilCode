@@ -54,7 +54,7 @@ export function SettingsSelectControl({
   value,
   onValueChange,
   ariaLabel,
-  triggerClassName = "w-full sm:w-44",
+  triggerClassName: triggerClassNameProp,
   valueContent,
   children,
 }: {
@@ -65,6 +65,7 @@ export function SettingsSelectControl({
   valueContent: ReactNode;
   children: ReactNode;
 }) {
+  const triggerClassName = triggerClassNameProp ?? "w-full sm:w-44";
   return (
     <Select
       value={value}

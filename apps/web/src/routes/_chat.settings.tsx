@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   type AppSettings,
+  type FollowUpBehavior,
   DEFAULT_UI_DENSITY,
   type UiDensity,
   MAX_CHAT_FONT_SIZE_PX,
@@ -60,6 +61,7 @@ import {
   SettingsCard,
   SettingsRow,
   SettingsSection,
+  SettingsSectionShell,
 } from "../components/settings/SettingsPanelPrimitives";
 import { SkillsSettingsPanel } from "../components/settings/SkillsSettingsPanel";
 import { ThemePackEditor } from "../components/ThemePackEditor";
@@ -92,12 +94,12 @@ import { DeviceLaptopIcon, MoonIcon, RotateCcwIcon, SunIcon } from "../lib/icons
 import { cn, isMacPlatform } from "../lib/utils";
 import { ensureNativeApi, readNativeApi } from "../nativeApi";
 import { sameProviderOrder } from "../providerOrdering";
-import { normalizeSettingsSection, SETTINGS_TARGETS } from "../settingsNavigation";
 import {
-  SETTINGS_PAGE_BACKGROUND_CLASS_NAME,
-  SETTINGS_PANEL_SECTION_CLASS_NAME,
-  SETTINGS_SECTION_LABEL_CLASS_NAME,
-} from "../settingsPanelStyles";
+  normalizeSettingsSection,
+  SETTINGS_NAV_ITEMS,
+  SETTINGS_TARGETS,
+} from "../settingsNavigation";
+import { SETTINGS_PAGE_BACKGROUND_CLASS_NAME } from "../settingsPanelStyles";
 
 // ── Settings taxonomy ──────────────────────────────────────────────────────
 
@@ -124,6 +126,15 @@ function uiDensityOptions(m: Messages): readonly SettingsSegmentedOption<UiDensi
     { value: "compact", label: m.settings.appearance.uiDensity.options.compact },
     { value: "comfortable", label: m.settings.appearance.uiDensity.options.comfortable },
     { value: "spacious", label: m.settings.appearance.uiDensity.options.spacious },
+  ];
+}
+
+function followUpBehaviorOptions(
+  m: Messages,
+): readonly SettingsSegmentedOption<FollowUpBehavior>[] {
+  return [
+    { value: "queue", label: m.settings.behavior.followUpBehavior.queue },
+    { value: "steer", label: m.settings.behavior.followUpBehavior.steer },
   ];
 }
 
@@ -221,6 +232,7 @@ function SettingsRouteView() {
     ...(settings.enableAssistantStreaming !== defaults.enableAssistantStreaming
       ? ["Assistant output"]
       : []),
+    ...(settings.followUpBehavior !== defaults.followUpBehavior ? ["Follow-up behavior"] : []),
     ...(settings.enableAppSnap !== defaults.enableAppSnap ? ["AppSnap"] : []),
     ...(!sameAppSnapShortcut(settings.appSnapShortcut, defaults.appSnapShortcut)
       ? ["AppSnap shortcut"]
@@ -534,14 +546,16 @@ function SettingsRouteView() {
         })}
       </SettingsSection>
 
-      <div id={SETTINGS_TARGETS.environmentPanel}>
+      <div id={SETTINGS_TARGETS.environmentPanel} className="space-y-6">
         <SettingsSection title={m.settings.general.environmentPanel.title}>
           {renderBooleanSettingRow({
             settingKey: "environmentPanelDefaultOpen",
             anchorKey: "general:environment-default-open",
             ...m.settings.general.environmentPanel.defaultOpen,
           })}
+        </SettingsSection>
 
+        <SettingsSection title={m.settings.general.codeAndStatus}>
           {renderBooleanSettingRow({
             settingKey: "showEnvironmentUsage",
             anchorKey: "general:environment-usage",
@@ -565,7 +579,9 @@ function SettingsRouteView() {
             anchorKey: "general:environment-editor",
             ...m.settings.general.environmentPanel.editor,
           })}
+        </SettingsSection>
 
+        <SettingsSection title={m.settings.general.contextAndNotes}>
           {renderBooleanSettingRow({
             settingKey: "showEnvironmentRecap",
             anchorKey: "general:environment-recap",
@@ -602,10 +618,7 @@ function SettingsRouteView() {
 
   const renderAppearancePanel = () => (
     <div className="space-y-6">
-      <section className={SETTINGS_PANEL_SECTION_CLASS_NAME}>
-        <h2 className={SETTINGS_SECTION_LABEL_CLASS_NAME}>
-          {m.settings.appearance.themeAndTypography}
-        </h2>
+      <SettingsSectionShell title={m.settings.appearance.theme.title}>
         <SettingsCard>
           <SettingsRow
             anchorKey="appearance:theme"
@@ -631,26 +644,6 @@ function SettingsRouteView() {
               />
             }
           />
-          <SettingsRow
-            anchorKey="appearance:system-ui-font"
-            title={m.settings.appearance.systemUiFont.title}
-            description={m.settings.appearance.systemUiFont.description}
-            resetAction={
-              !systemUiFont ? (
-                <SettingResetButton
-                  label={m.settings.appearance.systemUiFont.resetLabel}
-                  onClick={() => setSystemUiFont(true)}
-                />
-              ) : null
-            }
-            control={
-              <Switch
-                checked={systemUiFont}
-                onCheckedChange={(checked) => setSystemUiFont(Boolean(checked))}
-                aria-label={m.settings.appearance.systemUiFont.ariaLabel}
-              />
-            }
-          />
         </SettingsCard>
 
         <div className="space-y-3">
@@ -666,201 +659,215 @@ function SettingsRouteView() {
             />
           ))}
         </div>
+      </SettingsSectionShell>
 
-        <SettingsCard>
-          <SettingsRow
-            anchorKey="appearance:ui-density"
-            title={m.settings.appearance.uiDensity.title}
-            description={m.settings.appearance.uiDensity.description}
-            resetAction={
-              settings.uiDensity !== defaults.uiDensity ? (
-                <SettingResetButton
-                  label={m.settings.appearance.uiDensity.resetLabel}
-                  onClick={() =>
-                    updateSettings({
-                      uiDensity: DEFAULT_UI_DENSITY,
-                    })
-                  }
-                />
-              ) : null
-            }
-            control={
-              <SettingsSegmentedControl
-                value={settings.uiDensity}
-                onValueChange={(value) => {
-                  if (!isUiDensity(value)) {
-                    return;
-                  }
-                  updateSettings({ uiDensity: value });
-                }}
-                ariaLabel={m.settings.appearance.uiDensity.ariaLabel}
-                options={uiDensityOptions(m)}
+      <SettingsSection title={m.settings.appearance.typographyAndSpacing}>
+        <SettingsRow
+          title={m.settings.appearance.systemUiFont.title}
+          description={m.settings.appearance.systemUiFont.description}
+          resetAction={
+            !systemUiFont ? (
+              <SettingResetButton
+                label={m.settings.appearance.systemUiFont.resetLabel}
+                onClick={() => setSystemUiFont(true)}
               />
-            }
-          />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={systemUiFont}
+              onCheckedChange={(checked) => setSystemUiFont(Boolean(checked))}
+              aria-label={m.settings.appearance.systemUiFont.ariaLabel}
+            />
+          }
+        />
 
-          <SettingsRow
-            anchorKey="appearance:base-font-size"
-            title={m.settings.appearance.baseFontSize.title}
-            description={m.settings.appearance.baseFontSize.description}
-            resetAction={
-              settings.chatFontSizePx !== defaults.chatFontSizePx ? (
-                <SettingResetButton
-                  label={m.settings.appearance.baseFontSize.resetLabel}
-                  onClick={() =>
-                    updateSettings({
-                      chatFontSizePx: defaults.chatFontSizePx,
-                    })
-                  }
-                />
-              ) : null
-            }
-            control={
-              <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
-                <Input
-                  type="number"
+        <SettingsRow
+          title={m.settings.appearance.uiDensity.title}
+          description={m.settings.appearance.uiDensity.description}
+          resetAction={
+            settings.uiDensity !== defaults.uiDensity ? (
+              <SettingResetButton
+                label={m.settings.appearance.uiDensity.resetLabel}
+                onClick={() =>
+                  updateSettings({
+                    uiDensity: DEFAULT_UI_DENSITY,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <SettingsSegmentedControl
+              value={settings.uiDensity}
+              onValueChange={(value) => {
+                if (!isUiDensity(value)) {
+                  return;
+                }
+                updateSettings({ uiDensity: value });
+              }}
+              ariaLabel={m.settings.appearance.uiDensity.ariaLabel}
+              options={uiDensityOptions(m)}
+            />
+          }
+        />
+
+        <SettingsRow
+          title={m.settings.appearance.baseFontSize.title}
+          description={m.settings.appearance.baseFontSize.description}
+          resetAction={
+            settings.chatFontSizePx !== defaults.chatFontSizePx ? (
+              <SettingResetButton
+                label={m.settings.appearance.baseFontSize.resetLabel}
+                onClick={() =>
+                  updateSettings({
+                    chatFontSizePx: defaults.chatFontSizePx,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+              <Input
+                type="number"
+                size="sm"
+                min={MIN_CHAT_FONT_SIZE_PX}
+                max={MAX_CHAT_FONT_SIZE_PX}
+                step={1}
+                inputMode="numeric"
+                variant="soft"
+                className="w-full text-right sm:w-20"
+                value={String(settings.chatFontSizePx)}
+                onChange={(event) => {
+                  const nextValue = event.target.value.trim();
+                  if (nextValue.length === 0) return;
+                  updateSettings({
+                    chatFontSizePx: normalizeChatFontSizePx(Number(nextValue)),
+                  });
+                }}
+                aria-label={m.settings.appearance.baseFontSize.ariaLabel}
+              />
+              <span className="text-xs text-muted-foreground">px</span>
+            </div>
+          }
+        />
+
+        <SettingsRow
+          title={m.settings.appearance.terminalFontSize.title}
+          description={m.settings.appearance.terminalFontSize.description}
+          resetAction={
+            settings.terminalFontSizePx !== defaults.terminalFontSizePx ? (
+              <SettingResetButton
+                label={m.settings.appearance.terminalFontSize.resetLabel}
+                onClick={() =>
+                  updateSettings({
+                    terminalFontSizePx: defaults.terminalFontSizePx,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+              <Input
+                type="number"
+                size="sm"
+                min={MIN_TERMINAL_FONT_SIZE_PX}
+                max={MAX_TERMINAL_FONT_SIZE_PX}
+                step={1}
+                inputMode="numeric"
+                variant="soft"
+                className="w-full text-right sm:w-20"
+                value={String(settings.terminalFontSizePx)}
+                onChange={(event) => {
+                  const nextValue = event.target.value.trim();
+                  if (nextValue.length === 0) return;
+                  updateSettings({
+                    terminalFontSizePx: normalizeTerminalFontSizePx(Number(nextValue)),
+                  });
+                }}
+                aria-label={m.settings.appearance.terminalFontSize.ariaLabel}
+              />
+              <span className="text-xs text-muted-foreground">px</span>
+            </div>
+          }
+        />
+
+        <SettingsRow
+          title={m.settings.appearance.terminalFont.title}
+          description={m.settings.appearance.terminalFont.description}
+          resetAction={
+            settings.terminalFontFamily !== defaults.terminalFontFamily ? (
+              <SettingResetButton
+                label={m.settings.appearance.terminalFont.resetLabel}
+                onClick={() =>
+                  updateSettings({
+                    terminalFontFamily: defaults.terminalFontFamily,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <div className="flex w-full items-center justify-end sm:w-auto">
+              <Autocomplete
+                items={visibleTerminalFontFamilySuggestions}
+                mode="none"
+                openOnInputClick
+                value={settings.terminalFontFamily}
+                onValueChange={(value) => {
+                  updateSettings({
+                    terminalFontFamily: normalizeTerminalFontFamily(value),
+                  });
+                }}
+              >
+                <AutocompleteInput
                   size="sm"
-                  min={MIN_CHAT_FONT_SIZE_PX}
-                  max={MAX_CHAT_FONT_SIZE_PX}
-                  step={1}
-                  inputMode="numeric"
                   variant="soft"
-                  className="w-full text-right sm:w-20"
-                  value={String(settings.chatFontSizePx)}
-                  onChange={(event) => {
-                    const nextValue = event.target.value.trim();
-                    if (nextValue.length === 0) return;
-                    updateSettings({
-                      chatFontSizePx: normalizeChatFontSizePx(Number(nextValue)),
-                    });
-                  }}
-                  aria-label={m.settings.appearance.baseFontSize.ariaLabel}
+                  showTrigger
+                  showClear={settings.terminalFontFamily.length > 0}
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder={m.settings.appearance.terminalFont.placeholder}
+                  className="w-full sm:w-56"
+                  aria-label={m.settings.appearance.terminalFont.ariaLabel}
                 />
-                <span className="text-xs text-muted-foreground">px</span>
-              </div>
-            }
-          />
+                <AutocompletePopup className="w-56 min-w-56 font-system-ui">
+                  <AutocompleteList>
+                    {visibleTerminalFontFamilySuggestions.map((suggestion, index) => (
+                      <AutocompleteItem
+                        key={suggestion}
+                        index={index}
+                        value={suggestion}
+                        className="font-normal text-[var(--color-text-foreground)]"
+                        onClick={() => {
+                          updateSettings({
+                            terminalFontFamily: normalizeTerminalFontFamily(suggestion),
+                          });
+                        }}
+                      >
+                        {suggestion}
+                      </AutocompleteItem>
+                    ))}
+                    <AutocompleteEmpty>No matching suggested fonts.</AutocompleteEmpty>
+                  </AutocompleteList>
+                </AutocompletePopup>
+              </Autocomplete>
+            </div>
+          }
+        />
 
-          <SettingsRow
-            anchorKey="appearance:terminal-font-size"
-            title={m.settings.appearance.terminalFontSize.title}
-            description={m.settings.appearance.terminalFontSize.description}
-            resetAction={
-              settings.terminalFontSizePx !== defaults.terminalFontSizePx ? (
-                <SettingResetButton
-                  label={m.settings.appearance.terminalFontSize.resetLabel}
-                  onClick={() =>
-                    updateSettings({
-                      terminalFontSizePx: defaults.terminalFontSizePx,
-                    })
-                  }
-                />
-              ) : null
-            }
-            control={
-              <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
-                <Input
-                  type="number"
-                  size="sm"
-                  min={MIN_TERMINAL_FONT_SIZE_PX}
-                  max={MAX_TERMINAL_FONT_SIZE_PX}
-                  step={1}
-                  inputMode="numeric"
-                  variant="soft"
-                  className="w-full text-right sm:w-20"
-                  value={String(settings.terminalFontSizePx)}
-                  onChange={(event) => {
-                    const nextValue = event.target.value.trim();
-                    if (nextValue.length === 0) return;
-                    updateSettings({
-                      terminalFontSizePx: normalizeTerminalFontSizePx(Number(nextValue)),
-                    });
-                  }}
-                  aria-label={m.settings.appearance.terminalFontSize.ariaLabel}
-                />
-                <span className="text-xs text-muted-foreground">px</span>
-              </div>
-            }
-          />
-
-          <SettingsRow
-            anchorKey="appearance:terminal-font"
-            title={m.settings.appearance.terminalFont.title}
-            description={m.settings.appearance.terminalFont.description}
-            resetAction={
-              settings.terminalFontFamily !== defaults.terminalFontFamily ? (
-                <SettingResetButton
-                  label={m.settings.appearance.terminalFont.resetLabel}
-                  onClick={() =>
-                    updateSettings({
-                      terminalFontFamily: defaults.terminalFontFamily,
-                    })
-                  }
-                />
-              ) : null
-            }
-            control={
-              <div className="flex w-full items-center justify-end sm:w-auto">
-                <Autocomplete
-                  items={visibleTerminalFontFamilySuggestions}
-                  mode="none"
-                  openOnInputClick
-                  value={settings.terminalFontFamily}
-                  onValueChange={(value) => {
-                    updateSettings({
-                      terminalFontFamily: normalizeTerminalFontFamily(value),
-                    });
-                  }}
-                >
-                  <AutocompleteInput
-                    size="sm"
-                    variant="soft"
-                    showTrigger
-                    showClear={settings.terminalFontFamily.length > 0}
-                    spellCheck={false}
-                    autoComplete="off"
-                    placeholder={m.settings.appearance.terminalFont.placeholder}
-                    className="w-full sm:w-56"
-                    aria-label={m.settings.appearance.terminalFont.ariaLabel}
-                  />
-                  <AutocompletePopup className="w-56 min-w-56 font-system-ui">
-                    <AutocompleteList>
-                      {visibleTerminalFontFamilySuggestions.map((suggestion, index) => (
-                        <AutocompleteItem
-                          key={suggestion}
-                          index={index}
-                          value={suggestion}
-                          className="font-normal text-[var(--color-text-foreground)]"
-                          onClick={() => {
-                            updateSettings({
-                              terminalFontFamily: normalizeTerminalFontFamily(suggestion),
-                            });
-                          }}
-                        >
-                          {suggestion}
-                        </AutocompleteItem>
-                      ))}
-                      <AutocompleteEmpty>
-                        {m.settings.appearance.terminalFont.noSuggestions}
-                      </AutocompleteEmpty>
-                    </AutocompleteList>
-                  </AutocompletePopup>
-                </Autocomplete>
-              </div>
-            }
-          />
-
-          {shouldShowFontSmoothing
-            ? renderBooleanSettingRow({
-                settingKey: "enableNativeFontSmoothing",
-                title: "Font smoothing",
-                description: "Use macOS-style antialiasing for lighter, crisper text rendering.",
-                resetLabel: "font smoothing",
-                ariaLabel: "Enable font smoothing",
-              })
-            : null}
-        </SettingsCard>
-      </section>
+        {shouldShowFontSmoothing
+          ? renderBooleanSettingRow({
+              settingKey: "enableNativeFontSmoothing",
+              title: m.settings.appearance.fontSmoothing.title,
+              description: m.settings.appearance.fontSmoothing.description,
+              resetLabel: m.settings.appearance.fontSmoothing.resetLabel,
+              ariaLabel: m.settings.appearance.fontSmoothing.ariaLabel,
+            })
+          : null}
+      </SettingsSection>
 
       <SettingsSection title={m.settings.appearance.timeAndReading}>
         <SettingsRow
@@ -912,13 +919,40 @@ function SettingsRouteView() {
 
   const renderBehaviorPanel = () => (
     <div className="space-y-6">
-      <SettingsSection title={m.settings.behavior.runtimeBehavior}>
+      <SettingsSection title={m.settings.behavior.conversation}>
+        <SettingsRow
+          title={m.settings.behavior.followUpBehavior.title}
+          description={m.settings.behavior.followUpBehavior.description}
+          resetAction={
+            settings.followUpBehavior !== defaults.followUpBehavior ? (
+              <SettingResetButton
+                label={m.settings.behavior.followUpBehavior.resetLabel}
+                onClick={() =>
+                  updateSettings({
+                    followUpBehavior: defaults.followUpBehavior,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <SettingsSegmentedControl
+              value={settings.followUpBehavior}
+              onValueChange={(value) => updateSettings({ followUpBehavior: value })}
+              ariaLabel="Follow-up behavior"
+              options={followUpBehaviorOptions(m)}
+            />
+          }
+        />
+
         {renderBooleanSettingRow({
           settingKey: "enableAssistantStreaming",
           anchorKey: "behavior:assistant-output",
           ...m.settings.behavior.assistantOutput,
         })}
+      </SettingsSection>
 
+      <SettingsSection title={m.settings.behavior.review}>
         {renderBooleanSettingRow({
           settingKey: "diffWordWrap",
           anchorKey: "behavior:diff-line-wrapping",

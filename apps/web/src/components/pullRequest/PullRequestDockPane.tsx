@@ -19,13 +19,14 @@ import { useMessages } from "~/i18n/context";
 export function PullRequestDockPane({
   pane,
   onClose,
-  pollingEnabled = true,
+  pollingEnabled: pollingEnabledProp,
 }: {
   pane: RightDockPane;
   onClose?: (() => void) | undefined;
   pollingEnabled?: boolean;
 }) {
   const copy = useMessages().pullRequests;
+  const pollingEnabled = pollingEnabledProp ?? true;
   const input = pullRequestDetailInputFromPane(pane);
   if (!input) {
     return <PanelStateMessage>{copy.selectOne}</PanelStateMessage>;

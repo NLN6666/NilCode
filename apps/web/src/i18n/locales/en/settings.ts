@@ -32,6 +32,8 @@ export const settings = {
     resetAriaLabel: (label: string) => `Reset ${label} to default`,
   },
   general: {
+    codeAndStatus: "Code and status",
+    contextAndNotes: "Context and notes",
     coreDefaults: {
       title: "Core defaults",
       language: {
@@ -209,6 +211,13 @@ export const settings = {
       placeholder: "Default (JetBrains Mono)",
       noSuggestions: "No matching suggested fonts.",
     },
+    typographyAndSpacing: "Typography and spacing",
+    fontSmoothing: {
+      title: "Font smoothing",
+      description: "Use macOS-style antialiasing for lighter, crisper text rendering.",
+      resetLabel: "font smoothing",
+      ariaLabel: "Enable font smoothing",
+    },
     timeAndReading: "Time and reading",
     timeFormat: {
       title: "Time format",
@@ -220,6 +229,16 @@ export const settings = {
   },
   behavior: {
     runtimeBehavior: "Runtime behavior",
+    conversation: "Conversation",
+    review: "Review",
+    followUpBehavior: {
+      title: "Follow-up behavior",
+      description:
+        "Choose whether messages sent during an active turn wait in the queue or steer the current run. Ctrl/Cmd+Enter uses the opposite behavior for one message.",
+      resetLabel: "follow-up behavior",
+      queue: "Queue",
+      steer: "Steer",
+    },
     assistantOutput: {
       title: "Assistant output",
       description: "Show token-by-token output while a response is in progress.",

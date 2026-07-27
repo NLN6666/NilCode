@@ -49,20 +49,27 @@ export const workspace = {
     nameLabel: "Space name",
     newSpace: "New space",
     editSpace: "Edit space…",
+    /** The Void group is not a space, so its menu entry names the fields instead. */
+    editVoidSpace: "Edit name and icon…",
     deleteSpace: "Delete space",
     /** Create/edit dialog. */
     createTitle: "New space",
     editTitle: "Edit space",
+    editVoidTitle: "Edit unfiled group",
     createDescription:
       "Group projects into a focused work context. Projects you add while a space is open land in it.",
     editDescription:
       "Rename this space or give it a different icon. Its projects stay where they are.",
+    editVoidDescription:
+      "Name the group that holds projects you haven't filed into a space. This is a local preference — the projects in it stay where they are.",
     name: "Name",
     namePlaceholder: "Work",
+    voidNamePlaceholder: "Unfiled",
     icon: "Icon",
-    nameRequired: "Enter a space name.",
-    nameReserved: "Void is reserved for unassigned projects.",
-    nameDuplicate: "A space with this name already exists.",
+    nameRequired: "Enter a name.",
+    // Deliberately not "a space with this name": the taken name may be Void's, which is not a
+    // space, and either way the user's next move is the same.
+    nameDuplicate: "That name is already taken.",
     saveFailed: "Unable to save the space.",
     cancel: "Cancel",
     saving: "Saving…",

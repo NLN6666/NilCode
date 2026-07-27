@@ -45,6 +45,8 @@ import { useFeedbackDialogStore } from "../feedbackDialogStore";
 import type { FeedbackThreadContext } from "../feedback";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
+  reconcileServerProviderStatuses,
+  refreshServerConfigAfterTransportOpen,
   serverConfigQueryOptions,
   serverQueryKeys,
   serverSettingsQueryOptions,
@@ -68,6 +70,7 @@ import {
 } from "../wsNativeApi";
 import {
   addWsCompatibilityIssueListener,
+  addWsTransportStateListener,
   readLatestWsCompatibilityIssue,
 } from "../wsTransportEvents";
 import { providerQueryKeys } from "../lib/providerReactQuery";
@@ -78,14 +81,16 @@ import { dockTerminalThreadId } from "../lib/dockTerminalScope";
 import { TaskCompletionNotifications } from "../notifications/taskCompletion";
 import { useWorkspacePathsStore } from "../workspacePathsStore";
 import {
+  isThreadDetailRetained,
   resolveThreadDetailSubscriptionLeaseIds,
   subscribeThreadDetailEvictions,
   useRetainedThreadDetailIds,
 } from "../threadDetailSubscriptionRetention";
+import { canApplyThreadSnapshot, selectOrphanedThreadDetailIds } from "./-threadDetailOwnership";
 import { getThreadFromState, getThreadsFromState } from "../threadDerivation";
 import { useAppDensity } from "../hooks/useAppDensity";
 import { useAppTypography } from "../hooks/useAppTypography";
-import { usePreloadSettingsRoute } from "../hooks/usePreloadSettingsRoute";
+import { usePreloadRouteChunks } from "../hooks/usePreloadRouteChunks";
 import { useSyncDesktopTopBarTrafficLightGutterZoom } from "../hooks/useDesktopTopBarGutter";
 import { useTheme } from "../hooks/useTheme";
 import { useNativeFontSmoothing } from "../hooks/useNativeFontSmoothing";
@@ -117,6 +122,8 @@ import {
 
 const SHELL_SNAPSHOT_BOOTSTRAP_FALLBACK_DELAY_MS = 1_500;
 const THREAD_DETAIL_CATCHUP_INTERVAL_MS = 1_500;
+const THREAD_DETAIL_PROJECTION_RECONCILE_INTERVAL_MS = 4_500;
+const THREAD_DETAIL_PROJECTION_RECONCILE_MAX_CONCURRENCY = 2;
 const PENDING_SHELL_EVENT_BUFFER_LIMIT = 1_024;
 const PENDING_THREAD_EVENT_BUFFER_LIMIT = 512;
 const IMMEDIATE_ASSISTANT_FLUSH_ID_LIMIT = 512;
@@ -172,7 +179,7 @@ export const Route = createRootRouteWithContext<{
 function RootRouteView() {
   useAppTypography();
   useAppDensity();
-  usePreloadSettingsRoute();
+  usePreloadRouteChunks();
   useNativeFontSmoothing();
   useSyncDesktopTopBarTrafficLightGutterZoom();
   useTheme();
@@ -916,6 +923,42 @@ function shouldPollThreadDetailCatchup(threadId: ThreadId): boolean {
   );
 }
 
+function shouldReconcileThreadProjection(threadId: ThreadId): boolean {
+  const thread = getThreadFromState(useStore.getState(), threadId);
+  return (
+    thread?.session?.orchestrationStatus === "starting" ||
+    thread?.session?.orchestrationStatus === "running" ||
+    thread?.latestTurn?.state === "running" ||
+    thread?.messages.some((message) => message.role === "assistant" && message.streaming) === true
+  );
+}
+
+function isTerminalThreadSessionStatus(status: string): boolean {
+  return (
+    status === "ready" || status === "interrupted" || status === "stopped" || status === "error"
+  );
+}
+
+/**
+ * Frees the detail of threads whose stream lease just dropped and that nothing
+ * else owns. Batched into one store write because every write re-runs the
+ * retention reconcile.
+ */
+function releaseOrphanedThreadDetail(input: {
+  readonly releasedThreadIds: readonly ThreadId[];
+  readonly keptThreadIds?: ReadonlySet<ThreadId> | undefined;
+}): void {
+  const orphanedThreadIds = selectOrphanedThreadDetailIds({
+    releasedThreadIds: input.releasedThreadIds,
+    isRetained: isThreadDetailRetained,
+    keptThreadIds: input.keptThreadIds,
+  });
+  if (orphanedThreadIds.length === 0) {
+    return;
+  }
+  useStore.getState().evictThreadDetails(orphanedThreadIds);
+}
+
 function EventRouter() {
   const syncServerShellSnapshot = useStore((store) => store.syncServerShellSnapshot);
   const syncServerThreadDetailHotPath = useStore((store) => store.syncServerThreadDetailHotPath);
@@ -987,12 +1030,25 @@ function EventRouter() {
     const pendingThreadEventsById = new Map<ThreadId, OrchestrationEvent[]>();
     const threadSnapshotRequestInFlight = new Set<ThreadId>();
     const threadReplayRequestInFlight = new Set<ThreadId>();
+    const threadProjectionReconcileInFlight = new Map<ThreadId, number>();
+    const threadProjectionTerminalFencePending = new Set<ThreadId>();
+    const threadSubscriptionGenerationById = new Map<ThreadId, number>();
+    const nextThreadProjectionReconcileAtById = new Map<ThreadId, number>();
+    let nextThreadSubscriptionGeneration = 0;
     let reconcileThreadSubscriptionsChain = Promise.resolve();
 
     const beginThreadSubscription = (threadId: ThreadId) => {
       threadSnapshotSequenceById.delete(threadId);
       pendingThreadEventsById.set(threadId, []);
       threadSnapshotRequestInFlight.delete(threadId);
+      threadProjectionReconcileInFlight.delete(threadId);
+      threadProjectionTerminalFencePending.delete(threadId);
+      nextThreadSubscriptionGeneration += 1;
+      threadSubscriptionGenerationById.set(threadId, nextThreadSubscriptionGeneration);
+      nextThreadProjectionReconcileAtById.set(
+        threadId,
+        Date.now() + THREAD_DETAIL_PROJECTION_RECONCILE_INTERVAL_MS,
+      );
     };
 
     const flushThreadBuffer = (threadId: ThreadId, snapshotSequence: number) => {
@@ -1032,8 +1088,17 @@ function EventRouter() {
         pendingThreadEventsById.delete(threadId);
         threadSnapshotRequestInFlight.delete(threadId);
         threadReplayRequestInFlight.delete(threadId);
+        threadProjectionReconcileInFlight.delete(threadId);
+        threadProjectionTerminalFencePending.delete(threadId);
+        threadSubscriptionGenerationById.delete(threadId);
+        nextThreadProjectionReconcileAtById.delete(threadId);
         subscribedThreadIds.delete(threadId);
       }
+      // A retention eviction can refresh a thread whose lease is dropping in the
+      // same tick, so the refreshed snapshot may already have landed. Retention
+      // no longer owns the entry, and eviction only runs from retention entries,
+      // so without this the restored slices stay in the store forever.
+      releaseOrphanedThreadDetail({ releasedThreadIds: removals });
       await Promise.all(
         removals.map((threadId) =>
           api.orchestration.unsubscribeThread({ threadId }).catch(() => undefined),
@@ -1130,8 +1195,20 @@ function EventRouter() {
         pendingThreadEventsById.clear();
         threadSnapshotRequestInFlight.clear();
         threadReplayRequestInFlight.clear();
+        threadProjectionReconcileInFlight.clear();
+        threadProjectionTerminalFencePending.clear();
+        threadSubscriptionGenerationById.clear();
+        nextThreadProjectionReconcileAtById.clear();
         const previousThreadIds = [...subscribedThreadIds];
         subscribedThreadIds.clear();
+        // Reconnect drops every lease at once, so the reconcile below sees no
+        // removals to clean up. Free detail for threads that retention does not
+        // own and the reconcile will not re-lease, while leaving the threads it
+        // does re-lease untouched so a reconnect never blanks the open chat.
+        releaseOrphanedThreadDetail({
+          releasedThreadIds: previousThreadIds,
+          keptThreadIds: new Set(visibleThreadIdsRef.current),
+        });
         await Promise.all(
           previousThreadIds.map((threadId) =>
             api.orchestration.unsubscribeThread({ threadId }).catch(() => undefined),
@@ -1294,6 +1371,86 @@ function EventRouter() {
         });
     };
 
+    const reconcileThreadProjection = async (threadId: ThreadId): Promise<void> => {
+      const subscriptionGeneration = threadSubscriptionGenerationById.get(threadId);
+      if (
+        disposed ||
+        !subscribedThreadIds.has(threadId) ||
+        subscriptionGeneration === undefined ||
+        threadProjectionReconcileInFlight.has(threadId)
+      ) {
+        return;
+      }
+      threadProjectionReconcileInFlight.set(threadId, subscriptionGeneration);
+      let projectionConfirmed = false;
+      try {
+        const snapshot = await api.orchestration.getThreadDetailSnapshot({ threadId });
+        if (
+          snapshot === null ||
+          disposed ||
+          threadSubscriptionGenerationById.get(threadId) !== subscriptionGeneration ||
+          !canApplyThreadSnapshot({ threadId, leasedThreadIds: subscribedThreadIds })
+        ) {
+          return;
+        }
+        const currentSequence = threadSnapshotSequenceById.get(threadId) ?? -1;
+        // The RPC response can race a newer stream event. An older projection is
+        // authoritative only for its own fence; applying it after the live cursor
+        // advances would roll the thread back and the already-consumed event is no
+        // longer buffered to restore it.
+        if (snapshot.snapshotSequence < currentSequence) {
+          return;
+        }
+        const currentThread = getThreadFromState(useStore.getState(), threadId);
+        const projectionRepairsTerminalFence = threadProjectionTerminalFencePending.has(threadId);
+        const projectionSettlesCurrentTurn =
+          currentThread?.latestTurn?.state === "running" &&
+          snapshot.thread.latestTurn !== null &&
+          snapshot.thread.latestTurn.turnId === currentThread.latestTurn.turnId &&
+          snapshot.thread.latestTurn.state !== "running" &&
+          snapshot.thread.latestTurn.completedAt !== null;
+        threadSnapshotSequenceById.set(
+          threadId,
+          Math.max(currentSequence, snapshot.snapshotSequence),
+        );
+        // Apply even when the cursor did not advance. The projection is
+        // authoritative and can repair a client that advanced its cursor while
+        // dropping or failing to reduce one of the corresponding live events.
+        syncServerThreadDetailHotPath(snapshot.thread);
+        reconcilePromotedDraftFromThreadDetail(snapshot.thread);
+        flushThreadBuffer(threadId, snapshot.snapshotSequence);
+        projectionConfirmed = true;
+        if (projectionSettlesCurrentTurn || projectionRepairsTerminalFence) {
+          // Mirror terminal-event invalidation when recovery came from the
+          // projection rather than the live stream.
+          needsProviderInvalidation = true;
+          pendingGitInvalidationThreadIds.add(threadId);
+          pendingStudioOutputInvalidationThreadIds.add(threadId);
+          domainEventFlushThrottler.maybeExecute();
+        }
+      } finally {
+        if (threadProjectionReconcileInFlight.get(threadId) === subscriptionGeneration) {
+          threadProjectionReconcileInFlight.delete(threadId);
+        }
+        if (threadSubscriptionGenerationById.get(threadId) === subscriptionGeneration) {
+          if (projectionConfirmed) {
+            threadProjectionTerminalFencePending.delete(threadId);
+          }
+          if (
+            threadProjectionTerminalFencePending.has(threadId) ||
+            shouldReconcileThreadProjection(threadId)
+          ) {
+            nextThreadProjectionReconcileAtById.set(
+              threadId,
+              Date.now() + THREAD_DETAIL_PROJECTION_RECONCILE_INTERVAL_MS,
+            );
+          } else {
+            nextThreadProjectionReconcileAtById.delete(threadId);
+          }
+        }
+      }
+    };
+
     const domainEventFlushThrottler = new Throttler(
       () => {
         flushPendingDomainEvents();
@@ -1333,6 +1490,18 @@ function EventRouter() {
       if (
         item.kind === "thread-upserted" &&
         subscribedThreadIds.has(item.thread.id) &&
+        item.thread.session !== null &&
+        isTerminalThreadSessionStatus(item.thread.session.status)
+      ) {
+        threadProjectionTerminalFencePending.add(item.thread.id);
+        nextThreadProjectionReconcileAtById.set(
+          item.thread.id,
+          Date.now() + THREAD_DETAIL_PROJECTION_RECONCILE_INTERVAL_MS,
+        );
+      }
+      if (
+        item.kind === "thread-upserted" &&
+        subscribedThreadIds.has(item.thread.id) &&
         !threadSnapshotSequenceById.has(item.thread.id)
       ) {
         void requestThreadSnapshot(item.thread.id);
@@ -1344,8 +1513,20 @@ function EventRouter() {
     const unsubThreadEvent = api.orchestration.onThreadEvent((item) => {
       if (item.kind === "snapshot") {
         const threadId = item.snapshot.thread.id;
-        threadSnapshotSequenceById.set(threadId, item.snapshot.snapshotSequence);
         threadSnapshotRequestInFlight.delete(threadId);
+        // The lease can drop while its refreshed snapshot is in flight. Applying it
+        // then would restore detail slices that no retention entry owns, and since
+        // eviction only runs from retention entries nothing would ever free them.
+        if (!canApplyThreadSnapshot({ threadId, leasedThreadIds: subscribedThreadIds })) {
+          threadSnapshotSequenceById.delete(threadId);
+          pendingThreadEventsById.delete(threadId);
+          return;
+        }
+        threadSnapshotSequenceById.set(threadId, item.snapshot.snapshotSequence);
+        nextThreadProjectionReconcileAtById.set(
+          threadId,
+          Date.now() + THREAD_DETAIL_PROJECTION_RECONCILE_INTERVAL_MS,
+        );
         syncServerThreadDetailHotPath(item.snapshot.thread);
         reconcilePromotedDraftFromThreadDetail(item.snapshot.thread);
         flushThreadBuffer(threadId, item.snapshot.snapshotSequence);
@@ -1353,6 +1534,16 @@ function EventRouter() {
       }
 
       const threadId = ThreadId.makeUnsafe(String(item.event.aggregateId));
+      if (
+        item.event.type === "thread.session-set" &&
+        isTerminalThreadSessionStatus(item.event.payload.session.status)
+      ) {
+        threadProjectionTerminalFencePending.add(threadId);
+        nextThreadProjectionReconcileAtById.set(
+          threadId,
+          Date.now() + THREAD_DETAIL_PROJECTION_RECONCILE_INTERVAL_MS,
+        );
+      }
       const latestThreadSequence = threadSnapshotSequenceById.get(threadId);
       if (latestThreadSequence === undefined) {
         const pendingThreadEvents = pendingThreadEventsById.get(threadId) ?? [];
@@ -1367,6 +1558,10 @@ function EventRouter() {
         return;
       }
       threadSnapshotSequenceById.set(threadId, item.event.sequence);
+      nextThreadProjectionReconcileAtById.set(
+        threadId,
+        Date.now() + THREAD_DETAIL_PROJECTION_RECONCILE_INTERVAL_MS,
+      );
       queueDomainEvent(item.event);
     });
     const unsubThreadStreamFailure = onThreadStreamFailure((failure) => {
@@ -1531,14 +1726,7 @@ function EventRouter() {
         previousProviderDiscoveryFingerprint !== nextProviderDiscoveryFingerprint;
       providerDiscoveryInvalidationFingerprint = nextProviderDiscoveryFingerprint;
 
-      if (!currentConfig) {
-        void queryClient.fetchQuery(serverConfigQueryOptions()).catch(() => undefined);
-        return;
-      }
-      queryClient.setQueryData(serverQueryKeys.config(), {
-        ...currentConfig,
-        providers: payload.providers,
-      });
+      void reconcileServerProviderStatuses(queryClient, payload.providers).catch(() => undefined);
       if (shouldInvalidateProviderDiscovery) {
         // Model and agent discovery can depend on auth, availability, and installed versions,
         // but not on every provider-status timestamp replay.
@@ -1559,6 +1747,15 @@ function EventRouter() {
         });
       }
     });
+    const unsubWsTransportState = addWsTransportStateListener(
+      (state) => {
+        if (state !== "open") return;
+        // Reopening the socket is a projection boundary. React Query otherwise
+        // keeps the previous infinite-stale config and can strand "Checking".
+        void refreshServerConfigAfterTransportOpen(queryClient).catch(() => undefined);
+      },
+      { replayCurrent: true },
+    );
     const unsubServerSettingsUpdated = onServerSettingsUpdated((payload) => {
       queryClient.setQueryData(serverQueryKeys.settings(), payload.settings);
       void queryClient.invalidateQueries({
@@ -1573,6 +1770,11 @@ function EventRouter() {
       void loadShellSnapshotOnce().catch(() => undefined);
     }, SHELL_SNAPSHOT_BOOTSTRAP_FALLBACK_DELAY_MS);
     const threadDetailCatchupInterval = window.setInterval(() => {
+      const now = Date.now();
+      let availableProjectionReconcileSlots = Math.max(
+        0,
+        THREAD_DETAIL_PROJECTION_RECONCILE_MAX_CONCURRENCY - threadProjectionReconcileInFlight.size,
+      );
       for (const threadId of subscribedThreadIds) {
         if (shouldPollThreadDetailCatchup(threadId)) {
           if (!threadSnapshotSequenceById.has(threadId)) {
@@ -1580,6 +1782,23 @@ function EventRouter() {
           } else {
             void replayThreadEvents(threadId).catch(() => undefined);
           }
+        }
+        if (
+          !threadProjectionTerminalFencePending.has(threadId) &&
+          !shouldReconcileThreadProjection(threadId)
+        ) {
+          nextThreadProjectionReconcileAtById.delete(threadId);
+          continue;
+        }
+        const nextProjectionReconcileAt = nextThreadProjectionReconcileAtById.get(threadId);
+        if (
+          availableProjectionReconcileSlots > 0 &&
+          !threadProjectionReconcileInFlight.has(threadId) &&
+          nextProjectionReconcileAt !== undefined &&
+          now >= nextProjectionReconcileAt
+        ) {
+          availableProjectionReconcileSlots -= 1;
+          void reconcileThreadProjection(threadId).catch(() => undefined);
         }
       }
     }, THREAD_DETAIL_CATCHUP_INTERVAL_MS);
@@ -1593,9 +1812,20 @@ function EventRouter() {
       needsBroadGitInvalidation = false;
       pendingGitInvalidationThreadIds = new Set();
       pendingStudioOutputInvalidationThreadIds = new Set();
+      threadProjectionReconcileInFlight.clear();
+      threadProjectionTerminalFencePending.clear();
+      threadSubscriptionGenerationById.clear();
+      nextThreadProjectionReconcileAtById.clear();
       domainEventFlushThrottler.cancel();
       reconcileThreadSubscriptionsRef.current = null;
       void api.orchestration.unsubscribeShell().catch(() => undefined);
+      // Same shape as reconnect: every lease drops at once, and a remount re-leases
+      // only the visible threads. Keeping those avoids blanking the open chat, and
+      // anything recently viewed is owned by retention, which evicts it on schedule.
+      releaseOrphanedThreadDetail({
+        releasedThreadIds: [...subscribedThreadIds],
+        keptThreadIds: new Set(visibleThreadIdsRef.current),
+      });
       void Promise.all(
         [...subscribedThreadIds].map((threadId) =>
           api.orchestration.unsubscribeThread({ threadId }).catch(() => undefined),
@@ -1610,6 +1840,7 @@ function EventRouter() {
       unsubWelcome();
       unsubServerConfigUpdated();
       unsubProviderStatusesUpdated();
+      unsubWsTransportState();
       unsubServerSettingsUpdated();
     };
   }, [

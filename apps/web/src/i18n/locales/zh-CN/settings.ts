@@ -22,6 +22,8 @@ export const settings: Settings = {
     resetAriaLabel: (label) => `将${label}重置为默认值`,
   },
   general: {
+    codeAndStatus: "代码与状态",
+    contextAndNotes: "上下文与备注",
     coreDefaults: {
       title: "核心默认",
       language: {
@@ -194,6 +196,13 @@ export const settings: Settings = {
       placeholder: "默认（JetBrains Mono）",
       noSuggestions: "没有匹配的推荐字体。",
     },
+    typographyAndSpacing: "排版与间距",
+    fontSmoothing: {
+      title: "字体平滑",
+      description: "使用 macOS 风格的抗锯齿，让文字渲染更轻盈清晰。",
+      resetLabel: "字体平滑",
+      ariaLabel: "启用字体平滑",
+    },
     timeAndReading: "时间与阅读",
     timeFormat: {
       title: "时间格式",
@@ -205,6 +214,16 @@ export const settings: Settings = {
   },
   behavior: {
     runtimeBehavior: "运行时行为",
+    conversation: "会话",
+    review: "审查",
+    followUpBehavior: {
+      title: "追问行为",
+      description:
+        "选择在回合进行中发送的消息是排队等待，还是直接引导当前运行。Ctrl/Cmd+Enter 可对单条消息使用相反的行为。",
+      resetLabel: "追问行为",
+      queue: "排队",
+      steer: "引导",
+    },
     assistantOutput: {
       title: "助手输出",
       description: "在回复生成过程中逐 token 显示输出。",

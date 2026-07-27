@@ -7,7 +7,16 @@
 import type { ReactNode } from "react";
 import { createMarkdownCodeFence, formatShellTranscript } from "~/lib/toolCallDetailsFormatting";
 import { cn } from "~/lib/utils";
+import type { TimestampFormat } from "../../appSettings";
 import type { WorkLogToolDetails, WorkLogToolOutputDetails } from "../../lib/toolCallDetails";
+import type { WorkLogLiveActivity } from "../../workLog";
+import {
+  formatLiveActivityElapsed,
+  formatLiveActivityProgress,
+  formatLiveActivityStateLabel,
+  useLiveActivityNow,
+} from "../../lib/liveActivityPresentation";
+import { formatTimestamp } from "../../timestampFormat";
 import ChatMarkdown from "../ChatMarkdown";
 import { useMessages } from "~/i18n/context";
 
@@ -17,9 +26,17 @@ const DETAIL_CODE_BLOCK_CLASS_NAME =
 const TOOL_DETAILS_MARKDOWN_CLASS_NAME =
   "text-[length:var(--app-font-size-ui,12px)] leading-relaxed";
 
-export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetails | undefined }) {
+export function ToolCallDetailsContent({
+  details,
+  activity,
+  timestampFormat,
+}: {
+  details: WorkLogToolDetails | undefined;
+  activity?: WorkLogLiveActivity | undefined;
+  timestampFormat: TimestampFormat;
+}) {
   const copy = useMessages().chat.toolCall;
-  if (!details) {
+  if (!details && !activity) {
     return (
       <div className="rounded-lg border border-border/45 bg-background/60 px-3 py-2 text-sm text-muted-foreground">
         {copy.noPayload}
@@ -29,7 +46,11 @@ export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetail
 
   return (
     <>
-      {details.arguments ? (
+      {activity ? (
+        <LiveActivityMetadata activity={activity} timestampFormat={timestampFormat} />
+      ) : null}
+
+      {details?.arguments ? (
         <ToolDetailSection title={copy.arguments}>
           <MarkdownToolCodeBlock language={toolArgumentsLanguage(details.arguments)}>
             {details.arguments}
@@ -37,7 +58,7 @@ export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetail
         </ToolDetailSection>
       ) : null}
 
-      {details.command ? (
+      {details?.command ? (
         <div className="space-y-2">
           <MarkdownToolCodeBlock language="bash">
             {formatShellTranscript(details.command, details.output)}
@@ -46,7 +67,7 @@ export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetail
         </div>
       ) : null}
 
-      {details.files?.length ? (
+      {details?.files?.length ? (
         <ToolDetailSection title={copy.files}>
           <div className="flex flex-wrap gap-1.5">
             {details.files.map((file) => (
@@ -62,13 +83,13 @@ export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetail
         </ToolDetailSection>
       ) : null}
 
-      {details.diff ? (
+      {details?.diff ? (
         <ToolDetailSection title={copy.diff}>
           <DiffCodeBlock>{details.diff}</DiffCodeBlock>
         </ToolDetailSection>
       ) : null}
 
-      {details.edits?.length ? (
+      {details?.edits?.length ? (
         <ToolDetailSection title={copy.edits}>
           <div className="space-y-3">
             {details.edits.map((edit, index) => (
@@ -99,13 +120,13 @@ export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetail
         </ToolDetailSection>
       ) : null}
 
-      {details.content ? (
+      {details?.content ? (
         <ToolDetailSection title={copy.writtenContent}>
           <MarkdownToolCodeBlock language="text">{details.content}</MarkdownToolCodeBlock>
         </ToolDetailSection>
       ) : null}
 
-      {details.output && !details.command ? <ToolOutputSection output={details.output} /> : null}
+      {details?.output && !details.command ? <ToolOutputSection output={details.output} /> : null}
     </>
   );
 }
@@ -114,6 +135,72 @@ export function ToolCallDetailsContent({ details }: { details: WorkLogToolDetail
 // Fencing a non-JSON string as `json` would light it up with the wrong highlighting.
 function toolArgumentsLanguage(value: string): string {
   return value.startsWith("{") || value.startsWith("[") ? "json" : "text";
+}
+
+function formatActivityTimestamp(value: string, timestampFormat: TimestampFormat): string {
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) {
+    return value;
+  }
+  return formatTimestamp(value, timestampFormat);
+}
+
+function LiveActivityMetadata({
+  activity,
+  timestampFormat,
+}: {
+  activity: WorkLogLiveActivity;
+  timestampFormat: TimestampFormat;
+}) {
+  const copy = useMessages().chat.toolCall;
+  const stateLabel = formatLiveActivityStateLabel(activity.state);
+  const nowMs = useLiveActivityNow(activity);
+  const elapsed = formatLiveActivityElapsed(activity, nowMs);
+  const progress =
+    activity.progress !== undefined ? formatLiveActivityProgress(activity.progress) : null;
+
+  return (
+    <ToolDetailSection title={copy.liveActivity}>
+      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-lg border border-border/45 bg-background/60 px-3 py-2.5 text-[11px]">
+        <dt className="text-muted-foreground/56">{copy.liveStatus}</dt>
+        <dd className="text-foreground/84">{stateLabel}</dd>
+        {activity.startedAt ? (
+          <>
+            <dt className="text-muted-foreground/56">{copy.liveStarted}</dt>
+            <dd className="text-foreground/84">
+              <time dateTime={activity.startedAt} title={activity.startedAt}>
+                {formatActivityTimestamp(activity.startedAt, timestampFormat)}
+              </time>
+            </dd>
+          </>
+        ) : null}
+        <dt className="text-muted-foreground/56">{copy.liveLastActivity}</dt>
+        <dd className="text-foreground/84">
+          <time dateTime={activity.lastActivityAt} title={activity.lastActivityAt}>
+            {formatActivityTimestamp(activity.lastActivityAt, timestampFormat)}
+          </time>
+        </dd>
+        {elapsed ? (
+          <>
+            <dt className="text-muted-foreground/56">{copy.liveElapsed}</dt>
+            <dd className="tabular-nums text-foreground/84">{elapsed}</dd>
+          </>
+        ) : null}
+        {progress ? (
+          <>
+            <dt className="text-muted-foreground/56">{copy.liveProgress}</dt>
+            <dd className="tabular-nums text-foreground/84">{progress}</dd>
+          </>
+        ) : null}
+        {activity.detail ? (
+          <>
+            <dt className="text-muted-foreground/56">{copy.liveDetail}</dt>
+            <dd className="break-words text-foreground/84">{activity.detail}</dd>
+          </>
+        ) : null}
+      </dl>
+    </ToolDetailSection>
+  );
 }
 
 function MarkdownToolCodeBlock(props: { language: string; children: string }) {

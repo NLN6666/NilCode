@@ -6,12 +6,12 @@ import {
   ArchiveIcon,
   BookIcon,
   ChatBubbleIcon,
+  CircleQuestionIcon,
   ClockIcon,
   CopyIcon,
   ExternalLinkIcon,
   FolderOpenIcon,
   GiftIcon,
-  InfoIcon,
   KanbanIcon,
   KeyboardIcon,
   type LucideIcon,
@@ -161,7 +161,7 @@ import {
   automationAttentionCount,
   automationQueryKey,
   formatCadence,
-  groupHeartbeatAutomationsByTargetThread,
+  groupAutomationsByContinuedThread,
 } from "../routes/-automations.shared";
 import { shouldRenderTerminalWorkspace } from "./ChatView.logic";
 import { CHAT_SURFACE_HEADER_HEIGHT_CLASS } from "./chat/chatHeaderControls";
@@ -384,9 +384,7 @@ import {
   SidebarContextMenuIcon,
 } from "./sidebarContextMenuStyles";
 import {
-  VOID_SPACE_ICON,
   VOID_SPACE_KEY,
-  VOID_SPACE_NAME,
   spaceDisplayIcon,
   spaceDisplayName,
   spaceKey,
@@ -896,7 +894,7 @@ function SidebarHelpMenu({
     <Menu>
       <SidebarIconButton
         render={<MenuTrigger />}
-        icon={InfoIcon}
+        icon={CircleQuestionIcon}
         label={m.sidebar.help.menu}
         tooltip={m.sidebar.help.menu}
       />
@@ -998,8 +996,8 @@ function SidebarPrimaryAction({
   onClick,
   onMouseEnter,
   onFocus,
-  active = false,
-  disabled = false,
+  active: activeProp,
+  disabled: disabledProp,
   shortcutLabel,
   badge,
 }: {
@@ -1014,6 +1012,10 @@ function SidebarPrimaryAction({
   shortcutLabel?: string | null;
   badge?: SidebarActionBadge | null;
 }) {
+  // Defaults live in the body, not the destructuring pattern: an AssignmentPattern in
+  // the parameter list makes React Compiler bail out on the whole component.
+  const active = activeProp ?? false;
+  const disabled = disabledProp ?? false;
   const shortcutParts = shortcutLabel ? splitShortcutLabel(shortcutLabel) : [];
 
   return (
@@ -1063,13 +1065,15 @@ function SidebarPrimaryAction({
 
 function SortableProjectItem({
   projectId,
-  disabled = false,
+  disabled: disabledProp,
   children,
 }: {
   projectId: ProjectId;
   disabled?: boolean;
   children: (handleProps: SortableProjectHandleProps) => React.ReactNode;
 }) {
+  // Default resolved in the body — see SidebarPrimaryAction.
+  const disabled = disabledProp ?? false;
   const {
     attributes,
     listeners,
@@ -1333,7 +1337,7 @@ export default function Sidebar() {
   // Heartbeat automations grouped by their target thread, so each thread row can show a
   // clock chip indicating an automation is attached (mirrors the Environment panel section).
   const automationsByThreadId = useMemo(
-    () => groupHeartbeatAutomationsByTargetThread(automationListQuery.data?.definitions ?? []),
+    () => groupAutomationsByContinuedThread(automationListQuery.data?.definitions ?? []),
     [automationListQuery.data],
   );
   const { settings: appSettings, updateSettings } = useAppSettings();
@@ -1435,14 +1439,39 @@ export default function Sidebar() {
   }, []);
   const createSplitViewFromDrop = useSplitViewStore((store) => store.createFromDrop);
   const setSplitFocusedPane = useSplitViewStore((store) => store.setFocusedPane);
-  const { data: keybindings = EMPTY_KEYBINDINGS } = useQuery({
+  // Query defaults are applied after destructuring: a default inside the destructuring
+  // pattern makes React Compiler bail out on the whole Sidebar component.
+  const keybindingsQuery = useQuery({
     ...serverConfigQueryOptions(),
     select: (config) => config.keybindings,
   });
-  const { data: serverCwd = null } = useQuery({
+  const keybindings = keybindingsQuery.data ?? EMPTY_KEYBINDINGS;
+  const serverCwdQuery = useQuery({
     ...serverConfigQueryOptions(),
     select: (config) => config.cwd ?? null,
   });
+  const serverCwd = serverCwdQuery.data ?? null;
+  // Declared next to `keybindings` (rather than further down) because the project-row render
+  // helpers above read these labels. A const declared after the closure that captures it
+  // widens its inferred mutable range and makes React Compiler drop the memoization of every
+  // hook that depends on it. See Sidebar.compiler.test.ts.
+  const newThreadShortcutLabel =
+    shortcutLabelForCommand(keybindings, "chat.new") ??
+    shortcutLabelForCommand(keybindings, "chat.newLatestProject");
+  const newChatShortcutLabel =
+    shortcutLabelForCommand(keybindings, "chat.newChat") ??
+    shortcutLabelForCommand(keybindings, "chat.newLocal");
+  const newTerminalThreadShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newTerminal");
+  const searchShortcutLabel =
+    shortcutLabelForCommand(keybindings, "sidebar.search") ??
+    (isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K");
+  const importThreadShortcutLabel =
+    shortcutLabelForCommand(keybindings, "sidebar.importThread") ??
+    (isMacPlatform(navigator.platform) ? "⌘I" : "Ctrl+I");
+  const addProjectShortcutLabel =
+    shortcutLabelForCommand(keybindings, "sidebar.addProject") ??
+    (isMacPlatform(navigator.platform) ? "⇧⌘O" : "Ctrl+Shift+O");
+  const usageSettingsShortcutLabel = shortcutLabelForCommand(keybindings, "settings.usage");
   const { activeProjectId: focusedProjectId } = useFocusedChatContext();
   const latestProjectId = useLatestProjectStore((state) => state.latestProjectId);
   const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);
@@ -2311,7 +2340,13 @@ export default function Sidebar() {
         setIsAddingProject(false);
       };
 
-      try {
+      // The flow lives in a nested function that the `try` below merely awaits: React
+      // Compiler's BuildHIR cannot lower a `throw` or a value block (`?.`, `??`, ternary,
+      // conditional spread) that sits directly inside a try block, and a single one of them
+      // makes the entire Sidebar bail out of compilation — silently, since `panicThreshold`
+      // is unset. Nested function bodies are lowered separately and are unaffected, and the
+      // catch below still sees every rejection. See Sidebar.compiler.test.ts.
+      const runAddProject = async () => {
         const existing = findWorkspaceRootMatch(projects, cwd, (project) => project.cwd);
         const existingRecovery = await recoverExistingAddProjectTarget({
           existingProjectId: existing?.id,
@@ -2377,7 +2412,10 @@ export default function Sidebar() {
           envMode: appSettings.defaultThreadEnvMode,
         }).catch(() => undefined);
         finishAddingProject();
-        return;
+      };
+
+      try {
+        await runAddProject();
       } catch (error) {
         const description =
           error instanceof Error ? error.message : "An error occurred while adding the project.";
@@ -3057,13 +3095,15 @@ export default function Sidebar() {
   const handleCloseProjectContextMenu = useCallback(() => setProjectContextMenuState(null), []);
   const {
     activeSpace,
-    editedSpace,
+    voidSpace,
     spaceEditorOpen,
     spaceEditorMode,
+    spaceEditorInitialValue,
     spaceEditorExistingNames,
     spaceProjectPickerTarget,
     openSpaceCreator,
     openSpaceEditor,
+    openVoidEditor,
     closeSpaceEditor,
     openSpaceProjectPicker,
     closeSpaceProjectPicker,
@@ -3071,6 +3111,8 @@ export default function Sidebar() {
     handleSelectSpaceForIncomingProject,
     handleReorderSpaces,
     handleRenameSpace,
+    handleRenameVoid,
+    resetVoidSpace,
     handleDeleteSpace,
     handleMoveProjectToSpace,
     handleSpaceEditorSubmit,
@@ -3201,7 +3243,9 @@ export default function Sidebar() {
       );
       if (!confirmed) return;
 
-      try {
+      // Nested function so the `try` body stays free of value blocks — see the comment on
+      // `runAddProject` above for why React Compiler requires this shape.
+      const runRemoveProject = async () => {
         // `project.delete` refuses non-empty folders, so `Remove` clears threads first.
         const deletionResult = await deleteProjectThreads(projectId, {
           confirmMessage: null,
@@ -3235,6 +3279,10 @@ export default function Sidebar() {
               ? `Deleted ${deletionResult.deletedCount} ${pluralize(deletionResult.deletedCount, "thread")} and removed the project.`
               : "Project removed.",
         });
+      };
+
+      try {
+        await runRemoveProject();
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error removing project.";
         console.error("Failed to remove project", { projectId, error });
@@ -5099,23 +5147,6 @@ export default function Sidebar() {
     desktopUpdateButtonHasSecondaryLabel && "min-h-6 py-0.5",
     desktopUpdateButtonInteractivityClasses,
   );
-  const newThreadShortcutLabel =
-    shortcutLabelForCommand(keybindings, "chat.new") ??
-    shortcutLabelForCommand(keybindings, "chat.newLatestProject");
-  const newChatShortcutLabel =
-    shortcutLabelForCommand(keybindings, "chat.newChat") ??
-    shortcutLabelForCommand(keybindings, "chat.newLocal");
-  const newTerminalThreadShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newTerminal");
-  const searchShortcutLabel =
-    shortcutLabelForCommand(keybindings, "sidebar.search") ??
-    (isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K");
-  const importThreadShortcutLabel =
-    shortcutLabelForCommand(keybindings, "sidebar.importThread") ??
-    (isMacPlatform(navigator.platform) ? "⌘I" : "Ctrl+I");
-  const addProjectShortcutLabel =
-    shortcutLabelForCommand(keybindings, "sidebar.addProject") ??
-    (isMacPlatform(navigator.platform) ? "⇧⌘O" : "Ctrl+Shift+O");
-  const usageSettingsShortcutLabel = shortcutLabelForCommand(keybindings, "settings.usage");
   const searchPaletteProjects = useMemo<SidebarSearchProject[]>(
     () =>
       projects.map((project) => ({
@@ -5131,12 +5162,12 @@ export default function Sidebar() {
           chatWorkspaceRoot,
           studioWorkspaceRoot,
         })
-          ? spaceDisplayName(project.spaceId, spaces)
+          ? spaceDisplayName(project.spaceId, spaces, voidSpace)
           : "Global",
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,
       })),
-    [chatWorkspaceRoot, homeDir, projects, spaces, studioWorkspaceRoot],
+    [chatWorkspaceRoot, homeDir, projects, spaces, studioWorkspaceRoot, voidSpace],
   );
   const searchPaletteActions = useMemo<SidebarSearchAction[]>(
     () => [
@@ -5203,13 +5234,15 @@ export default function Sidebar() {
         ? [
             {
               id: "switch-space-void",
-              label: `Switch to ${VOID_SPACE_NAME}`,
+              label: `Switch to ${voidSpace.name}`,
               description: "Jump to unassigned projects.",
-              keywords: ["space", "switch", "void", "unassigned"],
+              // "void" stays a keyword after a rename: it is what the palette answered to
+              // before, and it is still the only word for this group in the docs.
+              keywords: ["space", "switch", "void", "unassigned", voidSpace.name],
               requiresQuery: true,
               run: () => handleSelectSpace(null),
               icon: ({ className }: { className?: string }) => (
-                <SpaceIcon icon={VOID_SPACE_ICON} className={className} />
+                <SpaceIcon icon={voidSpace.icon} className={className} />
               ),
             } satisfies SidebarSearchAction,
           ]
@@ -5247,6 +5280,7 @@ export default function Sidebar() {
       openSpaceCreator,
       spaces,
       usageSettingsShortcutLabel,
+      voidSpace,
     ],
   );
 
@@ -5688,12 +5722,16 @@ export default function Sidebar() {
                     spaces={spaces}
                     activeSpaceId={activeSpaceId}
                     activityBySpaceId={spaceActivityById}
+                    voidSpace={voidSpace}
                     onSelect={handleSelectSpace}
                     onCreate={() => openSpaceCreator()}
                     onEdit={(space) => openSpaceEditor(space.id)}
                     onDelete={(space) => void handleDeleteSpace(space.id)}
                     onReorder={handleReorderSpaces}
                     onRenameSpace={(space, name) => void handleRenameSpace(space, name)}
+                    onEditVoid={openVoidEditor}
+                    onRenameVoid={handleRenameVoid}
+                    onResetVoid={resetVoidSpace}
                     onDropProject={(projectId, spaceId) =>
                       void handleMoveProjectToSpace(projectId, spaceId)
                     }
@@ -6012,9 +6050,7 @@ export default function Sidebar() {
       <SpaceEditorDialog
         open={spaceEditorOpen}
         mode={spaceEditorMode}
-        {...(editedSpace
-          ? { initialValue: { name: editedSpace.name, icon: editedSpace.icon } }
-          : {})}
+        {...(spaceEditorInitialValue ? { initialValue: spaceEditorInitialValue } : {})}
         existingNames={spaceEditorExistingNames}
         onOpenChange={(open) => {
           if (!open) closeSpaceEditor();
@@ -6138,7 +6174,9 @@ export default function Sidebar() {
                       read-out of where it lives today. It wears the same secondary tone
                       as every other leading glyph in this menu. */}
                   <span className={PROJECT_CONTEXT_MENU_ICON_CLASS_NAME}>
-                    <SpaceIcon icon={spaceDisplayIcon(projectContextMenuProject.spaceId, spaces)} />
+                    <SpaceIcon
+                      icon={spaceDisplayIcon(projectContextMenuProject.spaceId, spaces, voidSpace)}
+                    />
                   </span>
                   <span>{m.sidebar.projectMenu.moveToSpace}</span>
                 </MenuSubTrigger>
@@ -6153,8 +6191,8 @@ export default function Sidebar() {
                     }}
                   >
                     <MenuRadioItem value={VOID_SPACE_KEY}>
-                      <SpaceIcon icon={VOID_SPACE_ICON} className="size-3.5" />
-                      <span className="min-w-0 truncate">{m.sidebar.projectMenu.voidSpace}</span>
+                      <SpaceIcon icon={voidSpace.icon} className="size-3.5" />
+                      <span className="min-w-0 truncate">{voidSpace.name}</span>
                     </MenuRadioItem>
                     {spaces.map((space) => (
                       <MenuRadioItem key={space.id} value={space.id}>

@@ -1,8 +1,9 @@
 // FILE: locales/zh-CN/settingsNav.ts
 // Purpose: Simplified Chinese copy for the settings navigation taxonomy.
 //
-// "AppSnap" and "Synara" stay in English: they are product feature names, not prose. Translating
-// them would break the link between the UI and every doc, release note, and support thread.
+// "AppSnap", "MCP" and "Synara" stay in English: they are product feature names, not prose.
+// Translating them would break the link between the UI and every doc, release note, and support
+// thread.
 
 import type { SettingsNav } from "../en/settingsNav";
 
@@ -15,14 +16,17 @@ export const settingsNav: SettingsNav = {
   noResults: "没有匹配的设置。",
 
   groups: {
-    app: "应用",
-    synara: "Synara",
+    personal: "个人",
+    integrations: "集成",
+    coding: "编码",
+    system: "系统",
+    archived: "已归档",
   },
 
   sections: {
     general: {
       label: "常规",
-      description: "默认提供商、会话模式和侧边栏组织。",
+      description: "为新会话、导航和环境面板选择默认设置。",
     },
     profile: {
       label: "个人资料",
@@ -30,59 +34,59 @@ export const settingsNav: SettingsNav = {
     },
     appearance: {
       label: "外观",
-      description: "主题、排版和时间戳格式。",
+      description: "自定义主题、排版、密度和时间格式。",
     },
     notifications: {
       label: "通知",
-      description: "应用内提示和桌面通知。",
+      description: "选择 Synara 在工作完成或需要关注时如何通知你。",
     },
     behavior: {
-      label: "行为",
-      description: "流式输出、差异处理和破坏性操作确认。",
-    },
-    appsnap: {
-      label: "AppSnap",
-      description: "一键将其他应用的窗口截取到任务中。",
+      label: "会话行为",
+      description: "控制实时响应、后续追问、审查默认值和安全确认。",
     },
     shortcuts: {
       label: "键盘快捷键",
-      description: "Synara 中所有可用的键盘快捷键，按上下文分组。",
-    },
-    worktrees: {
-      label: "工作树",
-      description: "查看和清理 Synara 创建的工作树。",
-    },
-    archived: {
-      label: "已归档",
-      description: "查看和恢复已归档的会话。",
-    },
-    models: {
-      label: "模型",
-      description: "Git 编写默认值和自定义模型标识。",
-    },
-    providers: {
-      label: "提供商",
-      description: "选择可见的提供商、查看 CLI 安装和更新提供商工具。",
-    },
-    skills: {
-      label: "技能",
-      description: "所有提供商中发现的技能，可通过开关控制可用性。",
+      description: "搜索并自定义快捷键，按生效范围分组。",
     },
     usage: {
-      label: "用量",
-      description: "每个已登录提供商的剩余配额和积分。",
+      label: "用量与限额",
+      description: "查看每个已登录提供商的剩余配额和积分。",
+    },
+    appsnap: {
+      label: "AppSnap",
+      description: "将其他应用的最前窗口直接截取到任务中。",
     },
     mcpServers: {
       label: "MCP 服务器",
       description: "启用或禁用 Codex 与 Claude 代理所使用的 MCP 服务器。",
     },
     integrations: {
-      label: "集成",
-      description: "为本地 MCP 客户端配对可限定范围、可撤销的 Synara 任务访问权限。",
+      label: "MCP 连接",
+      description: "为 Codex、Claude 及其他本地代理授予受限的 Synara 任务访问权限。",
+    },
+    providers: {
+      label: "代理提供商",
+      description: "选择可见的编码代理并管理其已安装的 CLI 工具。",
+    },
+    models: {
+      label: "模型与编写",
+      description: "选择用于 Git 编写的模型，并添加自定义模型标识。",
+    },
+    skills: {
+      label: "代理技能",
+      description: "查看在所有已配置提供商中发现的可复用工作流。",
+    },
+    worktrees: {
+      label: "托管工作树",
+      description: "查看和清理 Synara 创建的隔离工作区。",
     },
     advanced: {
-      label: "高级",
-      description: "按键绑定、恢复工具和版本信息。",
+      label: "系统工具",
+      description: "管理会话、恢复工具、底层按键绑定和版本详情。",
+    },
+    archived: {
+      label: "已归档会话",
+      description: "查找并恢复此前归档的会话。",
     },
   },
 };

@@ -24,12 +24,13 @@ interface ThreadWorktreeHandoffDialogProps {
 export function ThreadWorktreeHandoffDialog({
   open,
   worktreeName,
-  busy = false,
+  busy: busyProp,
   onWorktreeNameChange,
   onOpenChange,
   onConfirm,
 }: ThreadWorktreeHandoffDialogProps) {
   const copy = useMessages().dialogs.worktreeHandoff;
+  const busy = busyProp ?? false;
   const worktreeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {

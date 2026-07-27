@@ -20,14 +20,17 @@ export const settingsNav = {
   noResults: "No matching settings.",
 
   groups: {
-    app: "App",
-    synara: "Synara",
+    personal: "Personal",
+    integrations: "Integrations",
+    coding: "Coding",
+    system: "System",
+    archived: "Archived",
   } satisfies Record<SettingsNavGroupId, string>,
 
   sections: {
     general: {
       label: "General",
-      description: "Default provider, thread mode, and sidebar organization.",
+      description: "Choose defaults for new chats, navigation, and the Environment panel.",
     },
     profile: {
       label: "Profile",
@@ -35,59 +38,59 @@ export const settingsNav = {
     },
     appearance: {
       label: "Appearance",
-      description: "Theme, typography, and timestamp formatting.",
+      description: "Customize the theme, typography, density, and time format.",
     },
     notifications: {
       label: "Notifications",
-      description: "In-app toasts and desktop alerts.",
+      description: "Choose how Synara tells you when work finishes or needs attention.",
     },
     behavior: {
-      label: "Behavior",
-      description: "Streaming, diff handling, and destructive confirmations.",
+      label: "Chat behavior",
+      description: "Control live responses, follow-ups, review defaults, and safety confirmations.",
+    },
+    shortcuts: {
+      label: "Keyboard shortcuts",
+      description: "Search and customize shortcuts, grouped by where they work.",
+    },
+    usage: {
+      label: "Usage & limits",
+      description: "See remaining quota and credits for every signed-in provider.",
     },
     appsnap: {
       label: "AppSnap",
-      description: "Snap another app's window straight into a task with one key chord.",
-    },
-    shortcuts: {
-      label: "Keyboard Shortcuts",
-      description: "Every keyboard shortcut available in Synara, grouped by context.",
-    },
-    worktrees: {
-      label: "Worktrees",
-      description: "Review and clean up the worktrees created by Synara.",
-    },
-    archived: {
-      label: "Archived",
-      description: "View and restore archived threads.",
-    },
-    models: {
-      label: "Models",
-      description: "Git writing defaults and custom model slugs.",
-    },
-    providers: {
-      label: "Providers",
-      description: "Choose visible providers, review CLI installs, and update provider tools.",
-    },
-    skills: {
-      label: "Skills",
-      description: "Every skill found across providers, with toggles to control availability.",
-    },
-    usage: {
-      label: "Usage",
-      description: "Remaining quota and credits for each signed-in provider.",
+      description: "Capture another app's frontmost window directly into a task.",
     },
     mcpServers: {
       label: "MCP Servers",
       description: "Enable or disable the MCP servers your Codex and Claude agents use.",
     },
     integrations: {
-      label: "Integrations",
-      description: "Pair local MCP clients with scoped, revocable access to Synara tasks.",
+      label: "MCP connections",
+      description: "Give Codex, Claude, and other local agents scoped access to Synara tasks.",
+    },
+    providers: {
+      label: "Agent providers",
+      description: "Choose visible coding agents and manage their installed CLI tools.",
+    },
+    models: {
+      label: "Models & writing",
+      description: "Choose the model used for Git writing and add custom model slugs.",
+    },
+    skills: {
+      label: "Agent skills",
+      description: "Review reusable workflows discovered across all configured providers.",
+    },
+    worktrees: {
+      label: "Managed worktrees",
+      description: "Review and clean up isolated workspaces created by Synara.",
     },
     advanced: {
-      label: "Advanced",
-      description: "Keybindings, recovery, and version info.",
+      label: "System tools",
+      description: "Manage sessions, recovery tools, low-level keybindings, and version details.",
+    },
+    archived: {
+      label: "Archived threads",
+      description: "Find and restore threads you previously archived.",
     },
   } satisfies Record<SettingsSectionId, NavSectionCopy>,
 };

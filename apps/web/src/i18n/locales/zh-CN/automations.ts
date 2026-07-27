@@ -159,6 +159,7 @@ export const automations: Automations = {
 
   mode: {
     standalone: "独立",
+    dedicated: "专属会话",
     heartbeat: "心跳",
   },
 

@@ -162,6 +162,7 @@ export const automations = {
 
   mode: {
     standalone: "Standalone",
+    dedicated: "Dedicated thread",
     heartbeat: "Heartbeat",
   },
 

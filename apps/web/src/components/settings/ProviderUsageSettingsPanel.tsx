@@ -16,7 +16,7 @@ import { useAppSettings } from "~/appSettings";
 import { ProviderIcon } from "~/components/ProviderIcon";
 import { ProviderUsageLimitRows } from "~/components/ProviderUsageLimitRows";
 import { ProviderUsageLineList } from "~/components/ProviderUsageLineList";
-import { SettingsCard } from "~/components/settings/SettingsPanelPrimitives";
+import { SettingsCard, SettingsSectionShell } from "~/components/settings/SettingsPanelPrimitives";
 import { Button } from "~/components/ui/button";
 import { useProviderUsageSummary } from "~/hooks/useProviderUsageSummary";
 import { RotateCcwIcon, TriangleAlertIcon } from "~/lib/icons";
@@ -29,10 +29,6 @@ import {
 } from "~/lib/serverReactQuery";
 import { useMessages } from "../../i18n/context";
 import { cn } from "~/lib/utils";
-import {
-  SETTINGS_PANEL_SECTION_CLASS_NAME,
-  SETTINGS_SECTION_LABEL_CLASS_NAME,
-} from "~/settingsPanelStyles";
 import { useStore } from "~/store";
 import { createAllThreadsSelector } from "~/storeSelectors";
 
@@ -196,9 +192,9 @@ export function ProviderUsageSettingsPanel() {
   const isRefreshing = usageQuery.isFetching || refreshMutation.isPending;
 
   return (
-    <section className={SETTINGS_PANEL_SECTION_CLASS_NAME}>
-      <div className="flex items-center justify-between gap-2">
-        <h2 className={SETTINGS_SECTION_LABEL_CLASS_NAME}>{m.settings.providerUsage.title}</h2>
+    <SettingsSectionShell
+      title={m.settings.providerUsage.title}
+      action={
         <Button
           size="xs"
           variant="outline"
@@ -209,8 +205,8 @@ export function ProviderUsageSettingsPanel() {
           <RotateCcwIcon className={cn("size-3.5", isRefreshing && "animate-spin")} />
           {m.settings.providerUsage.refresh}
         </Button>
-      </div>
-
+      }
+    >
       {showInitialLoading ? (
         <SettingsCard>
           <div className="px-4 py-3.5 text-xs text-muted-foreground">
@@ -233,6 +229,6 @@ export function ProviderUsageSettingsPanel() {
       <p className="px-2 text-[11px] leading-relaxed text-muted-foreground">
         {m.settings.providerUsage.footnote}
       </p>
-    </section>
+    </SettingsSectionShell>
   );
 }

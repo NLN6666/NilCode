@@ -23,7 +23,7 @@ export const SETTINGS_SECTION_IDS = [
 ] as const;
 
 export type SettingsSectionId = (typeof SETTINGS_SECTION_IDS)[number];
-export type SettingsNavGroupId = "app" | "synara";
+export type SettingsNavGroupId = "personal" | "integrations" | "coding" | "system" | "archived";
 
 /**
  * Deep-link scroll targets inside settings panels. Each id is shared by its DOM owner and callers
@@ -47,30 +47,33 @@ export type SettingsNavItem = {
 };
 
 export const SETTINGS_NAV_GROUP_IDS = [
-  "app",
-  "synara",
+  "personal",
+  "integrations",
+  "coding",
+  "system",
+  "archived",
 ] as const satisfies readonly SettingsNavGroupId[];
 
 export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
-  { id: "general", group: "app", icon: "settings-gear-4" },
-  { id: "profile", group: "app", icon: "user" },
-  { id: "appearance", group: "app", icon: "color-palette" },
-  { id: "notifications", group: "app", icon: "bell" },
-  { id: "behavior", group: "app", icon: "settings-slider-hor" },
-  { id: "appsnap", group: "app", icon: "screen-capture" },
-  { id: "shortcuts", group: "app", icon: "shortcut" },
-  { id: "worktrees", group: "app", icon: "branch-simple" },
-  { id: "archived", group: "app", icon: "archive" },
-  { id: "models", group: "synara", icon: "brain" },
-  { id: "providers", group: "synara", icon: "puzzle" },
-  { id: "skills", group: "synara", icon: "building-blocks" },
-  { id: "usage", group: "synara", icon: "gauge" },
+  { id: "general", group: "personal", icon: "settings-gear-4" },
+  { id: "profile", group: "personal", icon: "user" },
+  { id: "appearance", group: "personal", icon: "color-palette" },
+  { id: "notifications", group: "personal", icon: "bell" },
+  { id: "behavior", group: "personal", icon: "settings-slider-hor" },
+  { id: "shortcuts", group: "personal", icon: "shortcut" },
+  { id: "usage", group: "personal", icon: "gauge" },
+  { id: "appsnap", group: "integrations", icon: "screen-capture" },
   // Sits immediately before Integrations so the two MCP pages are neighbours. The icon is
   // deliberately not `plugin-1` (Integrations owns that) — the pages point in opposite
   // directions and must be distinguishable at a glance.
-  { id: "mcpServers", group: "synara", icon: "api-connection" },
-  { id: "integrations", group: "synara", icon: "plugin-1" },
-  { id: "advanced", group: "synara", icon: "toolbox" },
+  { id: "mcpServers", group: "integrations", icon: "api-connection" },
+  { id: "integrations", group: "integrations", icon: "plugin-1" },
+  { id: "providers", group: "coding", icon: "puzzle" },
+  { id: "models", group: "coding", icon: "brain" },
+  { id: "skills", group: "coding", icon: "building-blocks" },
+  { id: "worktrees", group: "coding", icon: "branch-simple" },
+  { id: "advanced", group: "system", icon: "toolbox" },
+  { id: "archived", group: "archived", icon: "archive" },
 ] as const;
 
 /**

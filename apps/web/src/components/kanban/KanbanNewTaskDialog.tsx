@@ -109,13 +109,13 @@ export function KanbanNewTaskDialog({
   onOpenChange,
   projectOptions,
   initialProjectId,
-  initialSendAsDraft = false,
+  initialSendAsDraft: initialSendAsDraftProp,
 }: KanbanNewTaskDialogProps) {
   const copy = useMessages().workspace.kanban;
+  const initialSendAsDraft = initialSendAsDraftProp ?? false;
   const { settings } = useAppSettings();
   const { resolvedTheme } = useTheme();
   const assistantDeliveryMode = resolveAssistantDeliveryMode(settings);
-  // Manual memoization kept: this file does not compile under React Compiler (see compile-report).
   const providerOptionsForDispatch = useMemo(() => getProviderStartOptions(settings), [settings]);
   const projects = useStore((state) => state.projects);
   const serverConfigQuery = useQuery(serverConfigQueryOptions());

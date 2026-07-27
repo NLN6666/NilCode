@@ -60,9 +60,10 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
   onBackgroundItem,
   onStopItem,
   onStopAll,
-  attachedToPrevious = false,
+  attachedToPrevious: attachedToPreviousProp,
 }: ComposerSubagentStripProps) {
   const copy = useMessages().composer.subagents;
+  const attachedToPrevious = attachedToPreviousProp ?? false;
   const subagentItems = items.filter(
     (item): item is ComposerSubagentStripItem => item.kind === "subagent",
   );

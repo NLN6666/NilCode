@@ -76,11 +76,12 @@ const SCRIPT_ICON_IDS: ReadonlyArray<ProjectScriptIcon> = [
 
 function ScriptIcon({
   icon,
-  className = "size-3.5",
+  className: classNameProp,
 }: {
   icon: ProjectScriptIcon;
   className?: string;
 }) {
+  const className = classNameProp ?? "size-3.5";
   if (icon === "test") return <FlaskConicalIcon className={className} />;
   if (icon === "lint") return <ListChecksIcon className={className} />;
   if (icon === "configure") return <SettingsIcon className={className} />;
@@ -188,10 +189,10 @@ function keybindingFromEvent(event: KeyboardEvent<HTMLInputElement>): string | n
 export default function ProjectScriptsControl({
   scripts,
   keybindings,
-  preferredScriptId = null,
-  showInlineControls = true,
-  hideInlineLabel = false,
-  runningScriptIds = NO_RUNNING_SCRIPTS,
+  preferredScriptId: preferredScriptIdProp,
+  showInlineControls: showInlineControlsProp,
+  hideInlineLabel: hideInlineLabelProp,
+  runningScriptIds: runningScriptIdsProp,
   onRunScript,
   onStopScript,
   onDetectServices,
@@ -200,6 +201,10 @@ export default function ProjectScriptsControl({
   onDeleteScript,
 }: ProjectScriptsControlProps) {
   const copy = useMessages().projectTools.scripts;
+  const preferredScriptId = preferredScriptIdProp ?? null;
+  const showInlineControls = showInlineControlsProp ?? true;
+  const hideInlineLabel = hideInlineLabelProp ?? false;
+  const runningScriptIds = runningScriptIdsProp ?? NO_RUNNING_SCRIPTS;
   const addScriptFormId = React.useId();
   const [editingScriptId, setEditingScriptId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);

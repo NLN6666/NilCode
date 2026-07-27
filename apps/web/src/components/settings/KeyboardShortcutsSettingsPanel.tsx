@@ -20,12 +20,11 @@ import {
   type ShortcutSheetContext,
 } from "~/shortcutsSheet";
 import {
-  SETTINGS_CARD_CLASS_NAME,
   SETTINGS_CARD_ROW_CLASS_NAME,
   SETTINGS_CARD_ROW_DESCRIPTION_CLASS_NAME,
   SETTINGS_CARD_ROW_TITLE_CLASS_NAME,
-  SETTINGS_EMPTY_STATE_CLASS_NAME,
 } from "~/settingsPanelStyles";
+import { SettingsCard, SettingsEmptyState } from "./SettingsPanelPrimitives";
 
 // Stable empty reference while the server config query is still loading.
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
@@ -85,9 +84,7 @@ export function KeyboardShortcutsSettingsPanel() {
       </div>
 
       {filteredSections.length > 0 ? (
-        <div
-          className={cn(SETTINGS_CARD_CLASS_NAME, "divide-y divide-[color:var(--color-border)]")}
-        >
+        <SettingsCard>
           <div className="flex items-center justify-between gap-4 px-3 py-2 text-[11px] font-medium text-muted-foreground">
             <span>{m.settings.shortcuts.command}</span>
             <span>{m.settings.shortcuts.keybinding}</span>
@@ -115,16 +112,9 @@ export function KeyboardShortcutsSettingsPanel() {
               </div>
             ));
           })}
-        </div>
+        </SettingsCard>
       ) : (
-        <div
-          className={cn(
-            SETTINGS_EMPTY_STATE_CLASS_NAME,
-            "px-4 py-10 text-center text-sm text-muted-foreground",
-          )}
-        >
-          {m.settings.shortcuts.noMatches(query)}
-        </div>
+        <SettingsEmptyState>{m.settings.shortcuts.noMatches(query)}</SettingsEmptyState>
       )}
     </div>
   );

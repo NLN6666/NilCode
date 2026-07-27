@@ -7,6 +7,10 @@ import {
   type ProviderOptionDescriptor,
 } from "@synara/contracts";
 import {
+  automationContinuationThreadId,
+  automationRequiresTargetThread,
+} from "@synara/shared/automationMode";
+import {
   getModelCapabilities,
   getProviderOptionCurrentValue,
   getProviderOptionDescriptors,
@@ -38,7 +42,7 @@ import {
 import {
   completionPolicyFromStopWhen,
   stopWhenFromCompletionPolicy,
-} from "~/lib/automationCompletionPolicy";
+} from "@synara/shared/automationCompletionPolicy";
 import { automationLifecycleState, canPauseAutomation } from "~/lib/automationStatus";
 import {
   useDesktopTopBarTrafficLightGutterClassName,
@@ -159,6 +163,19 @@ function worktreeOptions(copy: AutomationsCopy["worktreeMode"]): readonly Select
   ];
 }
 
+function worktreeModeLabel(
+  mode: AutomationWorktreeMode,
+  copy: AutomationsCopy["worktreeMode"],
+): string {
+  return worktreeOptions(copy).find((option) => option.value === mode)?.label ?? mode;
+}
+
+function modeLabel(mode: AutomationDefinition["mode"], copy: AutomationsCopy["mode"]): string {
+  if (mode === "heartbeat") return copy.heartbeat;
+  if (mode === "dedicated") return copy.dedicated;
+  return copy.standalone;
+}
+
 function intervalPresets(copy: AutomationsCopy["interval"]): readonly SelectOption[] {
   return [
     { value: "900", label: copy.everyMinutes("15") },
@@ -273,7 +290,13 @@ function AutomationDetailView() {
   }
 
   const project = projects.find((candidate) => candidate.id === definition.projectId);
-  const targetThread = threads.find((candidate) => candidate.id === definition.targetThreadId);
+  const continuationThreadId = automationContinuationThreadId(definition);
+  const continuedThread = threads.find((candidate) => candidate.id === continuationThreadId);
+  // Heartbeat inherits its thread's environment, so it never picks one. A dedicated
+  // automation still picks freely until its first run claims a thread: after that every
+  // run reuses that thread, so its project and checkout are fixed.
+  const ownsItsEnvironment = !automationRequiresTargetThread(definition.mode);
+  const canChooseEnvironment = ownsItsEnvironment && continuationThreadId === null;
   const sourceThread = definition.sourceThreadId
     ? threads.find((candidate) => candidate.id === definition.sourceThreadId)
     : null;
@@ -562,8 +585,12 @@ function AutomationDetailView() {
               </DetailGroup>
 
               <DetailGroup title={copy.detail.groups.details}>
-                {definition.mode === "heartbeat" ? (
+                {!ownsItsEnvironment ? (
                   <DetailRow label={copy.detail.runsIn}>{copy.detail.thread}</DetailRow>
+                ) : !canChooseEnvironment ? (
+                  <DetailRow label={copy.detail.runsIn}>
+                    {worktreeModeLabel(definition.worktreeMode, copy.worktreeMode)}
+                  </DetailRow>
                 ) : (
                   <EditRow
                     label={
@@ -593,7 +620,7 @@ function AutomationDetailView() {
                     />
                   </EditRow>
                 )}
-                {definition.mode === "heartbeat" ? (
+                {!canChooseEnvironment ? (
                   <DetailRow label={copy.detail.project}>
                     {project?.name ?? copy.detail.unknownProject}
                   </DetailRow>
@@ -755,7 +782,7 @@ function AutomationDetailView() {
                   onChange={applyModelSelection}
                 />
                 <DetailRow label={copy.detail.mode}>
-                  {definition.mode === "heartbeat" ? copy.mode.heartbeat : copy.mode.standalone}
+                  {modeLabel(definition.mode, copy.mode)}
                 </DetailRow>
                 <EditRow label={copy.detail.notify}>
                   <InlineSelect
@@ -772,19 +799,17 @@ function AutomationDetailView() {
                     }
                   />
                 </EditRow>
-                {definition.mode === "heartbeat" ? (
-                  <EditRow label={copy.detail.stopWhen}>
-                    <InlineCommitTextInput
-                      value={stopWhen}
-                      placeholder={copy.detail.stopWhenPlaceholder}
-                      onCommit={(value) =>
-                        patch({
-                          completionPolicy: completionPolicyFromStopWhen(value),
-                        })
-                      }
-                    />
-                  </EditRow>
-                ) : null}
+                <EditRow label={copy.detail.stopWhen}>
+                  <InlineCommitTextInput
+                    value={stopWhen}
+                    placeholder={copy.detail.stopWhenPlaceholder}
+                    onCommit={(value) =>
+                      patch({
+                        completionPolicy: completionPolicyFromStopWhen(value),
+                      })
+                    }
+                  />
+                </EditRow>
                 <EditRow label={copy.detail.maxIterations}>
                   <InlineSelect
                     value={definition.maxIterations == null ? "" : String(definition.maxIterations)}
@@ -794,11 +819,24 @@ function AutomationDetailView() {
                     }
                   />
                 </EditRow>
-                {definition.mode === "heartbeat" ? (
+                {continuationThreadId !== null ? (
                   <DetailRow label={copy.detail.thread}>
-                    {targetThread
-                      ? resolveThreadPickerTitle(targetThread.title)
-                      : copy.detail.threadUnavailable}
+                    {continuedThread ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void navigate({
+                            to: "/$threadId",
+                            params: { threadId: continuedThread.id },
+                          })
+                        }
+                        className="min-w-0 truncate text-right text-foreground transition-colors hover:text-primary"
+                      >
+                        {resolveThreadPickerTitle(continuedThread.title)}
+                      </button>
+                    ) : (
+                      copy.detail.threadUnavailable
+                    )}
                   </DetailRow>
                 ) : null}
               </DetailGroup>
@@ -890,12 +928,13 @@ function DetailRow({
 // plain right-aligned text — the status as foreground, timestamps muted — with no chip behind
 // them, so the value column stays quiet and flush to the right.
 function StatusValue({
-  tone = "default",
+  tone: toneProp,
   children,
 }: {
   readonly tone?: "default" | "muted";
   readonly children: React.ReactNode;
 }) {
+  const tone = toneProp ?? "default";
   return (
     <span
       className={cn(

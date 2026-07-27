@@ -50,12 +50,14 @@ function taskStatusIcon(status: ActiveTaskListState["tasks"][number]["status"]) 
 
 export function ActiveTaskListCard({
   activeTaskList,
-  backgroundTaskCount = 0,
-  compact = false,
+  backgroundTaskCount: backgroundTaskCountProp,
+  compact: compactProp,
   onCompactChange,
   onOpenSidebar,
 }: ActiveTaskListCardProps) {
   const copy = useMessages().chat.tasks;
+  const backgroundTaskCount = backgroundTaskCountProp ?? 0;
+  const compact = compactProp ?? false;
   const totalCount = activeTaskList.tasks.length;
   const completedCount = activeTaskList.tasks.filter((task) => task.status === "completed").length;
   const hasInProgressTask = activeTaskList.tasks.some((task) => task.status === "inProgress");

@@ -77,9 +77,9 @@ function KanbanColumnComponent({
   cards,
   onOpenCard,
   onCardContextMenu,
-  sortable = false,
-  droppable = false,
-  activeCard = null,
+  sortable: sortableProp,
+  droppable: droppableProp,
+  activeCard: activeCardProp,
   onNewCard,
   nowMs,
 }: {
@@ -101,6 +101,9 @@ function KanbanColumnComponent({
   nowMs?: number;
 }) {
   const copy = useMessages().workspace.kanban;
+  const sortable = sortableProp ?? false;
+  const droppable = droppableProp ?? false;
+  const activeCard = activeCardProp ?? null;
   const dropId = kanbanColumnDropId(projectId, columnKey);
   const { isOver, setNodeRef } = useDroppable({ id: dropId, disabled: !droppable });
   const [showAll, setShowAll] = useState(false);
@@ -113,7 +116,6 @@ function KanbanColumnComponent({
       : cards;
   const hiddenCount = cards.length - cappedCards.length;
 
-  // Manual memoization kept: this file does not compile under React Compiler (see compile-report).
   const sortableItems = useMemo(() => cards.map((card) => card.cardId), [cards]);
 
   const dispatchTarget =

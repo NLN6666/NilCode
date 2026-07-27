@@ -41,12 +41,14 @@ export function RenameDialog({
   title,
   description,
   initialValue,
-  allowEmpty = false,
+  allowEmpty: allowEmptyProp,
   placeholder,
-  saveLabel = defaultDialogCopy.rename.save,
+  saveLabel: saveLabelProp,
   onOpenChange,
   onSave,
 }: RenameDialogProps) {
+  const allowEmpty = allowEmptyProp ?? false;
+  const saveLabel = saveLabelProp ?? defaultDialogCopy.rename.save;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup className="max-w-md">

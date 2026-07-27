@@ -13,6 +13,10 @@ import { expandLocalFolderPath } from "~/lib/localFolderMentions";
 import { projectSearchLocalEntriesQueryOptions } from "~/lib/projectReactQuery";
 import { readNativeApi } from "~/nativeApi";
 import { cn } from "~/lib/utils";
+import {
+  ELEVATED_HOVER_SURFACE_CLASS_NAME,
+  ELEVATED_HOVER_SURFACE_RAISED_TEXT_CLASS_NAME,
+} from "~/surfaceStyles";
 import { FolderClosed } from "../FolderClosed";
 import {
   Command,
@@ -34,6 +38,23 @@ type EntriesByPath = Record<string, readonly ProjectFileSystemEntry[] | undefine
 // because every keystroke reshapes mentionQuery in the parent.
 const LOCAL_SEARCH_DEBOUNCE_MS = 220;
 const LOCAL_SEARCH_MIN_QUERY_LENGTH = 2;
+
+/** Row skin shared by every menu entry (use-this-folder, search hit, directory child), so
+ *  keyboard highlight and pointer hover land on the same surface. */
+function directoryMenuRowClassName(isHighlighted: boolean): string {
+  return cn(
+    "cursor-pointer select-none gap-2 rounded-lg px-2 py-1",
+    ELEVATED_HOVER_SURFACE_CLASS_NAME,
+    isHighlighted &&
+      "bg-[var(--color-background-elevated-secondary)] text-[var(--color-text-foreground)]",
+  );
+}
+
+/** Compact icon/text affordance in the menu header (go up, use this folder). */
+const DIRECTORY_MENU_HEADER_ACTION_CLASS_NAME = cn(
+  "shrink-0 rounded-md text-muted-foreground/70",
+  ELEVATED_HOVER_SURFACE_RAISED_TEXT_CLASS_NAME,
+);
 
 export interface ComposerLocalDirectoryMenuHandle {
   moveHighlight: (direction: "up" | "down") => void;
@@ -383,7 +404,10 @@ export function ComposerLocalDirectoryMenu(props: {
               aria-label={copy.goUp}
               onMouseDown={(event) => event.preventDefault()}
               onClick={handleGoUp}
-              className="inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-[var(--color-background-elevated-secondary)] hover:text-foreground"
+              className={cn(
+                DIRECTORY_MENU_HEADER_ACTION_CLASS_NAME,
+                "inline-flex size-5 items-center justify-center",
+              )}
             >
               <ArrowUpIcon className="size-3.5" />
             </button>
@@ -398,7 +422,7 @@ export function ComposerLocalDirectoryMenu(props: {
               type="button"
               onMouseDown={(event) => event.preventDefault()}
               onClick={handleSelectCurrentDirectory}
-              className="shrink-0 rounded-md px-1.5 py-0.5 text-[10.5px] text-muted-foreground/70 transition-colors hover:bg-[var(--color-background-elevated-secondary)] hover:text-foreground"
+              className={cn(DIRECTORY_MENU_HEADER_ACTION_CLASS_NAME, "px-1.5 py-0.5 text-[10.5px]")}
             >
               {copy.useThisFolder}
             </button>
@@ -522,11 +546,7 @@ function UseCurrentFolderRow(props: {
     <CommandItem
       data-highlight-index={index}
       value="use-current-folder"
-      className={cn(
-        "cursor-pointer select-none gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-[var(--color-background-elevated-secondary)]",
-        isHighlighted &&
-          "bg-[var(--color-background-elevated-secondary)] text-[var(--color-text-foreground)]",
-      )}
+      className={directoryMenuRowClassName(isHighlighted)}
       onMouseDown={(event) => {
         event.preventDefault();
       }}
@@ -576,11 +596,7 @@ function LocalSearchRow(props: {
     <CommandItem
       data-highlight-index={index}
       value={`search:${entry.kind}:${entry.path}`}
-      className={cn(
-        "cursor-pointer select-none gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-[var(--color-background-elevated-secondary)]",
-        isHighlighted &&
-          "bg-[var(--color-background-elevated-secondary)] text-[var(--color-text-foreground)]",
-      )}
+      className={directoryMenuRowClassName(isHighlighted)}
       onMouseDown={(event) => {
         event.preventDefault();
       }}
@@ -622,11 +638,7 @@ function LocalEntryRow(props: {
     <CommandItem
       data-highlight-index={index}
       value={`${entry.kind}:${entry.path}`}
-      className={cn(
-        "cursor-pointer select-none gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-[var(--color-background-elevated-secondary)]",
-        isHighlighted &&
-          "bg-[var(--color-background-elevated-secondary)] text-[var(--color-text-foreground)]",
-      )}
+      className={directoryMenuRowClassName(isHighlighted)}
       onMouseDown={(event) => {
         event.preventDefault();
       }}

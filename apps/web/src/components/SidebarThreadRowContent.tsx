@@ -171,7 +171,7 @@ export function SidebarThreadRowContent({
   terminalCount,
   isActive,
   variant,
-  subagentIndentPx = 0,
+  subagentIndentPx: subagentIndentPxProp,
   pendingStatusColorClass,
   suffix,
 }: {
@@ -186,6 +186,7 @@ export function SidebarThreadRowContent({
   suffix?: ReactNode;
 }) {
   const m = useMessages();
+  const subagentIndentPx = subagentIndentPxProp ?? 0;
   const isSubagentThread = Boolean(thread.parentThreadId);
   const subagentPresentation =
     variant === "standard" && isSubagentThread

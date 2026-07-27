@@ -31,10 +31,11 @@ export interface ChangelogAccordionProps {
 
 export function ChangelogAccordion({
   entries,
-  defaultExpandedVersion = null,
+  defaultExpandedVersion: defaultExpandedVersionProp,
   className,
 }: ChangelogAccordionProps) {
   const copy = useMessages().dialogs.whatsNew;
+  const defaultExpandedVersion = defaultExpandedVersionProp ?? null;
   if (entries.length === 0) {
     return <p className={cn("text-xs text-muted-foreground", className)}>{copy.noReleaseNotes}</p>;
   }

@@ -42,8 +42,8 @@ const NO_BROWSER_ELEMENTS: ReadonlyArray<BrowserElementDraft> = [];
 export function ComposerReferenceAttachments({
   assistantSelections,
   fileComments,
-  browserElements = NO_BROWSER_ELEMENTS,
-  pastedTexts = [],
+  pastedTexts: pastedTextsProp,
+  browserElements: browserElementsProp,
   files,
   images,
   nonPersistedImageIdSet,
@@ -56,6 +56,8 @@ export function ComposerReferenceAttachments({
   onRemoveFile,
   onRemoveImage,
 }: ComposerReferenceAttachmentsProps) {
+  const pastedTexts = pastedTextsProp ?? [];
+  const browserElements = browserElementsProp ?? NO_BROWSER_ELEMENTS;
   if (
     assistantSelections.length === 0 &&
     fileComments.length === 0 &&
