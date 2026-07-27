@@ -6850,6 +6850,7 @@ export default function ChatView({
     [
       activeThread,
       addComposerAssistantSelectionToDraft,
+      addComposerBrowserElementToDraft,
       addComposerFileCommentToDraft,
       addComposerFilesToDraft,
       addComposerImagesToDraft,
