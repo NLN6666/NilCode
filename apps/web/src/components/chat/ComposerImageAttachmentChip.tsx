@@ -3,15 +3,13 @@
 // Layer: Chat composer presentation
 // Depends on: composer draft image metadata, shared chip styles, and expanded image preview helpers.
 
+import { useMessages } from "~/i18n/context";
 import { WindowIcon } from "~/lib/icons";
 import { type ComposerImageAttachment } from "../../composerDraftStore";
 import { normalizeComposerImageSource } from "../../lib/composerImageSource";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AttachmentRemoveButton } from "./AttachmentRemoveButton";
-import {
-  DRAFT_ATTACHMENT_WARNING_DESCRIPTION,
-  DraftAttachmentWarningIcon,
-} from "./DraftAttachmentWarning";
+import { DraftAttachmentWarningIcon } from "./DraftAttachmentWarning";
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
 
 interface ComposerImageAttachmentChipProps {
@@ -29,6 +27,7 @@ export function ComposerImageAttachmentChip({
   onExpandImage,
   onRemoveImage,
 }: ComposerImageAttachmentChipProps) {
+  const copy = useMessages().composer.attachments;
   // Normalize here so a legacy "appshot" provenance still renders as an AppSnap.
   const appSnapSource = normalizeComposerImageSource(image.source) ?? null;
   const previewImage = () => {
@@ -38,7 +37,7 @@ export function ComposerImageAttachmentChip({
   };
 
   if (appSnapSource) {
-    const appName = appSnapSource.appName?.trim() || "Captured app";
+    const appName = appSnapSource.appName?.trim() || copy.capturedApp;
     const windowTitle = appSnapSource.windowTitle?.trim() || null;
     // Lead with the captured window title, but avoid repeating an app whose title
     // merely echoes its name (e.g. "ChatGPT / ChatGPT").
@@ -98,7 +97,7 @@ export function ComposerImageAttachmentChip({
               }
             />
             <TooltipPopup side="top" className="max-w-64 whitespace-normal leading-tight">
-              {DRAFT_ATTACHMENT_WARNING_DESCRIPTION}
+              {copy.draftWarningDescription}
             </TooltipPopup>
           </Tooltip>
         )}
@@ -139,7 +138,7 @@ export function ComposerImageAttachmentChip({
             }
           />
           <TooltipPopup side="top" className="max-w-64 whitespace-normal leading-tight">
-            {DRAFT_ATTACHMENT_WARNING_DESCRIPTION}
+            {copy.draftWarningDescription}
           </TooltipPopup>
         </Tooltip>
       )}

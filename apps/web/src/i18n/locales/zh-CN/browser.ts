@@ -17,6 +17,9 @@ export const browser: Messages["browser"] = {
   },
 
   actions: {
+    pickElement: "选取页面元素",
+    stopPickElement: "结束选取元素",
+    stopPickElementHint: "结束选取元素（Esc）",
     annotate: "标注页面",
     copyScreenshot: "复制截图",
     copyLink: "复制链接",

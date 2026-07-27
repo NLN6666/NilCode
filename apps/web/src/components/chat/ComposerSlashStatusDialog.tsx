@@ -19,29 +19,34 @@ import {
 } from "../ui/dialog";
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { useMessages } from "~/i18n/context";
+import type { Messages } from "~/i18n/locales/en";
 
-function formatRateLimitMessage(rateLimitStatus: RateLimitStatus): string {
+function formatRateLimitMessage(
+  rateLimitStatus: RateLimitStatus,
+  copy: Messages["composer"]["status"],
+): string {
   const resetSuffix = rateLimitStatus.resetsAt
-    ? ` Resets at ${new Date(rateLimitStatus.resetsAt).toLocaleTimeString()}.`
+    ? copy.rateLimitResetsAt(new Date(rateLimitStatus.resetsAt).toLocaleTimeString())
     : "";
   if (rateLimitStatus.status === "rejected") {
-    return `Rate limit reached.${resetSuffix}`;
+    return `${copy.rateLimitReached}${resetSuffix}`;
   }
-  const utilizationSuffix =
+  const utilization =
     typeof rateLimitStatus.utilization === "number"
-      ? ` (${Math.round(rateLimitStatus.utilization * 100)}% used)`
-      : "";
-  return `Approaching rate limit${utilizationSuffix}.${resetSuffix}`;
+      ? `${Math.round(rateLimitStatus.utilization * 100)}%`
+      : null;
+  return `${copy.rateLimitApproaching(utilization)}${resetSuffix}`;
 }
 
 function formatEnvironmentLabel(
   envMode: DraftThreadEnvMode,
   envState: ResolvedThreadWorkspaceState,
+  copy: Messages["composer"]["status"],
 ): string {
   if (envMode === "local") {
-    return "Local";
+    return copy.envLocal;
   }
-  return envState === "worktree-pending" ? "New worktree (pending)" : "Worktree";
+  return envState === "worktree-pending" ? copy.envWorktreePending : copy.envWorktree;
 }
 
 export function ComposerSlashStatusDialog(props: {
@@ -110,7 +115,7 @@ export function ComposerSlashStatusDialog(props: {
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">{copy.environment}</p>
               <p className="font-medium text-foreground">
-                {formatEnvironmentLabel(envMode, envState)}
+                {formatEnvironmentLabel(envMode, envState, copy)}
               </p>
             </div>
             <div className="space-y-1">
@@ -179,7 +184,9 @@ export function ComposerSlashStatusDialog(props: {
           <div className="space-y-2 rounded-lg border border-border/60 bg-card p-4">
             <p className="text-xs text-muted-foreground">{copy.rateLimits}</p>
             {rateLimitStatus ? (
-              <p className="text-sm text-foreground">{formatRateLimitMessage(rateLimitStatus)}</p>
+              <p className="text-sm text-foreground">
+                {formatRateLimitMessage(rateLimitStatus, copy)}
+              </p>
             ) : (
               <p className="text-sm text-muted-foreground">{copy.noRateLimitWarning}</p>
             )}

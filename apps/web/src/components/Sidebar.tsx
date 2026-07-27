@@ -423,10 +423,6 @@ const EMPTY_THREAD_JUMP_LABELS = new Map<ThreadId, string>();
 const EMPTY_SHORTCUT_PARTS: readonly string[] = [];
 const ADD_PROJECT_SNAPSHOT_CATCH_UP_MAX_ATTEMPTS = 6;
 const ADD_PROJECT_SNAPSHOT_CATCH_UP_DELAY_MS = 50;
-const SIDEBAR_VIEW_LABELS: Record<SidebarView, string> = {
-  threads: "Projects",
-  studio: "Studio",
-};
 /** Snap the optimistic segment selection back if the navigation never lands. */
 const SIDEBAR_SEGMENT_PENDING_RESET_MS = 2000;
 const EMPTY_PROJECT_SIDEBAR_DATA: ReadonlyMap<ProjectId, SidebarDerivedProjectData> = new Map();
@@ -1113,6 +1109,7 @@ export function SidebarSegmentedPicker({
   onSelectView: (view: SidebarView) => void;
   onPrewarmView?: (view: SidebarView) => void;
 }) {
+  const viewLabels = useMessages().sidebar.views;
   // Optimistic selection: activeView is derived from the route, which only updates
   // after the segment switch's (heavy) render commits — the thumb would otherwise
   // sit still for the whole switch and the click would feel dead. Drive the thumb
@@ -1232,7 +1229,7 @@ export function SidebarSegmentedPicker({
                 className="block transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
                 style={{ transform: `translateX(${labelShift})` }}
               >
-                {SIDEBAR_VIEW_LABELS[view]}
+                {viewLabels[view]}
               </span>
             </button>
           );
@@ -5687,7 +5684,7 @@ export default function Sidebar() {
                 <SidebarGroup className="px-1.5 py-1.5">
                   {renderPinnedThreadsSection()}
                   {renderListSectionHeader(
-                    "Studio",
+                    m.sidebar.views.studio,
                     <>
                       <SidebarIconButton
                         icon={NewThreadIcon}
@@ -5739,7 +5736,7 @@ export default function Sidebar() {
                   />
                   {renderPinnedThreadsSection()}
                   {renderListSectionHeader(
-                    "Projects",
+                    m.sidebar.views.threads,
                     <>
                       {standardProjects.length > 0 ? (
                         <SidebarIconButton

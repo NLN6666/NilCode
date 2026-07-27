@@ -89,6 +89,7 @@ function RightDockTab(props: {
   onSelect?: (() => void) | undefined;
   onClose: () => void;
 }) {
+  const paneCopy = useMessages().chat.panes;
   return (
     <SurfaceTabChip
       active={props.active}
@@ -96,7 +97,7 @@ function RightDockTab(props: {
       label={props.label}
       labelClassName="max-w-[10rem]"
       icon={props.icon ?? resolveRightDockPaneIcon(props.pane)}
-      closeLabel={`Close ${props.label}`}
+      closeLabel={paneCopy.closePane(props.label)}
       onSelect={props.onSelect}
       onClose={props.onClose}
     />
@@ -244,7 +245,7 @@ export function RightDock(props: RightDockProps) {
                 <RightDockTab
                   key={pane.id}
                   pane={pane}
-                  label={resolveRightDockPaneLabel(pane, props.paneLabelOverrides)}
+                  label={resolveRightDockPaneLabel(pane, paneCopy.kinds, props.paneLabelOverrides)}
                   icon={props.paneIconOverrides?.[pane.id]}
                   active={pane.id === props.state.activePaneId}
                   onSelect={onSelectPane ? () => onSelectPane(pane.id) : undefined}
@@ -269,7 +270,7 @@ export function RightDock(props: RightDockProps) {
                 </MenuTrigger>
                 <ComposerPickerMenuPopup align="end" side="bottom" className="w-44 min-w-44">
                   {props.addMenuKinds.map((kind) => {
-                    const { Icon, label } = getRightDockPaneMeta(kind);
+                    const { Icon, label } = getRightDockPaneMeta(kind, paneCopy.kinds);
                     return (
                       <MenuItem key={kind} onClick={() => props.onAddPane(kind)}>
                         <Icon className="size-3.5 shrink-0" />

@@ -6,8 +6,7 @@
 // Layer: Chat composer UI
 // Exports: ComposerLiveChangesHeader
 
-import { pluralize } from "@synara/shared/text";
-
+import { useMessages } from "~/i18n/context";
 import { ChangesIcon } from "~/lib/icons";
 import {
   ComposerStackedPanelRow,
@@ -36,12 +35,12 @@ export function ComposerLiveChangesHeader({
   onReview,
   attachedToPrevious: attachedToPreviousProp,
 }: ComposerLiveChangesHeaderProps) {
+  const copy = useMessages().composer.liveChanges;
   const attachedToPrevious = attachedToPreviousProp ?? false;
   if (fileCount === 0) {
     return null;
   }
-  const label =
-    fileCount === null ? "Files changed" : `${fileCount} ${pluralize(fileCount, "file")} changed`;
+  const label = fileCount === null ? copy.filesChanged : copy.filesChangedCount(fileCount);
 
   return (
     <ComposerStackedPanel attachedToPrevious={attachedToPrevious}>

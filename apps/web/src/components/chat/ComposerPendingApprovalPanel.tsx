@@ -14,6 +14,7 @@ import { cn } from "~/lib/utils";
 import { ComposerChoiceRow, type ComposerChoiceTone } from "./ComposerChoiceRow";
 import { COMPOSER_INPUT_SURFACE_CLASS_NAME } from "./composerPickerStyles";
 import { useMessages } from "~/i18n/context";
+import type { Messages } from "~/i18n/locales/en";
 
 interface ComposerPendingApprovalPanelProps {
   approval: PendingApproval;
@@ -34,46 +35,22 @@ type ParsedApproval = {
   fallback: string | null;
 };
 
+// Locale-free half of an approval action: which decision it sends, which catalog entry
+// carries its wording, and how it is toned. Labels live in the catalog so the shortcut
+// order stays a UI decision rather than a translation one.
 type ApprovalAction = {
   decision: ProviderApprovalDecision;
-  label: string;
-  description: string;
+  copyKey: keyof Messages["composer"]["pendingApproval"]["actions"];
   tone: ComposerChoiceTone;
 };
 
 // Order is the card-local shortcut order (1-4): recommended action first, stop-everything last.
 const APPROVAL_ACTIONS: ReadonlyArray<ApprovalAction> = [
-  {
-    decision: "accept",
-    label: "Approve once",
-    description: "Allow just this request",
-    tone: "primary",
-  },
-  {
-    decision: "acceptForSession",
-    label: "Always allow this session",
-    description: "Don't ask again this session",
-    tone: "neutral",
-  },
-  {
-    decision: "decline",
-    label: "Decline",
-    description: "Reject and let the agent continue",
-    tone: "destructive",
-  },
-  {
-    decision: "cancel",
-    label: "Cancel turn",
-    description: "Stop the current turn",
-    tone: "neutral",
-  },
+  { decision: "accept", copyKey: "acceptOnce", tone: "primary" },
+  { decision: "acceptForSession", copyKey: "acceptForSession", tone: "neutral" },
+  { decision: "decline", copyKey: "decline", tone: "destructive" },
+  { decision: "cancel", copyKey: "cancelTurn", tone: "neutral" },
 ];
-
-const KIND_PROMPT: Record<PendingApproval["requestKind"], string> = {
-  command: "Approve this command?",
-  "file-read": "Approve reading this file?",
-  "file-change": "Approve this file change?",
-};
 
 export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPanel({
   approval,
@@ -81,6 +58,7 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
   isResponding,
   onRespond,
 }: ComposerPendingApprovalPanelProps) {
+  const copy = useMessages().composer.pendingApproval;
   const parsed = parseApprovalDetail(approval.detail);
   const requestId = approval.requestId;
 
@@ -111,7 +89,7 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
     >
       <div className="flex items-start justify-between gap-3">
         <p className="min-w-0 text-[13px] font-medium leading-snug text-foreground/90">
-          {KIND_PROMPT[approval.requestKind]}
+          {copy.prompts[approval.requestKind]}
           {parsed.tool ? (
             <span className="ml-1.5 text-[11px] font-normal text-muted-foreground/50">
               {parsed.tool}
@@ -130,8 +108,8 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
           <ComposerChoiceRow
             key={action.decision}
             shortcut={index + 1}
-            label={action.label}
-            description={action.description}
+            label={copy.actions[action.copyKey].label}
+            description={copy.actions[action.copyKey].description}
             tone={action.tone}
             disabled={isResponding}
             onSelect={() =>

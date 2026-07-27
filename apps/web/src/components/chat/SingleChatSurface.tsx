@@ -75,6 +75,7 @@ import {
   noopChatSurfaceAction,
 } from "./ChatThreadSurfacePrimitives";
 import { PanelStateMessage } from "./PanelStateMessage";
+import { BrowserPaneTerminalSplit } from "./BrowserPaneTerminalSplit";
 import { RightDock } from "./RightDock";
 import { RIGHT_DOCK_ADD_MENU_KINDS, getRightDockPaneMeta } from "./rightDockPaneMeta";
 import {
@@ -152,7 +153,7 @@ function shouldAcceptDockWidth({
 
 function RightDockPanePlaceholder(props: { kind: RightDockPaneKind }) {
   const copy = useMessages().chat.panes;
-  const { label } = getRightDockPaneMeta(props.kind);
+  const { label } = getRightDockPaneMeta(props.kind, copy.kinds);
   return <PanelStateMessage>{copy.comingSoon(label)}</PanelStateMessage>;
 }
 
@@ -604,7 +605,7 @@ export function SingleChatSurface(props: {
     const overrides: Record<string, string | undefined> = {};
     for (const pane of dockState.panes) {
       if (pane.kind === "sidechat" && pane.threadId) {
-        overrides[pane.id] = titleByThreadId?.get(pane.threadId) || "Side";
+        overrides[pane.id] = titleByThreadId?.get(pane.threadId) || paneCopy.kinds.sidechat;
       } else if (pane.kind === "file" && pane.filePath) {
         overrides[pane.id] = basenameOfPath(pane.filePath);
       } else if (pane.kind === "pullRequest" && pane.pullRequestNumber !== null) {
@@ -660,15 +661,17 @@ export function SingleChatSurface(props: {
     switch (pane.kind) {
       case "browser":
         return (
-          <Suspense fallback={<PanelStateMessage>{paneCopy.loadingBrowser}</PanelStateMessage>}>
-            <LazyBrowserPanel
-              mode="sidebar"
-              threadId={props.threadId}
-              onClosePanel={() => closePane(props.threadId, pane.id)}
-              runtimeMode={context.runtimeMode}
-              onRequestLive={requestActiveDockPaneLive}
-            />
-          </Suspense>
+          <BrowserPaneTerminalSplit hostThreadId={props.threadId} projectId={props.projectId}>
+            <Suspense fallback={<PanelStateMessage>{paneCopy.loadingBrowser}</PanelStateMessage>}>
+              <LazyBrowserPanel
+                mode="sidebar"
+                threadId={props.threadId}
+                onClosePanel={() => closePane(props.threadId, pane.id)}
+                runtimeMode={context.runtimeMode}
+                onRequestLive={requestActiveDockPaneLive}
+              />
+            </Suspense>
+          </BrowserPaneTerminalSplit>
         );
       case "pullRequest":
         return (

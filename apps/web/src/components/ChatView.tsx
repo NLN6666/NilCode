@@ -257,6 +257,12 @@ import {
   togglePendingUserInputOptionSelection,
   type PendingUserInputDraftAnswer,
 } from "../pendingUserInput";
+import { createPortal } from "react-dom";
+
+import {
+  selectBrowserTerminalHost,
+  useBrowserTerminalHostStore,
+} from "../browserTerminalHostStore";
 import { selectRightDockState, useRightDockStore } from "../rightDockStore";
 import { useStore } from "../store";
 import { RenameThreadDialog } from "./RenameThreadDialog";
@@ -1156,6 +1162,7 @@ export default function ChatView({
   onCloseThreadPane,
 }: ChatViewProps) {
   const appChatCopy = useMessages().app.chat;
+  const composerPlaceholderCopy = useMessages().composer.placeholder;
   // Prop defaults are resolved here instead of in the destructuring pattern: an
   // AssignmentPattern in the parameter list makes React Compiler bail out (silently —
   // `panicThreshold` is unset) on this entire component, the hottest one in the app.
@@ -1951,6 +1958,11 @@ export default function ChatView({
     confirmTerminalClose: settings.confirmTerminalTabClose,
     onDeletePlaceholderThread: deletePlaceholderTerminalThread,
   });
+  // Non-null while this thread's browser dock pane is mounted: the slot beneath its preview
+  // that the terminal drawer renders into instead of the chat column's bottom drawer.
+  const browserTerminalHost = useBrowserTerminalHostStore(
+    useMemo(() => selectBrowserTerminalHost(threadId), [threadId]),
+  );
   const projectInstructions = useProjectInstructionsStore((state) =>
     activeProjectId ? (state.instructionsByProjectId[activeProjectId] ?? "") : "",
   );
@@ -10748,20 +10760,20 @@ export default function ChatView({
                       : {})}
                     placeholder={
                       isComposerApprovalState
-                        ? "Resolve this approval request to continue"
+                        ? composerPlaceholderCopy.approval
                         : activePendingProgress
                           ? activePendingProgress.activeQuestion?.options.length === 0
-                            ? "Type your answer to continue"
-                            : "Type your own answer, or leave this blank to use the selected option"
+                            ? composerPlaceholderCopy.pendingAnswer
+                            : composerPlaceholderCopy.pendingAnswerWithOptions
                           : showPlanFollowUpPrompt && activeProposedPlan
-                            ? "Add feedback to refine the plan, or leave this blank to implement it"
+                            ? composerPlaceholderCopy.planFollowUp
                             : activeThread?.parentThreadId
-                              ? "Message this subagent while it works"
+                              ? composerPlaceholderCopy.subagent
                               : hasLiveTurn
-                                ? "Ask for follow-up changes"
+                                ? composerPlaceholderCopy.liveTurn
                                 : phase === "disconnected"
-                                  ? "Ask for follow-up changes or attach images"
-                                  : "Ask anything, @tag files/folders, or use / to show available commands"
+                                  ? composerPlaceholderCopy.disconnected
+                                  : composerPlaceholderCopy.idle
                     }
                     disabled={isComposerEditorDisabled}
                   />
@@ -11492,16 +11504,21 @@ export default function ChatView({
         if (!terminalState.terminalOpen || terminalWorkspaceOpen) {
           return null;
         }
-        return (
+        // When the browser dock pane is open it publishes a slot beneath the preview and the
+        // drawer is portaled into it, so a running service's output sits directly under the
+        // page it serves. One mount either way: `terminalRuntimeRegistry` can only attach an
+        // xterm runtime to a single container, so rendering it in both places would steal it.
+        const drawer = (
           <Suspense fallback={null}>
             <ThreadTerminalDrawer
               key={activeThread.id}
               {...terminalDrawerProps}
-              presentationMode="drawer"
+              presentationMode={browserTerminalHost ? "workspace" : "drawer"}
               onTogglePresentationMode={expandTerminalWorkspace}
             />
           </Suspense>
         );
+        return browserTerminalHost ? createPortal(drawer, browserTerminalHost) : drawer;
       })()}
 
       <ComposerSlashStatusDialog

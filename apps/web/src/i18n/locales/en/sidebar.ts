@@ -34,6 +34,12 @@ export const sidebar = {
     docs: "Docs",
   },
 
+  /** The Studio/Projects segmented control, and the list headings under each. */
+  views: {
+    threads: "Projects",
+    studio: "Studio",
+  },
+
   projects: {
     loading: "Loading projects",
     loadingEllipsis: "Loading projects...",

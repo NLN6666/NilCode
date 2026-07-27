@@ -31,6 +31,7 @@ import {
   COMPOSER_PICKER_MENU_POPUP_BODY_CLASS_NAME,
 } from "./composerPickerStyles";
 import { useMessages } from "~/i18n/context";
+import type { Messages } from "~/i18n/locales/en";
 
 type EntriesByPath = Record<string, readonly ProjectFileSystemEntry[] | undefined>;
 
@@ -129,18 +130,21 @@ function isRootDirectory(directoryPath: string): boolean {
 
 // Effect/fs errors come through with deep stack traces and absolute internal paths.
 // Surface a short, user-friendly reason so the popover stays tidy on missing/denied paths.
-function summarizeDirectoryLoadError(error: unknown): string {
+function summarizeDirectoryLoadError(
+  error: unknown,
+  copy: Messages["composer"]["directory"]["errors"],
+): string {
   const raw = error instanceof Error ? error.message : String(error ?? "");
   if (/ENOENT|no such file or directory/i.test(raw)) {
-    return "Folder not found.";
+    return copy.notFound;
   }
   if (/EACCES|permission denied/i.test(raw)) {
-    return "Permission denied.";
+    return copy.permissionDenied;
   }
   if (/ENOTDIR|not a directory/i.test(raw)) {
-    return "Not a folder.";
+    return copy.notAFolder;
   }
-  return "Unable to load folders.";
+  return copy.loadFailed;
 }
 
 export function ComposerLocalDirectoryMenu(props: {
@@ -193,7 +197,7 @@ export function ComposerLocalDirectoryMenu(props: {
       if (cancelled) return;
       const api = readNativeApi();
       if (!api) {
-        setErrorMessage("App is still connecting. Try again in a moment.");
+        setErrorMessage(copy.errors.appConnecting);
         return;
       }
 
@@ -208,7 +212,7 @@ export function ComposerLocalDirectoryMenu(props: {
         })
         .catch((error) => {
           setEntriesByPath((current) => ({ ...current, [expandedDirectory]: [] }));
-          setErrorMessage(summarizeDirectoryLoadError(error));
+          setErrorMessage(summarizeDirectoryLoadError(error, copy.errors));
         })
         .finally(() => {
           setLoadingPaths((current) => {

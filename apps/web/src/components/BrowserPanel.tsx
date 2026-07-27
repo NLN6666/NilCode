@@ -1732,14 +1732,18 @@ export function BrowserPanel({
           size="icon-sm"
           className="size-7"
           disabled={!activeTab || isAnnotating}
-          aria-label={isPicking ? "Stop picking an element" : "Pick an element"}
+          aria-label={
+            isPicking ? browserCopy.actions.stopPickElement : browserCopy.actions.pickElement
+          }
           aria-pressed={isPicking}
-          title={isPicking ? "Stop picking an element (Esc)" : "Pick an element"}
+          title={
+            isPicking ? browserCopy.actions.stopPickElementHint : browserCopy.actions.pickElement
+          }
           onClick={onTogglePicking}
         >
           <CursorClickIcon className="size-3.5" />
           <span className="sr-only">
-            {isPicking ? "Stop picking an element" : "Pick an element"}
+            {isPicking ? browserCopy.actions.stopPickElement : browserCopy.actions.pickElement}
           </span>
         </Button>
         {/* While annotating, the overlay's own Cancel / Add to chat buttons are the only way

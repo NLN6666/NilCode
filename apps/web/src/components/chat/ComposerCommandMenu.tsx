@@ -53,6 +53,10 @@ import {
   COMPOSER_COMMAND_MENU_SURFACE_CLASS_NAME,
 } from "./composerPickerStyles";
 import { useMessages } from "~/i18n/context";
+import type { Messages } from "~/i18n/locales/en";
+
+/** The command-menu slice of the active catalog, threaded into the pure helpers below. */
+type CommandMenuCopy = Messages["composer"]["commandMenu"];
 
 function humanizeProviderCommandName(command: string): string {
   return command
@@ -64,44 +68,48 @@ function humanizeProviderCommandName(command: string): string {
 
 function commandMenuTitle(
   item: Extract<ComposerCommandItem, { type: "slash-command" | "provider-native-command" }>,
+  copy: CommandMenuCopy["commands"],
 ): string {
   switch (item.command) {
     case "clear":
-      return "Clear";
+      return copy.clear;
     case "compact":
-      return "Compact Context";
+      return copy.compact;
     case "model":
-      return "Model";
+      return copy.model;
     case "fast":
-      return "Fast Mode";
+      return copy.fast;
     case "plan":
-      return "Plan Mode";
+      return copy.plan;
     case "default":
-      return "Default Mode";
+      return copy.default;
     case "review":
-      return "Code Review";
+      return copy.review;
     case "fork":
-      return "Fork";
+      return copy.fork;
     case "side":
-      return "Sidechat";
+      return copy.side;
     case "status":
-      return "Status";
+      return copy.status;
     case "subagents":
-      return "Subagents";
+      return copy.subagents;
     case "feedback":
-      return "Feedback Synara";
+      return copy.feedback;
     default:
       return humanizeProviderCommandName(item.command);
   }
 }
 
-function commandMenuTrailingMeta(item: ComposerCommandItem): string | null {
+function commandMenuTrailingMeta(
+  item: ComposerCommandItem,
+  copy: CommandMenuCopy["meta"],
+): string | null {
   if (item.type === "agent") {
-    return item.group === "model" ? "switch model" : "delegate task to subagent";
+    return item.group === "model" ? copy.switchModel : copy.delegateTask;
   }
 
   if (item.type === "plugin") {
-    return "Plugin";
+    return copy.plugin;
   }
 
   if (item.type === "thread") {
@@ -109,7 +117,7 @@ function commandMenuTrailingMeta(item: ComposerCommandItem): string | null {
   }
 
   if (item.type === "local-root") {
-    return "Local";
+    return copy.local;
   }
 
   if (item.type === "skill") {
@@ -117,12 +125,12 @@ function commandMenuTrailingMeta(item: ComposerCommandItem): string | null {
   }
 
   if (item.type === "mcp-tool") {
-    if (item.unavailable) return "Unavailable";
-    return item.toolName === null ? "MCP server" : "MCP tool";
+    if (item.unavailable) return copy.unavailable;
+    return item.toolName === null ? copy.mcpServer : copy.mcpTool;
   }
 
   if (item.type === "model") {
-    return "Model";
+    return copy.model;
   }
 
   if (item.type === "slash-command" || item.type === "provider-native-command") {
@@ -274,6 +282,7 @@ export function groupCommandItems(
   items: ComposerCommandItem[],
   triggerKind: ComposerTriggerKind | null,
   groupSlashCommandSections: boolean,
+  labels: CommandMenuCopy["groups"],
 ): ComposerCommandGroupModel[] {
   if (triggerKind === "mention") {
     const pluginItems = items.filter((item) => item.type === "plugin");
@@ -295,22 +304,22 @@ export function groupCommandItems(
 
     const groups: ComposerCommandGroupModel[] = [];
     if (pluginItems.length > 0) {
-      groups.push({ id: "plugins", label: "Plugins", items: pluginItems });
+      groups.push({ id: "plugins", label: labels.plugins, items: pluginItems });
     }
     if (threadItems.length > 0) {
-      groups.push({ id: "chats", label: "Chats", items: threadItems });
+      groups.push({ id: "chats", label: labels.chats, items: threadItems });
     }
     if (agentItems.length > 0) {
-      groups.push({ id: "subagents", label: "Your agents", items: agentItems });
+      groups.push({ id: "subagents", label: labels.subagents, items: agentItems });
     }
     if (builtInAgentItems.length > 0) {
-      groups.push({ id: "built-in-agents", label: "Synara agents", items: builtInAgentItems });
+      groups.push({ id: "built-in-agents", label: labels.builtInAgents, items: builtInAgentItems });
     }
     if (modelAliasItems.length > 0) {
-      groups.push({ id: "model-aliases", label: "Models", items: modelAliasItems });
+      groups.push({ id: "model-aliases", label: labels.models, items: modelAliasItems });
     }
     if (localItems.length > 0) {
-      groups.push({ id: "local", label: "Local", items: localItems });
+      groups.push({ id: "local", label: labels.local, items: localItems });
     }
     if (otherItems.length > 0) {
       groups.push({ id: "other", label: null, items: otherItems });
@@ -334,13 +343,13 @@ export function groupCommandItems(
 
   const groups: ComposerCommandGroupModel[] = [];
   if (builtInItems.length > 0) {
-    groups.push({ id: "built-in", label: "Built-in", items: builtInItems });
+    groups.push({ id: "built-in", label: labels.builtIn, items: builtInItems });
   }
   if (providerItems.length > 0) {
-    groups.push({ id: "provider", label: "Provider", items: providerItems });
+    groups.push({ id: "provider", label: labels.provider, items: providerItems });
   }
   if (skillItems.length > 0) {
-    groups.push({ id: "skills", label: "Skills", items: skillItems });
+    groups.push({ id: "skills", label: labels.skills, items: skillItems });
   }
   if (otherItems.length > 0) {
     groups.push({ id: "other", label: null, items: otherItems });
@@ -360,11 +369,13 @@ export function ComposerCommandMenu(props: {
   onSelect: (item: ComposerCommandItem) => void;
 }) {
   const composerCopy = useMessages().composer;
+  const commandMenuCopy = composerCopy.commandMenu;
   const itemRefs = useRef<Record<string, HTMLElement | null>>({});
   const groups = groupCommandItems(
     props.items,
     props.triggerKind,
     props.groupSlashCommandSections ?? true,
+    commandMenuCopy.groups,
   );
   const shouldRenderList = props.items.length > 0 || props.triggerKind === "mention";
 
@@ -448,20 +459,20 @@ export function ComposerCommandMenu(props: {
           >
             {props.isLoading
               ? props.triggerKind === "mention"
-                ? "Searching mentions..."
+                ? commandMenuCopy.loading.mentions
                 : props.triggerKind === "skill"
-                  ? "Loading skills..."
+                  ? commandMenuCopy.loading.skills
                   : props.triggerKind === "mcp-tool"
-                    ? "Connecting to MCP servers..."
-                    : "Loading commands..."
+                    ? commandMenuCopy.loading.mcp
+                    : commandMenuCopy.loading.commands
               : (props.emptyStateText ??
                 (props.triggerKind === "mention"
-                  ? "No matching plugin, chat, or file."
+                  ? commandMenuCopy.empty.mention
                   : props.triggerKind === "skill"
-                    ? "No matching skill."
+                    ? commandMenuCopy.empty.skill
                     : props.triggerKind === "mcp-tool"
-                      ? "No MCP tools are configured for this agent."
-                      : "No matching command."))}
+                      ? commandMenuCopy.empty.mcp
+                      : commandMenuCopy.empty.command))}
           </p>
         )}
       </div>
@@ -598,8 +609,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem({
   onHighlight: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
 }) {
+  const commandMenuCopy = useMessages().composer.commandMenu;
   const secondaryText = commandMenuSecondaryText(item);
-  const trailingMeta = commandMenuTrailingMeta(item);
+  const trailingMeta = commandMenuTrailingMeta(item, commandMenuCopy.meta);
   // A server we could not probe stays visible so the user knows why its tools are missing, but
   // it is dimmed and inert — there is nothing to insert.
   const isUnavailable = item.type === "mcp-tool" && item.unavailable === true;
@@ -628,7 +640,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem({
         <div className="min-w-0 flex flex-1 items-center gap-1.5 overflow-hidden">
           <span className="shrink-0 text-[11.5px] font-medium text-foreground/80">
             {item.type === "slash-command" || item.type === "provider-native-command"
-              ? commandMenuTitle(item)
+              ? commandMenuTitle(item, commandMenuCopy.commands)
               : item.label}
           </span>
           {secondaryText ? (

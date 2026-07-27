@@ -123,11 +123,11 @@ export function ComposerModelEffortPicker(props: ComposerModelEffortPickerProps)
     ? (effortLevels.find((level) => level.value === effort)?.label ?? effort)
     : null;
   const triggerStatusLabel = ultrathinkPromptControlled
-    ? "Ultrathink"
+    ? copy.ultrathink
     : effortLabel
       ? effortLabel
       : thinkingEnabled !== null
-        ? `Thinking ${thinkingEnabled ? "On" : "Off"}`
+        ? copy.thinking(thinkingEnabled)
         : null;
   const showsFastBadge = supportsFastModeControl && fastModeEnabled;
 

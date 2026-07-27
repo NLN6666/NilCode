@@ -36,6 +36,11 @@ export const sidebar: Sidebar = {
     docs: "文档",
   },
 
+  views: {
+    threads: "项目",
+    studio: "工作室",
+  },
+
   projects: {
     loading: "正在加载项目",
     loadingEllipsis: "正在加载项目…",

@@ -18,6 +18,10 @@ export const browser = {
   },
 
   actions: {
+    pickElement: "Pick an element",
+    stopPickElement: "Stop picking an element",
+    /** Tooltip only: the shortcut belongs on hover, not in the accessible name. */
+    stopPickElementHint: "Stop picking an element (Esc)",
     annotate: "Annotate the page",
     copyScreenshot: "Copy screenshot",
     copyLink: "Copy link",

@@ -7,6 +7,7 @@ import { pluralize } from "@synara/shared/text";
 import { MessageCircleIcon } from "~/lib/icons";
 import { type ChatAssistantSelectionAttachment } from "../../types";
 import { AttachmentSummaryChip } from "./AttachmentSummaryChip";
+import { useMessages } from "~/i18n/context";
 
 interface AssistantSelectionsSummaryChipProps {
   selections: ReadonlyArray<ChatAssistantSelectionAttachment>;
@@ -18,6 +19,7 @@ function selectionCountLabel(count: number): string {
 }
 
 export function AssistantSelectionsSummaryChip(props: AssistantSelectionsSummaryChipProps) {
+  const copy = useMessages().composer.attachments;
   if (props.selections.length === 0) {
     return null;
   }
@@ -26,7 +28,7 @@ export function AssistantSelectionsSummaryChip(props: AssistantSelectionsSummary
     <AttachmentSummaryChip
       icon={MessageCircleIcon}
       label={selectionCountLabel(props.selections.length)}
-      removeLabel="Remove selections"
+      removeLabel={copy.removeSelections}
       onRemove={props.onRemove}
       tooltip={props.selections.map((selection) => (
         <p key={selection.id} className="text-xs leading-relaxed">

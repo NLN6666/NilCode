@@ -55,7 +55,9 @@ export function ActiveTaskListCard({
   onCompactChange,
   onOpenSidebar,
 }: ActiveTaskListCardProps) {
-  const copy = useMessages().chat.tasks;
+  const messages = useMessages();
+  const copy = messages.chat.tasks;
+  const taskBannerCopy = messages.composer.taskBanner;
   const backgroundTaskCount = backgroundTaskCountProp ?? 0;
   const compact = compactProp ?? false;
   const totalCount = activeTaskList.tasks.length;
@@ -94,8 +96,8 @@ export function ActiveTaskListCard({
             size="icon-xs"
             className={COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME}
             onClick={() => onCompactChange(!compact)}
-            aria-label={compact ? "Expand task banner" : "Collapse task banner"}
-            title={compact ? "Expand task banner" : "Collapse task banner"}
+            aria-label={compact ? taskBannerCopy.expand : taskBannerCopy.collapse}
+            title={compact ? taskBannerCopy.expand : taskBannerCopy.collapse}
           >
             {compact ? (
               <PiArrowsOutSimple className="size-3" />

@@ -110,8 +110,33 @@ export const chat = {
     loadingDiffViewer: "Loading diff viewer...",
     selectFileFromTree: "Select a file from the tree to view it.",
     clickFileToPreview: "Click a file in the chat to preview it here.",
+    /** Dock tab + add-menu names, keyed by pane kind. `fallback` covers stale persisted kinds. */
+    kinds: {
+      browser: "Browser",
+      diff: "Diff",
+      explorer: "Explorer",
+      file: "File",
+      terminal: "Terminal",
+      sidechat: "Side",
+      git: "Git",
+      pullRequest: "Pull request",
+      fallback: "Panel",
+    },
+
+    closePane: (label: string) => `Close ${label}`,
     addPanel: "Add panel",
     collapsePanel: "Collapse panel",
+
+    /** The terminal stacked under the browser preview in the same dock pane. */
+    serviceTerminal: {
+      title: "Terminal",
+      expand: "Expand terminal",
+      collapse: "Collapse terminal",
+      resize: "Resize terminal",
+      /** Shown on the collapsed bar when exactly one action's service is alive. */
+      running: (scriptName: string) => `${scriptName} running`,
+      runningCount: (count: number) => `${count} services running`,
+    },
   },
 
   split: {

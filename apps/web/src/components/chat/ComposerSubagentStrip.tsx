@@ -107,8 +107,8 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
           size="icon-xs"
           className={cn("shrink-0", COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME)}
           onClick={() => onCompactChange(!compact)}
-          aria-label={compact ? "Expand subagent strip" : "Collapse subagent strip"}
-          title={compact ? "Expand subagent strip" : "Collapse subagent strip"}
+          aria-label={compact ? copy.expandStrip : copy.collapseStrip}
+          title={compact ? copy.expandStrip : copy.collapseStrip}
         >
           {compact ? (
             <PanelExpandIcon className="size-3" />
