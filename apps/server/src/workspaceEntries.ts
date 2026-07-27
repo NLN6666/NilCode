@@ -744,7 +744,7 @@ export function clearWorkspaceIndexCache(cwd: string): void {
   inFlightWorkspaceIndexBuilds.delete(cwd);
 }
 
-function expandHomePath(input: string): string {
+export function expandHomePath(input: string): string {
   if (input === "~") {
     return os.homedir();
   }

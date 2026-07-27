@@ -134,6 +134,10 @@ interface ChatHeaderProps {
     onCloseTerminal: () => void;
   } | null;
   onRunProjectScript: (script: ProjectScript) => void;
+  onStopProjectScript: (script: ProjectScript) => void;
+  /** Undefined when there is no project to inspect, which hides the affordance. */
+  onDetectProjectServices: (() => void) | undefined;
+  runningProjectScriptIds: ReadonlySet<string>;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
   onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>;
   onDeleteProjectScript: (scriptId: string) => Promise<void>;
@@ -529,6 +533,9 @@ export function ChatHeader({
   changeThreadAction = null,
   editorChatControls = null,
   onRunProjectScript,
+  onStopProjectScript,
+  onDetectProjectServices,
+  runningProjectScriptIds,
   onAddProjectScript,
   onUpdateProjectScript,
   onDeleteProjectScript,
@@ -807,7 +814,10 @@ export function ChatHeader({
             keybindings={keybindings}
             preferredScriptId={preferredScriptId}
             hideInlineLabel={compact}
+            runningScriptIds={runningProjectScriptIds}
             onRunScript={onRunProjectScript}
+            onStopScript={onStopProjectScript}
+            onDetectServices={onDetectProjectServices}
             onAddScript={onAddProjectScript}
             onUpdateScript={onUpdateProjectScript}
             onDeleteScript={onDeleteProjectScript}

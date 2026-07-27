@@ -93,7 +93,8 @@ function createHost(options: { gateOn?: string } = {}) {
     picked,
     cancelled,
     gates,
-    methodsFor: (tabId: string) => calls.filter((call) => call.tabId === tabId).map((c) => c.method),
+    methodsFor: (tabId: string) =>
+      calls.filter((call) => call.tabId === tabId).map((c) => c.method),
     inspectModeCalls: () =>
       calls
         .filter((call) => call.method === "Overlay.setInspectMode")
@@ -244,9 +245,7 @@ describe("BrowserElementPicker cleanup paths", () => {
     await flush();
 
     expect(picker.isPicking(THREAD_ID)).toBe(false);
-    expect(fake.cancelled).toEqual([
-      { threadId: THREAD_ID, reason: "navigation", message: null },
-    ]);
+    expect(fake.cancelled).toEqual([{ threadId: THREAD_ID, reason: "navigation", message: null }]);
   });
 
   it("ignores navigation on a different tab", async () => {
@@ -272,9 +271,7 @@ describe("BrowserElementPicker cleanup paths", () => {
     expect(picker.isPicking(THREAD_ID)).toBe(false);
     // The runtime is gone, so talking to the debugger would only throw.
     expect(fake.calls.length).toBe(callCount);
-    expect(fake.cancelled).toEqual([
-      { threadId: THREAD_ID, reason: "tab-closed", message: null },
-    ]);
+    expect(fake.cancelled).toEqual([{ threadId: THREAD_ID, reason: "tab-closed", message: null }]);
     expect(fake.listeners[0]?.unsubscribed).toBe(true);
   });
 

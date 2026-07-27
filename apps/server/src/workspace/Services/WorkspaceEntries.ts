@@ -7,10 +7,14 @@ import type {
   ProjectDiscoverScriptsResult,
   ProjectListDirectoriesInput,
   ProjectListDirectoriesResult,
+  ProjectReadLaunchConfigInput,
+  ProjectReadLaunchConfigResult,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
   ProjectSearchLocalEntriesInput,
   ProjectSearchLocalEntriesResult,
+  ProjectWriteLaunchConfigInput,
+  ProjectWriteLaunchConfigResult,
 } from "@synara/contracts";
 
 export interface WorkspaceEntriesShape {
@@ -23,6 +27,14 @@ export interface WorkspaceEntriesShape {
   readonly discoverScripts: (
     input: ProjectDiscoverScriptsInput,
   ) => Effect.Effect<ProjectDiscoverScriptsResult, WorkspaceEntriesError>;
+  /** Load `.nilcode/launch.json`, the source of truth for the project's actions. */
+  readonly readLaunchConfig: (
+    input: ProjectReadLaunchConfigInput,
+  ) => Effect.Effect<ProjectReadLaunchConfigResult, WorkspaceEntriesError>;
+  /** Replace `.nilcode/launch.json` and return the state a reload would observe. */
+  readonly writeLaunchConfig: (
+    input: ProjectWriteLaunchConfigInput,
+  ) => Effect.Effect<ProjectWriteLaunchConfigResult, WorkspaceEntriesError>;
   readonly listDirectories: (
     input: ProjectListDirectoriesInput,
   ) => Effect.Effect<ProjectListDirectoriesResult, WorkspaceEntriesError>;

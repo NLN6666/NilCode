@@ -6,6 +6,12 @@ export const TrimmedNonEmptyString = TrimmedString.check(Schema.isNonEmpty());
 export const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 export const PositiveInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1));
 
+// TCP port a project's dev server is expected to listen on. Declared explicitly
+// by launch configurations so preview does not depend on port sniffing, which
+// is unavailable on Windows (see localServerMonitor's lsof-based discovery).
+export const LocalServerPort = PositiveInt.check(Schema.isLessThanOrEqualTo(65_535));
+export type LocalServerPort = typeof LocalServerPort.Type;
+
 // Shared schema for child-process environment overrides (terminals, dev servers).
 // Keys follow POSIX env-name rules; values and total size are capped to keep
 // requests bounded. Extracted here so terminal and project contracts stay in sync.

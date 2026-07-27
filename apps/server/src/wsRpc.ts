@@ -74,6 +74,7 @@ import {
 import { Open, resolveAvailableEditors } from "./open";
 import { makeDispatchCommandNormalizer } from "./orchestration/dispatchCommandNormalization";
 import { makeImportThreadHandler } from "./orchestration/importThreadRoute";
+import { mirrorLaunchConfigIntoProject } from "./launchConfigMirror";
 import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine";
 import { ProviderCommandReactor } from "./orchestration/Services/ProviderCommandReactor";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
@@ -985,6 +986,36 @@ const makeWsRpcHandlersLayer = () =>
           rpcEffect(workspaceEntries.search(input), "Failed to search workspace entries"),
         [WS_METHODS.projectsDiscoverScripts]: (input) =>
           rpcEffect(workspaceEntries.discoverScripts(input), "Failed to discover project scripts"),
+        [WS_METHODS.projectsReadLaunchConfig]: (input) =>
+          rpcEffect(
+            workspaceEntries.readLaunchConfig(input).pipe(
+              Effect.tap((state) =>
+                input.projectId === undefined
+                  ? Effect.void
+                  : mirrorLaunchConfigIntoProject({
+                      orchestrationEngine,
+                      projectionSnapshotQuery: projectionReadModelQuery,
+                      projectId: input.projectId,
+                      state,
+                    }),
+              ),
+            ),
+            "Failed to read project launch config",
+          ),
+        [WS_METHODS.projectsWriteLaunchConfig]: (input) =>
+          rpcEffect(
+            workspaceEntries.writeLaunchConfig(input).pipe(
+              Effect.tap((state) =>
+                mirrorLaunchConfigIntoProject({
+                  orchestrationEngine,
+                  projectionSnapshotQuery: projectionReadModelQuery,
+                  projectId: input.projectId,
+                  state,
+                }),
+              ),
+            ),
+            "Failed to write project launch config",
+          ),
         [WS_METHODS.projectsSearchLocalEntries]: (input) =>
           rpcEffect(workspaceEntries.searchLocal(input), "Failed to search local entries"),
         [WS_METHODS.projectsReadFile]: (input) =>

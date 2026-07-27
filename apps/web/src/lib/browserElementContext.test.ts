@@ -207,8 +207,7 @@ describe("browser element prompt round trip", () => {
       elementId: "submit-btn",
       classNames: ["btn", "btn-primary"],
       textSnippet: "Save changes",
-      outerHtmlSnippet:
-        '<button id="submit-btn" class="btn btn-primary">Save changes</button>',
+      outerHtmlSnippet: '<button id="submit-btn" class="btn btn-primary">Save changes</button>',
       rect: { x: 240, y: 180, width: 320, height: 44 },
       computedStyles: {
         display: "inline-flex",

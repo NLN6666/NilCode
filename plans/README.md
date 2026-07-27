@@ -6,17 +6,17 @@ Plans 001–005 are read-only handoff plans for implementing a Codex-like automa
 
 ## Execution order & status
 
-| Plan | Title                                                | Priority | Effort | Depends on         | Status |
-| ---- | ---------------------------------------------------- | -------- | ------ | ------------------ | ------ |
-| 001  | Harden Automation Run Lifecycle Before Adding Timers | P1       | L      | —                  | DONE   |
-| 002  | Add True One-Shot Timers and a Safer Schedule Model  | P1       | L      | 001                | DONE   |
-| 003  | Build Codex-Like Automation Creation UX              | P1       | L      | 001, 002           | DONE   |
-| 004  | Add Automation Triage, Results, and Run Actions      | P2       | L      | 001, 002, 003      | DONE   |
-| 005  | Add Cron, Timezone, Skills, and Automation Policies  | P2       | L      | 001, 002, 003, 004 | DONE   |
-| 006  | Make Synara the Authoritative Agent Harness          | P1       | L      | —                  | DONE   |
-| 007  | Codex-Parity Automation Agent Surface & Run Protocol | P1       | L      | 001–005            | DONE   |
-| 008  | 在 Composer 中 @ 提及真实的 Claude / Codex 子代理    | P1       | M      | —                  | TODO   |
-| 011  | 浏览器元素拾取与画布标注上下文                       | P2       | M      | —                  | TODO   |
+| Plan | Title                                                | Priority | Effort | Depends on         | Status      |
+| ---- | ---------------------------------------------------- | -------- | ------ | ------------------ | ----------- |
+| 001  | Harden Automation Run Lifecycle Before Adding Timers | P1       | L      | —                  | DONE        |
+| 002  | Add True One-Shot Timers and a Safer Schedule Model  | P1       | L      | 001                | DONE        |
+| 003  | Build Codex-Like Automation Creation UX              | P1       | L      | 001, 002           | DONE        |
+| 004  | Add Automation Triage, Results, and Run Actions      | P2       | L      | 001, 002, 003      | DONE        |
+| 005  | Add Cron, Timezone, Skills, and Automation Policies  | P2       | L      | 001, 002, 003, 004 | DONE        |
+| 006  | Make Synara the Authoritative Agent Harness          | P1       | L      | —                  | DONE        |
+| 007  | Codex-Parity Automation Agent Surface & Run Protocol | P1       | L      | 001–005            | DONE        |
+| 008  | 在 Composer 中 @ 提及真实的 Claude / Codex 子代理    | P1       | M      | —                  | TODO        |
+| 011  | 浏览器元素拾取与画布标注上下文                       | P2       | M      | —                  | TODO        |
 | 012  | 中文语言支持（原生 i18n）                            | P2       | XL     | —                  | IN PROGRESS |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale).

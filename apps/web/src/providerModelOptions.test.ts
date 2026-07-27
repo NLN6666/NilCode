@@ -343,9 +343,12 @@ describe("sortProviderModelOptions", () => {
   });
 
   it("ranks codex variants of one version by capability, not alphabetically", () => {
-    expect(
-      slugs("codex", ["gpt-5.6-luna", "gpt-5.6", "gpt-5.6-terra", "gpt-5.6-sol"]),
-    ).toEqual(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6"]);
+    expect(slugs("codex", ["gpt-5.6-luna", "gpt-5.6", "gpt-5.6-terra", "gpt-5.6-sol"])).toEqual([
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.6",
+    ]);
   });
 
   it("keeps a codex version ahead of every variant of an older one", () => {

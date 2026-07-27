@@ -85,6 +85,15 @@ import {
   supportsSkillDiscovery,
   supportsThreadCompaction,
 } from "~/lib/providerDiscoveryReactQuery";
+import {
+  persistProjectLaunchConfig,
+  projectLaunchConfigQueryOptions,
+} from "~/lib/launchConfigReactQuery";
+import { useProjectScriptPreview } from "~/hooks/useProjectScriptPreview";
+import { appendPromptToDraft, buildDetectServicesPrompt } from "~/lib/detectServicesPrompt";
+
+/** ETX — what the tty receives when you press Ctrl-C. */
+const TERMINAL_INTERRUPT_SEQUENCE = "\u0003";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import { serverConfigQueryOptions, serverQueryKeys } from "~/lib/serverReactQuery";
 import { useRefreshProviderStatusesNow } from "~/hooks/useProviderStatusRefresh";
@@ -388,7 +397,12 @@ import {
   resolveNextComposerFooterTier,
   shouldUseCompactComposerFooter,
 } from "./composerFooterLayout";
-import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
+import {
+  selectRunningServiceScriptIds,
+  selectServiceTerminalIdsForScript,
+  selectThreadTerminalState,
+  useTerminalStateStore,
+} from "../terminalStateStore";
 import {
   resolveSplitViewFocusedThreadId,
   selectSplitView,
@@ -4225,6 +4239,7 @@ export default function ChatView({
       hasRightDockPanes,
     ],
   );
+  const { startPreview: startScriptPreview } = useProjectScriptPreview({ openBrowserUrl });
   const runProjectScript = useCallback(
     async (
       script: ProjectScript,
@@ -4279,6 +4294,14 @@ export default function ChatView({
             label: metadata.label,
           });
         }
+        if (script.port !== null && script.port !== undefined) {
+          // Only port-declaring actions become stoppable services; a test or build
+          // run is expected to end on its own and should not grow a Stop button.
+          useTerminalStateStore
+            .getState()
+            .markTerminalServiceScript(activeThreadId, targetTerminalId, script.id);
+        }
+        startScriptPreview(script);
         return { terminalId: targetTerminalId };
       } catch (error) {
         setThreadError(
@@ -4302,6 +4325,7 @@ export default function ChatView({
       requestTerminalFocus,
       setTerminalOpen,
       setThreadError,
+      startScriptPreview,
       storeNewTerminal,
       storeSetActiveTerminal,
       storeSetTerminalMetadata,
@@ -4349,6 +4373,81 @@ export default function ChatView({
     stopActiveThreadSession,
     runProjectScript,
   });
+  // Loading the launch config also asks the server to mirror it onto the
+  // project's actions, so this subscription is what keeps `.nilcode/launch.json`
+  // authoritative after an external edit or a `git pull`.
+  const launchConfigQuery = useQuery(
+    projectLaunchConfigQueryOptions({
+      projectId: activeProject?.id ?? null,
+      cwd: activeProject?.cwd ?? null,
+    }),
+  );
+
+  // Prefill rather than dispatch: the composer draft is the user's, and an agent
+  // turn is theirs to spend. They review the prompt and send it themselves.
+  const projectScriptsCopy = useMessages().projectTools.scripts;
+  const existingLaunchConfigurations = launchConfigQuery.data?.configurations;
+  const detectProjectServices = useMemo(() => {
+    if (activeProjectCwd === null || activeProjectCwd.length === 0) {
+      return undefined;
+    }
+    return () => {
+      const prompt = buildDetectServicesPrompt({
+        projectCwd: activeProjectCwd,
+        ...(existingLaunchConfigurations
+          ? { existingConfigurations: existingLaunchConfigurations }
+          : {}),
+      });
+      // The editor's live snapshot, not the persisted draft: text typed a moment
+      // ago may not have synced yet, and appending to a stale draft would drop it.
+      const liveDraft = composerEditorRef.current?.readSnapshot()?.value ?? promptRef.current;
+      const nextPrompt = appendPromptToDraft(liveDraft, prompt);
+      discardPromptHistoryNavigationForComposerMutation();
+      promptRef.current = nextPrompt;
+      setPrompt(nextPrompt);
+      requestAnimationFrame(() => {
+        composerEditorRef.current?.focusAtEnd();
+      });
+      toastManager.add({
+        type: "success",
+        title: projectScriptsCopy.detectServicesQueued,
+        description: projectScriptsCopy.detectServicesQueuedDetail,
+      });
+    };
+  }, [
+    activeProjectCwd,
+    discardPromptHistoryNavigationForComposerMutation,
+    existingLaunchConfigurations,
+    projectScriptsCopy.detectServicesQueued,
+    projectScriptsCopy.detectServicesQueuedDetail,
+    setPrompt,
+  ]);
+
+  const runningProjectScriptIds = useMemo(
+    () => selectRunningServiceScriptIds(terminalState),
+    [terminalState],
+  );
+
+  const stopProjectScript = useCallback(
+    (script: ProjectScript) => {
+      const api = readNativeApi();
+      if (!api || !activeThreadId) return;
+      // Ctrl-C, not terminal.close: after a dev server stops the next thing anyone
+      // does is read why, and closing the terminal would take the log with it. The
+      // process exiting clears `runningTerminalIds`, which flips the button back.
+      for (const terminalId of selectServiceTerminalIdsForScript(terminalState, script.id)) {
+        void api.terminal
+          .write({ threadId: activeThreadId, terminalId, data: TERMINAL_INTERRUPT_SEQUENCE })
+          .catch((error: unknown) => {
+            setThreadError(
+              activeThreadId,
+              error instanceof Error ? error.message : `Failed to stop "${script.name}".`,
+            );
+          });
+      }
+    },
+    [activeThreadId, setThreadError, terminalState],
+  );
   const persistProjectScripts = useCallback(
     async (input: {
       projectId: ProjectId;
@@ -4361,10 +4460,21 @@ export default function ChatView({
       const api = readNativeApi();
       if (!api) return;
 
+      // Update the projection first so the UI reflects the edit immediately,
+      // then persist to `.nilcode/launch.json`, which is the source of truth on
+      // every subsequent load. A failed file write leaves the projection correct
+      // for this session but is surfaced, because the next reload would revert.
       await api.orchestration.dispatchCommand({
         type: "project.meta.update",
         commandId: newCommandId(),
         projectId: input.projectId,
+        scripts: input.nextScripts,
+      });
+      await persistProjectLaunchConfig({
+        api,
+        queryClient,
+        projectId: input.projectId,
+        projectCwd: input.projectCwd,
         scripts: input.nextScripts,
       });
 
@@ -4393,6 +4503,7 @@ export default function ChatView({
         command: input.command,
         icon: input.icon,
         runOnWorktreeCreate: input.runOnWorktreeCreate,
+        port: input.port,
       };
       const nextScripts = input.runOnWorktreeCreate
         ? [
@@ -4428,6 +4539,7 @@ export default function ChatView({
         command: input.command,
         icon: input.icon,
         runOnWorktreeCreate: input.runOnWorktreeCreate,
+        port: input.port,
       };
       const nextScripts = activeProject.scripts.map((script) =>
         script.id === scriptId
@@ -10858,6 +10970,9 @@ export default function ChatView({
               : null
           }
           onRunProjectScript={onRunProjectScriptFromHeader}
+          onStopProjectScript={stopProjectScript}
+          onDetectProjectServices={detectProjectServices}
+          runningProjectScriptIds={runningProjectScriptIds}
           onAddProjectScript={saveProjectScript}
           onUpdateProjectScript={updateProjectScript}
           onDeleteProjectScript={deleteProjectScript}

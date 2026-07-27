@@ -2238,10 +2238,12 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
             markThreadStopped(threadId, stoppedAt, activeSessionByThreadId.get(threadId)),
         );
         yield* Effect.forEach(adapters, (adapter) => adapter.stopAll());
+        // Recorded, never awaited: this runs on the shutdown path, where a
+        // blocking flush would hold the process open until the telemetry
+        // request completes or times out.
         yield* analytics.record("provider.sessions.stopped_all", {
           sessionCount: threadIds.length,
         });
-        yield* analytics.flush;
       });
 
     const awaitRuntimeEventFanoutDrained: Effect.Effect<void> = Effect.suspend(() =>

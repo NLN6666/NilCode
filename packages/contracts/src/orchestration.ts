@@ -17,6 +17,7 @@ import {
   CommandId,
   EventId,
   IsoDateTime,
+  LocalServerPort,
   MessageId,
   NonNegativeInt,
   PositiveInt,
@@ -376,6 +377,14 @@ export const ProjectScript = Schema.Struct({
   command: TrimmedNonEmptyString,
   icon: ProjectScriptIcon,
   runOnWorktreeCreate: Schema.Boolean,
+  /**
+   * Port the action's server is expected to listen on, when declared by a
+   * `.nilcode/launch.json` configuration. Drives preview readiness probing
+   * without relying on port sniffing. Null for actions that serve nothing.
+   */
+  port: Schema.optional(Schema.NullOr(LocalServerPort)).pipe(
+    Schema.withDecodingDefault(() => null),
+  ),
 });
 export type ProjectScript = typeof ProjectScript.Type;
 

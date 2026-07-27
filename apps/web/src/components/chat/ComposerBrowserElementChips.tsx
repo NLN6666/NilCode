@@ -85,9 +85,7 @@ interface UserMessageBrowserElementChipsProps {
 
 // Transcript echo: the same chip without a dismiss affordance, so a sent message shows
 // which page elements it carried instead of the raw <browser_elements> block.
-export function UserMessageBrowserElementChips({
-  elements,
-}: UserMessageBrowserElementChipsProps) {
+export function UserMessageBrowserElementChips({ elements }: UserMessageBrowserElementChipsProps) {
   if (elements.length === 0) {
     return null;
   }
@@ -95,7 +93,10 @@ export function UserMessageBrowserElementChips({
   return (
     <>
       {elements.map((element, index) => (
-        <BrowserElementChip key={`${element.pageUrl}:${element.selector}:${index}`} element={element} />
+        <BrowserElementChip
+          key={`${element.pageUrl}:${element.selector}:${index}`}
+          element={element}
+        />
       ))}
     </>
   );

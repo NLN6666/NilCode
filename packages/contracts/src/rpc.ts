@@ -149,6 +149,12 @@ import {
   ProjectWriteFileResult,
 } from "./project";
 import {
+  ProjectReadLaunchConfigInput,
+  ProjectReadLaunchConfigResult,
+  ProjectWriteLaunchConfigInput,
+  ProjectWriteLaunchConfigResult,
+} from "./launchConfig";
+import {
   ServerConfig,
   ServerConfigStreamEvent,
   ServerDiagnosticsResult,
@@ -345,6 +351,18 @@ export const WsProjectsListDirectoriesRpc = Rpc.make(WS_METHODS.projectsListDire
 export const WsProjectsDiscoverScriptsRpc = Rpc.make(WS_METHODS.projectsDiscoverScripts, {
   payload: ProjectDiscoverScriptsInput,
   success: ProjectDiscoverScriptsResult,
+  error: WsRpcError,
+});
+
+export const WsProjectsReadLaunchConfigRpc = Rpc.make(WS_METHODS.projectsReadLaunchConfig, {
+  payload: ProjectReadLaunchConfigInput,
+  success: ProjectReadLaunchConfigResult,
+  error: WsRpcError,
+});
+
+export const WsProjectsWriteLaunchConfigRpc = Rpc.make(WS_METHODS.projectsWriteLaunchConfig, {
+  payload: ProjectWriteLaunchConfigInput,
+  success: ProjectWriteLaunchConfigResult,
   error: WsRpcError,
 });
 
@@ -1020,6 +1038,8 @@ export const WsFeatureRpcGroup = RpcGroup.make(
   WsOrchestrationUnsubscribeThreadRpc,
   WsOrchestrationSubscribeDomainEventsRpc,
   WsProjectsDiscoverScriptsRpc,
+  WsProjectsReadLaunchConfigRpc,
+  WsProjectsWriteLaunchConfigRpc,
   WsProjectsListDirectoriesRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsSearchLocalEntriesRpc,

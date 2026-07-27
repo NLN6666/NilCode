@@ -72,6 +72,14 @@
       "types": "./src/localServers.ts",
       "import": "./src/localServers.ts"
     },
+    "./launchConfig": {
+      "types": "./src/launchConfig.ts",
+      "import": "./src/launchConfig.ts"
+    },
+    "./projectScripts": {
+      "types": "./src/projectScripts.ts",
+      "import": "./src/projectScripts.ts"
+    },
     "./browserShortcuts": {
       "types": "./src/browserShortcuts.ts",
       "import": "./src/browserShortcuts.ts"

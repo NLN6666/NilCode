@@ -102,6 +102,12 @@ import type {
   PullRequestsListResult,
 } from "./pullRequests";
 import type {
+  ProjectReadLaunchConfigInput,
+  ProjectReadLaunchConfigResult,
+  ProjectWriteLaunchConfigInput,
+  ProjectWriteLaunchConfigResult,
+} from "./launchConfig";
+import type {
   ProjectCreateLocalFilePreviewGrantInput,
   ProjectCreateLocalFilePreviewGrantResult,
   ProjectDevServerEvent,
@@ -608,6 +614,12 @@ export interface NativeApi {
   };
   projects: {
     discoverScripts: (input: ProjectDiscoverScriptsInput) => Promise<ProjectDiscoverScriptsResult>;
+    readLaunchConfig: (
+      input: ProjectReadLaunchConfigInput,
+    ) => Promise<ProjectReadLaunchConfigResult>;
+    writeLaunchConfig: (
+      input: ProjectWriteLaunchConfigInput,
+    ) => Promise<ProjectWriteLaunchConfigResult>;
     listDirectories: (input: ProjectListDirectoriesInput) => Promise<ProjectListDirectoriesResult>;
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>;
     searchLocalEntries: (
