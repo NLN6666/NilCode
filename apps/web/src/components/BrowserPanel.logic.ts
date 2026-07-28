@@ -76,6 +76,13 @@ interface BuildBrowserAddressSuggestionsInput {
   recentHistory: BrowserHistoryEntry[];
 }
 
+/** The `browser.status` catalog group: wording for the two states this resolver names itself. */
+export interface BrowserChromeStatusCopy {
+  readonly starting: string;
+  readonly noTabs: string;
+  readonly restoringTab: string;
+}
+
 export interface BrowserChromeStatus {
   tone: "default" | "error";
   label: string;
@@ -188,6 +195,8 @@ export function resolveBrowserChromeStatus(input: {
   activeTabStatus: string;
   hasActiveTab: boolean;
   workspaceReady: boolean;
+  /** Wording for the two non-error states; pass `m.browser.status`. */
+  copy: BrowserChromeStatusCopy;
 }): BrowserChromeStatus | null {
   if (input.localError) {
     return {
@@ -206,14 +215,14 @@ export function resolveBrowserChromeStatus(input: {
   if (!input.hasActiveTab) {
     return {
       tone: "default",
-      label: input.workspaceReady ? "No tabs open" : "Starting browser...",
+      label: input.workspaceReady ? input.copy.noTabs : input.copy.starting,
     };
   }
 
   if (input.activeTabStatus === "suspended") {
     return {
       tone: "default",
-      label: "Restoring tab...",
+      label: input.copy.restoringTab,
     };
   }
 

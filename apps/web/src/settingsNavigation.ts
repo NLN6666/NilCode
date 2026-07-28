@@ -23,7 +23,7 @@ export const SETTINGS_SECTION_IDS = [
 ] as const;
 
 export type SettingsSectionId = (typeof SETTINGS_SECTION_IDS)[number];
-export type SettingsNavGroupId = "app" | "synara";
+export type SettingsNavGroupId = "personal" | "integrations" | "coding" | "system" | "archived";
 
 /**
  * Deep-link scroll targets inside settings panels. Each id is shared by its DOM owner and callers
@@ -35,156 +35,45 @@ export const SETTINGS_TARGETS = {
   environmentPanel: "environment-panel",
 } as const;
 
+/**
+ * Structure only. Labels and descriptions live in the i18n catalogs under `settingsNav`, keyed by
+ * these same ids, so the taxonomy has one shape and one translation source.
+ */
 export type SettingsNavItem = {
   id: SettingsSectionId;
   group: SettingsNavGroupId;
-  label: string;
-  description: string;
   /** Basename of a SVG under `/central-icons-reversed`. */
   icon: string;
-  eyebrow: string;
 };
 
-export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
-  id: SettingsNavGroupId;
-  label: string;
-}> = [
-  { id: "app", label: "App" },
-  { id: "synara", label: "Synara" },
-] as const;
+export const SETTINGS_NAV_GROUP_IDS = [
+  "personal",
+  "integrations",
+  "coding",
+  "system",
+  "archived",
+] as const satisfies readonly SettingsNavGroupId[];
 
 export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
-  {
-    id: "general",
-    group: "app",
-    label: "General",
-    description: "Default provider, thread mode, and sidebar organization.",
-    icon: "settings-gear-4",
-    eyebrow: "Workflow defaults",
-  },
-  {
-    id: "profile",
-    group: "app",
-    label: "Profile",
-    description: "Your local activity, streaks, and a shareable stats card.",
-    icon: "user",
-    eyebrow: "Your stats",
-  },
-  {
-    id: "appearance",
-    group: "app",
-    label: "Appearance",
-    description: "Theme, typography, and timestamp formatting.",
-    icon: "color-palette",
-    eyebrow: "Visual language",
-  },
-  {
-    id: "notifications",
-    group: "app",
-    label: "Notifications",
-    description: "In-app toasts and desktop alerts.",
-    icon: "bell",
-    eyebrow: "Alerts",
-  },
-  {
-    id: "behavior",
-    group: "app",
-    label: "Behavior",
-    description: "Streaming, diff handling, and destructive confirmations.",
-    icon: "settings-slider-hor",
-    eyebrow: "Interaction rules",
-  },
-  {
-    id: "appsnap",
-    group: "app",
-    label: "AppSnap",
-    description: "Snap another app's window straight into a task with one key chord.",
-    icon: "screen-capture",
-    eyebrow: "Screen capture",
-  },
-  {
-    id: "shortcuts",
-    group: "app",
-    label: "Keyboard Shortcuts",
-    description: "Every keyboard shortcut available in Synara, grouped by context.",
-    icon: "shortcut",
-    eyebrow: "Key bindings",
-  },
-  {
-    id: "worktrees",
-    group: "app",
-    label: "Worktrees",
-    description: "Review and clean up the worktrees created by Synara.",
-    icon: "branch-simple",
-    eyebrow: "Workspace management",
-  },
-  {
-    id: "archived",
-    group: "app",
-    label: "Archived",
-    description: "View and restore archived threads.",
-    icon: "archive",
-    eyebrow: "Thread management",
-  },
-  {
-    id: "models",
-    group: "synara",
-    label: "Models",
-    description: "Git writing defaults and custom model slugs.",
-    icon: "brain",
-    eyebrow: "AI configuration",
-  },
-  {
-    id: "providers",
-    group: "synara",
-    label: "Providers",
-    description: "Choose visible providers, review CLI installs, and update provider tools.",
-    icon: "puzzle",
-    eyebrow: "Picker visibility",
-  },
-  {
-    id: "skills",
-    group: "synara",
-    label: "Skills",
-    description: "Every skill found across providers, with toggles to control availability.",
-    icon: "building-blocks",
-    eyebrow: "Agent skills",
-  },
-  {
-    id: "usage",
-    group: "synara",
-    label: "Usage",
-    description: "Remaining quota and credits for each signed-in provider.",
-    icon: "gauge",
-    eyebrow: "Limits & credits",
-  },
+  { id: "general", group: "personal", icon: "settings-gear-4" },
+  { id: "profile", group: "personal", icon: "user" },
+  { id: "appearance", group: "personal", icon: "color-palette" },
+  { id: "notifications", group: "personal", icon: "bell" },
+  { id: "behavior", group: "personal", icon: "settings-slider-hor" },
+  { id: "shortcuts", group: "personal", icon: "shortcut" },
+  { id: "usage", group: "personal", icon: "gauge" },
+  { id: "appsnap", group: "integrations", icon: "screen-capture" },
   // Sits immediately before Integrations so the two MCP pages are neighbours. The icon is
   // deliberately not `plugin-1` (Integrations owns that) — the pages point in opposite
   // directions and must be distinguishable at a glance.
-  {
-    id: "mcpServers",
-    group: "synara",
-    label: "MCP Servers",
-    description: "Enable or disable the MCP servers your Codex and Claude agents use.",
-    icon: "api-connection",
-    eyebrow: "Agent tooling",
-  },
-  {
-    id: "integrations",
-    group: "synara",
-    label: "Integrations",
-    description: "Pair local MCP clients with scoped, revocable access to Synara tasks.",
-    icon: "plugin-1",
-    eyebrow: "External MCP",
-  },
-  {
-    id: "advanced",
-    group: "synara",
-    label: "Advanced",
-    description: "Keybindings, recovery, and version info.",
-    icon: "toolbox",
-    eyebrow: "System tools",
-  },
+  { id: "mcpServers", group: "integrations", icon: "api-connection" },
+  { id: "integrations", group: "integrations", icon: "plugin-1" },
+  { id: "providers", group: "coding", icon: "puzzle" },
+  { id: "models", group: "coding", icon: "brain" },
+  { id: "skills", group: "coding", icon: "building-blocks" },
+  { id: "worktrees", group: "coding", icon: "branch-simple" },
+  { id: "advanced", group: "system", icon: "toolbox" },
+  { id: "archived", group: "archived", icon: "archive" },
 ] as const;
 
 /**

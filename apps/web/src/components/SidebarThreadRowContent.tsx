@@ -17,6 +17,7 @@ import { TerminalIcon } from "../lib/icons";
 import { cn } from "../lib/utils";
 import { ProviderIcon } from "./ProviderIcon";
 import { SidebarGlyph } from "./sidebarGlyphs";
+import { useMessages } from "~/i18n/context";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 export interface SidebarThreadTerminalStatus {
@@ -170,7 +171,7 @@ export function SidebarThreadRowContent({
   terminalCount,
   isActive,
   variant,
-  subagentIndentPx = 0,
+  subagentIndentPx: subagentIndentPxProp,
   pendingStatusColorClass,
   suffix,
 }: {
@@ -184,6 +185,8 @@ export function SidebarThreadRowContent({
   pendingStatusColorClass?: string | null | undefined;
   suffix?: ReactNode;
 }) {
+  const m = useMessages();
+  const subagentIndentPx = subagentIndentPxProp ?? 0;
   const isSubagentThread = Boolean(thread.parentThreadId);
   const subagentPresentation =
     variant === "standard" && isSubagentThread
@@ -251,10 +254,10 @@ export function SidebarThreadRowContent({
         </span>
         {!isSubagentThread && pendingStatusColorClass ? (
           <span
-            aria-label="Pending approval"
+            aria-label={m.sidebar.thread.pendingApproval}
             className={cn("shrink-0 text-[10px] font-medium", pendingStatusColorClass)}
           >
-            Pending
+            {m.sidebar.thread.pendingBadge}
           </span>
         ) : null}
       </div>

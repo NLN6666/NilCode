@@ -11,6 +11,7 @@ import {
   trimOrNull,
 } from "@synara/shared/model";
 
+import { readCachedCloudModelContextWindow } from "./cloudModelCatalog.ts";
 import { positiveFiniteNumber } from "./tokenUsage.ts";
 
 export const CLAUDE_CONTEXT_WINDOW_MAX_TOKENS = {
@@ -79,6 +80,19 @@ export function resolveClaudeEffectiveContextBudget(
     return Math.min(autoCompactBudget, lastKnownContextWindow);
   }
   return autoCompactBudget ?? lastKnownContextWindow;
+}
+
+/**
+ * Stamps the model's real capacity onto a snapshot whose `maxTokens` is the
+ * (usually smaller) compaction budget, so the UI can name the two separately
+ * instead of reporting a 1M model as a 200k one.
+ */
+export function withClaudeModelContextWindow(
+  usage: ThreadTokenUsageSnapshot,
+  contextWindowTokens: number | undefined,
+): ThreadTokenUsageSnapshot {
+  const tokens = positiveFiniteNumber(contextWindowTokens);
+  return tokens === undefined ? usage : { ...usage, contextWindowTokens: tokens };
 }
 
 export function stripClaudeContextWindowSuffix(apiModelId: string): string {
@@ -160,9 +174,14 @@ export function resolveClaudeApiModelIdContextWindowMaxTokens(
   if (!apiModelId) {
     return undefined;
   }
-  return positiveFiniteNumber(
-    getModelCapabilities("claudeAgent", stripClaudeContextWindowSuffix(apiModelId))
-      .contextWindowTokens,
+  const slug = stripClaudeContextWindowSuffix(apiModelId);
+  // models.dev leads: a model released after this build shipped has no local
+  // entry at all, and a window revised mid-generation would otherwise stay
+  // wrong until the next release. The built-in table remains the offline
+  // baseline for a cold cache or an unreachable catalog.
+  return (
+    positiveFiniteNumber(readCachedCloudModelContextWindow("claudeAgent", slug)) ??
+    positiveFiniteNumber(getModelCapabilities("claudeAgent", slug).contextWindowTokens)
   );
 }
 

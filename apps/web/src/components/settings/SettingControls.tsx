@@ -11,6 +11,7 @@ import { Select, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Undo2Icon } from "~/lib/icons";
 import { SETTINGS_CONTROL_RADIUS_CLASS_NAME } from "~/settingsPanelStyles";
+import { useMessages } from "~/i18n/context";
 import { SettingsSelectPopup } from "./SettingsPanelPrimitives";
 
 export function useSettingsRestoreSignal(epoch: number, onRestore: () => void): void {
@@ -25,6 +26,7 @@ export function useSettingsRestoreSignal(epoch: number, onRestore: () => void): 
 }
 
 export function SettingResetButton({ label, onClick }: { label: string; onClick: () => void }) {
+  const m = useMessages();
   return (
     <Tooltip>
       <TooltipTrigger
@@ -32,7 +34,7 @@ export function SettingResetButton({ label, onClick }: { label: string; onClick:
           <Button
             size="icon-xs"
             variant="ghost"
-            aria-label={`Reset ${label} to default`}
+            aria-label={m.settings.controls.resetAriaLabel(label)}
             className="size-5 rounded-lg p-0 text-muted-foreground hover:text-foreground"
             onClick={(event) => {
               event.stopPropagation();
@@ -43,7 +45,7 @@ export function SettingResetButton({ label, onClick }: { label: string; onClick:
           </Button>
         }
       />
-      <TooltipPopup side="top">Reset to default</TooltipPopup>
+      <TooltipPopup side="top">{m.settings.controls.resetTooltip}</TooltipPopup>
     </Tooltip>
   );
 }
@@ -52,7 +54,7 @@ export function SettingsSelectControl({
   value,
   onValueChange,
   ariaLabel,
-  triggerClassName = "w-full sm:w-44",
+  triggerClassName: triggerClassNameProp,
   valueContent,
   children,
 }: {
@@ -63,6 +65,7 @@ export function SettingsSelectControl({
   valueContent: ReactNode;
   children: ReactNode;
 }) {
+  const triggerClassName = triggerClassNameProp ?? "w-full sm:w-44";
   return (
     <Select
       value={value}

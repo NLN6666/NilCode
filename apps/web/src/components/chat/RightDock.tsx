@@ -48,6 +48,7 @@ import {
   resolveRightDockPaneLabel,
 } from "./rightDockPaneMeta";
 import { useDesktopTopBarWindowControlsGutterClassName } from "~/hooks/useDesktopTopBarGutter";
+import { useMessages } from "~/i18n/context";
 
 // Shared sizing defaults for dock hosts: the resize floor for a single readable pane and the
 // "half the shell, but never cramped" opening width. The thread route tunes its own values
@@ -88,6 +89,7 @@ function RightDockTab(props: {
   onSelect?: (() => void) | undefined;
   onClose: () => void;
 }) {
+  const paneCopy = useMessages().chat.panes;
   return (
     <SurfaceTabChip
       active={props.active}
@@ -95,7 +97,7 @@ function RightDockTab(props: {
       label={props.label}
       labelClassName="max-w-[10rem]"
       icon={props.icon ?? resolveRightDockPaneIcon(props.pane)}
-      closeLabel={`Close ${props.label}`}
+      closeLabel={paneCopy.closePane(props.label)}
       onSelect={props.onSelect}
       onClose={props.onClose}
     />
@@ -141,6 +143,7 @@ function useKeepMountedPaneIds(
 }
 
 export function RightDock(props: RightDockProps) {
+  const paneCopy = useMessages().chat.panes;
   const activePane = resolveActivePane(props.state);
   const onSelectPane = props.onSelectPane;
   const activePaneRuntimeMode = props.activePaneRuntimeMode ?? "live";
@@ -242,7 +245,7 @@ export function RightDock(props: RightDockProps) {
                 <RightDockTab
                   key={pane.id}
                   pane={pane}
-                  label={resolveRightDockPaneLabel(pane, props.paneLabelOverrides)}
+                  label={resolveRightDockPaneLabel(pane, paneCopy.kinds, props.paneLabelOverrides)}
                   icon={props.paneIconOverrides?.[pane.id]}
                   active={pane.id === props.state.activePaneId}
                   onSelect={onSelectPane ? () => onSelectPane(pane.id) : undefined}
@@ -257,8 +260,8 @@ export function RightDock(props: RightDockProps) {
                     <Button
                       variant="chrome"
                       size="icon-xs"
-                      aria-label="Add panel"
-                      title="Add panel"
+                      aria-label={paneCopy.addPanel}
+                      title={paneCopy.addPanel}
                       className={DOCK_HEADER_ICON_BUTTON_CLASS}
                     />
                   }
@@ -267,7 +270,7 @@ export function RightDock(props: RightDockProps) {
                 </MenuTrigger>
                 <ComposerPickerMenuPopup align="end" side="bottom" className="w-44 min-w-44">
                   {props.addMenuKinds.map((kind) => {
-                    const { Icon, label } = getRightDockPaneMeta(kind);
+                    const { Icon, label } = getRightDockPaneMeta(kind, paneCopy.kinds);
                     return (
                       <MenuItem key={kind} onClick={() => props.onAddPane(kind)}>
                         <Icon className="size-3.5 shrink-0" />
@@ -281,8 +284,8 @@ export function RightDock(props: RightDockProps) {
             <IconButton
               variant="chrome"
               size="icon-xs"
-              label="Collapse panel"
-              tooltip="Collapse panel"
+              label={paneCopy.collapsePanel}
+              tooltip={paneCopy.collapsePanel}
               tooltipSide="bottom"
               className={DOCK_HEADER_ICON_BUTTON_CLASS}
               onClick={props.onCollapse}

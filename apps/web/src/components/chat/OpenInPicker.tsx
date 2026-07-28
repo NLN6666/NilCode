@@ -26,6 +26,7 @@ import {
   CHAT_HEADER_SPLIT_LEADING_CLASS_NAME,
   CHAT_HEADER_SPLIT_TRAILING_CLASS_NAME,
 } from "./chatHeaderControls";
+import { useMessages } from "~/i18n/context";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const EMPTY_AVAILABLE_EDITORS: ReadonlyArray<EditorId> = [];
@@ -34,7 +35,7 @@ export function OpenInPicker({
   keybindings: keybindingsProp,
   availableEditors: availableEditorsProp,
   openInTarget,
-  labelMode = "responsive",
+  labelMode: labelModeProp,
   defaultEditor,
 }: {
   // Editor config is optional: callers that already hold it (e.g. the chat
@@ -54,6 +55,8 @@ export function OpenInPicker({
   // to the OS viewer (e.g. Preview) while still listing installed editors.
   defaultEditor?: EditorId;
 }) {
+  const copy = useMessages().chat.openIn;
+  const labelMode = labelModeProp ?? "responsive";
   // Only subscribe to the config query when the caller did not supply config.
   const needsConfig = keybindingsProp === undefined || availableEditorsProp === undefined;
   const serverConfigQuery = useQuery({ ...serverConfigQueryOptions(), enabled: needsConfig });
@@ -71,7 +74,7 @@ export function OpenInPicker({
   } = useEditorLaunchers({ keybindings, availableEditors, openInTarget, defaultEditor });
 
   return (
-    <ChatHeaderSplitGroup label="Open in editor">
+    <ChatHeaderSplitGroup label={copy.group}>
       <ChatHeaderButton
         tone="outline"
         className={CHAT_HEADER_SPLIT_LEADING_CLASS_NAME}
@@ -87,7 +90,7 @@ export function OpenInPicker({
               : "sr-only @sm/header-actions:not-sr-only @sm/header-actions:ml-0.5",
           )}
         >
-          Open
+          {copy.open}
         </span>
       </ChatHeaderButton>
       <ChatHeaderSplitDivider />
@@ -95,7 +98,7 @@ export function OpenInPicker({
         <MenuTrigger
           render={
             <ChatHeaderIconButton
-              label="Editor options"
+              label={copy.options}
               tone="outline"
               className={CHAT_HEADER_SPLIT_TRAILING_CLASS_NAME}
             />
@@ -104,7 +107,7 @@ export function OpenInPicker({
           <ChevronDownIcon aria-hidden="true" className="size-3.5" />
         </MenuTrigger>
         <ComposerPickerMenuPopup align="end" side="bottom" className="w-44 min-w-44">
-          {options.length === 0 && <MenuItem disabled>No installed editors found</MenuItem>}
+          {options.length === 0 && <MenuItem disabled>{copy.noEditors}</MenuItem>}
           <MenuRadioGroup
             value={preferredEditor ?? ""}
             onValueChange={(value) => setDefaultEditor(value as EditorId)}

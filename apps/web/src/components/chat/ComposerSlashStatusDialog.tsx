@@ -18,29 +18,35 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { ContextWindowMeter } from "./ContextWindowMeter";
+import { useMessages } from "~/i18n/context";
+import type { Messages } from "~/i18n/locales/en";
 
-function formatRateLimitMessage(rateLimitStatus: RateLimitStatus): string {
+function formatRateLimitMessage(
+  rateLimitStatus: RateLimitStatus,
+  copy: Messages["composer"]["status"],
+): string {
   const resetSuffix = rateLimitStatus.resetsAt
-    ? ` Resets at ${new Date(rateLimitStatus.resetsAt).toLocaleTimeString()}.`
+    ? copy.rateLimitResetsAt(new Date(rateLimitStatus.resetsAt).toLocaleTimeString())
     : "";
   if (rateLimitStatus.status === "rejected") {
-    return `Rate limit reached.${resetSuffix}`;
+    return `${copy.rateLimitReached}${resetSuffix}`;
   }
-  const utilizationSuffix =
+  const utilization =
     typeof rateLimitStatus.utilization === "number"
-      ? ` (${Math.round(rateLimitStatus.utilization * 100)}% used)`
-      : "";
-  return `Approaching rate limit${utilizationSuffix}.${resetSuffix}`;
+      ? `${Math.round(rateLimitStatus.utilization * 100)}%`
+      : null;
+  return `${copy.rateLimitApproaching(utilization)}${resetSuffix}`;
 }
 
 function formatEnvironmentLabel(
   envMode: DraftThreadEnvMode,
   envState: ResolvedThreadWorkspaceState,
+  copy: Messages["composer"]["status"],
 ): string {
   if (envMode === "local") {
-    return "Local";
+    return copy.envLocal;
   }
-  return envState === "worktree-pending" ? "New worktree (pending)" : "Worktree";
+  return envState === "worktree-pending" ? copy.envWorktreePending : copy.envWorktree;
 }
 
 export function ComposerSlashStatusDialog(props: {
@@ -59,6 +65,7 @@ export function ComposerSlashStatusDialog(props: {
   activeContextWindowLabel?: string | null;
   pendingContextWindowLabel?: string | null;
 }) {
+  const copy = useMessages().composer.status;
   const {
     open,
     onOpenChange,
@@ -80,54 +87,54 @@ export function ComposerSlashStatusDialog(props: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>Session Status</DialogTitle>
-          <DialogDescription>
-            Runtime controls and local thread state for the active composer.
-          </DialogDescription>
+          <DialogTitle>{copy.title}</DialogTitle>
+          <DialogDescription>{copy.description}</DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-4">
           <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/20 p-4 text-sm sm:grid-cols-2">
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Model</p>
+              <p className="text-xs text-muted-foreground">{copy.model}</p>
               <p className="font-medium text-foreground">{selectedModel}</p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Fast Mode</p>
-              <p className="font-medium text-foreground">{fastModeEnabled ? "On" : "Off"}</p>
+              <p className="text-xs text-muted-foreground">{copy.fastMode}</p>
+              <p className="font-medium text-foreground">{fastModeEnabled ? copy.on : copy.off}</p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Reasoning</p>
-              <p className="font-medium text-foreground">{selectedPromptEffort ?? "Default"}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Mode</p>
+              <p className="text-xs text-muted-foreground">{copy.reasoning}</p>
               <p className="font-medium text-foreground">
-                {interactionMode === "plan" ? "Plan" : "Default"}
+                {selectedPromptEffort ?? copy.defaultEffort}
               </p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Environment</p>
+              <p className="text-xs text-muted-foreground">{copy.mode}</p>
               <p className="font-medium text-foreground">
-                {formatEnvironmentLabel(envMode, envState)}
+                {interactionMode === "plan" ? copy.planMode : copy.defaultMode}
               </p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Branch</p>
-              <p className="font-medium text-foreground">{branch ?? "Unknown"}</p>
+              <p className="text-xs text-muted-foreground">{copy.environment}</p>
+              <p className="font-medium text-foreground">
+                {formatEnvironmentLabel(envMode, envState, copy)}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">{copy.branch}</p>
+              <p className="font-medium text-foreground">{branch ?? copy.unknown}</p>
             </div>
           </div>
 
           <div className="space-y-3 rounded-lg border border-border/60 bg-card p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs text-muted-foreground">Context Window</p>
-                <p className="text-sm text-muted-foreground">
-                  Latest usage reported by the active thread.
-                </p>
+                <p className="text-xs text-muted-foreground">{copy.contextWindow}</p>
+                <p className="text-sm text-muted-foreground">{copy.contextWindowHint}</p>
                 {pendingContextWindowLabel ? (
                   <p className="text-sm text-muted-foreground">
-                    Current session: {activeContextWindowLabel ?? "Unknown"}. Next turn:{" "}
-                    {pendingContextWindowLabel}.
+                    {copy.sessionWindows(
+                      activeContextWindowLabel ?? copy.unknown,
+                      pendingContextWindowLabel,
+                    )}
                   </p>
                 ) : null}
               </div>
@@ -143,53 +150,51 @@ export function ComposerSlashStatusDialog(props: {
             {contextWindow ? (
               <div className="grid gap-3 text-sm sm:grid-cols-2">
                 <div>
-                  <p className="text-muted-foreground">Used</p>
+                  <p className="text-muted-foreground">{copy.used}</p>
                   <p className="font-medium text-foreground">
                     {formatContextWindowTokens(contextWindow.usedTokens)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Remaining</p>
+                  <p className="text-muted-foreground">{copy.remaining}</p>
                   <p className="font-medium text-foreground">
                     {formatContextWindowTokens(contextWindow.remainingTokens)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Window</p>
+                  <p className="text-muted-foreground">{copy.window}</p>
                   <p className="font-medium text-foreground">
                     {formatContextWindowTokens(contextWindow.maxTokens)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Cost</p>
+                  <p className="text-muted-foreground">{copy.cost}</p>
                   <p className="font-medium text-foreground">
                     {cumulativeCostUsd !== null
                       ? formatCostUsd(cumulativeCostUsd)
-                      : "Not available"}
+                      : copy.costUnavailable}
                   </p>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                Context usage has not been reported yet for this thread.
-              </p>
+              <p className="text-sm text-muted-foreground">{copy.noContextUsage}</p>
             )}
           </div>
 
           <div className="space-y-2 rounded-lg border border-border/60 bg-card p-4">
-            <p className="text-xs text-muted-foreground">Rate Limits</p>
+            <p className="text-xs text-muted-foreground">{copy.rateLimits}</p>
             {rateLimitStatus ? (
-              <p className="text-sm text-foreground">{formatRateLimitMessage(rateLimitStatus)}</p>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                No active rate-limit warning for this thread.
+              <p className="text-sm text-foreground">
+                {formatRateLimitMessage(rateLimitStatus, copy)}
               </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">{copy.noRateLimitWarning}</p>
             )}
           </div>
         </DialogPanel>
         <DialogFooter variant="bare">
           <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
-            Close
+            {copy.close}
           </Button>
         </DialogFooter>
       </DialogPopup>

@@ -23,6 +23,7 @@ import {
   type ShortcutSheetSection,
 } from "../shortcutsSheet";
 import type { ProjectScript } from "../types";
+import { useMessages } from "~/i18n/context";
 
 export default function ShortcutsDialog(props: {
   open: boolean;
@@ -55,6 +56,7 @@ function ShortcutsDialogContent(props: {
   platform: string;
   context: ShortcutSheetContext;
 }) {
+  const copy = useMessages().dialogs.shortcuts;
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -81,16 +83,14 @@ function ShortcutsDialogContent(props: {
   return (
     <>
       <DialogHeader className="pb-2">
-        <DialogTitle className="text-base">Keyboard shortcuts</DialogTitle>
-        <DialogDescription className="text-xs">
-          Reflects the bindings active in your current context.
-        </DialogDescription>
+        <DialogTitle className="text-base">{copy.title}</DialogTitle>
+        <DialogDescription className="text-xs">{copy.description}</DialogDescription>
         <div className="pt-2">
           <Input
             ref={inputRef}
             type="search"
             size="sm"
-            placeholder="Search shortcuts..."
+            placeholder={copy.searchPlaceholder}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -102,7 +102,7 @@ function ShortcutsDialogContent(props: {
             }}
             className="rounded-md"
             nativeInput
-            aria-label="Search shortcuts"
+            aria-label={copy.searchLabel}
           />
         </div>
       </DialogHeader>
@@ -116,7 +116,7 @@ function ShortcutsDialogContent(props: {
           </div>
         ) : (
           <div className="px-6 py-10 text-center text-sm text-muted-foreground">
-            No shortcuts match &ldquo;{query}&rdquo;.
+            {copy.noMatches(query)}
           </div>
         )}
       </DialogPanel>

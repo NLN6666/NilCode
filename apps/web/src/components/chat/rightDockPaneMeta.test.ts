@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "~/i18n/locales/en";
 import { RIGHT_DOCK_PANE_KINDS } from "~/rightDockStore.logic";
 import { RIGHT_DOCK_ADD_MENU_KINDS, getRightDockPaneMeta } from "./rightDockPaneMeta";
 
@@ -17,7 +18,14 @@ describe("RIGHT_DOCK_ADD_MENU_KINDS", () => {
     );
   });
 
-  it("labels the explorer pane", () => {
-    expect(getRightDockPaneMeta("explorer").label).toBe("Explorer");
+  it("labels a pane from the active catalog", () => {
+    const labels = en.chat.panes.kinds;
+    expect(getRightDockPaneMeta("explorer", labels).label).toBe("Explorer");
+  });
+
+  it("falls back to a neutral label for a kind the catalog does not know", () => {
+    const labels = en.chat.panes.kinds;
+    // Stale persisted dock state can name a kind that no longer exists.
+    expect(getRightDockPaneMeta("legacy-pane" as never, labels).label).toBe(labels.fallback);
   });
 });

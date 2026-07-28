@@ -21,6 +21,7 @@ import { Menu, MenuItem, MenuTrigger } from "../ui/menu";
 import { CHAT_SURFACE_HEADER_DIVIDER_CLASS_NAME, ChatHeaderIconButton } from "./chatHeaderControls";
 import { ComposerPickerMenuPopup } from "./ComposerPickerMenuPopup";
 import { OpenInPicker } from "./OpenInPicker";
+import { useMessages } from "~/i18n/context";
 
 interface WorkspaceFilePreviewHeaderProps {
   workspaceRoot: string | null;
@@ -58,6 +59,7 @@ const MARKDOWN_VIEW_SEGMENTS = [
 export const WorkspaceFilePreviewHeader = function WorkspaceFilePreviewHeader(
   props: WorkspaceFilePreviewHeaderProps,
 ) {
+  const copy = useMessages().chat.filePreview;
   const { filePath, workspaceRoot } = props;
 
   // Out-of-workspace previews (e.g. a session's scratch directory under the
@@ -101,7 +103,7 @@ export const WorkspaceFilePreviewHeader = function WorkspaceFilePreviewHeader(
       )}
     >
       <nav
-        aria-label="File path"
+        aria-label={copy.filePath}
         className="flex min-w-0 flex-1 items-center text-[12px] leading-none"
       >
         {/* Dir prefix shrinks far faster than the filename (shrink-[9999]), so under
@@ -127,7 +129,7 @@ export const WorkspaceFilePreviewHeader = function WorkspaceFilePreviewHeader(
 
       {props.truncated ? (
         <span className="hidden shrink-0 text-[10px] text-muted-foreground/70 @sm/header-actions:inline">
-          Shown partially
+          {copy.shownPartially}
         </span>
       ) : null}
 
@@ -135,7 +137,7 @@ export const WorkspaceFilePreviewHeader = function WorkspaceFilePreviewHeader(
         {props.isMarkdown ? (
           <div
             role="radiogroup"
-            aria-label="Markdown view"
+            aria-label={copy.markdownView}
             className="flex h-7 shrink-0 items-center rounded-lg bg-[var(--color-background-elevated-secondary)] p-0.5"
           >
             {MARKDOWN_VIEW_SEGMENTS.map((segment) => {
@@ -167,15 +169,15 @@ export const WorkspaceFilePreviewHeader = function WorkspaceFilePreviewHeader(
 
         {hasChatActions ? (
           <Menu>
-            <MenuTrigger render={<ChatHeaderIconButton label="More actions" tone="plain" />}>
+            <MenuTrigger render={<ChatHeaderIconButton label={copy.moreActions} tone="plain" />}>
               <EllipsisIcon aria-hidden="true" className="size-3.5" />
             </MenuTrigger>
             <ComposerPickerMenuPopup align="end" side="bottom" className="w-52 min-w-52">
               {onReferenceInChat ? (
-                <MenuItem onClick={referenceWholeFile}>Reference in chat</MenuItem>
+                <MenuItem onClick={referenceWholeFile}>{copy.referenceInChat}</MenuItem>
               ) : null}
               {onAskWhyInChat ? (
-                <MenuItem onClick={askWhyWholeFile}>Ask why this changed</MenuItem>
+                <MenuItem onClick={askWhyWholeFile}>{copy.askWhyChanged}</MenuItem>
               ) : null}
             </ComposerPickerMenuPopup>
           </Menu>

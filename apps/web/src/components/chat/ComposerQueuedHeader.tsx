@@ -7,6 +7,7 @@
 // Exports: ComposerQueuedHeader
 
 import type { QueuedComposerTurn } from "../../composerDraftStore";
+import { useMessages } from "~/i18n/context";
 import { SteerIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import ChatMarkdown from "../ChatMarkdown";
@@ -37,13 +38,16 @@ function firstNonEmptyLine(value: string): string {
 // Queue previews use the shared markdown renderer for inline chips/emphasis, but
 // must stay a single composer row even when the queued prompt is a heading, list,
 // or fenced code block.
-export function compactQueuedComposerPreviewMarkdown(value: string): string {
+export function compactQueuedComposerPreviewMarkdown(
+  value: string,
+  fallbacks: { defaultTitle: string; codeBlock: string },
+): string {
   const firstLine = firstNonEmptyLine(value);
   if (firstLine.length === 0) {
-    return "Queued follow-up";
+    return fallbacks.defaultTitle;
   }
   if (/^(?:`{3,}|~{3,})/.test(firstLine)) {
-    return "Code block";
+    return fallbacks.codeBlock;
   }
   const normalized = firstLine
     .replace(/^#{1,6}\s+/, "")
@@ -52,7 +56,7 @@ export function compactQueuedComposerPreviewMarkdown(value: string): string {
     .replace(/^[-*+]\s+/, "")
     .replace(/^\d+[.)]\s+/, "")
     .trim();
-  return normalized.length > 0 ? normalized : "Queued follow-up";
+  return normalized.length > 0 ? normalized : fallbacks.defaultTitle;
 }
 
 interface ComposerQueuedHeaderProps {
@@ -71,8 +75,10 @@ export const ComposerQueuedHeader = function ComposerQueuedHeader({
   onRemove,
   onEdit,
   cwd,
-  attachedToPrevious = false,
+  attachedToPrevious: attachedToPreviousProp,
 }: ComposerQueuedHeaderProps) {
+  const copy = useMessages().composer.queued;
+  const attachedToPrevious = attachedToPreviousProp ?? false;
   if (queuedTurns.length === 0) {
     return null;
   }
@@ -89,7 +95,7 @@ export const ComposerQueuedHeader = function ComposerQueuedHeader({
           <ComposerStackedPanelRowMain>
             <SteerIcon className={COMPOSER_STACKED_PANEL_ICON_CLASS_NAME} />
             <ChatMarkdown
-              text={compactQueuedComposerPreviewMarkdown(queuedTurn.previewText)}
+              text={compactQueuedComposerPreviewMarkdown(queuedTurn.previewText, copy)}
               cwd={cwd}
               isStreaming={false}
               className={COMPOSER_STACKED_PANEL_PREVIEW_MARKDOWN_CLASS_NAME}

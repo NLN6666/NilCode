@@ -15,6 +15,7 @@ import {
   type ProviderKind,
   type UploadChatAttachment,
 } from "@synara/contracts";
+import { composer as defaultComposerCopy } from "~/i18n/locales/en/composer";
 import {
   ATTACHMENT_CANCEL_ROUTE_PATH,
   ATTACHMENT_UPLOAD_ROUTE_PATH,
@@ -146,12 +147,18 @@ export function buildComposerFileAttachmentsFromFiles(input: {
 
 // Draft persistence and previews still need a local data URL. Network sends use
 // the bounded binary upload path below and never place this value on RPC.
-export function readFileAsDataUrl(file: File): Promise<string> {
+/** The `composer.attachments` catalog group; defaults to English for non-React callers. */
+type AttachmentCopy = (typeof defaultComposerCopy)["attachments"];
+
+export function readFileAsDataUrl(
+  file: File,
+  copy: AttachmentCopy = defaultComposerCopy.attachments,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.addEventListener("load", () => {
       if (typeof reader.result === "string") resolve(reader.result);
-      else reject(new Error("Could not read attachment data."));
+      else reject(new Error(copy.readFailed));
     });
     reader.addEventListener("error", () => {
       const nativeMessage =
@@ -162,14 +169,10 @@ export function readFileAsDataUrl(file: File): Promise<string> {
         nativeMessage &&
         /could not be found at the time an operation was processed/i.test(nativeMessage)
       ) {
-        reject(
-          new Error(
-            `Could not read '${file.name || "item"}'. Paths with spaces or special characters may need a path mention (@\"…\") instead of a file attachment.`,
-          ),
-        );
+        reject(new Error(copy.pathProblem(file.name || copy.unnamedItem)));
         return;
       }
-      reject(reader.error ?? new Error("Failed to read attachment."));
+      reject(reader.error ?? new Error(copy.readError));
     });
     reader.readAsDataURL(file);
   });

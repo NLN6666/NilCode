@@ -142,12 +142,12 @@ import {
   disclosureContentClassName,
 } from "~/lib/disclosureMotion";
 import { getAppTypographyScale } from "../../lib/appTypography";
-import type { SubagentToolTrace } from "./subagentToolTrace.logic";
 import {
   USER_MESSAGE_COLLAPSED_FADE_LINES,
   USER_MESSAGE_COLLAPSED_MAX_LINES,
   userMessageLikelyOverflows,
 } from "./userMessageCollapse";
+import { useMessages } from "~/i18n/context";
 import { observeUserMessageOverflow } from "./userMessageOverflowObserver";
 import {
   resolveActiveTrailSnapshot,
@@ -180,6 +180,30 @@ const ACTIVE_MARKER_CLASS_NAME = "thread-marker-active";
 const EMPTY_MESSAGE_MARKERS: readonly ThreadMarker[] = [];
 const EMPTY_THREAD_MARKERS_BY_MESSAGE_ID = new Map<MessageId, readonly ThreadMarker[]>();
 const EMPTY_MESSAGE_ID_SET: ReadonlySet<MessageId> = new Set();
+
+// Imperative LegendList access goes through these module-level helpers instead of
+// inline `ref.current` reads. The timeline's list ref is `listRef ?? fallbackListRef`,
+// which React Compiler cannot recognize as a ref, so an inline `.current` read makes it
+// infer a `ref.current` dependency that no manual dep array can declare — and the whole
+// component bails out with "Existing memoization could not be preserved". Behind an
+// opaque module-level call the inferred dependency is the ref object itself, matching the
+// hand-written dep arrays. See MessagesTimeline.compiler.test.ts.
+function scrollLegendListToEnd(listRef: RefObject<LegendListRef | null>): void {
+  void listRef.current?.scrollToEnd?.({ animated: false });
+}
+
+function scrollLegendListToIndex(
+  listRef: RefObject<LegendListRef | null>,
+  params: Parameters<LegendListRef["scrollToIndex"]>[0],
+): void {
+  void listRef.current?.scrollToIndex(params);
+}
+
+function readLegendListState(
+  listRef: RefObject<LegendListRef | null>,
+): ReturnType<NonNullable<LegendListRef["getState"]>> | undefined {
+  return listRef.current?.getState?.();
+}
 
 /**
  * Imperative handle the transcript exposes so the Environment panel's pinned-message
@@ -286,12 +310,13 @@ function WorktreeSetupStepGlyph({ status }: { status: WorktreeSetupStep["status"
 // git-branch header and a connected stepper. Hugs its content so it reads as a
 // status chip rather than a full-width block.
 function WorktreeSetupCard({ steps }: { steps: ReadonlyArray<WorktreeSetupStep> }) {
+  const m = useMessages();
   return (
     <div className="w-fit max-w-full rounded-xl border border-[color:var(--color-border-light)] bg-[var(--color-background-elevated-primary)] px-3.5 py-3 font-system-ui shadow-xs">
       <div className="flex items-center gap-2">
         <WorktreeIcon className="size-3.5 shrink-0 text-[var(--color-text-foreground-tertiary)]" />
         <span className="shimmer text-[13px] font-medium text-[var(--color-text-foreground-secondary)]">
-          Preparing worktree...
+          {m.chat.timeline.preparingWorktree}
         </span>
       </div>
       <ol className="mt-2 flex flex-col">
@@ -368,8 +393,6 @@ interface MessagesTimelineProps {
   onOpenThread?: (threadId: ThreadId) => void;
   /** Open an automation's detail page from a "created automation" transcript card. */
   onOpenAutomation?: (automationId: string) => void;
-  /** Recent child-thread tool calls rendered under subagent rows, keyed by child thread id. */
-  subagentToolTraceByThreadId?: ReadonlyMap<string, SubagentToolTrace>;
   revertTurnCountByUserMessageId: Map<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
   onUndoTurnFiles?: (turnCounts: readonly number[]) => void;
@@ -408,16 +431,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   isWorking,
   activeTurnInProgress,
   activeTurnStartedAt,
-  worktreeSetup = null,
-  followLiveOutput = false,
+  worktreeSetup: worktreeSetupProp,
+  followLiveOutput: followLiveOutputProp,
   listRef,
   controllerRef,
   pinnedMessageIds,
   canPinMessage,
   onTogglePinMessage,
-  threadMarkers = [],
-  enteringUserMessageIds = EMPTY_MESSAGE_ID_SET,
-  crossTaskOrigin = null,
+  threadMarkers: threadMarkersProp,
+  enteringUserMessageIds: enteringUserMessageIdsProp,
+  crossTaskOrigin: crossTaskOriginProp,
   timelineEntries,
   turnDiffSummaryByAssistantMessageId,
   nowIso,
@@ -427,7 +450,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenTurnDiff,
   onOpenThread,
   onOpenAutomation,
-  subagentToolTraceByThreadId,
   revertTurnCountByUserMessageId,
   onRevertUserMessage,
   onUndoTurnFiles,
@@ -449,13 +471,25 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onMessagesWheel,
   markdownCwd,
   resolvedTheme,
-  chatFontSizePx = DEFAULT_CHAT_FONT_SIZE_PX,
+  chatFontSizePx: chatFontSizePxProp,
   timestampFormat,
   workspaceRoot,
   emptyStateContent,
   contentInsetRightPx,
 }: MessagesTimelineProps) {
-  const normalizedChatFontSizePx = normalizeChatFontSizePx(chatFontSizePx);
+  const m = useMessages();
+  // Prop defaults are resolved in the body rather than in the destructuring pattern:
+  // an `AssignmentPattern` in the parameter list makes React Compiler bail out on the
+  // entire component (silently, since `panicThreshold` is unset), which would drop
+  // memoization for the whole transcript. See MessagesTimeline.compiler.test.ts.
+  const worktreeSetup = worktreeSetupProp ?? null;
+  const followLiveOutput = followLiveOutputProp ?? false;
+  const threadMarkers = threadMarkersProp ?? EMPTY_MESSAGE_MARKERS;
+  const enteringUserMessageIds = enteringUserMessageIdsProp ?? EMPTY_MESSAGE_ID_SET;
+  const crossTaskOrigin = crossTaskOriginProp ?? null;
+  const normalizedChatFontSizePx = normalizeChatFontSizePx(
+    chatFontSizePxProp ?? DEFAULT_CHAT_FONT_SIZE_PX,
+  );
   // Inset rows from the right (overriding the gutter's right padding) without moving the
   // scroll viewport, so the scrollbar stays pinned to the far right while content clears
   // any right-edge overlay. Kept stable so LegendList isn't re-rendered on unrelated updates.
@@ -681,7 +715,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       if (index < 0) {
         return false;
       }
-      void resolvedListRef.current?.scrollToIndex({
+      scrollLegendListToIndex(resolvedListRef, {
         index,
         animated: true,
         viewPosition: 0.2,
@@ -770,13 +804,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     tailScrollTimeoutsRef.current = [];
   }, []);
-  // Manual memoization kept: the main timeline component does not compile
-  // under React Compiler (props-default destructuring bailout), so these
-  // identities must be stabilized by hand.
   const scrollTailExpansionToEnd = useCallback(() => {
     clearTailExpansionScrollTimers();
     const scrollToEnd = () => {
-      void resolvedListRef.current?.scrollToEnd?.({ animated: false });
+      scrollLegendListToEnd(resolvedListRef);
     };
     tailScrollFrameRef.current = window.requestAnimationFrame(() => {
       tailScrollFrameRef.current = null;
@@ -806,7 +837,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     onIsAtEndChange?.(true);
     const frameId = window.requestAnimationFrame(() => {
-      void resolvedListRef.current?.scrollToEnd?.({ animated: false });
+      scrollLegendListToEnd(resolvedListRef);
     });
     return () => {
       window.cancelAnimationFrame(frameId);
@@ -842,7 +873,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const handleListScroll = useCallback<NonNullable<MessagesTimelineProps["onMessagesScroll"]>>(
     (event) => {
       onMessagesScroll?.(event);
-      const state = resolvedListRef.current?.getState?.();
+      const state = readLegendListState(resolvedListRef);
       if (state) {
         onIsAtEndChange?.(state.isAtEnd);
         emitTrailHighlightsForViewport(state.start, state.end);
@@ -871,7 +902,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       return;
     }
     const frameId = window.requestAnimationFrame(() => {
-      const state = resolvedListRef.current?.getState?.();
+      const state = readLegendListState(resolvedListRef);
       if (state) {
         emitTrailHighlightsForViewport(state.start, state.end);
       }
@@ -928,11 +959,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       className={cn(
         CHAT_COLUMN_FRAME_CLASS_NAME,
         "px-1 transition-colors duration-500",
-        row.kind === "work" ||
-          row.kind === "working-header" ||
-          (row.kind === "message" && row.message.role === "assistant")
-          ? "pb-2"
-          : "pb-4",
+        row.kind === "working" ||
+          (row.kind === "message" &&
+            row.message.role === "assistant" &&
+            row.assistantTurnInProgress)
+          ? "pb-1"
+          : row.kind === "work" ||
+              row.kind === "working-header" ||
+              (row.kind === "message" && row.message.role === "assistant")
+            ? "pb-2"
+            : "pb-4",
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
         row.kind === "message" && row.message.id === highlightedMessageId
           ? "rounded-xl bg-[var(--color-background-elevated-secondary)]"
@@ -963,10 +999,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               density={prefersCompactWorkEntryRow(workEntry) ? "compact" : "default"}
               markdownCwd={markdownCwd}
               onImageExpand={onImageExpand}
+              timestampFormat={timestampFormat}
               {...(onOpenAgentActivity ? { onOpenAgentActivity } : {})}
-              {...(onOpenThread ? { onOpenThread } : {})}
               {...(onOpenAutomation ? { onOpenAutomation } : {})}
-              {...(subagentToolTraceByThreadId ? { subagentToolTraceByThreadId } : {})}
             />
           );
           const isLiveGroup =
@@ -1254,8 +1289,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         )}
                         {showEditUserMessage && (
                           <MessageActionButton
-                            label="Edit message"
-                            tooltip="Edit and resend"
+                            label={m.chat.timeline.editMessage}
+                            tooltip={m.chat.timeline.editAndResend}
                             disabled={isRevertingCheckpoint}
                             className={cn(
                               MESSAGE_HOVER_REVEAL_CLASS_NAME,
@@ -1268,8 +1303,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         )}
                         {canRevertAgentWork ? (
                           <MessageActionButton
-                            label="Revert to this message"
-                            tooltip="Revert to this message"
+                            label={m.chat.timeline.revertToMessage}
+                            tooltip={m.chat.timeline.revertToMessage}
                             disabled={isRevertingCheckpoint || isWorking}
                             className={cn(
                               MESSAGE_HOVER_REVEAL_CLASS_NAME,
@@ -1374,7 +1409,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           // so a live turn reads as one block, not a stack of timestamped
           // fragments. `showAssistantCopyButton` is exactly the terminal-message
           // signal (see deriveTerminalAssistantMessageIds).
-          const isTerminalAssistantMessage = row.showAssistantCopyButton;
+          const isTerminalAssistantMessage =
+            row.showAssistantCopyButton && !row.assistantTurnInProgress;
           const assistantMeta = [
             isTerminalAssistantMessage
               ? formatShortTimestamp(row.message.createdAt, timestampFormat)
@@ -1424,10 +1460,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 markdownCwd={markdownCwd}
                 onImageExpand={onImageExpand}
                 onOpenTurnDiff={onOpenTurnDiff}
+                timestampFormat={timestampFormat}
                 {...(onOpenAgentActivity ? { onOpenAgentActivity } : {})}
-                {...(onOpenThread ? { onOpenThread } : {})}
                 {...(onOpenAutomation ? { onOpenAutomation } : {})}
-                {...(subagentToolTraceByThreadId ? { subagentToolTraceByThreadId } : {})}
                 {...(turnSummary?.turnId ? { turnId: turnSummary.turnId } : {})}
               />
             );
@@ -1526,7 +1561,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     </div>
                   )}
                 {!hasCollapsedWork && display.statusEntries.length > 0 && (
-                  <div className={cn("space-y-0.5", placement === "leading" ? "mb-2" : "mt-2")}>
+                  <div
+                    className={cn(
+                      "space-y-0.5",
+                      placement === "leading"
+                        ? row.assistantTurnInProgress
+                          ? "mb-0.5"
+                          : "mb-2"
+                        : "mt-2",
+                    )}
+                  >
                     {display.statusEntries.map((workEntry) => (
                       <TimelineWorkEntryRow
                         key={`${placement}-status-row:${row.message.id}:${workEntry.id}`}
@@ -1536,10 +1580,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         density={prefersCompactWorkEntryRow(workEntry) ? "compact" : "default"}
                         markdownCwd={markdownCwd}
                         onImageExpand={onImageExpand}
+                        timestampFormat={timestampFormat}
                         {...(onOpenAgentActivity ? { onOpenAgentActivity } : {})}
-                        {...(onOpenThread ? { onOpenThread } : {})}
                         {...(onOpenAutomation ? { onOpenAutomation } : {})}
-                        {...(subagentToolTraceByThreadId ? { subagentToolTraceByThreadId } : {})}
                       />
                     ))}
                   </div>
@@ -1557,10 +1600,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 density={prefersCompactWorkEntryRow(item.entry) ? "compact" : "default"}
                 markdownCwd={markdownCwd}
                 onImageExpand={onImageExpand}
+                timestampFormat={timestampFormat}
                 {...(onOpenAgentActivity ? { onOpenAgentActivity } : {})}
-                {...(onOpenThread ? { onOpenThread } : {})}
                 {...(onOpenAutomation ? { onOpenAutomation } : {})}
-                {...(subagentToolTraceByThreadId ? { subagentToolTraceByThreadId } : {})}
               />
             ) : (
               <div
@@ -1796,42 +1838,46 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   const renderCheckpointFileRow = (
                     file: (typeof checkpointFiles)[number],
                     withFirstReset: boolean,
-                  ) => (
-                    <button
-                      key={file.path}
-                      type="button"
-                      className={cn(
-                        "group/file-row flex w-full items-center gap-2 border-t border-[color:var(--color-border-light)] bg-transparent px-3 py-2.5 text-left transition-colors hover:bg-[var(--color-background-button-secondary-hover)] dark:bg-transparent dark:hover:bg-transparent",
-                        withFirstReset && "first:border-t-0",
-                      )}
-                      onClick={() => onOpenTurnDiff(turnSummary.turnId, file.path)}
-                    >
-                      <FileEntryIcon
-                        pathValue={file.path}
-                        kind="file"
-                        theme={resolvedTheme}
-                        colorMode="inherit"
-                        className="size-4 shrink-0 text-[var(--color-text-foreground)] opacity-70 dark:opacity-80"
-                      />
-                      <span
-                        className="font-system-ui truncate font-normal text-[var(--color-text-foreground)] underline-offset-2 group-hover/file-row:underline group-focus-visible/file-row:underline"
-                        style={{ fontSize: chatTypographyStyle.fontSize }}
+                  ) => {
+                    // Hoisted out of JSX: a `??` inside an `&&` test makes React Compiler
+                    // bail out ("Unexpected terminal kind `logical` for logical test block").
+                    const additions = file.additions ?? 0;
+                    const deletions = file.deletions ?? 0;
+                    const hasDiffStat = additions + deletions > 0;
+                    return (
+                      <button
+                        key={file.path}
+                        type="button"
+                        className={cn(
+                          "group/file-row flex w-full items-center gap-2 border-t border-[color:var(--color-border-light)] bg-transparent px-3 py-2.5 text-left transition-colors hover:bg-[var(--color-background-button-secondary-hover)] dark:bg-transparent dark:hover:bg-transparent",
+                          withFirstReset && "first:border-t-0",
+                        )}
+                        onClick={() => onOpenTurnDiff(turnSummary.turnId, file.path)}
                       >
-                        {file.path}
-                      </span>
-                      {(file.additions ?? 0) + (file.deletions ?? 0) > 0 && (
+                        <FileEntryIcon
+                          pathValue={file.path}
+                          kind="file"
+                          theme={resolvedTheme}
+                          colorMode="inherit"
+                          className="size-4 shrink-0 text-[var(--color-text-foreground)] opacity-70 dark:opacity-80"
+                        />
                         <span
-                          className="font-system-ui ml-auto shrink-0 tabular-nums"
+                          className="font-system-ui truncate font-normal text-[var(--color-text-foreground)] underline-offset-2 group-hover/file-row:underline group-focus-visible/file-row:underline"
                           style={{ fontSize: chatTypographyStyle.fontSize }}
                         >
-                          <DiffStatLabel
-                            additions={file.additions ?? 0}
-                            deletions={file.deletions ?? 0}
-                          />
+                          {file.path}
                         </span>
-                      )}
-                    </button>
-                  );
+                        {hasDiffStat && (
+                          <span
+                            className="font-system-ui ml-auto shrink-0 tabular-nums"
+                            style={{ fontSize: chatTypographyStyle.fontSize }}
+                          >
+                            <DiffStatLabel additions={additions} deletions={deletions} />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  };
                   return (
                     <div className="mt-1 mb-4 overflow-hidden rounded-[0.65rem] border border-[color:var(--color-border-light)] dark:border-[color:color-mix(in_srgb,var(--color-border-light)_55%,transparent)]">
                       <div
@@ -1871,7 +1917,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                               style={{ fontSize: chatTypographyStyle.fontSize }}
                               onClick={() => onUndoTurnFiles(checkpointTurnCounts)}
                             >
-                              Undo
+                              {m.chat.timeline.undo}
                               <Undo2Icon className="size-3" />
                             </button>
                           )}
@@ -1962,7 +2008,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             className="-ml-0.5 pb-2 text-muted-foreground/70"
             style={{ fontSize: chatTypographyStyle.fontSize }}
           >
-            Working for{" "}
+            {m.chat.timeline.workingFor}{" "}
             {nowIso ? (
               (formatClockElapsed(row.createdAt, nowIso) ?? "0s")
             ) : (
@@ -1978,7 +2024,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           className="shimmer pt-0.5 text-muted-foreground/70 font-system-ui"
           style={{ fontSize: `${appTypographyScale.chatPx}px` }}
         >
-          Thinking
+          {m.chat.timeline.thinking}
         </div>
       )}
 
@@ -2001,9 +2047,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground/30">
-          Send a message to start the conversation.
-        </p>
+        <p className="text-sm text-muted-foreground/30">{m.chat.timeline.emptyConversation}</p>
       </div>
     );
   }
@@ -2573,6 +2617,7 @@ const UserMessageEditForm = memo(function UserMessageEditForm(props: {
   onCancel: () => void;
   onSubmit: (value: string) => void;
 }) {
+  const m = useMessages();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraft] = useState(props.initialValue);
   const canSubmit = draft.trim().length > 0 && !props.disabled;
@@ -2628,7 +2673,7 @@ const UserMessageEditForm = memo(function UserMessageEditForm(props: {
         value={draft}
         disabled={props.disabled}
         rows={1}
-        aria-label="Edit message"
+        aria-label={m.chat.timeline.editMessage}
         className="max-h-60 min-h-0 w-full resize-none overflow-y-auto border-0 bg-transparent p-0 font-system-ui text-foreground outline-none placeholder:text-muted-foreground/45 disabled:opacity-70"
         style={props.chatTypographyStyle}
         onChange={(event) => setDraft(event.target.value)}
@@ -2644,7 +2689,7 @@ const UserMessageEditForm = memo(function UserMessageEditForm(props: {
           disabled={props.disabled}
           onClick={props.onCancel}
         >
-          Cancel
+          {m.chat.timeline.cancel}
         </Button>
         <Button
           type="submit"
@@ -2653,7 +2698,7 @@ const UserMessageEditForm = memo(function UserMessageEditForm(props: {
           style={props.chatTypographyStyle}
           disabled={!canSubmit}
         >
-          Send
+          {m.chat.timeline.send}
         </Button>
       </div>
     </form>

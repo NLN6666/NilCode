@@ -245,20 +245,37 @@ export function parseComposerSlashInvocationForCommands(
   };
 }
 
+/**
+ * Descriptions come from the active catalog so the rows read in the user's language. They are
+ * also a ranked search field, so passing them here (rather than localizing at render) keeps
+ * "search by what the row says" true in every language. Omitting them keeps the English
+ * defaults baked into the definitions, which is what the pure tests exercise.
+ */
+export type ComposerSlashCommandDescriptions = Readonly<
+  Partial<Record<ComposerSlashCommand, string>>
+>;
+
 export function filterComposerSlashCommands(
   query: string,
   commands: ReadonlyArray<ComposerSlashCommand> = BUILT_IN_COMPOSER_SLASH_COMMANDS,
+  descriptions?: ComposerSlashCommandDescriptions,
 ): ComposerSlashCommandDefinition[] {
+  const describe = (command: ComposerSlashCommand): string =>
+    descriptions?.[command] ?? COMPOSER_SLASH_COMMAND_DEFINITIONS[command].description;
+
   const matches = rankProviderDiscoveryItems(commands, query, (command) => {
     const definition = COMPOSER_SLASH_COMMAND_DEFINITIONS[command];
     return [
       { value: command },
       { value: definition.label.slice(1) },
-      { value: definition.description, weight: 200 },
+      { value: describe(command), weight: 200 },
     ];
   });
 
-  return matches.map((command) => COMPOSER_SLASH_COMMAND_DEFINITIONS[command]);
+  return matches.map((command) => ({
+    ...COMPOSER_SLASH_COMMAND_DEFINITIONS[command],
+    description: describe(command),
+  }));
 }
 
 function hasMeaningfulComposerText(prompt: string): boolean {

@@ -13,6 +13,8 @@ import { type PendingApproval } from "../../session-logic";
 import { cn } from "~/lib/utils";
 import { ComposerChoiceRow, type ComposerChoiceTone } from "./ComposerChoiceRow";
 import { COMPOSER_INPUT_SURFACE_CLASS_NAME } from "./composerPickerStyles";
+import { useMessages } from "~/i18n/context";
+import type { Messages } from "~/i18n/locales/en";
 
 interface ComposerPendingApprovalPanelProps {
   approval: PendingApproval;
@@ -22,6 +24,7 @@ interface ComposerPendingApprovalPanelProps {
     requestId: ApprovalRequestId,
     decision: ProviderApprovalDecision,
     lifecycleGeneration?: string,
+    requestKind?: PendingApproval["requestKind"],
   ) => Promise<void>;
 }
 
@@ -33,46 +36,22 @@ type ParsedApproval = {
   fallback: string | null;
 };
 
+// Locale-free half of an approval action: which decision it sends, which catalog entry
+// carries its wording, and how it is toned. Labels live in the catalog so the shortcut
+// order stays a UI decision rather than a translation one.
 type ApprovalAction = {
   decision: ProviderApprovalDecision;
-  label: string;
-  description: string;
+  copyKey: keyof Messages["composer"]["pendingApproval"]["actions"];
   tone: ComposerChoiceTone;
 };
 
 // Order is the card-local shortcut order (1-4): recommended action first, stop-everything last.
 const APPROVAL_ACTIONS: ReadonlyArray<ApprovalAction> = [
-  {
-    decision: "accept",
-    label: "Approve once",
-    description: "Allow just this request",
-    tone: "primary",
-  },
-  {
-    decision: "acceptForSession",
-    label: "Always allow this session",
-    description: "Don't ask again this session",
-    tone: "neutral",
-  },
-  {
-    decision: "decline",
-    label: "Decline",
-    description: "Reject and let the agent continue",
-    tone: "destructive",
-  },
-  {
-    decision: "cancel",
-    label: "Cancel turn",
-    description: "Stop the current turn",
-    tone: "neutral",
-  },
+  { decision: "accept", copyKey: "acceptOnce", tone: "primary" },
+  { decision: "acceptForSession", copyKey: "acceptForSession", tone: "neutral" },
+  { decision: "decline", copyKey: "decline", tone: "destructive" },
+  { decision: "cancel", copyKey: "cancelTurn", tone: "neutral" },
 ];
-
-const KIND_PROMPT: Record<PendingApproval["requestKind"], string> = {
-  command: "Approve this command?",
-  "file-read": "Approve reading this file?",
-  "file-change": "Approve this file change?",
-};
 
 export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPanel({
   approval,
@@ -80,8 +59,13 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
   isResponding,
   onRespond,
 }: ComposerPendingApprovalPanelProps) {
+  const copy = useMessages().composer.pendingApproval;
   const parsed = parseApprovalDetail(approval.detail);
   const requestId = approval.requestId;
+  const actions =
+    approval.sessionApprovalAvailable === false
+      ? APPROVAL_ACTIONS.filter((action) => action.decision !== "acceptForSession")
+      : APPROVAL_ACTIONS;
 
   // Digit shortcuts bubble from focused controls inside this card only; a bare
   // number key elsewhere in the app must never approve a tool request.
@@ -96,11 +80,11 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
       return;
     }
     const digit = Number.parseInt(event.key, 10);
-    if (Number.isNaN(digit) || digit < 1 || digit > APPROVAL_ACTIONS.length) return;
-    const action = APPROVAL_ACTIONS[digit - 1];
+    if (Number.isNaN(digit) || digit < 1 || digit > actions.length) return;
+    const action = actions[digit - 1];
     if (!action) return;
     event.preventDefault();
-    void onRespond(requestId, action.decision, approval.lifecycleGeneration);
+    void onRespond(requestId, action.decision, approval.lifecycleGeneration, approval.requestKind);
   };
 
   return (
@@ -110,7 +94,7 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
     >
       <div className="flex items-start justify-between gap-3">
         <p className="min-w-0 text-[13px] font-medium leading-snug text-foreground/90">
-          {KIND_PROMPT[approval.requestKind]}
+          {copy.prompts[approval.requestKind]}
           {parsed.tool ? (
             <span className="ml-1.5 text-[11px] font-normal text-muted-foreground/50">
               {parsed.tool}
@@ -123,18 +107,26 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
           </span>
         ) : null}
       </div>
-      <ApprovalDetail parsed={parsed} />
+      <ApprovalDetail
+        parsed={parsed}
+        {...(approval.permissionProfile ? { permissionProfile: approval.permissionProfile } : {})}
+      />
       <div className="mt-2.5 space-y-0.5">
-        {APPROVAL_ACTIONS.map((action, index) => (
+        {actions.map((action, index) => (
           <ComposerChoiceRow
             key={action.decision}
             shortcut={index + 1}
-            label={action.label}
-            description={action.description}
+            label={copy.actions[action.copyKey].label}
+            description={copy.actions[action.copyKey].description}
             tone={action.tone}
             disabled={isResponding}
             onSelect={() =>
-              void onRespond(requestId, action.decision, approval.lifecycleGeneration)
+              void onRespond(
+                requestId,
+                action.decision,
+                approval.lifecycleGeneration,
+                approval.requestKind,
+              )
             }
           />
         ))}
@@ -143,7 +135,33 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
   );
 };
 
-function ApprovalDetail({ parsed }: { parsed: ParsedApproval }) {
+function ApprovalDetail({
+  parsed,
+  permissionProfile,
+}: {
+  parsed: ParsedApproval;
+  permissionProfile?: Record<string, unknown>;
+}) {
+  const copy = useMessages().composer.pendingApproval;
+
+  if (permissionProfile) {
+    return (
+      <div className="mt-2">
+        {parsed.fallback ? (
+          <p className="mb-1.5 text-[11.5px] leading-snug text-muted-foreground/70">
+            {parsed.fallback}
+          </p>
+        ) : null}
+        <pre
+          className="max-h-36 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--color-background-elevated-secondary)] px-2.5 py-2 font-mono text-[11px] leading-relaxed text-foreground/85"
+          title={copy.permissionProfileTitle}
+        >
+          <code>{JSON.stringify(permissionProfile, null, 2)}</code>
+        </pre>
+      </div>
+    );
+  }
+
   if (parsed.fileName) {
     return (
       <div className="mt-2">
@@ -177,9 +195,7 @@ function ApprovalDetail({ parsed }: { parsed: ParsedApproval }) {
     );
   }
 
-  return (
-    <p className="mt-2 text-[12px] text-muted-foreground/65">Review the request to continue.</p>
-  );
+  return <p className="mt-2 text-[12px] text-muted-foreground/65">{copy.reviewToContinue}</p>;
 }
 
 /**

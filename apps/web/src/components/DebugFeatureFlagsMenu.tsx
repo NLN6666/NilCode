@@ -21,6 +21,7 @@ import {
 import { ComposerPickerMenuPopup } from "./chat/ComposerPickerMenuPopup";
 import { SidebarMenuButton } from "./ui/sidebar";
 import { toastManager } from "./ui/toast";
+import { useMessages } from "~/i18n/context";
 
 // Triggers local-only toast scenarios that are awkward to reproduce through real Git failures.
 function triggerActionFailedToasts(values: Record<ToggleFeatureFlagId, boolean>): void {
@@ -48,6 +49,7 @@ function triggerActionFailedToasts(values: Record<ToggleFeatureFlagId, boolean>)
 }
 
 export function DebugFeatureFlagsMenu() {
+  const copy = useMessages().app.featureFlags;
   const values = useFeatureFlags();
 
   return (
@@ -61,11 +63,11 @@ export function DebugFeatureFlagsMenu() {
         }
       >
         <FlagIcon className="size-[15px]" />
-        <span>Feature flags</span>
+        <span>{copy.label}</span>
       </MenuTrigger>
       <ComposerPickerMenuPopup align="start" side="top" className="min-w-72">
         <MenuGroup>
-          <MenuGroupLabel>Local feature flags</MenuGroupLabel>
+          <MenuGroupLabel>{copy.local}</MenuGroupLabel>
           {FEATURE_FLAGS.map((flag) => {
             if (flag.kind === "action") {
               return (
@@ -106,7 +108,7 @@ export function DebugFeatureFlagsMenu() {
         </MenuGroup>
         <MenuSeparator />
         <div className="px-2 py-1.5 text-[length:var(--app-font-size-ui-xs,10px)] leading-4 text-muted-foreground/58">
-          Stored only in this browser profile.
+          {copy.storedLocally}
         </div>
       </ComposerPickerMenuPopup>
     </Menu>

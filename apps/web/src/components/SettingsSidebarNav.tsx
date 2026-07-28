@@ -12,16 +12,16 @@ import { cn } from "~/lib/utils";
 import { SearchInput } from "./ui/search-input";
 import { SidebarLeadingIcon } from "./SidebarLeadingIcon";
 import {
-  SETTINGS_NAV_GROUPS,
+  SETTINGS_NAV_GROUP_IDS,
   SETTINGS_NAV_ITEMS,
   type SettingsSectionId,
 } from "../settingsNavigation";
 import {
   rankSettingsSearchEntries,
   settingsSearchEntryTarget,
-  settingsSectionLabel,
   type SettingsSearchEntry,
 } from "../settingsSearchIndex";
+import { useMessages } from "../i18n/context";
 import {
   SIDEBAR_ROW_HOVER_CLASS_NAME,
   SIDEBAR_ROW_IDLE_TEXT_CLASS_NAME,
@@ -50,6 +50,7 @@ function SettingsSearchResultRow(props: {
   onSelect: (entry: SettingsSearchEntry) => void;
 }) {
   const { entry, onSelect } = props;
+  const m = useMessages();
   const icon = SETTINGS_SECTION_ICON_BY_ID.get(entry.section) ?? "settings-gear-4";
   // Mirrors the project header + nested thread layout: the section reuses the nav row
   // (muted icon + label) and the matched setting sits below as an indented thread-style row.
@@ -64,7 +65,7 @@ function SettingsSearchResultRow(props: {
           <CentralIcon name={icon} className={SETTINGS_SIDEBAR_ICON_CLASS_NAME} />
         </SidebarLeadingIcon>
         <span className={SETTINGS_SIDEBAR_ITEM_LABEL_CLASS_NAME}>
-          {settingsSectionLabel(entry.section)}
+          {m.settingsNav.sections[entry.section].label}
         </span>
       </button>
       <button
@@ -77,7 +78,7 @@ function SettingsSearchResultRow(props: {
         )}
         onClick={() => onSelect(entry)}
       >
-        <span className="min-w-0 truncate">{entry.title}</span>
+        <span className="min-w-0 truncate">{entry.title(m)}</span>
       </button>
     </li>
   );
@@ -89,10 +90,11 @@ export function SettingsSidebarNav(props: {
   onSelectSection: (section: SettingsSectionId, options?: { target?: string }) => void;
 }) {
   const { onSelectSection } = props;
+  const m = useMessages();
   const [query, setQuery] = useState("");
   const trimmedQuery = query.trim();
   const isSearching = trimmedQuery.length > 0;
-  const results = rankSettingsSearchEntries(trimmedQuery, SETTINGS_SEARCH_RESULTS_LIMIT);
+  const results = rankSettingsSearchEntries(trimmedQuery, SETTINGS_SEARCH_RESULTS_LIMIT, m);
 
   const handleSelectResult = (entry: SettingsSearchEntry) => {
     const target = settingsSearchEntryTarget(entry);
@@ -129,7 +131,7 @@ export function SettingsSidebarNav(props: {
           <SidebarLeadingIcon size="sm" tone="text-inherit">
             <CentralIcon name="arrow-left" className={SETTINGS_SIDEBAR_ICON_CLASS_NAME} />
           </SidebarLeadingIcon>
-          <span className={SETTINGS_SIDEBAR_ITEM_LABEL_CLASS_NAME}>Back to app</span>
+          <span className={SETTINGS_SIDEBAR_ITEM_LABEL_CLASS_NAME}>{m.settingsNav.backToApp}</span>
         </button>
       </div>
 
@@ -139,8 +141,8 @@ export function SettingsSidebarNav(props: {
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
-          placeholder="Search settings..."
-          aria-label="Search settings"
+          placeholder={m.settingsNav.searchPlaceholder}
+          aria-label={m.settingsNav.searchAriaLabel}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={handleSearchKeyDown}
         />
@@ -148,10 +150,10 @@ export function SettingsSidebarNav(props: {
 
       {isSearching ? (
         results.length === 0 ? (
-          <p className={SETTINGS_SIDEBAR_SECTION_LABEL_CLASS_NAME}>No matching settings.</p>
+          <p className={SETTINGS_SIDEBAR_SECTION_LABEL_CLASS_NAME}>{m.settingsNav.noResults}</p>
         ) : (
           <ul
-            aria-label="Settings search results"
+            aria-label={m.settingsNav.searchResultsAriaLabel}
             className={cn("flex flex-col", SETTINGS_SIDEBAR_LIST_GAP_CLASS_NAME)}
           >
             {results.map((entry) => (
@@ -160,24 +162,24 @@ export function SettingsSidebarNav(props: {
           </ul>
         )
       ) : (
-        <nav aria-label="Settings sections" className="flex flex-col">
-          {SETTINGS_NAV_GROUPS.map((group) => {
-            const items = SETTINGS_NAV_ITEMS.filter((item) => item.group === group.id);
+        <nav aria-label={m.settingsNav.navAriaLabel} className="flex flex-col">
+          {SETTINGS_NAV_GROUP_IDS.map((groupId) => {
+            const items = SETTINGS_NAV_ITEMS.filter((item) => item.group === groupId);
             if (items.length === 0) {
               return null;
             }
 
             return (
               <section
-                key={group.id}
-                aria-labelledby={`settings-nav-${group.id}`}
+                key={groupId}
+                aria-labelledby={`settings-nav-${groupId}`}
                 className={SETTINGS_SIDEBAR_SECTION_CLASS_NAME}
               >
                 <h2
-                  id={`settings-nav-${group.id}`}
+                  id={`settings-nav-${groupId}`}
                   className={SETTINGS_SIDEBAR_SECTION_LABEL_CLASS_NAME}
                 >
-                  {group.label}
+                  {m.settingsNav.groups[groupId]}
                 </h2>
                 <ul className={cn("flex flex-col", SETTINGS_SIDEBAR_LIST_GAP_CLASS_NAME)}>
                   {items.map((item) => {
@@ -202,7 +204,7 @@ export function SettingsSidebarNav(props: {
                             />
                           </SidebarLeadingIcon>
                           <span className={SETTINGS_SIDEBAR_ITEM_LABEL_CLASS_NAME}>
-                            {item.label}
+                            {m.settingsNav.sections[item.id].label}
                           </span>
                         </button>
                       </li>

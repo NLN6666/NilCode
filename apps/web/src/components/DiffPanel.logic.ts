@@ -13,7 +13,7 @@ import type { FileDiffMetadata } from "@pierre/diffs/react";
 
 import type { DraftThreadState } from "../composerDraftStore";
 import type { RepoDiffScope } from "../repoDiffScopeStore";
-import { REPO_DIFF_SCOPE_LABELS } from "../repoDiffScopeStore";
+import { diff as defaultDiffCopy } from "../i18n/locales/en/diff";
 import { hasLiveTurnTailWork, isLatestTurnSettled } from "../session-logic";
 import { buildLocalDraftThread } from "./ChatView.logic";
 import { buildFileDiffRenderKey, resolveFileDiffPath } from "../lib/diffRendering";
@@ -164,17 +164,21 @@ export function resolveDiffPanelViewSource(input: {
   return { kind: "repo", scope: input.repoDiffScope };
 }
 
+/** The `diff` catalog group; defaults to English so this resolver's tests stay copy-free. */
+export type DiffCopy = typeof defaultDiffCopy;
+
 export function resolveDiffPanelPickerLabel(
   source: DiffPanelViewSource,
   turnScopeIntent?: DiffPanelTurnScopeIntent,
+  copy: DiffCopy = defaultDiffCopy,
 ): string {
   if (source.kind === "turn") {
     if (source.turnId !== null) {
-      return "Turn diff";
+      return copy.turnDiff;
     }
-    return turnScopeIntent === "last" ? "Last turn" : "All turns";
+    return turnScopeIntent === "last" ? copy.turns.last : copy.turns.all;
   }
-  return REPO_DIFF_SCOPE_LABELS[source.scope];
+  return copy.scopes[source.scope];
 }
 
 export function resolveSelectedTurnSummary<T extends { turnId: TurnId }>(

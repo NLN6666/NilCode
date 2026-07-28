@@ -54,6 +54,7 @@ import {
   COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME,
   COMPOSER_STACKED_PANEL_ICON_CLASS_NAME,
 } from "./composerStackedPanelStyles";
+import { useMessages } from "~/i18n/context";
 
 interface WorkflowRunCardProps {
   workflowRun: WorkflowRunState;
@@ -127,6 +128,7 @@ function WorkflowAgentDetail({
   nowMs: number;
   onOpenThread: (threadId: ThreadId) => void;
 }) {
+  const copy = useMessages().chat.workflow;
   const [promptOpen, setPromptOpen] = useState(false);
   const contextWindowTokens = agentContextWindowTokens(agent);
   const identityLine = [
@@ -159,7 +161,7 @@ function WorkflowAgentDetail({
             className="h-5 shrink-0 px-1.5 text-[10px] text-muted-foreground/70"
             onClick={() => onOpenThread(threadId)}
           >
-            Open thread
+            {copy.openThread}
           </Button>
         ) : null}
       </div>
@@ -176,7 +178,7 @@ function WorkflowAgentDetail({
           >
             <DisclosureChevron open={promptOpen} className="shrink-0" />
             <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/45">
-              Prompt
+              {copy.prompt}
             </span>
           </button>
           {promptOpen ? null : (
@@ -194,7 +196,7 @@ function WorkflowAgentDetail({
       {agent.recentToolNames.length > 0 ? (
         <div className="min-w-0 truncate text-[11px] text-muted-foreground/55">
           <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/45">
-            Recent
+            {copy.recent}
           </span>{" "}
           <span className="font-mono">{agent.recentToolNames.join(" · ")}</span>
         </div>
@@ -285,8 +287,10 @@ export function WorkflowRunCard({
   onPause,
   onResume,
   onDismiss,
-  attachedToPrevious = false,
+  attachedToPrevious: attachedToPreviousProp,
 }: WorkflowRunCardProps) {
+  const copy = useMessages().chat.workflow;
+  const attachedToPrevious = attachedToPreviousProp ?? false;
   const { copyToClipboard, isCopied } = useCopyToClipboard();
   // Default view lists every phase's agents (grouped); a pill click narrows to
   // one phase, clicking it again returns to the full list.
@@ -381,8 +385,8 @@ export function WorkflowRunCard({
                   size="icon-xs"
                   className={COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME}
                   onClick={onResume}
-                  aria-label="Resume workflow"
-                  title="Resume workflow"
+                  aria-label={copy.resume}
+                  title={copy.resume}
                 >
                   <PlayIcon className="size-3" />
                 </Button>
@@ -393,8 +397,8 @@ export function WorkflowRunCard({
                 size="icon-xs"
                 className={COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME}
                 onClick={onDismiss}
-                aria-label="Dismiss workflow panel"
-                title="Dismiss workflow panel"
+                aria-label={copy.dismiss}
+                title={copy.dismiss}
               >
                 <XIcon className="size-3" />
               </Button>
@@ -407,8 +411,8 @@ export function WorkflowRunCard({
                 size="icon-xs"
                 className={COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME}
                 onClick={onPause}
-                aria-label="Pause workflow"
-                title="Pause workflow (resume replays completed agents from cache)"
+                aria-label={copy.pause}
+                title={copy.pauseHint}
               >
                 <PauseIcon className="size-3" />
               </Button>
@@ -418,8 +422,8 @@ export function WorkflowRunCard({
                 size="icon-xs"
                 className={COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME}
                 onClick={onStop}
-                aria-label="Stop workflow"
-                title="Stop workflow"
+                aria-label={copy.stop}
+                title={copy.stop}
               >
                 <StopIcon className="size-3" />
               </Button>
@@ -498,7 +502,7 @@ export function WorkflowRunCard({
                   </div>
                 ))
               ) : (
-                <div className="py-1 text-[11px] text-muted-foreground/45">No agents yet</div>
+                <div className="py-1 text-[11px] text-muted-foreground/45">{copy.noAgents}</div>
               )
             ) : workflowRun.agents.length > 0 ? (
               workflowRun.agents.map((agent) => (
@@ -512,7 +516,7 @@ export function WorkflowRunCard({
                 />
               ))
             ) : (
-              <div className="py-1 text-[11px] text-muted-foreground/45">No agents yet</div>
+              <div className="py-1 text-[11px] text-muted-foreground/45">{copy.noAgents}</div>
             )}
           </div>
           {savedLine.length > 0 ? (
@@ -520,7 +524,7 @@ export function WorkflowRunCard({
               data-testid="workflow-saved-line"
               className="mt-0.5 flex min-w-0 items-center gap-1.5"
             >
-              <span className="shrink-0 text-[11px] text-muted-foreground/50">Saved</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground/50">{copy.saved}</span>
               <span
                 className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/45"
                 title={savedLine}
@@ -533,7 +537,7 @@ export function WorkflowRunCard({
                 size="icon-xs"
                 className={COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME}
                 onClick={() => copyToClipboard(savedLine, undefined)}
-                aria-label="Copy script path and run id"
+                aria-label={copy.copyScriptPath}
                 title={savedLine}
               >
                 {isCopied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}

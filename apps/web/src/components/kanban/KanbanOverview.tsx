@@ -15,6 +15,7 @@ import {
   type KanbanCard,
   type KanbanProjectBoard,
 } from "./kanban.logic";
+import { useMessages } from "~/i18n/context";
 
 const OVERVIEW_RENDER_CAP = 20;
 
@@ -33,6 +34,7 @@ const OverviewProjectColumn = function OverviewProjectColumn({
   onNewTask: (projectId: ProjectId) => void;
   nowMs?: number;
 }) {
+  const copy = useMessages().workspace.kanban;
   const cards = flattenProjectBoardForOverview(projectBoard);
   const visibleCards =
     cards.length > OVERVIEW_RENDER_CAP ? cards.slice(0, OVERVIEW_RENDER_CAP) : cards;
@@ -84,7 +86,7 @@ const OverviewProjectColumn = function OverviewProjectColumn({
               onClick={() => onOpenProject(projectBoard.projectId)}
               className="w-full rounded-lg px-3 py-1.5 text-center text-xs text-muted-foreground/80 transition-colors hover:bg-muted/40 hover:text-foreground"
             >
-              Show {hiddenCount} more
+              {copy.showMore(hiddenCount)}
             </button>
           </li>
         ) : null}
@@ -108,6 +110,7 @@ export function KanbanOverview({
   onNewTask: (projectId: ProjectId) => void;
   nowMs?: number;
 }) {
+  const copy = useMessages().workspace.kanban;
   // Projects without any cards are pure noise on the overview; their boards stay
   // reachable through /kanban/$projectId if linked directly.
   const visibleProjects = board.projects.filter((projectBoard) => projectBoard.totalCount > 0);
@@ -116,10 +119,8 @@ export function KanbanOverview({
     return (
       <div className="flex h-full items-center justify-center px-6">
         <div className="max-w-sm text-center">
-          <div className="text-sm font-medium text-foreground/85">Nothing on the board yet</div>
-          <div className="mt-1 text-sm text-muted-foreground">
-            Drafted prompts, running turns, and completed chats will show up here automatically.
-          </div>
+          <div className="text-sm font-medium text-foreground/85">{copy.emptyBoard}</div>
+          <div className="mt-1 text-sm text-muted-foreground">{copy.emptyBoardHint}</div>
         </div>
       </div>
     );

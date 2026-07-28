@@ -17,6 +17,7 @@ import { cn } from "~/lib/utils";
 
 import { ProviderUsageLimitRows } from "./ProviderUsageLimitRows";
 import { ProviderUsageLineList } from "./ProviderUsageLineList";
+import { useMessages } from "~/i18n/context";
 
 export { providerUsageLabel };
 
@@ -32,6 +33,7 @@ export function ProviderUsagePanelContent(props: {
   showLearnMore?: boolean | undefined;
   className?: string | undefined;
 }) {
+  const copy = useMessages().app.providerUsage;
   const visibleRows = deriveProviderUsageDisplayRows(props.rateLimits);
   const learnMoreHref =
     props.learnMoreHref ??
@@ -60,13 +62,11 @@ export function ProviderUsagePanelContent(props: {
         />
       ) : visibleRows.length === 0 && props.isLoading ? (
         <p className="text-[length:var(--app-font-size-chat-meta,10px)] leading-relaxed text-muted-foreground">
-          Scanning local usage data for the selected provider.
+          {copy.scanning}
         </p>
       ) : visibleRows.length === 0 ? (
         <p className="text-[length:var(--app-font-size-chat-meta,10px)] leading-relaxed text-muted-foreground">
-          {props.provider
-            ? "No local usage data was found yet for the selected provider."
-            : "No local usage data was found yet."}
+          {props.provider ? copy.noneForProvider : copy.none}
         </p>
       ) : null}
       {props.showLearnMore === true && learnMoreHref ? (
@@ -76,7 +76,7 @@ export function ProviderUsagePanelContent(props: {
           rel="noopener noreferrer"
           className="flex items-center gap-1 pt-0.5 text-[length:var(--app-font-size-chat-meta,10px)] text-muted-foreground transition-colors hover:text-foreground"
         >
-          Learn more
+          {copy.learnMore}
           <ExternalLinkIcon className="size-3" />
         </a>
       ) : null}

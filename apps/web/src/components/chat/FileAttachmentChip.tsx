@@ -6,6 +6,7 @@
 import { formatBytes } from "@synara/shared/formatBytes";
 
 import { basenameOfPath } from "~/file-icons";
+import { useMessages } from "~/i18n/context";
 import { FileIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { type ChatFileAttachment } from "../../types";
@@ -13,10 +14,7 @@ import { COMPOSER_ATTACHMENT_CHIP_CLASS_NAME } from "../composerInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AttachmentCard } from "./AttachmentCard";
 import { AttachmentRemoveButton } from "./AttachmentRemoveButton";
-import {
-  DRAFT_ATTACHMENT_WARNING_DESCRIPTION,
-  DraftAttachmentWarningIcon,
-} from "./DraftAttachmentWarning";
+import { DraftAttachmentWarningIcon } from "./DraftAttachmentWarning";
 import { FileEntryIcon } from "./FileEntryIcon";
 
 type FileAttachmentChipVariant = "pill" | "card";
@@ -96,8 +94,8 @@ function fileAttachmentTypeLabel(file: ChatFileAttachment): string {
   return "FILE";
 }
 
-function fileAttachmentDetail(file: ChatFileAttachment): string {
-  const mimeType = file.mimeType.trim() || "Unknown type";
+function fileAttachmentDetail(file: ChatFileAttachment, unknownType: string): string {
+  const mimeType = file.mimeType.trim() || unknownType;
   return `${mimeType} - ${formatBytes(file.sizeBytes)}`;
 }
 
@@ -143,10 +141,13 @@ export function FileAttachmentChip({
   file,
   onRemove,
   className,
-  nonPersisted = false,
-  variant = "pill",
+  nonPersisted: nonPersistedProp,
+  variant: variantProp,
 }: FileAttachmentChipProps) {
-  const detail = fileAttachmentDetail(file);
+  const copy = useMessages().composer.attachments;
+  const nonPersisted = nonPersistedProp ?? false;
+  const variant = variantProp ?? "pill";
+  const detail = fileAttachmentDetail(file, copy.unknownType);
   const typeLabel = fileAttachmentTypeLabel(file);
   const trigger =
     variant === "card" ? (
@@ -190,9 +191,7 @@ export function FileAttachmentChip({
           <p className="text-xs font-medium text-foreground">{file.name}</p>
           <p className="text-[0.6875rem] text-muted-foreground">{detail}</p>
           {nonPersisted ? (
-            <p className="text-[0.6875rem] text-amber-600">
-              {DRAFT_ATTACHMENT_WARNING_DESCRIPTION}
-            </p>
+            <p className="text-[0.6875rem] text-amber-600">{copy.draftWarningDescription}</p>
           ) : null}
         </div>
       </TooltipPopup>

@@ -18,6 +18,7 @@ import {
   useLocalImagePreview,
 } from "../LocalImagePreview";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
+import { useMessages } from "~/i18n/context";
 
 export interface GeneratedMarkdownImageProps {
   src: string;
@@ -31,6 +32,7 @@ function stopPropagation(event: MouseEvent<HTMLElement>) {
 }
 
 export function GeneratedMarkdownImage(props: GeneratedMarkdownImageProps) {
+  const copy = useMessages().chat.image;
   const { src, alt, cwd, onImageExpand } = props;
   const { previewUrl, downloadUrl, fileName, downloadName, status, imgProps } =
     useLocalImagePreview({ src, cwd });
@@ -70,7 +72,7 @@ export function GeneratedMarkdownImage(props: GeneratedMarkdownImageProps) {
         type="button"
         className="chat-generated-image__frame"
         onClick={expandImage}
-        aria-label="Expand generated image"
+        aria-label={copy.expandGenerated}
       >
         {status === "loading" ? (
           <span className="chat-generated-image__skeleton" aria-hidden="true">
@@ -81,7 +83,7 @@ export function GeneratedMarkdownImage(props: GeneratedMarkdownImageProps) {
         <span className="chat-generated-image__overlay" aria-hidden="true">
           <span className="chat-generated-image__overlay-pill chat-generated-image__overlay-pill--expand">
             <Maximize2 className="size-3.5" />
-            <span>Expand</span>
+            <span>{copy.expand}</span>
           </span>
         </span>
       </button>
@@ -91,11 +93,11 @@ export function GeneratedMarkdownImage(props: GeneratedMarkdownImageProps) {
         onClick={downloadImage}
         onMouseDown={stopPropagation}
         className="chat-generated-image__overlay-pill chat-generated-image__overlay-pill--download"
-        aria-label="Download generated image"
-        title="Download"
+        aria-label={copy.downloadGenerated}
+        title={copy.download}
       >
         <DownloadIcon className="size-3.5" aria-hidden="true" />
-        <span>Download</span>
+        <span>{copy.download}</span>
       </a>
     </span>
   );

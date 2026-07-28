@@ -62,6 +62,7 @@ import {
   GitPullResult,
   GitReadWorkingTreeDiffInput,
   GitReadWorkingTreeDiffResult,
+  GitWorkingTreeDiffStatsResult,
   GitRemoveIndexLockInput,
   GitRemoveWorktreeInput,
   GitResolvePullRequestResult,
@@ -148,6 +149,12 @@ import {
   ProjectWriteFileInput,
   ProjectWriteFileResult,
 } from "./project";
+import {
+  ProjectReadLaunchConfigInput,
+  ProjectReadLaunchConfigResult,
+  ProjectWriteLaunchConfigInput,
+  ProjectWriteLaunchConfigResult,
+} from "./launchConfig";
 import {
   ServerConfig,
   ServerConfigStreamEvent,
@@ -267,6 +274,15 @@ export const WsOrchestrationGetFullThreadDiffRpc = Rpc.make(
   },
 );
 
+export const WsOrchestrationGetThreadDetailSnapshotRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.getThreadDetailSnapshot,
+  {
+    payload: OrchestrationRpcSchemas.getThreadDetailSnapshot.input,
+    success: OrchestrationRpcSchemas.getThreadDetailSnapshot.output,
+    error: WsRpcError,
+  },
+);
+
 export const WsOrchestrationReplayEventsRpc = Rpc.make(ORCHESTRATION_WS_METHODS.replayEvents, {
   payload: OrchestrationRpcSchemas.replayEvents.input,
   success: OrchestrationRpcSchemas.replayEvents.output,
@@ -345,6 +361,18 @@ export const WsProjectsListDirectoriesRpc = Rpc.make(WS_METHODS.projectsListDire
 export const WsProjectsDiscoverScriptsRpc = Rpc.make(WS_METHODS.projectsDiscoverScripts, {
   payload: ProjectDiscoverScriptsInput,
   success: ProjectDiscoverScriptsResult,
+  error: WsRpcError,
+});
+
+export const WsProjectsReadLaunchConfigRpc = Rpc.make(WS_METHODS.projectsReadLaunchConfig, {
+  payload: ProjectReadLaunchConfigInput,
+  success: ProjectReadLaunchConfigResult,
+  error: WsRpcError,
+});
+
+export const WsProjectsWriteLaunchConfigRpc = Rpc.make(WS_METHODS.projectsWriteLaunchConfig, {
+  payload: ProjectWriteLaunchConfigInput,
+  success: ProjectWriteLaunchConfigResult,
   error: WsRpcError,
 });
 
@@ -442,6 +470,12 @@ export const WsGitGithubRepositoryRpc = Rpc.make(WS_METHODS.gitGithubRepository,
 export const WsGitReadWorkingTreeDiffRpc = Rpc.make(WS_METHODS.gitReadWorkingTreeDiff, {
   payload: GitReadWorkingTreeDiffInput,
   success: GitReadWorkingTreeDiffResult,
+  error: WsRpcError,
+});
+
+export const WsGitWorkingTreeDiffStatsRpc = Rpc.make(WS_METHODS.gitWorkingTreeDiffStats, {
+  payload: GitReadWorkingTreeDiffInput,
+  success: GitWorkingTreeDiffStatsResult,
   error: WsRpcError,
 });
 
@@ -1008,6 +1042,7 @@ export const WsFeatureRpcGroup = RpcGroup.make(
   WsOrchestrationImportThreadRpc,
   WsOrchestrationGetSnapshotRpc,
   WsOrchestrationGetShellSnapshotRpc,
+  WsOrchestrationGetThreadDetailSnapshotRpc,
   WsOrchestrationRepairStateRpc,
   WsOrchestrationGetTurnDiffRpc,
   WsOrchestrationGetFullThreadDiffRpc,
@@ -1020,6 +1055,8 @@ export const WsFeatureRpcGroup = RpcGroup.make(
   WsOrchestrationUnsubscribeThreadRpc,
   WsOrchestrationSubscribeDomainEventsRpc,
   WsProjectsDiscoverScriptsRpc,
+  WsProjectsReadLaunchConfigRpc,
+  WsProjectsWriteLaunchConfigRpc,
   WsProjectsListDirectoriesRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsSearchLocalEntriesRpc,
@@ -1036,6 +1073,7 @@ export const WsFeatureRpcGroup = RpcGroup.make(
   WsGitGithubRepositoryRpc,
   WsGitStatusRpc,
   WsGitReadWorkingTreeDiffRpc,
+  WsGitWorkingTreeDiffStatsRpc,
   WsGitSummarizeDiffRpc,
   WsGitPullRpc,
   WsGitRunStackedActionRpc,

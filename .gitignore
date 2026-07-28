@@ -47,3 +47,6 @@ TODO.md
 .contextignore
 .code-context/
 .claude/worktrees/
+
+# Python runtime cache the server drops next to itself (~35 MB of .tmp/.job files).
+apps/server/Python/

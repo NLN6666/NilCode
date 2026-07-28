@@ -473,6 +473,8 @@ export function createWsNativeApi(): NativeApi {
     },
     projects: {
       discoverScripts: (input) => transport.request(WS_METHODS.projectsDiscoverScripts, input),
+      readLaunchConfig: (input) => transport.request(WS_METHODS.projectsReadLaunchConfig, input),
+      writeLaunchConfig: (input) => transport.request(WS_METHODS.projectsWriteLaunchConfig, input),
       listDirectories: (input) => transport.request(WS_METHODS.projectsListDirectories, input),
       searchEntries: (input) => transport.request(WS_METHODS.projectsSearchEntries, input),
       searchLocalEntries: (input) =>
@@ -521,6 +523,7 @@ export function createWsNativeApi(): NativeApi {
       pull: (input) => transport.request(WS_METHODS.gitPull, input),
       status: (input) => transport.request(WS_METHODS.gitStatus, input),
       readWorkingTreeDiff: (input) => transport.request(WS_METHODS.gitReadWorkingTreeDiff, input),
+      workingTreeDiffStats: (input) => transport.request(WS_METHODS.gitWorkingTreeDiffStats, input),
       summarizeDiff: (input) =>
         transport.request(WS_METHODS.gitSummarizeDiff, input, {
           timeoutMs: null,
@@ -683,6 +686,8 @@ export function createWsNativeApi(): NativeApi {
     orchestration: {
       getSnapshot: () => transport.request(ORCHESTRATION_WS_METHODS.getSnapshot),
       getShellSnapshot: () => transport.request(ORCHESTRATION_WS_METHODS.getShellSnapshot),
+      getThreadDetailSnapshot: (input) =>
+        transport.request(ORCHESTRATION_WS_METHODS.getThreadDetailSnapshot, input),
       dispatchCommand: (command) => {
         return transport.request(ORCHESTRATION_WS_METHODS.dispatchCommand, {
           command: omitNullUserInputAnswers(command),

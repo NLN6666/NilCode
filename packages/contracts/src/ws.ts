@@ -26,6 +26,7 @@ import {
   OrchestrationUnsubscribeThreadInput,
   ORCHESTRATION_WS_CHANNELS,
   OrchestrationGetFullThreadDiffInput,
+  OrchestrationGetThreadDetailSnapshotInput,
   OrchestrationGetShellSnapshotInput,
   OrchestrationRepairStateInput,
   ORCHESTRATION_WS_METHODS,
@@ -82,6 +83,7 @@ import {
   ProjectStopDevServerInput,
   ProjectWriteFileInput,
 } from "./project";
+import { ProjectReadLaunchConfigInput, ProjectWriteLaunchConfigInput } from "./launchConfig";
 import { StudioListThreadOutputsInput } from "./studio";
 import { FilesystemBrowseInput } from "./filesystem";
 import { OpenInEditorInput } from "./editor";
@@ -132,6 +134,8 @@ import { AgentMcpSetEnabledInput } from "./agentMcp";
 export const WS_METHODS = {
   // Project registry methods
   projectsDiscoverScripts: "projects.discoverScripts",
+  projectsReadLaunchConfig: "projects.readLaunchConfig",
+  projectsWriteLaunchConfig: "projects.writeLaunchConfig",
   projectsListDirectories: "projects.listDirectories",
   projectsSearchEntries: "projects.searchEntries",
   projectsSearchLocalEntries: "projects.searchLocalEntries",
@@ -157,6 +161,7 @@ export const WS_METHODS = {
   gitGithubRepository: "git.githubRepository",
   gitStatus: "git.status",
   gitReadWorkingTreeDiff: "git.readWorkingTreeDiff",
+  gitWorkingTreeDiffStats: "git.workingTreeDiffStats",
   gitSummarizeDiff: "git.summarizeDiff",
   gitRunStackedAction: "git.runStackedAction",
   gitListBranches: "git.listBranches",
@@ -291,6 +296,10 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(ORCHESTRATION_WS_METHODS.importThread, OrchestrationImportThreadInput),
   tagRequestBody(ORCHESTRATION_WS_METHODS.getSnapshot, OrchestrationGetSnapshotInput),
   tagRequestBody(ORCHESTRATION_WS_METHODS.getShellSnapshot, OrchestrationGetShellSnapshotInput),
+  tagRequestBody(
+    ORCHESTRATION_WS_METHODS.getThreadDetailSnapshot,
+    OrchestrationGetThreadDetailSnapshotInput,
+  ),
   tagRequestBody(ORCHESTRATION_WS_METHODS.repairState, OrchestrationRepairStateInput),
   tagRequestBody(ORCHESTRATION_WS_METHODS.getTurnDiff, OrchestrationGetTurnDiffInput),
   tagRequestBody(ORCHESTRATION_WS_METHODS.getFullThreadDiff, OrchestrationGetFullThreadDiffInput),
@@ -302,6 +311,8 @@ const WebSocketRequestBody = Schema.Union([
 
   // Project Search
   tagRequestBody(WS_METHODS.projectsDiscoverScripts, ProjectDiscoverScriptsInput),
+  tagRequestBody(WS_METHODS.projectsReadLaunchConfig, ProjectReadLaunchConfigInput),
+  tagRequestBody(WS_METHODS.projectsWriteLaunchConfig, ProjectWriteLaunchConfigInput),
   tagRequestBody(WS_METHODS.projectsListDirectories, ProjectListDirectoriesInput),
   tagRequestBody(WS_METHODS.projectsSearchEntries, ProjectSearchEntriesInput),
   tagRequestBody(WS_METHODS.projectsSearchLocalEntries, ProjectSearchLocalEntriesInput),
@@ -330,6 +341,7 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.gitGithubRepository, GitHubRepositoryInput),
   tagRequestBody(WS_METHODS.gitStatus, GitStatusInput),
   tagRequestBody(WS_METHODS.gitReadWorkingTreeDiff, GitReadWorkingTreeDiffInput),
+  tagRequestBody(WS_METHODS.gitWorkingTreeDiffStats, GitReadWorkingTreeDiffInput),
   tagRequestBody(WS_METHODS.gitSummarizeDiff, GitSummarizeDiffInput),
   tagRequestBody(WS_METHODS.gitRunStackedAction, GitRunStackedActionInput),
   tagRequestBody(WS_METHODS.gitListBranches, GitListBranchesInput),

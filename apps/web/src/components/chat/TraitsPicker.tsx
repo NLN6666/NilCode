@@ -35,6 +35,7 @@ import { ComposerPickerMenuPopup } from "./ComposerPickerMenuPopup";
 import { getComposerTraitSelection, hasVisibleComposerTraitControls } from "./composerTraits";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ShortcutKbd } from "../ui/shortcut-kbd";
+import { useMessages } from "~/i18n/context";
 
 const ULTRATHINK_PROMPT_PREFIX = "Ultrathink:\n";
 
@@ -155,6 +156,7 @@ export function resolveTraitsTriggerSummary(options: {
 // zap (Central fill set) = fast mode on. Toggling keeps the menu open so the
 // state flip is visible in place.
 function FastModeToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
+  const copy = useMessages().chat.traits;
   const Icon = enabled ? FastModeIcon : FastModeOutlineIcon;
   return (
     <Tooltip>
@@ -162,7 +164,7 @@ function FastModeToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () 
         render={
           <button
             type="button"
-            aria-label="Fast mode"
+            aria-label={copy.fastMode}
             aria-pressed={enabled}
             className="-my-1 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_6%,transparent)]"
             onClick={onToggle}
@@ -273,7 +275,6 @@ export interface TraitsMenuContentProps {
   onSelectionComplete?: () => void;
 }
 
-// Manual memoization kept: this file does not compile under React Compiler (see compile-report).
 export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   provider,
   threadId,
@@ -282,10 +283,12 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   runtimeAgents,
   prompt,
   onPromptChange,
-  includeFastMode = true,
+  includeFastMode: includeFastModeProp,
   modelOptions,
   onSelectionComplete,
 }: TraitsMenuContentProps) {
+  const copy = useMessages().chat.traits;
+  const includeFastMode = includeFastModeProp ?? true;
   const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
   const {
     caps,
@@ -318,6 +321,11 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   const selectedAgent = getSelectedAgentValue(provider, modelOptions);
   const hasAgentControls = agentOptions.length > 0 && defaultAgent !== null;
   const hasPriorContextWindowSection = thinkingEnabled !== null;
+  // Both descriptor ids are resolved up here rather than inline. React Compiler cannot lower a `??`
+  // in an object-key position, and it cannot match an optional-chained expression in a dependency
+  // list to its own inferred scope — either one makes it skip this component entirely.
+  const contextWindowTraitId = contextWindowDescriptor?.id ?? "contextWindow";
+  const primarySelectDescriptorId = primarySelectDescriptor?.id;
   const hasPriorEffortSection = thinkingEnabled !== null || contextWindowOptions.length > 1;
   const hasPriorFastModeSection =
     thinkingEnabled !== null || effortLevels.length > 0 || contextWindowOptions.length > 1;
@@ -340,44 +348,35 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     [threadId, provider, modelOptions, model, setProviderModelOptions, onSelectionComplete],
   );
 
-  const handleEffortChange = useCallback(
-    (value: string) => {
-      if (ultrathinkPromptControlled) return;
-      if (!value) return;
-      const nextOption = effortLevels.find((option) => option.value === value);
-      if (!nextOption) return;
-      if (promptInjectedValues.includes(nextOption.value)) {
-        const nextPrompt =
-          prompt.trim().length === 0
-            ? ULTRATHINK_PROMPT_PREFIX
-            : applyClaudePromptEffortPrefix(prompt, "ultrathink");
-        onPromptChange(nextPrompt);
-        onSelectionComplete?.();
-        return;
-      }
-      const optionId =
-        primarySelectDescriptor?.id ??
-        (provider === "kilo" || provider === "opencode"
-          ? "variant"
-          : provider === "pi"
-            ? "thinkingLevel"
-            : provider === "claudeAgent"
-              ? "effort"
-              : "reasoningEffort");
-      commitTrait(buildProviderOptionPatch(provider, optionId, nextOption.value));
-    },
-    [
-      ultrathinkPromptControlled,
-      effortLevels,
-      prompt,
-      promptInjectedValues,
-      provider,
-      primarySelectDescriptor?.id,
-      onPromptChange,
-      onSelectionComplete,
-      commitTrait,
-    ],
-  );
+  // Deliberately not wrapped in `useCallback`: its inputs all come out of one
+  // `getComposerTraitSelection` call, which React Compiler memoizes as a single scope, so no
+  // hand-written dependency list can match it and the validator refuses to compile the component at
+  // all. Letting the compiler own this memoization is what gets the whole file optimized.
+  const handleEffortChange = (value: string) => {
+    if (ultrathinkPromptControlled) return;
+    if (!value) return;
+    const nextOption = effortLevels.find((option) => option.value === value);
+    if (!nextOption) return;
+    if (promptInjectedValues.includes(nextOption.value)) {
+      const nextPrompt =
+        prompt.trim().length === 0
+          ? ULTRATHINK_PROMPT_PREFIX
+          : applyClaudePromptEffortPrefix(prompt, "ultrathink");
+      onPromptChange(nextPrompt);
+      onSelectionComplete?.();
+      return;
+    }
+    const optionId =
+      primarySelectDescriptorId ??
+      (provider === "kilo" || provider === "opencode"
+        ? "variant"
+        : provider === "pi"
+          ? "thinkingLevel"
+          : provider === "claudeAgent"
+            ? "effort"
+            : "reasoningEffort");
+    commitTrait(buildProviderOptionPatch(provider, optionId, nextOption.value));
+  };
 
   if (!hasVisibleControls && !hasAgentControls) {
     return null;
@@ -387,11 +386,11 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     <>
       {thinkingEnabled !== null ? (
         <TraitRadioSection
-          label="Thinking"
+          label={copy.thinking}
           value={thinkingEnabled ? "on" : "off"}
           options={[
-            { value: "on", label: "On (default)" },
-            { value: "off", label: "Off" },
+            { value: "on", label: copy.onDefault },
+            { value: "off", label: copy.off },
           ]}
           onValueChange={(value) => commitTrait({ thinking: value === "on" })}
           onSelectionComplete={onSelectionComplete}
@@ -401,16 +400,14 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
         <>
           {hasPriorContextWindowSection ? <MenuDivider /> : null}
           <TraitRadioSection
-            label={contextWindowDescriptor?.label ?? "Context"}
+            label={contextWindowDescriptor?.label ?? copy.context}
             value={contextWindow ?? defaultContextWindow ?? ""}
             options={contextWindowOptions.map((option) => ({
               value: option.value,
               label: option.label,
               isDefault: option.value === defaultContextWindow,
             }))}
-            onValueChange={(value) =>
-              commitTrait({ [contextWindowDescriptor?.id ?? "contextWindow"]: value })
-            }
+            onValueChange={(value) => commitTrait({ [contextWindowTraitId]: value })}
             onSelectionComplete={onSelectionComplete}
           />
         </>
@@ -419,7 +416,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
         <>
           {hasPriorEffortSection ? <MenuDivider /> : null}
           <TraitRadioSection
-            label={provider === "kilo" || provider === "opencode" ? "Variant" : "Effort"}
+            label={provider === "kilo" || provider === "opencode" ? copy.variant : copy.effort}
             labelTrailing={
               showsFastModeEffortToggle ? (
                 <FastModeToggle
@@ -433,7 +430,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
             note={
               ultrathinkPromptControlled ? (
                 <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
-                  Remove Ultrathink from the prompt to change effort.
+                  {copy.ultrathinkLocked}
                 </div>
               ) : undefined
             }
@@ -454,11 +451,11 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
         <>
           {hasPriorFastModeSection ? <MenuDivider /> : null}
           <TraitRadioSection
-            label="Speed"
+            label={copy.speed}
             value={fastModeEnabled ? "on" : "off"}
             options={[
-              { value: "off", label: "Default" },
-              { value: "on", label: "Fast" },
+              { value: "off", label: copy.default },
+              { value: "on", label: copy.fast },
             ]}
             onValueChange={(value) => commitTrait({ fastMode: value === "on" })}
             onSelectionComplete={onSelectionComplete}
@@ -497,13 +494,13 @@ export const TraitsPicker = memo(function TraitsPicker({
   runtimeAgents,
   prompt,
   onPromptChange,
-  includeFastMode = true,
+  includeFastMode: includeFastModeProp,
   modelOptions,
   open,
   onOpenChange,
   onSelectionCommitted,
   shortcutLabel,
-  hideLabel = false,
+  hideLabel: hideLabelProp,
 }: TraitsMenuContentProps & {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -513,6 +510,9 @@ export const TraitsPicker = memo(function TraitsPicker({
   // summary moves to title/sr-only.
   hideLabel?: boolean;
 }) {
+  const copy = useMessages().chat.traits;
+  const includeFastMode = includeFastModeProp ?? true;
+  const hideLabel = hideLabelProp ?? false;
   const [uncontrolledMenuOpen, setUncontrolledMenuOpen] = useState(false);
   const selectionCommitTimerRef = useRef<number | null>(null);
   const isMenuOpen = open ?? uncontrolledMenuOpen;
@@ -581,7 +581,7 @@ export const TraitsPicker = memo(function TraitsPicker({
       size="sm"
       variant="chrome"
       className={`min-w-0 shrink-0 justify-start overflow-hidden whitespace-nowrap px-2 sm:px-2.5 [&_svg]:mx-0 ${COMPOSER_PICKER_TRIGGER_TEXT_CLASS_NAME}`}
-      aria-label="Change effort, context, and speed"
+      aria-label={copy.trigger}
       {...(hideLabel && hiddenLabelTitle.length > 0 ? { title: hiddenLabelTitle } : {})}
     />
   );
@@ -598,14 +598,14 @@ export const TraitsPicker = memo(function TraitsPicker({
         {visiblePrimaryTriggerLabel ? (
           <span className="truncate">{visiblePrimaryTriggerLabel}</span>
         ) : (
-          <span className="truncate">Options</span>
+          <span className="truncate">{copy.options}</span>
         )}
         {showsFastBadge ? (
           <>
             <span className="shrink-0 text-muted-foreground/45">·</span>
             <span className="inline-flex shrink-0 items-center gap-1">
               <FastModeIcon aria-hidden="true" className="size-3 text-[hsl(var(--chart-4))]" />
-              <span>Fast</span>
+              <span>{copy.fast}</span>
             </span>
           </>
         ) : null}
@@ -629,7 +629,7 @@ export const TraitsPicker = memo(function TraitsPicker({
             <span className="text-muted-foreground/45">·</span>
             <span className="inline-flex items-center gap-1">
               <FastModeIcon aria-hidden="true" className="size-3 text-[hsl(var(--chart-4))]" />
-              <span>Fast</span>
+              <span>{copy.fast}</span>
             </span>
           </>
         ) : null}
@@ -661,7 +661,7 @@ export const TraitsPicker = memo(function TraitsPicker({
           {!isMenuOpen ? (
             <TooltipPopup side="top" sideOffset={6} variant="picker">
               <span className="inline-flex items-center gap-2 px-1 py-0.5">
-                <span>Change effort, context, and speed</span>
+                <span>{copy.trigger}</span>
                 <ShortcutKbd
                   shortcutLabel={shortcutLabel}
                   className="h-4 min-w-4 px-1 text-[length:var(--app-font-size-ui-2xs,9px)] text-muted-foreground"

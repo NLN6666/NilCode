@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect";
 
+import { readProjectLaunchConfig, writeProjectLaunchConfig } from "../../launchConfig";
 import {
   browseWorkspaceEntries,
   clearWorkspaceIndexCache,
@@ -26,6 +27,16 @@ export const WorkspaceEntriesLive = Layer.succeed(WorkspaceEntries, {
     Effect.tryPromise({
       try: () => discoverProjectScripts(input),
       catch: (cause) => toWorkspaceEntriesError("discover project scripts", cause),
+    }),
+  readLaunchConfig: (input) =>
+    Effect.tryPromise({
+      try: () => readProjectLaunchConfig(input.cwd),
+      catch: (cause) => toWorkspaceEntriesError("read project launch config", cause),
+    }),
+  writeLaunchConfig: (input) =>
+    Effect.tryPromise({
+      try: () => writeProjectLaunchConfig({ cwd: input.cwd, configurations: input.configurations }),
+      catch: (cause) => toWorkspaceEntriesError("write project launch config", cause),
     }),
   listDirectories: (input) =>
     Effect.tryPromise({

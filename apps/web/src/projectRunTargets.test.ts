@@ -159,6 +159,7 @@ describe("upsertProjectRunCommandScripts", () => {
         command: "bun dev",
         icon: "play",
         runOnWorktreeCreate: false,
+        port: null,
       },
     ]);
   });

@@ -62,6 +62,7 @@ import { useCodeSelectionAction } from "./chat/useCodeSelectionAction";
 import { LocalImagePreview } from "./LocalImagePreview";
 import { PdfFilePreview } from "./PdfFilePreview";
 import { Skeleton } from "./ui/skeleton";
+import { useMessages } from "~/i18n/context";
 
 const MARKDOWN_PREVIEW_EXTENSIONS = new Set([".markdown", ".md", ".mdx"]);
 
@@ -258,11 +259,12 @@ const FILE_PREVIEW_SKELETON_LINES = [
 ];
 
 function FilePreviewLoadingState() {
+  const copy = useMessages().editor.filePreview;
   return (
     <div
       className="min-h-0 flex-1 space-y-2.5 overflow-hidden px-3 py-3"
       role="status"
-      aria-label="Loading file..."
+      aria-label={copy.loading}
     >
       {FILE_PREVIEW_SKELETON_LINES.map((line) => (
         <div key={`${line.indent}-${line.width}`} className="flex h-3 items-center gap-2">
@@ -273,7 +275,7 @@ function FilePreviewLoadingState() {
           />
         </div>
       ))}
-      <span className="sr-only">Loading file...</span>
+      <span className="sr-only">{copy.loading}</span>
     </div>
   );
 }
@@ -301,6 +303,7 @@ export interface WorkspaceFilePreviewProps {
 }
 
 export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
+  const previewCopy = useMessages().editor.filePreview;
   const { resolvedTheme } = useTheme();
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
   const contentsRef = useRef<HTMLDivElement>(null);
@@ -481,7 +484,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
   if (!props.workspaceRoot && !fileIsLocalAbsolute && !fileIsScratchBinaryPreview) {
     return (
       <PanelStateMessage density="compact" fill="flex">
-        <p>No workspace is attached to this chat.</p>
+        <p>{previewCopy.noWorkspaceAttached}</p>
       </PanelStateMessage>
     );
   }
@@ -490,7 +493,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     return (
       props.emptyState ?? (
         <PanelStateMessage density="compact" fill="flex">
-          <p>Select a file from the explorer.</p>
+          <p>{previewCopy.selectFromExplorer}</p>
         </PanelStateMessage>
       )
     );
@@ -611,8 +614,8 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
                 left: hoveredCommentLine.left,
                 height: hoveredCommentLine.height,
               }}
-              aria-label={`Comment on line ${hoveredCommentLine.lineNumber}`}
-              title="Comment"
+              aria-label={previewCopy.commentOnLine(hoveredCommentLine.lineNumber)}
+              title={previewCopy.comment}
               onMouseDown={(event) => event.preventDefault()}
               onClick={(event) => {
                 event.preventDefault();

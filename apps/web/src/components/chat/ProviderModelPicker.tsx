@@ -45,6 +45,7 @@ import {
   type FavoriteModelProvider,
 } from "../../lib/modelFavorites";
 import { Skeleton } from "../ui/skeleton";
+import { useMessages } from "~/i18n/context";
 
 function isAvailableProviderOption(option: (typeof PROVIDER_OPTIONS)[number]): option is {
   value: ProviderKind;
@@ -190,6 +191,7 @@ type ProviderModelMenuItemsProps = {
 export const ProviderModelMenuItems = function ProviderModelMenuItems(
   props: ProviderModelMenuItemsProps,
 ) {
+  const copy = useMessages().chat.modelPicker;
   const { onAfterSelection } = props;
   const [modelSearchQuery, setModelSearchQuery] = useState("");
   const [kiloFavoriteModelSlugs, setKiloFavoriteModelSlugs] = useLocalStorage(
@@ -272,7 +274,7 @@ export const ProviderModelMenuItems = function ProviderModelMenuItems(
   const renderModelRadioGroup = (provider: ProviderKind) => {
     if (props.loadingModelProviders?.[provider]) {
       return (
-        <div className="space-y-2 px-2 py-2" aria-label="Loading models">
+        <div className="space-y-2 px-2 py-2" aria-label={copy.loading}>
           {Array.from({ length: 6 }, (_, index) => (
             <div key={index} className="flex items-center gap-2 rounded-md px-2 py-1.5">
               <Skeleton className="size-3.5 rounded-full" />
@@ -427,7 +429,7 @@ export const ProviderModelMenuItems = function ProviderModelMenuItems(
               className="size-3 shrink-0 text-muted-foreground/85 opacity-80"
             />
             <span>{option.label}</span>
-            <span className="ms-auto text-[11px] text-muted-foreground/80">Coming soon</span>
+            <span className="ms-auto text-[11px] text-muted-foreground/80">{copy.comingSoon}</span>
           </MenuItem>
         );
       })}
@@ -479,6 +481,7 @@ type ProviderModelPickerProps = {
 };
 
 export const ProviderModelPicker = function ProviderModelPicker(props: ProviderModelPickerProps) {
+  const copy = useMessages().chat.modelPicker;
   const { onOpenChange, onSelectionCommitted, open } = props;
   const [uncontrolledMenuOpen, setUncontrolledMenuOpen] = useState(false);
   const selectionCommitTimerRef = useRef<number | null>(null);
@@ -562,7 +565,7 @@ export const ProviderModelPicker = function ProviderModelPicker(props: ProviderM
           {!isMenuOpen ? (
             <TooltipPopup side="top" sideOffset={6} variant="picker">
               <span className="inline-flex items-center gap-2 px-1 py-0.5">
-                <span>Change model</span>
+                <span>{copy.change}</span>
                 <ShortcutKbd
                   shortcutLabel={props.shortcutLabel}
                   className="h-4 min-w-4 px-1 text-[length:var(--app-font-size-ui-2xs,9px)] text-muted-foreground"

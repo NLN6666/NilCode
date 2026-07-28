@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ProviderIcon } from "~/components/ProviderIcon";
 import { SettingsRow, SettingsSection } from "~/components/settings/SettingsPanelPrimitives";
 import { Switch } from "~/components/ui/switch";
+import { useMessages } from "../../i18n/context";
 import { SkillCubeIcon } from "~/lib/icons";
 import { ensureNativeApi } from "~/nativeApi";
 import {
@@ -25,12 +26,13 @@ import {
 } from "./skillsSettingsModel";
 
 function SkillProviderStack({ providers }: { providers: ReadonlyArray<ProviderKind> }) {
+  const m = useMessages();
   if (providers.length === 0) {
     return null;
   }
 
   const label = providers.map(providerDisplayName).join(", ");
-  const stackLabel = `Provider ${providers.length === 1 ? "copy" : "copies"}: ${label}`;
+  const stackLabel = m.settings.skills.providerCopies(providers.length, label);
   return (
     <span
       className="inline-flex shrink-0 items-center -space-x-1"
@@ -50,6 +52,7 @@ function SkillProviderStack({ providers }: { providers: ReadonlyArray<ProviderKi
 }
 
 export function SkillsSettingsPanel() {
+  const m = useMessages();
   const queryClient = useQueryClient();
   const catalogQuery = useQuery(skillsCatalogQueryOptions());
   const serverSettingsQuery = useQuery(serverSettingsQueryOptions());
@@ -58,8 +61,11 @@ export function SkillsSettingsPanel() {
     (serverSettingsQuery.data?.skills.disabled ?? []).map((name) => settingsSkillNameKey(name)),
   );
 
-  const skillGroups = buildSettingsSkillGroups(catalogQuery.data?.skills ?? []);
-  const skillSections = buildSettingsSkillSections(catalogQuery.data?.skills ?? []);
+  const skillGroups = buildSettingsSkillGroups(catalogQuery.data?.skills ?? [], m.settings.skills);
+  const skillSections = buildSettingsSkillSections(
+    catalogQuery.data?.skills ?? [],
+    m.settings.skills,
+  );
 
   const setSkillEnabled = (skillName: string, enabled: boolean) => {
     // Read through the query cache (not the render closure) so rapid toggles
@@ -99,10 +105,10 @@ export function SkillsSettingsPanel() {
 
   return (
     <div className="space-y-8">
-      <SettingsSection title="Portable skills">
+      <SettingsSection title={m.settings.skills.portable}>
         <SettingsRow
-          title="Synara skills folder"
-          description="Skills placed here are available on every provider. When a provider already ships its own copy of a skill, that copy is used; otherwise Synara's copy is the fallback."
+          title={m.settings.skills.folder.title}
+          description={m.settings.skills.folder.description}
           status={
             synaraSkillsDir ? (
               <code className="break-all text-[11px] text-muted-foreground">{synaraSkillsDir}</code>
@@ -111,27 +117,27 @@ export function SkillsSettingsPanel() {
           control={
             <span className="text-xs font-medium text-muted-foreground">
               {catalogQuery.isLoading
-                ? "Scanning…"
-                : `${enabledSkills} of ${totalSkills} skill${totalSkills === 1 ? "" : "s"} enabled`}
+                ? m.settings.skills.scanning
+                : m.settings.skills.enabledCount(enabledSkills, totalSkills)}
             </span>
           }
         />
       </SettingsSection>
 
       {catalogQuery.isError ? (
-        <SettingsSection title="Skills">
+        <SettingsSection title={m.settings.skills.sectionTitle}>
           <SettingsRow
-            title="Skill discovery failed"
-            description="Synara could not scan the skill folders. Retry after checking that the server is running."
+            title={m.settings.skills.discoveryFailed.title}
+            description={m.settings.skills.discoveryFailed.description}
           />
         </SettingsSection>
       ) : null}
 
       {!catalogQuery.isLoading && !catalogQuery.isError && totalSkills === 0 ? (
-        <SettingsSection title="Skills">
+        <SettingsSection title={m.settings.skills.sectionTitle}>
           <SettingsRow
-            title="No skills found"
-            description="Add a skill folder containing a SKILL.md to the Synara skills folder above, or install skills for any supported provider."
+            title={m.settings.skills.noneFound.title}
+            description={m.settings.skills.noneFound.description}
           />
         </SettingsSection>
       ) : null}
@@ -178,7 +184,7 @@ export function SkillsSettingsPanel() {
                       onCheckedChange={(checked) =>
                         setSkillEnabled(group.primarySkill.name, Boolean(checked))
                       }
-                      aria-label={`Enable the ${group.displayName} skill`}
+                      aria-label={m.settings.skills.enableSkill(group.displayName)}
                     />
                   }
                 />

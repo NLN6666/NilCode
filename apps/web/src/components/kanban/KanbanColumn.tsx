@@ -14,12 +14,8 @@ import { PlusIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { KanbanCardView } from "./KanbanCardView";
 import { KanbanStatusIcon } from "./KanbanStatusIcon";
-import {
-  KANBAN_COLUMN_LABELS,
-  resolveDraftDropAction,
-  type KanbanCard,
-  type KanbanColumnKey,
-} from "./kanban.logic";
+import { resolveDraftDropAction, type KanbanCard, type KanbanColumnKey } from "./kanban.logic";
+import { useMessages } from "~/i18n/context";
 
 const COLUMN_DROP_ID_PREFIX = "kanban-column";
 const DONE_RENDER_CAP = 30;
@@ -81,9 +77,9 @@ function KanbanColumnComponent({
   cards,
   onOpenCard,
   onCardContextMenu,
-  sortable = false,
-  droppable = false,
-  activeCard = null,
+  sortable: sortableProp,
+  droppable: droppableProp,
+  activeCard: activeCardProp,
   onNewCard,
   nowMs,
 }: {
@@ -104,6 +100,10 @@ function KanbanColumnComponent({
   /** Shared board clock for live elapsed labels. */
   nowMs?: number;
 }) {
+  const copy = useMessages().workspace.kanban;
+  const sortable = sortableProp ?? false;
+  const droppable = droppableProp ?? false;
+  const activeCard = activeCardProp ?? null;
   const dropId = kanbanColumnDropId(projectId, columnKey);
   const { isOver, setNodeRef } = useDroppable({ id: dropId, disabled: !droppable });
   const [showAll, setShowAll] = useState(false);
@@ -116,7 +116,6 @@ function KanbanColumnComponent({
       : cards;
   const hiddenCount = cards.length - cappedCards.length;
 
-  // Manual memoization kept: this file does not compile under React Compiler (see compile-report).
   const sortableItems = useMemo(() => cards.map((card) => card.cardId), [cards]);
 
   const dispatchTarget =
@@ -148,21 +147,19 @@ function KanbanColumnComponent({
   return (
     <section className="flex min-h-0 min-w-64 flex-1 flex-col">
       <header className="flex shrink-0 items-center gap-2 px-1.5 pb-2">
-        <h3 className="text-[13px] font-medium text-foreground/90">
-          {KANBAN_COLUMN_LABELS[columnKey]}
-        </h3>
+        <h3 className="text-[13px] font-medium text-foreground/90">{copy.columns[columnKey]}</h3>
         <span className="text-xs text-muted-foreground/70">{cards.length}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
           {dispatchTarget ? (
-            <span className="text-[11px] text-sky-600 dark:text-sky-300/90">Drop to send</span>
+            <span className="text-[11px] text-sky-600 dark:text-sky-300/90">{copy.dropToSend}</span>
           ) : null}
           {onNewCard ? (
             <Button
               size="icon-xs"
               variant="ghost"
               className="shrink-0 text-muted-foreground/70 hover:text-foreground"
-              aria-label="New task"
-              title="New task"
+              aria-label={copy.newTask}
+              title={copy.newTask}
               onClick={onNewCard}
             >
               <PlusIcon className="size-3.5" />
@@ -188,7 +185,7 @@ function KanbanColumnComponent({
         )}
         {cards.length === 0 ? (
           <li className="list-none rounded-lg border border-dashed border-border/60 px-3 py-4 text-center text-xs text-muted-foreground/60">
-            No cards
+            {copy.noCards}
           </li>
         ) : null}
         {hiddenCount > 0 ? (
@@ -198,7 +195,7 @@ function KanbanColumnComponent({
               onClick={() => setShowAll(true)}
               className="w-full rounded-lg px-3 py-1.5 text-center text-xs text-muted-foreground/80 transition-colors hover:bg-muted/40 hover:text-foreground"
             >
-              Show {hiddenCount} more
+              {copy.showMore(hiddenCount)}
             </button>
           </li>
         ) : null}

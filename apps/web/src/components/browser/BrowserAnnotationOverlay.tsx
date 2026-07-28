@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 
+import { useMessages } from "~/i18n/context";
 import {
   ANNOTATION_COLORS,
   ANNOTATION_DEFAULT_COLOR,
@@ -66,16 +67,16 @@ interface PendingTextEntry {
   value: string;
 }
 
+/** Tool order and glyphs are locale-free; the labels come from the active catalog. */
 const ANNOTATION_TOOLS: ReadonlyArray<{
   tool: AnnotationTool;
   icon: LucideIcon;
-  label: string;
 }> = [
-  { tool: "pen", icon: PencilIcon, label: "Draw freehand" },
-  { tool: "rect", icon: SquareOutlineIcon, label: "Draw a rectangle" },
-  { tool: "arrow", icon: ArrowUpRightIcon, label: "Draw an arrow" },
-  { tool: "text", icon: TextLabelIcon, label: "Add a text label" },
-  { tool: "mosaic", icon: EraserIcon, label: "Pixelate an area" },
+  { tool: "pen", icon: PencilIcon },
+  { tool: "rect", icon: SquareOutlineIcon },
+  { tool: "arrow", icon: ArrowUpRightIcon },
+  { tool: "text", icon: TextLabelIcon },
+  { tool: "mosaic", icon: EraserIcon },
 ];
 
 function isDragTool(tool: AnnotationTool): tool is AnnotationDragItem["tool"] {
@@ -88,6 +89,7 @@ export function BrowserAnnotationOverlay({
   onCancel,
   onConfirm,
 }: BrowserAnnotationOverlayProps) {
+  const copy = useMessages().browser.annotation;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
   const draftItemRef = useRef<AnnotationItem | null>(null);
@@ -315,8 +317,8 @@ export function BrowserAnnotationOverlay({
             ref={textInputRef}
             value={pendingText.value}
             maxLength={ANNOTATION_TEXT_MAX_CHARS}
-            aria-label="Annotation text"
-            placeholder="Type a label"
+            aria-label={copy.textLabel}
+            placeholder={copy.textPlaceholder}
             className="absolute z-10 rounded-md border border-border bg-background/95 px-2 py-1 text-xs text-foreground shadow-lg outline-none"
             style={textInputStyle}
             onChange={(event) => {
@@ -349,13 +351,13 @@ export function BrowserAnnotationOverlay({
               variant={tool === entry.tool ? "secondary" : "ghost"}
               size="icon-sm"
               className="size-7"
-              aria-label={entry.label}
+              aria-label={copy.tools[entry.tool]}
               aria-pressed={tool === entry.tool}
-              title={entry.label}
+              title={copy.tools[entry.tool]}
               onClick={() => setTool(entry.tool)}
             >
               <entry.icon className="size-3.5" />
-              <span className="sr-only">{entry.label}</span>
+              <span className="sr-only">{copy.tools[entry.tool]}</span>
             </Button>
           ))}
         </div>
@@ -372,12 +374,12 @@ export function BrowserAnnotationOverlay({
                   : "border-border/60 hover:scale-105",
               )}
               style={{ backgroundColor: entry }}
-              aria-label={`Use ${entry} ink`}
+              aria-label={copy.useInk(entry)}
               aria-pressed={color === entry}
-              title={`Use ${entry} ink`}
+              title={copy.useInk(entry)}
               onClick={() => setColor(entry)}
             >
-              <span className="sr-only">{`Use ${entry} ink`}</span>
+              <span className="sr-only">{copy.useInk(entry)}</span>
             </button>
           ))}
         </div>
@@ -388,12 +390,12 @@ export function BrowserAnnotationOverlay({
             size="icon-sm"
             className="size-7"
             disabled={!canUndoAnnotation(history)}
-            aria-label="Undo"
-            title="Undo (Ctrl/Cmd+Z)"
+            aria-label={copy.undo}
+            title={copy.undoHint}
             onClick={undo}
           >
             <Undo2Icon className="size-3.5" />
-            <span className="sr-only">Undo</span>
+            <span className="sr-only">{copy.undo}</span>
           </Button>
           <Button
             type="button"
@@ -401,23 +403,23 @@ export function BrowserAnnotationOverlay({
             size="icon-sm"
             className="size-7"
             disabled={!canRedoAnnotation(history)}
-            aria-label="Redo"
-            title="Redo (Ctrl/Cmd+U or Ctrl/Cmd+Shift+Z)"
+            aria-label={copy.redo}
+            title={copy.redoHint}
             onClick={redo}
           >
             <RotateCcwIcon className="size-3.5 scale-x-[-1]" />
-            <span className="sr-only">Redo</span>
+            <span className="sr-only">{copy.redo}</span>
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             disabled={history.present.length === 0}
-            aria-label="Clear all marks"
-            title="Clear all marks (undoable)"
+            aria-label={copy.clearAll}
+            title={copy.clearAllHint}
             onClick={clear}
           >
-            Clear
+            {copy.clear}
           </Button>
         </div>
         {errorMessage ? (
@@ -434,10 +436,10 @@ export function BrowserAnnotationOverlay({
             size="sm"
             onClick={requestCancel}
           >
-            {confirmingCancel ? "Discard marks?" : "Cancel"}
+            {confirmingCancel ? copy.confirmDiscard : copy.cancel}
           </Button>
           <Button type="button" size="sm" disabled={!canConfirm} onClick={confirm}>
-            Add to chat
+            {copy.addToChat}
           </Button>
         </div>
       </div>

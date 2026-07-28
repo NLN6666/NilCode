@@ -7,6 +7,7 @@ import { memo, type ReactNode } from "react";
 
 import { SynaraLogo } from "../SynaraLogo";
 import { cn } from "~/lib/utils";
+import { useMessages } from "~/i18n/context";
 
 export interface CrossTaskOrigin {
   readonly sourceThreadId: ThreadId;
@@ -17,12 +18,13 @@ export interface CrossTaskOrigin {
 // Synara thread, so it always reads as "Sent by Synara" with the Synara mark
 // (the origin provider is not surfaced here to keep one consistent label).
 function OriginContent(): ReactNode {
+  const copy = useMessages().chat.message;
   return (
     <>
       <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/70">
         <SynaraLogo className="h-4 w-auto" aria-label="Synara" />
       </span>
-      <span className="truncate">Sent by Synara from another thread</span>
+      <span className="truncate">{copy.sentFromAnotherThread}</span>
     </>
   );
 }
@@ -34,6 +36,7 @@ export const CrossTaskOriginLabel = memo(function CrossTaskOriginLabel({
   readonly origin: CrossTaskOrigin;
   readonly onOpenSourceThread?: (threadId: ThreadId) => void;
 }) {
+  const linkCopy = useMessages().chat.message;
   const className = cn(
     "inline-flex max-w-full items-center gap-2 self-end rounded-md py-1",
     "font-system-ui text-[length:var(--app-font-size-ui,12px)] font-normal text-muted-foreground/72",
@@ -47,7 +50,7 @@ export const CrossTaskOriginLabel = memo(function CrossTaskOriginLabel({
         type="button"
         className={className}
         data-cross-task-origin="true"
-        aria-label="Open source thread"
+        aria-label={linkCopy.openSourceThread}
         onClick={() => onOpenSourceThread(origin.sourceThreadId)}
       >
         <OriginContent />

@@ -17,6 +17,7 @@ import {
 } from "@synara/contracts";
 import { describe, expect, it } from "vitest";
 
+import { en } from "../i18n/locales/en";
 import {
   applyScheduleToForm,
   allVisibleTriageRuns,
@@ -40,6 +41,7 @@ import {
   modelSelectionForProjectChange,
   providerOptionsForAutomationEdit,
   providerOptionsForAutomationModelSelection,
+  reconcileAutomationFormAutoModeSupport,
   runResultSummary,
   runResultTitle,
   scheduleKindFromSchedule,
@@ -55,6 +57,50 @@ const projectId = (value: string) => ProjectId.makeUnsafe(value);
 const threadId = (value: string) => ThreadId.makeUnsafe(value);
 const commandId = (value: string) => CommandId.makeUnsafe(value);
 const messageId = (value: string) => MessageId.makeUnsafe(value);
+
+describe("reconcileAutomationFormAutoModeSupport", () => {
+  it("persists refreshed Claude capability before an Auto automation is submitted", () => {
+    const form = {
+      ...formFromDefinition(null, "project-1"),
+      modelSelection: {
+        provider: "claudeAgent" as const,
+        model: "sonnet",
+        supportsAutoMode: false,
+      },
+      runtimeMode: "approval-required" as const,
+    };
+
+    expect(reconcileAutomationFormAutoModeSupport(form, true)).toMatchObject({
+      modelSelection: {
+        provider: "claudeAgent",
+        model: "sonnet",
+        supportsAutoMode: true,
+      },
+      runtimeMode: "approval-required",
+    });
+  });
+
+  it("downgrades an Auto automation when refreshed capability is unavailable", () => {
+    const form = {
+      ...formFromDefinition(null, "project-1"),
+      modelSelection: {
+        provider: "claudeAgent" as const,
+        model: "sonnet",
+        supportsAutoMode: true,
+      },
+      runtimeMode: "auto" as const,
+    };
+
+    expect(reconcileAutomationFormAutoModeSupport(form, false)).toMatchObject({
+      modelSelection: {
+        provider: "claudeAgent",
+        model: "sonnet",
+        supportsAutoMode: false,
+      },
+      runtimeMode: "approval-required",
+    });
+  });
+});
 
 const baseRun: AutomationRun = {
   id: runId("run-1"),
@@ -171,17 +217,30 @@ describe("automation shared route helpers", () => {
   });
 
   it("labels only badly-ended or approval-blocked runs as needing attention", () => {
-    expect(automationAttentionLabel(runWith({ status: "failed" }))).toBe("Last run failed");
-    expect(automationAttentionLabel(runWith({ status: "cancelled" }))).toBe("Last run cancelled");
-    expect(automationAttentionLabel(runWith({ status: "interrupted" }))).toBe(
-      "Last run interrupted",
+    expect(automationAttentionLabel(runWith({ status: "failed" }), en.automations.attention)).toBe(
+      "Last run failed",
     );
-    expect(automationAttentionLabel(runWith({ status: "waiting-for-approval" }))).toBe(
-      "Waiting for approval",
-    );
-    expect(automationAttentionLabel(runWith({ status: "succeeded" }))).toBeNull();
-    expect(automationAttentionLabel(runWith({ status: "running" }))).toBeNull();
-    expect(automationAttentionLabel(runWith({ status: "skipped" }))).toBeNull();
+    expect(
+      automationAttentionLabel(runWith({ status: "cancelled" }), en.automations.attention),
+    ).toBe("Last run cancelled");
+    expect(
+      automationAttentionLabel(runWith({ status: "interrupted" }), en.automations.attention),
+    ).toBe("Last run interrupted");
+    expect(
+      automationAttentionLabel(
+        runWith({ status: "waiting-for-approval" }),
+        en.automations.attention,
+      ),
+    ).toBe("Waiting for approval");
+    expect(
+      automationAttentionLabel(runWith({ status: "succeeded" }), en.automations.attention),
+    ).toBeNull();
+    expect(
+      automationAttentionLabel(runWith({ status: "running" }), en.automations.attention),
+    ).toBeNull();
+    expect(
+      automationAttentionLabel(runWith({ status: "skipped" }), en.automations.attention),
+    ).toBeNull();
   });
 
   it.each([
@@ -317,15 +376,16 @@ describe("automation shared route helpers", () => {
   });
 
   it("uses human labels for resultless and unknown-result runs", () => {
-    expect(runResultSummary(runWith({ result: null, status: "waiting-for-approval" }))).toBe(
-      "Waiting for approval",
-    );
+    expect(
+      runResultSummary(runWith({ result: null, status: "waiting-for-approval" }), en.automations),
+    ).toBe("Waiting for approval");
     expect(
       runResultSummary(
         runWith({
           result: { ...baseRun.result!, summary: null, outcome: "unknown" },
           status: "succeeded",
         }),
+        en.automations,
       ),
     ).toBe("Completed; open the thread for the reply");
   });
@@ -405,8 +465,14 @@ describe("automation shared route helpers", () => {
   });
 
   it("keeps custom max-iteration caps visible in picker options", () => {
-    expect(maxIterationOptions("3")[0]).toEqual({ value: "3", label: "3 runs" });
-    expect(maxIterationOptions(10)[0]).toEqual({ value: "", label: "Unlimited" });
+    expect(maxIterationOptions("3", en.automations.maxIterationOption)[0]).toEqual({
+      value: "3",
+      label: "3 runs",
+    });
+    expect(maxIterationOptions(10, en.automations.maxIterationOption)[0]).toEqual({
+      value: "",
+      label: "Unlimited",
+    });
   });
 
   it("refreshes the default model when the current model came from the old project", () => {

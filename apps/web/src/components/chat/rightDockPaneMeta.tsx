@@ -5,6 +5,7 @@
 
 import type { ReactNode } from "react";
 
+import type { Messages } from "~/i18n/locales/en";
 import type { LucideIcon } from "~/lib/icons";
 import {
   DiffIcon,
@@ -30,29 +31,33 @@ export interface RightDockPaneMeta {
   Icon: LucideIcon;
 }
 
-export const RIGHT_DOCK_PANE_META: Record<RightDockPaneKind, RightDockPaneMeta> = {
-  browser: { label: "Browser", Icon: GlobeIcon },
-  diff: { label: "Diff", Icon: DiffIcon },
-  explorer: { label: "Explorer", Icon: FoldersIcon },
-  file: { label: "File", Icon: FileIcon },
-  terminal: { label: "Terminal", Icon: TerminalIcon },
-  sidechat: { label: "Side", Icon: MessageCircleIcon },
-  git: { label: "Git", Icon: GitCommitIcon },
-  pullRequest: { label: "Pull request", Icon: GitPullRequestIcon },
-};
+/** Pane labels for the active locale; the glyphs below stay locale-free. */
+export type RightDockPaneLabels = Messages["chat"]["panes"]["kinds"];
 
-// Neutral fallback for any pane kind we no longer recognize (e.g. stale
-// persisted state). Persisted dock state is sanitized on rehydrate, so this is
-// only a defensive guard to keep a single bad pane from crashing render.
-const FALLBACK_RIGHT_DOCK_PANE_META: RightDockPaneMeta = {
-  label: "Panel",
-  Icon: InfoIcon,
+const RIGHT_DOCK_PANE_ICONS: Record<RightDockPaneKind, LucideIcon> = {
+  browser: GlobeIcon,
+  diff: DiffIcon,
+  explorer: FoldersIcon,
+  file: FileIcon,
+  terminal: TerminalIcon,
+  sidechat: MessageCircleIcon,
+  git: GitCommitIcon,
+  pullRequest: GitPullRequestIcon,
 };
 
 // Always resolve pane meta through this helper instead of indexing the map
-// directly, so an unknown kind degrades gracefully rather than throwing.
-export function getRightDockPaneMeta(kind: RightDockPaneKind): RightDockPaneMeta {
-  return RIGHT_DOCK_PANE_META[kind] ?? FALLBACK_RIGHT_DOCK_PANE_META;
+// directly, so an unknown kind degrades gracefully rather than throwing. An
+// unrecognized kind (e.g. stale persisted state) falls back to a neutral label
+// and glyph; persisted dock state is sanitized on rehydrate, so this is only a
+// defensive guard to keep a single bad pane from crashing render.
+export function getRightDockPaneMeta(
+  kind: RightDockPaneKind,
+  labels: RightDockPaneLabels,
+): RightDockPaneMeta {
+  return {
+    label: labels[kind] ?? labels.fallback,
+    Icon: RIGHT_DOCK_PANE_ICONS[kind] ?? InfoIcon,
+  };
 }
 
 // Add-menu / quick triggers follow the canonical kind order from the single
@@ -68,9 +73,10 @@ export const RIGHT_DOCK_ADD_MENU_KINDS: readonly RightDockPaneKind[] = RIGHT_DOC
 // embedded sidechat thread title) before falling back to the kind label.
 export function resolveRightDockPaneLabel(
   pane: RightDockPane,
+  labels: RightDockPaneLabels,
   overrides?: Record<string, string | undefined>,
 ): string {
-  return overrides?.[pane.id] ?? getRightDockPaneMeta(pane.kind).label;
+  return overrides?.[pane.id] ?? getRightDockPaneMeta(pane.kind, labels).label;
 }
 
 // Resolves a tab glyph: file panes show the per-file-type icon (matching the
@@ -89,5 +95,5 @@ export function resolveRightDockPaneIcon(pane: RightDockPane): ReactNode {
       />
     );
   }
-  return <SurfaceChipIcon icon={getRightDockPaneMeta(pane.kind).Icon} />;
+  return <SurfaceChipIcon icon={RIGHT_DOCK_PANE_ICONS[pane.kind] ?? InfoIcon} />;
 }

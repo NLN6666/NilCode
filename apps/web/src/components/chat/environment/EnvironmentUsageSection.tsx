@@ -17,8 +17,10 @@ import {
   EnvironmentRowBody,
   EnvironmentRowChevron,
 } from "./EnvironmentRow";
+import { useMessages } from "~/i18n/context";
 
 export function EnvironmentUsageSection({ provider }: { provider: ProviderKind }) {
+  const copy = useMessages().chat.environment;
   const model = useProviderUsageMenuModel(provider);
 
   if (!model) {
@@ -26,7 +28,7 @@ export function EnvironmentUsageSection({ provider }: { provider: ProviderKind }
   }
 
   return (
-    <EnvironmentLabeledSection label="Usage">
+    <EnvironmentLabeledSection label={copy.usage}>
       <ProviderUsageMenuPopup provider={provider} model={model} align="start">
         <MenuTrigger
           render={

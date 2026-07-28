@@ -143,6 +143,7 @@ export const CanonicalRequestType = Schema.Literals([
   "command_execution_approval",
   "file_read_approval",
   "file_change_approval",
+  "permissions_approval",
   "apply_patch_approval",
   "exec_command_approval",
   "tool_user_input",
@@ -318,7 +319,19 @@ export const ThreadTokenUsageSnapshot = Schema.Struct({
     Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)).check(Schema.isLessThanOrEqualTo(100)),
   ),
   totalProcessedTokens: Schema.optional(NonNegativeInt),
+  /**
+   * Budget the meter fills toward — the smaller of the model's window and the
+   * provider's compaction threshold, so it is what the session actually gets
+   * before context is compacted. Distinct from `contextWindowTokens`.
+   */
   maxTokens: Schema.optional(PositiveInt),
+  /**
+   * The model's real context capacity, independent of any compaction policy.
+   * Reported separately because `maxTokens` is routinely smaller: Claude
+   * defaults to a 200k auto-compact budget on 1M models, and labelling that as
+   * the model's window misreports the model.
+   */
+  contextWindowTokens: Schema.optional(PositiveInt),
   inputTokens: Schema.optional(NonNegativeInt),
   cachedInputTokens: Schema.optional(NonNegativeInt),
   outputTokens: Schema.optional(NonNegativeInt),

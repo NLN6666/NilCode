@@ -12,6 +12,7 @@ import { cn } from "~/lib/utils";
 import { Toggle } from "../../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { CHAT_HEADER_TOGGLE_CLASS_NAME, SurfaceChipIcon } from "../chatHeaderControls";
+import { useMessages } from "~/i18n/context";
 
 export interface EnvironmentToggleState {
   open: boolean;
@@ -25,6 +26,7 @@ const TOGGLE_CLASS_NAME = cn(
 );
 
 export function EnvironmentToggle({ environment }: { environment: EnvironmentToggleState }) {
+  const copy = useMessages().chat.environment;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -33,7 +35,7 @@ export function EnvironmentToggle({ environment }: { environment: EnvironmentTog
             className={TOGGLE_CLASS_NAME}
             pressed={environment.open}
             onPressedChange={environment.onOpenChange}
-            aria-label="Toggle environment panel"
+            aria-label={copy.toggle}
             variant="default"
             size="xs"
           >
@@ -41,7 +43,7 @@ export function EnvironmentToggle({ environment }: { environment: EnvironmentTog
           </Toggle>
         }
       />
-      <TooltipPopup side="bottom">Environment</TooltipPopup>
+      <TooltipPopup side="bottom">{copy.title}</TooltipPopup>
     </Tooltip>
   );
 }

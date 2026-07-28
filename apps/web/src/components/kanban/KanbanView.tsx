@@ -54,8 +54,10 @@ import { KanbanProjectBoardView } from "./KanbanProjectBoardView";
 import { useKanbanBoard } from "./useKanbanBoard";
 import { useKanbanCardContextMenu } from "./useKanbanCardContextMenu";
 import type { KanbanCard } from "./kanban.logic";
+import { useMessages } from "~/i18n/context";
 
 export default function KanbanView({ projectId }: { projectId: string | null }) {
+  const copy = useMessages().workspace.kanban;
   const navigate = useNavigate();
   const board = useKanbanBoard();
   const threadsHydrated = useStore((state) => state.threadsHydrated);
@@ -173,7 +175,7 @@ export default function KanbanView({ projectId }: { projectId: string | null }) 
                   size="icon-xs"
                   variant="ghost"
                   onClick={handleBackToOverview}
-                  aria-label="Back to all projects"
+                  aria-label={copy.backToAllProjects}
                 >
                   <ArrowLeftIcon className="size-3.5" />
                 </Button>
@@ -195,13 +197,13 @@ export default function KanbanView({ projectId }: { projectId: string | null }) 
                       onClick={handleNewTaskInProjectBoard}
                     >
                       <PlusIcon className="size-3.5" />
-                      New task
+                      {copy.newTask}
                     </Button>
                   }
                 />
                 <TooltipPopup side="bottom">
                   <span className="flex items-center gap-2">
-                    New task
+                    {copy.newTask}
                     <KbdGroup>
                       {NEW_TASK_SHORTCUT_PARTS.map((part) => (
                         <Kbd key={part}>{part}</Kbd>

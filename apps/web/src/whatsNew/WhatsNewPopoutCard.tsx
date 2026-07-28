@@ -12,6 +12,7 @@ import { cn } from "~/lib/utils";
 import { SynaraLogo } from "~/components/SynaraLogo";
 
 import type { WhatsNewEntry } from "./logic";
+import { useMessages } from "~/i18n/context";
 
 export interface WhatsNewPopoutCardProps {
   readonly entry: WhatsNewEntry;
@@ -38,6 +39,7 @@ export function WhatsNewPopoutCard({
   onDismiss,
   className,
 }: WhatsNewPopoutCardProps) {
+  const copy = useMessages().dialogs.whatsNew;
   const heroAlt = entry.heroImageAlt ?? `What's new in v${currentVersion}`;
   const primaryFeatureTitle = entry.features[0]?.title;
 
@@ -83,7 +85,7 @@ export function WhatsNewPopoutCard({
             the card's onOpen handler. */}
         <button
           type="button"
-          aria-label="Dismiss What's new"
+          aria-label={copy.dismiss}
           onClick={(event) => {
             event.stopPropagation();
             onDismiss();
@@ -128,10 +130,10 @@ export function WhatsNewPopoutCard({
         <div className="flex flex-col gap-0.5 px-3 pb-3 pt-2">
           <p className="text-[11px] font-medium text-primary">New · v{currentVersion}</p>
           <p className="truncate text-sm font-semibold text-foreground">
-            {primaryFeatureTitle ?? `What's new in v${currentVersion}`}
+            {primaryFeatureTitle ?? copy.popoutTitle(currentVersion)}
           </p>
           <p className="text-xs text-muted-foreground">
-            Find out what&rsquo;s new <span aria-hidden="true">→</span>
+            {copy.popoutHint} <span aria-hidden="true">→</span>
           </p>
         </div>
       </div>

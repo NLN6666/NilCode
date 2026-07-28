@@ -10,6 +10,7 @@ import { toastManager } from "../components/ui/toast";
 import { resolveVisibleToastThreadIds } from "../components/ui/toastRouteVisibility";
 import { useAppSettings } from "../appSettings";
 import { isElectron } from "../env";
+import type { Messages } from "../i18n/locales/en";
 import { useDiffRouteSearch } from "../hooks/useDiffRouteSearch";
 import { selectSplitView, useSplitViewStore } from "../splitViewStore";
 import { useStore } from "../store";
@@ -128,10 +129,12 @@ function showThreadToast(
     description: body,
     data: {
       allowCrossThreadVisibility: true,
+      compactContextual: true,
       threadId,
       dismissAfterVisibleMs: 8000,
     },
     actionProps: {
+      "aria-label": `Open ${title}`,
       children: "Open",
       onClick: () => focusThread(threadId, navigate),
     },
@@ -313,22 +316,13 @@ export function TaskCompletionNotifications() {
   return null;
 }
 
+/**
+ * Explains why system notifications are (un)available. Takes the copy rather than owning it so
+ * the same permission states read correctly in every locale — pass `m.settings.notifications.support`.
+ */
 export function buildNotificationSettingsSupportText(
   permissionState: BrowserNotificationPermissionState,
+  support: Messages["settings"]["notifications"]["support"],
 ): string {
-  if (isElectron) {
-    return "Desktop app notifications use your operating system notification center.";
-  }
-  switch (permissionState) {
-    case "granted":
-      return "Browser notifications are enabled for this app.";
-    case "denied":
-      return "Browser notifications are blocked. Re-enable them in your browser site settings.";
-    case "insecure":
-      return "Browser notifications need a secure context. Localhost works; plain HTTP does not.";
-    case "unsupported":
-      return "This browser does not support desktop notifications.";
-    case "default":
-      return "Allow browser notifications to get alerts when chats or terminal agents finish or need input in the background.";
-  }
+  return isElectron ? support.electron : support[permissionState];
 }

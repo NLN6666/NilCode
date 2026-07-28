@@ -1,7 +1,13 @@
 // FILE: BranchToolbar.tsx
 // Purpose: Renders the chat thread's compact workspace controls, including the
 // local usage popover, inline workspace handoff actions, and runtime access toggle.
-import type { ThreadId, RuntimeMode } from "@synara/contracts";
+import type {
+  ProviderKind,
+  ProviderModelDescriptor,
+  ServerProviderStatus,
+  ThreadId,
+  RuntimeMode,
+} from "@synara/contracts";
 import { CheckIcon, ChevronDownIcon, HandoffIcon, WorktreeIcon } from "~/lib/icons";
 import { HiOutlineHandRaised } from "react-icons/hi2";
 import { CentralIcon } from "~/lib/central-icons";
@@ -13,6 +19,7 @@ import { readNativeApi } from "../nativeApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useProviderUsageSummary } from "../hooks/useProviderUsageSummary";
 import { resolveThreadEnvironmentPresentation } from "../lib/threadEnvironment";
+import { providerModelSupportsAutoRuntimeMode } from "../lib/runtimeMode";
 import { useStore } from "../store";
 import {
   createAllThreadsSelector,
@@ -31,6 +38,7 @@ import {
   type BranchSelectorVariant,
 } from "./BranchToolbarBranchSelector";
 import {
+  RUNTIME_AUTO_ICON_ACCENT_CLASS_NAME,
   RUNTIME_FULL_ACCESS_ACCENT_CLASS_NAME,
   COMPOSER_PICKER_TRIGGER_TEXT_CLASS_NAME,
   COMPOSER_TOOLBAR_PICKER_TRIGGER_CLASS_NAME,
@@ -58,6 +66,7 @@ import {
   MenuTrigger,
 } from "./ui/menu";
 import type { ThreadWorkspacePatch } from "../types";
+import { useMessages } from "~/i18n/context";
 
 function WorktreeGlyph({ className }: { className?: string }) {
   return <WorktreeIcon className={className} />;
@@ -74,8 +83,8 @@ const ENV_MENU_ICON_CLASS_NAME = "size-3.5 text-muted-foreground";
 function ContinueInMenuItem({
   icon,
   label,
-  selected = false,
-  disabled = false,
+  selected: selectedProp,
+  disabled: disabledProp,
   onSelect,
 }: {
   icon: ReactNode;
@@ -84,6 +93,8 @@ function ContinueInMenuItem({
   disabled?: boolean;
   onSelect?: () => void;
 }) {
+  const selected = selectedProp ?? false;
+  const disabled = disabledProp ?? false;
   return (
     <MenuItem disabled={disabled} {...(onSelect ? { onClick: onSelect } : {})}>
       {icon}
@@ -116,6 +127,9 @@ export interface BranchToolbarProps {
 }
 
 export interface RuntimeUsageControlsProps {
+  provider?: ProviderKind | undefined;
+  runtimeModel?: ProviderModelDescriptor | undefined;
+  providerStatus?: ServerProviderStatus | null | undefined;
   runtimeMode?: RuntimeMode | undefined;
   onRuntimeModeChange?: ((mode: RuntimeMode) => void) | undefined;
   contextWindow?: ContextWindowSnapshot | null | undefined;
@@ -130,11 +144,20 @@ export interface RuntimeUsageControlsProps {
 }
 
 export function RuntimeUsageControls({
+  provider,
+  runtimeModel,
+  providerStatus,
   runtimeMode,
   onRuntimeModeChange,
   className,
-  hideLabel = false,
+  hideLabel: hideLabelProp,
 }: RuntimeUsageControlsProps) {
+  const copy = useMessages().git.toolbar;
+  const autoModeAvailable =
+    provider !== undefined &&
+    providerModelSupportsAutoRuntimeMode(provider, runtimeModel, providerStatus);
+  const runtimePresentation = copy.runtimeModes[runtimeMode ?? "approval-required"];
+  const hideLabel = hideLabelProp ?? false;
   return (
     <div
       className={cn(
@@ -154,22 +177,23 @@ export function RuntimeUsageControls({
                   COMPOSER_PICKER_TRIGGER_TEXT_CLASS_NAME,
                   runtimeMode === "full-access" && RUNTIME_FULL_ACCESS_ACCENT_CLASS_NAME,
                 )}
-                title={
-                  runtimeMode === "full-access"
-                    ? "Full access — click to change permissions"
-                    : "Default permissions — click to change permissions"
-                }
+                title={`${runtimePresentation.label}: ${runtimePresentation.description} ${copy.runtimeModeHintSuffix}`}
               />
             }
           >
             <span className="inline-flex items-center gap-1.5">
               {runtimeMode === "full-access" ? (
                 <CentralIcon name="shield-access" className="size-3.5 shrink-0" />
+              ) : runtimeMode === "auto" ? (
+                <CentralIcon
+                  name="shield-code"
+                  className={cn("size-3.5 shrink-0", RUNTIME_AUTO_ICON_ACCENT_CLASS_NAME)}
+                />
               ) : (
                 <HiOutlineHandRaised className="size-3.5 shrink-0" />
               )}
               <span className={cn("truncate", hideLabel ? "sr-only" : "@max-[480px]:sr-only")}>
-                {runtimeMode === "full-access" ? "Full access" : "Default permissions"}
+                {runtimePresentation.label}
               </span>
               <ChevronDownIcon
                 className={cn(
@@ -179,13 +203,14 @@ export function RuntimeUsageControls({
               />
             </span>
           </MenuTrigger>
-          <ComposerPickerMenuPopup align="start" side="top" className="min-w-44">
+          <ComposerPickerMenuPopup align="start" side="top" className="min-w-72">
             <MenuRadioGroup
               value={runtimeMode}
               onValueChange={(value) => {
                 if (
                   !value ||
-                  (value !== "full-access" && value !== "approval-required") ||
+                  (value !== "full-access" && value !== "auto" && value !== "approval-required") ||
+                  (value === "auto" && !autoModeAvailable) ||
                   value === runtimeMode
                 ) {
                   return;
@@ -193,19 +218,45 @@ export function RuntimeUsageControls({
                 onRuntimeModeChange(value);
               }}
             >
+              <MenuRadioItem value="approval-required">
+                <span className="inline-flex items-start gap-2">
+                  <HiOutlineHandRaised className="mt-0.5 size-4 shrink-0" />
+                  <span className="flex flex-col">
+                    <span>{copy.runtimeModes["approval-required"].label}</span>
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {copy.runtimeModes["approval-required"].description}
+                    </span>
+                  </span>
+                </span>
+              </MenuRadioItem>
+              {autoModeAvailable ? (
+                <MenuRadioItem value="auto">
+                  <span className="inline-flex items-start gap-2">
+                    <CentralIcon
+                      name="shield-code"
+                      className={cn("mt-0.5 size-4 shrink-0", RUNTIME_AUTO_ICON_ACCENT_CLASS_NAME)}
+                    />
+                    <span className="flex flex-col">
+                      <span>{copy.runtimeModes.auto.label}</span>
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {copy.runtimeModes.auto.description}
+                      </span>
+                    </span>
+                  </span>
+                </MenuRadioItem>
+              ) : null}
               <MenuRadioItem
                 value="full-access"
                 className="data-checked:text-[var(--runtime-full-access-accent)]"
               >
-                <span className="inline-flex items-center gap-2">
-                  <CentralIcon name="shield-access" className="size-4 shrink-0" />
-                  Full access
-                </span>
-              </MenuRadioItem>
-              <MenuRadioItem value="approval-required">
-                <span className="inline-flex items-center gap-2">
-                  <HiOutlineHandRaised className="size-4 shrink-0" />
-                  Default permissions
+                <span className="inline-flex items-start gap-2">
+                  <CentralIcon name="shield-access" className="mt-0.5 size-4 shrink-0" />
+                  <span className="flex flex-col">
+                    <span>{copy.runtimeModes["full-access"].label}</span>
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {copy.runtimeModes["full-access"].description}
+                    </span>
+                  </span>
                 </span>
               </MenuRadioItem>
             </MenuRadioGroup>
@@ -223,13 +274,17 @@ export default function BranchToolbar({
   envLocked,
   onHandoffToWorktree,
   onHandoffToLocal,
-  handoffBusy = false,
+  handoffBusy: handoffBusyProp,
   onCheckoutPullRequestRequest,
   onComposerFocusRequest,
-  variant = "toolbar",
-  showBranchSelector = true,
+  variant: variantProp,
+  showBranchSelector: showBranchSelectorProp,
   fixedLocalWorkspaceCwd,
 }: BranchToolbarProps) {
+  const toolbarCopy = useMessages().git.toolbar;
+  const handoffBusy = handoffBusyProp ?? false;
+  const variant = variantProp ?? "toolbar";
+  const showBranchSelector = showBranchSelectorProp ?? true;
   const isPanel = variant === "panel";
   const setThreadWorkspaceAction = useStore((store) => store.setThreadWorkspace);
   const draftThread = useComposerDraftStore((store) => store.getDraftThread(threadId));
@@ -478,7 +533,7 @@ export default function BranchToolbar({
               className="w-60 min-w-60"
             >
               <MenuGroup>
-                <MenuGroupLabel>Continue in</MenuGroupLabel>
+                <MenuGroupLabel>{toolbarCopy.continueIn}</MenuGroupLabel>
                 {environmentPresentation.mode === "local" ? (
                   <ContinueInMenuItem
                     icon={<CentralIcon name="macbook-air" className={ENV_MENU_ICON_CLASS_NAME} />}
@@ -495,7 +550,7 @@ export default function BranchToolbar({
                 {canSwitchToWorktree ? (
                   <ContinueInMenuItem
                     icon={<WorktreeGlyph className={ENV_MENU_ICON_CLASS_NAME} />}
-                    label="New worktree"
+                    label={toolbarCopy.newWorktree}
                     onSelect={() => onEnvModeChange("worktree")}
                   />
                 ) : null}
@@ -509,7 +564,7 @@ export default function BranchToolbar({
                 {canHandoffToWorktree && onHandoffToWorktree ? (
                   <ContinueInMenuItem
                     icon={<WorktreeGlyph className={ENV_MENU_ICON_CLASS_NAME} />}
-                    label="Hand off to new worktree"
+                    label={toolbarCopy.handOffToNewWorktree}
                     disabled={handoffBusy}
                     onSelect={() => onHandoffToWorktree()}
                   />
@@ -517,7 +572,7 @@ export default function BranchToolbar({
                 {canHandoffToLocal && onHandoffToLocal ? (
                   <ContinueInMenuItem
                     icon={<HandoffIcon className={ENV_MENU_ICON_CLASS_NAME} />}
-                    label="Hand off to local"
+                    label={toolbarCopy.handOffToLocal}
                     disabled={handoffBusy}
                     onSelect={() => onHandoffToLocal()}
                   />
@@ -529,7 +584,7 @@ export default function BranchToolbar({
               <Collapsible open={rateLimitsOpen} onOpenChange={setRateLimitsOpen}>
                 <MenuItem closeOnClick={false} onClick={() => setRateLimitsOpen((open) => !open)}>
                   <CentralIcon name="clock" className="size-3.5 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate">Rate limits remaining</span>
+                  <span className="min-w-0 flex-1 truncate">{toolbarCopy.rateLimitsRemaining}</span>
                   <DisclosureChevron
                     open={rateLimitsOpen}
                     className="text-[var(--color-text-foreground-secondary)]"

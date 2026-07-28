@@ -22,15 +22,16 @@ import { Select, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Switch } from "./ui/switch";
 import { Textarea } from "./ui/textarea";
 import { toastManager } from "./ui/toast";
-import { SettingsSelectPopup } from "./settings/SettingsPanelPrimitives";
+import { SettingsCard, SettingsSelectPopup } from "./settings/SettingsPanelPrimitives";
 import { copyTextToClipboard } from "../hooks/useCopyToClipboard";
 import { type ChromeTheme, type ThemeMode, type ThemeVariant, useTheme } from "../hooks/useTheme";
 import { cn } from "../lib/utils";
 import {
-  SETTINGS_CARD_CLASS_NAME,
   SETTINGS_CARD_ROW_CLASS_NAME,
   SETTINGS_CONTROL_RADIUS_CLASS_NAME,
+  SETTINGS_STACKED_ROWS_DIVIDER_CLASS_NAME,
 } from "../settingsPanelStyles";
+import { ELEVATED_HOVER_SURFACE_RAISED_TEXT_CLASS_NAME } from "../surfaceStyles";
 import {
   CODE_THEME_OPTIONS,
   DEFAULT_THEME_STATE,
@@ -38,6 +39,7 @@ import {
   getCodeThemeSeed,
   resolveThemePack,
 } from "../theme/theme.logic";
+import { useMessages } from "../i18n/context";
 
 type ThemePackEditorProps = {
   isActive?: boolean;
@@ -48,11 +50,20 @@ type ThemePackEditorProps = {
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const COLOR_PICKER_COMMIT_DELAY_MS = 220;
 
+/** Borderless text action in the editor's header chrome (Copy, Import). */
+const EDITOR_TEXT_ACTION_CLASS_NAME = cn(
+  "rounded-md px-2 py-1 text-xs text-[var(--color-text-foreground-secondary)]",
+  ELEVATED_HOVER_SURFACE_RAISED_TEXT_CLASS_NAME,
+);
+
 export function ThemePackEditor({
   variant,
-  isActive = false,
-  mode = "system",
+  isActive: isActiveProp,
+  mode: modeProp,
 }: ThemePackEditorProps) {
+  const copy = useMessages().projectTools.theme;
+  const isActive = isActiveProp ?? false;
+  const mode = modeProp ?? "system";
   const {
     darkTheme,
     lightTheme,
@@ -68,7 +79,6 @@ export function ThemePackEditor({
   const pack = variant === "dark" ? darkTheme : lightTheme;
   const theme = pack.theme;
   const defaultTheme = resolveThemePack(DEFAULT_THEME_STATE, variant).theme;
-  // Manual memoization kept: this file does not compile under React Compiler (see compile-report).
   const codeThemes = useMemo(() => {
     const options = getAvailableCodeThemes(variant);
     return options.map((option) => ({
@@ -81,28 +91,28 @@ export function ThemePackEditor({
   const codeThemeLabel =
     CODE_THEME_OPTIONS.find((option) => option.id === pack.codeThemeId)?.label ?? pack.codeThemeId;
   const isPristine = isDefaultThemePack(variant);
-  const titleLabel = variant === "dark" ? "Dark theme" : "Light theme";
+  const titleLabel = variant === "dark" ? copy.darkTitle : copy.lightTitle;
   const contextLabel = isActive
     ? mode === "system"
-      ? `System is currently using this ${variant} slot.`
-      : "This is the active theme right now."
+      ? copy.systemUsingSlot(variant)
+      : copy.activeNow
     : mode === "system"
-      ? `Used when your system switches to ${variant}.`
-      : `Inactive while the app is locked to ${mode}.`;
+      ? copy.usedWhenSystemSwitches(variant)
+      : copy.inactiveWhileLocked(mode);
 
   const handleCopy = async () => {
     try {
       await copyTextToClipboard(exportThemeString(variant));
       toastManager.add({
         type: "success",
-        title: "Theme copied",
-        description: `Copied the ${variant} theme share string.`,
+        title: copy.copied,
+        description: copy.copiedDetail(variant),
       });
     } catch {
       toastManager.add({
         type: "error",
-        title: "Copy failed",
-        description: "Unable to copy the theme share string.",
+        title: copy.copyFailed,
+        description: copy.copyFailedDetail,
       });
     }
   };
@@ -112,7 +122,7 @@ export function ThemePackEditor({
   };
 
   return (
-    <div className={cn(SETTINGS_CARD_CLASS_NAME, "overflow-hidden")}>
+    <SettingsCard divided={false}>
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:py-3.5">
         <div className="flex items-center gap-2">
@@ -121,9 +131,12 @@ export function ThemePackEditor({
             <button
               type="button"
               onClick={() => resetThemeVariant(variant)}
-              className="rounded-md px-1.5 py-0.5 text-[11px] text-[var(--color-text-foreground-secondary)] transition-colors hover:bg-[var(--color-background-elevated-secondary)] hover:text-[var(--color-text-foreground)]"
+              className={cn(
+                "rounded-md px-1.5 py-0.5 text-[11px] text-[var(--color-text-foreground-secondary)]",
+                ELEVATED_HOVER_SURFACE_RAISED_TEXT_CLASS_NAME,
+              )}
             >
-              Reset
+              {copy.reset}
             </button>
           ) : null}
         </div>
@@ -132,9 +145,9 @@ export function ThemePackEditor({
           <button
             type="button"
             onClick={() => void handleCopy()}
-            className="rounded-md px-2 py-1 text-xs text-[var(--color-text-foreground-secondary)] transition-colors hover:bg-[var(--color-background-elevated-secondary)] hover:text-[var(--color-text-foreground)]"
+            className={EDITOR_TEXT_ACTION_CLASS_NAME}
           >
-            Copy
+            {copy.copy}
           </button>
           <Select
             value={pack.codeThemeId}
@@ -171,11 +184,11 @@ export function ThemePackEditor({
         {contextLabel}
       </div>
 
-      <div className="divide-y divide-[color:var(--color-border)]">
-        <ThemeRow label="Accent">
+      <div className={SETTINGS_STACKED_ROWS_DIVIDER_CLASS_NAME}>
+        <ThemeRow label={copy.accent}>
           <ColorPill
             color={theme.accent}
-            ariaLabel={`${titleLabel} accent color`}
+            ariaLabel={copy.accentAria(titleLabel)}
             onChange={(next) => updateThemePack(variant, { accent: next })}
             onReset={
               theme.accent !== defaultTheme.accent
@@ -188,10 +201,10 @@ export function ThemePackEditor({
           />
         </ThemeRow>
 
-        <ThemeRow label="Background">
+        <ThemeRow label={copy.background}>
           <ColorPill
             color={theme.surface}
-            ariaLabel={`${titleLabel} background color`}
+            ariaLabel={copy.backgroundAria(titleLabel)}
             onChange={(next) => updateThemePack(variant, { surface: next })}
             onReset={
               theme.surface !== defaultTheme.surface
@@ -204,10 +217,10 @@ export function ThemePackEditor({
           />
         </ThemeRow>
 
-        <ThemeRow label="Foreground">
+        <ThemeRow label={copy.foreground}>
           <ColorPill
             color={theme.ink}
-            ariaLabel={`${titleLabel} foreground color`}
+            ariaLabel={copy.foregroundAria(titleLabel)}
             onChange={(next) => updateThemePack(variant, { ink: next })}
             onReset={
               theme.ink !== defaultTheme.ink
@@ -220,23 +233,23 @@ export function ThemePackEditor({
           />
         </ThemeRow>
 
-        <ThemeRow label="UI font">
+        <ThemeRow label={copy.uiFont}>
           <div className="flex flex-col items-end gap-1">
             <FontInput
               value={theme.fonts.ui ?? ""}
-              placeholder="System default"
-              ariaLabel={`${titleLabel} UI font`}
+              placeholder={copy.uiFontPlaceholder}
+              ariaLabel={copy.uiFontAria(titleLabel)}
               onChange={(next) => updateThemeFonts(variant, { ui: next.length > 0 ? next : null })}
             />
           </div>
         </ThemeRow>
 
-        <ThemeRow label="Code font">
+        <ThemeRow label={copy.codeFont}>
           <div className="flex flex-col items-end gap-1">
             <FontInput
               value={theme.fonts.code ?? ""}
               placeholder='"JetBrains Mono"'
-              ariaLabel={`${titleLabel} code font`}
+              ariaLabel={copy.codeFontAria(titleLabel)}
               mono
               onChange={(next) =>
                 updateThemeFonts(variant, { code: next.length > 0 ? next : null })
@@ -245,23 +258,23 @@ export function ThemePackEditor({
           </div>
         </ThemeRow>
 
-        <ThemeRow label="Translucent sidebar">
+        <ThemeRow label={copy.translucentSidebar}>
           <Switch
             checked={!theme.opaqueWindows}
             onCheckedChange={(checked) => updateThemePack(variant, { opaqueWindows: !checked })}
-            aria-label={`${titleLabel} translucent sidebar`}
+            aria-label={copy.translucentSidebarAria(titleLabel)}
           />
         </ThemeRow>
 
-        <ThemeRow label="Contrast">
+        <ThemeRow label={copy.contrast}>
           <ContrastSlider
             value={theme.contrast}
             onChange={(next) => updateThemePack(variant, { contrast: next })}
-            ariaLabel={`${titleLabel} contrast`}
+            ariaLabel={copy.contrastAria(titleLabel)}
           />
         </ThemeRow>
       </div>
-    </div>
+    </SettingsCard>
   );
 }
 
@@ -294,6 +307,7 @@ function ColorPill({
   onChange: (next: string) => void;
   onReset?: (() => void) | undefined;
 }) {
+  const copy = useMessages().projectTools.theme;
   const commitTimerRef = useRef<number | null>(null);
   const pendingCommitRef = useRef<string | null>(null);
   const colorRef = useRef(color);
@@ -375,9 +389,12 @@ function ColorPill({
             setDraftHex(null);
             onReset();
           }}
-          className="rounded-md p-1 text-[var(--color-text-foreground-tertiary)] transition-colors hover:bg-[var(--color-background-elevated-secondary)] hover:text-[var(--color-text-foreground)]"
-          aria-label={`Reset ${ariaLabel}`}
-          title="Reset to default"
+          className={cn(
+            "rounded-md p-1 text-[var(--color-text-foreground-tertiary)]",
+            ELEVATED_HOVER_SURFACE_RAISED_TEXT_CLASS_NAME,
+          )}
+          aria-label={copy.resetAria(ariaLabel)}
+          title={copy.resetToDefault}
         >
           <ResetGlyph />
         </button>
@@ -475,7 +492,7 @@ function FontInput({
   value,
   placeholder,
   ariaLabel,
-  mono = false,
+  mono: monoProp,
   onChange,
 }: {
   value: string;
@@ -484,6 +501,7 @@ function FontInput({
   mono?: boolean;
   onChange: (next: string) => void;
 }) {
+  const mono = monoProp ?? false;
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <Input
@@ -547,6 +565,7 @@ function ImportThemeDialog({
   variant: ThemeVariant;
   onImport: (value: string) => void;
 }) {
+  const copy = useMessages().projectTools.theme;
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -556,14 +575,14 @@ function ImportThemeDialog({
       onImport(value);
       toastManager.add({
         type: "success",
-        title: "Theme imported",
-        description: `Updated the ${variant} theme pack.`,
+        title: copy.imported,
+        description: copy.importedDetail(variant),
       });
       setValue("");
       setError(null);
       setOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to import that theme string.");
+      setError(err instanceof Error ? err.message : copy.importFailed);
     }
   };
 
@@ -571,22 +590,18 @@ function ImportThemeDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <button
-            type="button"
-            className="rounded-md px-2 py-1 text-xs text-[var(--color-text-foreground-secondary)] transition-colors hover:bg-[var(--color-background-elevated-secondary)] hover:text-[var(--color-text-foreground)]"
-          >
-            Import
+          <button type="button" className={EDITOR_TEXT_ACTION_CLASS_NAME}>
+            {copy.import}
           </button>
         }
       />
       <DialogPopup className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Import {variant} theme</DialogTitle>
+          <DialogTitle>{copy.importTitle(variant)}</DialogTitle>
           <p className="text-xs text-muted-foreground">
-            Paste a{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-chat-code">codex-theme-v1:</code>{" "}
-            share string. The embedded variant must match {variant}, and the selected code theme
-            must exist for that variant.
+            {copy.importHintBefore}{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-chat-code">codex-theme-v1:</code>
+            {copy.importHintAfter(variant)}
           </p>
         </DialogHeader>
         <DialogPanel>
@@ -600,7 +615,7 @@ function ImportThemeDialog({
             spellCheck={false}
             rows={5}
             className="font-chat-code text-[11px]"
-            aria-label="Theme share string"
+            aria-label={copy.shareStringLabel}
           />
           {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
         </DialogPanel>
@@ -608,7 +623,7 @@ function ImportThemeDialog({
           <DialogClose
             render={
               <Button variant="outline" type="button" size="sm">
-                Cancel
+                {copy.cancel}
               </Button>
             }
           />
@@ -618,7 +633,7 @@ function ImportThemeDialog({
             disabled={value.trim().length === 0}
             onClick={handleSubmit}
           >
-            Import
+            {copy.import}
           </Button>
         </DialogFooter>
       </DialogPopup>

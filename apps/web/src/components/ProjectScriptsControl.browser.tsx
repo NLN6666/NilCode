@@ -16,8 +16,12 @@ const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 async function mountProjectScriptsControl(props?: {
   scripts?: ProjectScript[];
   preferredScriptId?: string | null;
+  runningScriptIds?: ReadonlySet<string>;
+  withDetectServices?: boolean;
 }) {
   const onRunScript = vi.fn();
+  const onStopScript = vi.fn();
+  const onDetectServices = vi.fn();
   const onAddScript = vi.fn<(input: NewProjectScriptInput) => void>();
   const onUpdateScript = vi.fn<(scriptId: string, input: NewProjectScriptInput) => void>();
   const onDeleteScript = vi.fn<(scriptId: string) => void>();
@@ -28,7 +32,10 @@ async function mountProjectScriptsControl(props?: {
       scripts={props?.scripts ?? []}
       keybindings={EMPTY_KEYBINDINGS}
       preferredScriptId={props?.preferredScriptId ?? null}
+      runningScriptIds={props?.runningScriptIds ?? new Set()}
       onRunScript={onRunScript}
+      onStopScript={onStopScript}
+      onDetectServices={props?.withDetectServices === false ? undefined : onDetectServices}
       onAddScript={onAddScript}
       onUpdateScript={onUpdateScript}
       onDeleteScript={onDeleteScript}
@@ -45,11 +52,22 @@ async function mountProjectScriptsControl(props?: {
     [Symbol.asyncDispose]: cleanup,
     cleanup,
     onRunScript,
+    onStopScript,
+    onDetectServices,
     onAddScript,
     onUpdateScript,
     onDeleteScript,
   };
 }
+
+const WEB_SCRIPT: ProjectScript = {
+  id: "erp-web",
+  name: "erp-web",
+  command: "dotnet run",
+  icon: "play",
+  runOnWorktreeCreate: false,
+  port: 5299,
+};
 
 describe("ProjectScriptsControl", () => {
   afterEach(() => {
@@ -86,6 +104,47 @@ describe("ProjectScriptsControl", () => {
     await page.getByLabelText("Script actions").click();
     await expect.poll(() => document.body.textContent).toContain("Setup (setup)");
     await expect.poll(() => document.body.textContent).toContain("Add action");
+  });
+
+  it("offers service detection even before the project has any action", async () => {
+    await using control = await mountProjectScriptsControl();
+
+    await page.getByLabelText("Script actions").click();
+    await page.getByRole("menuitem", { name: "Detect services" }).click();
+
+    expect(control.onDetectServices).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to a plain add button when there is no project to inspect", async () => {
+    await using _ = await mountProjectScriptsControl({ withDetectServices: false });
+
+    await expect.poll(() => document.body.textContent).toContain("Add action");
+    expect(document.querySelector('[aria-label="Script actions"]')).toBeNull();
+  });
+
+  it("turns a live service into a stop control instead of running it again", async () => {
+    await using control = await mountProjectScriptsControl({
+      scripts: [WEB_SCRIPT],
+      preferredScriptId: "erp-web",
+      runningScriptIds: new Set(["erp-web"]),
+    });
+
+    await page.getByRole("button", { name: "Stop erp-web" }).click();
+
+    expect(control.onStopScript).toHaveBeenCalledWith(WEB_SCRIPT);
+    expect(control.onRunScript).not.toHaveBeenCalled();
+  });
+
+  it("runs an idle service rather than stopping it", async () => {
+    await using control = await mountProjectScriptsControl({
+      scripts: [WEB_SCRIPT],
+      preferredScriptId: "erp-web",
+    });
+
+    await page.getByRole("button", { name: "Run erp-web" }).click();
+
+    expect(control.onRunScript).toHaveBeenCalledWith(WEB_SCRIPT);
+    expect(control.onStopScript).not.toHaveBeenCalled();
   });
 
   it("keeps the edit dialog delete action legible", async () => {

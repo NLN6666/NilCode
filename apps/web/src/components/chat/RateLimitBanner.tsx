@@ -8,6 +8,7 @@ import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { IconButton } from "../ui/icon-button";
 import { CircleAlertIcon, XIcon } from "~/lib/icons";
 import { ChatColumnBannerFrame } from "./ChatColumnBannerFrame";
+import { useMessages } from "~/i18n/context";
 
 export type RateLimitStatus = {
   status: "rejected" | "allowed_warning";
@@ -60,6 +61,7 @@ export const RateLimitBanner = function RateLimitBanner({
   onDismiss?: () => void;
   rateLimitStatus: RateLimitStatus | null;
 }) {
+  const copy = useMessages().chat.message;
   if (!rateLimitStatus) return null;
 
   const { status, resetsAt, utilization } = rateLimitStatus;
@@ -77,8 +79,8 @@ export const RateLimitBanner = function RateLimitBanner({
         {onDismiss ? (
           <AlertAction>
             <IconButton
-              label="Dismiss rate limit status"
-              title="Dismiss rate limit status"
+              label={copy.dismissRateLimitStatus}
+              title={copy.dismissRateLimitStatus}
               onClick={onDismiss}
             >
               <XIcon className="size-3.5" />

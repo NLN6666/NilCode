@@ -6,12 +6,12 @@ import {
   ArchiveIcon,
   BookIcon,
   ChatBubbleIcon,
+  CircleQuestionIcon,
   ClockIcon,
   CopyIcon,
   ExternalLinkIcon,
   FolderOpenIcon,
   GiftIcon,
-  InfoIcon,
   KanbanIcon,
   KeyboardIcon,
   type LucideIcon,
@@ -36,6 +36,7 @@ import {
   type PrStatePresentation,
 } from "~/components/pullRequest/pullRequestStatePresentation";
 import { PinStatusIcon, pinActionLabel } from "~/lib/pin";
+import { useMessages } from "~/i18n/context";
 import { ensureNativeApi } from "~/nativeApi";
 import { autoAnimate } from "@formkit/auto-animate";
 import { FiGitBranch } from "react-icons/fi";
@@ -160,7 +161,7 @@ import {
   automationAttentionCount,
   automationQueryKey,
   formatCadence,
-  groupHeartbeatAutomationsByTargetThread,
+  groupAutomationsByContinuedThread,
 } from "../routes/-automations.shared";
 import { shouldRenderTerminalWorkspace } from "./ChatView.logic";
 import { CHAT_SURFACE_HEADER_HEIGHT_CLASS } from "./chat/chatHeaderControls";
@@ -383,9 +384,7 @@ import {
   SidebarContextMenuIcon,
 } from "./sidebarContextMenuStyles";
 import {
-  VOID_SPACE_ICON,
   VOID_SPACE_KEY,
-  VOID_SPACE_NAME,
   spaceDisplayIcon,
   spaceDisplayName,
   spaceKey,
@@ -424,10 +423,6 @@ const EMPTY_THREAD_JUMP_LABELS = new Map<ThreadId, string>();
 const EMPTY_SHORTCUT_PARTS: readonly string[] = [];
 const ADD_PROJECT_SNAPSHOT_CATCH_UP_MAX_ATTEMPTS = 6;
 const ADD_PROJECT_SNAPSHOT_CATCH_UP_DELAY_MS = 50;
-const SIDEBAR_VIEW_LABELS: Record<SidebarView, string> = {
-  threads: "Projects",
-  studio: "Studio",
-};
 /** Snap the optimistic segment selection back if the navigation never lands. */
 const SIDEBAR_SEGMENT_PENDING_RESET_MS = 2000;
 const EMPTY_PROJECT_SIDEBAR_DATA: ReadonlyMap<ProjectId, SidebarDerivedProjectData> = new Map();
@@ -566,10 +561,11 @@ function SidebarStatusTrailingGlyph({ status }: { status: ThreadStatusPill }) {
 
 /** Pulsing green dot shown before a project name while a dev run is live. */
 function ProjectRunIndicatorDot({ className }: { className?: string }) {
+  const m = useMessages();
   return (
     <span
       aria-hidden="true"
-      title="Dev server running"
+      title={m.sidebar.devServer.running}
       className={cn(
         "size-1.5 shrink-0 rounded-full bg-emerald-400 motion-safe:animate-pulse",
         className,
@@ -833,19 +829,20 @@ function ProjectSortMenu({
   onProjectSortOrderChange: (sortOrder: SidebarProjectSortOrder) => void;
   onThreadSortOrderChange: (sortOrder: SidebarThreadSortOrder) => void;
 }) {
+  const m = useMessages();
   return (
     <Menu>
       <SidebarIconButton
         render={<MenuTrigger />}
         icon={SortFilterIcon}
-        label="Sort projects"
-        tooltip="Sort projects"
+        label={m.sidebar.sort.projects}
+        tooltip={m.sidebar.sort.projects}
         tooltipSide="right"
       />
       <ComposerPickerMenuPopup align="end" side="bottom" className="min-w-44">
         <MenuGroup>
           <div className="px-2 py-1 sm:text-xs font-medium text-muted-foreground">
-            Sort projects
+            {m.sidebar.sort.projects}
           </div>
           <MenuRadioGroup
             value={projectSortOrder}
@@ -864,7 +861,7 @@ function ProjectSortMenu({
         </MenuGroup>
         <MenuGroup>
           <div className="px-2 pt-2 pb-1 sm:text-xs font-medium text-muted-foreground">
-            Sort threads
+            {m.sidebar.sort.threads}
           </div>
           <ThreadSortMenuItems
             threadSortOrder={threadSortOrder}
@@ -888,9 +885,15 @@ function SidebarHelpMenu({
   onOpenShortcuts: () => void;
   onOpenFeedback: () => void;
 }) {
+  const m = useMessages();
   return (
     <Menu>
-      <SidebarIconButton render={<MenuTrigger />} icon={InfoIcon} label="Help" tooltip="Help" />
+      <SidebarIconButton
+        render={<MenuTrigger />}
+        icon={CircleQuestionIcon}
+        label={m.sidebar.help.menu}
+        tooltip={m.sidebar.help.menu}
+      />
       <ComposerPickerMenuPopup
         align="end"
         side="top"
@@ -902,23 +905,23 @@ function SidebarHelpMenu({
             onClick={() => openExternalLink(SYNARA_CHANGELOG_URL)}
           >
             <SidebarContextMenuIcon icon={GiftIcon} />
-            <span>What’s new</span>
+            <span>{m.sidebar.help.whatsNew}</span>
           </MenuItem>
           <MenuItem className={SIDEBAR_CONTEXT_MENU_ITEM_CLASS_NAME} onClick={onOpenShortcuts}>
             <SidebarContextMenuIcon icon={KeyboardIcon} />
-            <span>Keyboard shortcuts</span>
+            <span>{m.sidebar.help.keyboardShortcuts}</span>
           </MenuItem>
           <MenuSeparator />
           <MenuItem className={SIDEBAR_CONTEXT_MENU_ITEM_CLASS_NAME} onClick={onOpenFeedback}>
             <SidebarContextMenuIcon icon={ChatBubbleIcon} />
-            <span>Send feedback</span>
+            <span>{m.sidebar.help.sendFeedback}</span>
           </MenuItem>
           <MenuItem
             className={SIDEBAR_CONTEXT_MENU_ITEM_CLASS_NAME}
             onClick={() => openExternalLink(SYNARA_DOCS_URL)}
           >
             <SidebarContextMenuIcon icon={BookIcon} />
-            <span>Docs</span>
+            <span>{m.sidebar.help.docs}</span>
           </MenuItem>
         </MenuGroup>
       </ComposerPickerMenuPopup>
@@ -958,18 +961,21 @@ function ChatSortMenu({
   threadSortOrder: SidebarThreadSortOrder;
   onThreadSortOrderChange: (sortOrder: SidebarThreadSortOrder) => void;
 }) {
+  const m = useMessages();
   return (
     <Menu>
       <SidebarIconButton
         render={<MenuTrigger />}
         icon={SortFilterIcon}
-        label="Sort chats"
-        tooltip="Sort chats"
+        label={m.sidebar.sort.chats}
+        tooltip={m.sidebar.sort.chats}
         tooltipSide="top"
       />
       <ComposerPickerMenuPopup align="end" side="bottom" className="min-w-44">
         <MenuGroup>
-          <div className="px-2 py-1 sm:text-xs font-medium text-muted-foreground">Sort chats</div>
+          <div className="px-2 py-1 sm:text-xs font-medium text-muted-foreground">
+            {m.sidebar.sort.chats}
+          </div>
           <ThreadSortMenuItems
             threadSortOrder={threadSortOrder}
             onThreadSortOrderChange={onThreadSortOrderChange}
@@ -986,8 +992,8 @@ function SidebarPrimaryAction({
   onClick,
   onMouseEnter,
   onFocus,
-  active = false,
-  disabled = false,
+  active: activeProp,
+  disabled: disabledProp,
   shortcutLabel,
   badge,
 }: {
@@ -1002,6 +1008,10 @@ function SidebarPrimaryAction({
   shortcutLabel?: string | null;
   badge?: SidebarActionBadge | null;
 }) {
+  // Defaults live in the body, not the destructuring pattern: an AssignmentPattern in
+  // the parameter list makes React Compiler bail out on the whole component.
+  const active = activeProp ?? false;
+  const disabled = disabledProp ?? false;
   const shortcutParts = shortcutLabel ? splitShortcutLabel(shortcutLabel) : [];
 
   return (
@@ -1051,13 +1061,15 @@ function SidebarPrimaryAction({
 
 function SortableProjectItem({
   projectId,
-  disabled = false,
+  disabled: disabledProp,
   children,
 }: {
   projectId: ProjectId;
   disabled?: boolean;
   children: (handleProps: SortableProjectHandleProps) => React.ReactNode;
 }) {
+  // Default resolved in the body — see SidebarPrimaryAction.
+  const disabled = disabledProp ?? false;
   const {
     attributes,
     listeners,
@@ -1097,6 +1109,7 @@ export function SidebarSegmentedPicker({
   onSelectView: (view: SidebarView) => void;
   onPrewarmView?: (view: SidebarView) => void;
 }) {
+  const viewLabels = useMessages().sidebar.views;
   // Optimistic selection: activeView is derived from the route, which only updates
   // after the segment switch's (heavy) render commits — the thumb would otherwise
   // sit still for the whole switch and the click would feel dead. Drive the thumb
@@ -1216,7 +1229,7 @@ export function SidebarSegmentedPicker({
                 className="block transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
                 style={{ transform: `translateX(${labelShift})` }}
               >
-                {SIDEBAR_VIEW_LABELS[view]}
+                {viewLabels[view]}
               </span>
             </button>
           );
@@ -1227,6 +1240,7 @@ export function SidebarSegmentedPicker({
 }
 
 export default function Sidebar() {
+  const m = useMessages();
   const [showDebugFeatureFlagsMenu, setShowDebugFeatureFlagsMenu] = useState(
     readDebugFeatureFlagsMenuVisibility,
   );
@@ -1320,7 +1334,7 @@ export default function Sidebar() {
   // Heartbeat automations grouped by their target thread, so each thread row can show a
   // clock chip indicating an automation is attached (mirrors the Environment panel section).
   const automationsByThreadId = useMemo(
-    () => groupHeartbeatAutomationsByTargetThread(automationListQuery.data?.definitions ?? []),
+    () => groupAutomationsByContinuedThread(automationListQuery.data?.definitions ?? []),
     [automationListQuery.data],
   );
   const { settings: appSettings, updateSettings } = useAppSettings();
@@ -1422,14 +1436,39 @@ export default function Sidebar() {
   }, []);
   const createSplitViewFromDrop = useSplitViewStore((store) => store.createFromDrop);
   const setSplitFocusedPane = useSplitViewStore((store) => store.setFocusedPane);
-  const { data: keybindings = EMPTY_KEYBINDINGS } = useQuery({
+  // Query defaults are applied after destructuring: a default inside the destructuring
+  // pattern makes React Compiler bail out on the whole Sidebar component.
+  const keybindingsQuery = useQuery({
     ...serverConfigQueryOptions(),
     select: (config) => config.keybindings,
   });
-  const { data: serverCwd = null } = useQuery({
+  const keybindings = keybindingsQuery.data ?? EMPTY_KEYBINDINGS;
+  const serverCwdQuery = useQuery({
     ...serverConfigQueryOptions(),
     select: (config) => config.cwd ?? null,
   });
+  const serverCwd = serverCwdQuery.data ?? null;
+  // Declared next to `keybindings` (rather than further down) because the project-row render
+  // helpers above read these labels. A const declared after the closure that captures it
+  // widens its inferred mutable range and makes React Compiler drop the memoization of every
+  // hook that depends on it. See Sidebar.compiler.test.ts.
+  const newThreadShortcutLabel =
+    shortcutLabelForCommand(keybindings, "chat.new") ??
+    shortcutLabelForCommand(keybindings, "chat.newLatestProject");
+  const newChatShortcutLabel =
+    shortcutLabelForCommand(keybindings, "chat.newChat") ??
+    shortcutLabelForCommand(keybindings, "chat.newLocal");
+  const newTerminalThreadShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newTerminal");
+  const searchShortcutLabel =
+    shortcutLabelForCommand(keybindings, "sidebar.search") ??
+    (isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K");
+  const importThreadShortcutLabel =
+    shortcutLabelForCommand(keybindings, "sidebar.importThread") ??
+    (isMacPlatform(navigator.platform) ? "⌘I" : "Ctrl+I");
+  const addProjectShortcutLabel =
+    shortcutLabelForCommand(keybindings, "sidebar.addProject") ??
+    (isMacPlatform(navigator.platform) ? "⇧⌘O" : "Ctrl+Shift+O");
+  const usageSettingsShortcutLabel = shortcutLabelForCommand(keybindings, "settings.usage");
   const { activeProjectId: focusedProjectId } = useFocusedChatContext();
   const latestProjectId = useLatestProjectStore((state) => state.latestProjectId);
   const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);
@@ -2298,7 +2337,13 @@ export default function Sidebar() {
         setIsAddingProject(false);
       };
 
-      try {
+      // The flow lives in a nested function that the `try` below merely awaits: React
+      // Compiler's BuildHIR cannot lower a `throw` or a value block (`?.`, `??`, ternary,
+      // conditional spread) that sits directly inside a try block, and a single one of them
+      // makes the entire Sidebar bail out of compilation — silently, since `panicThreshold`
+      // is unset. Nested function bodies are lowered separately and are unaffected, and the
+      // catch below still sees every rejection. See Sidebar.compiler.test.ts.
+      const runAddProject = async () => {
         const existing = findWorkspaceRootMatch(projects, cwd, (project) => project.cwd);
         const existingRecovery = await recoverExistingAddProjectTarget({
           existingProjectId: existing?.id,
@@ -2364,7 +2409,10 @@ export default function Sidebar() {
           envMode: appSettings.defaultThreadEnvMode,
         }).catch(() => undefined);
         finishAddingProject();
-        return;
+      };
+
+      try {
+        await runAddProject();
       } catch (error) {
         const description =
           error instanceof Error ? error.message : "An error occurred while adding the project.";
@@ -3044,13 +3092,15 @@ export default function Sidebar() {
   const handleCloseProjectContextMenu = useCallback(() => setProjectContextMenuState(null), []);
   const {
     activeSpace,
-    editedSpace,
+    voidSpace,
     spaceEditorOpen,
     spaceEditorMode,
+    spaceEditorInitialValue,
     spaceEditorExistingNames,
     spaceProjectPickerTarget,
     openSpaceCreator,
     openSpaceEditor,
+    openVoidEditor,
     closeSpaceEditor,
     openSpaceProjectPicker,
     closeSpaceProjectPicker,
@@ -3058,6 +3108,8 @@ export default function Sidebar() {
     handleSelectSpaceForIncomingProject,
     handleReorderSpaces,
     handleRenameSpace,
+    handleRenameVoid,
+    resetVoidSpace,
     handleDeleteSpace,
     handleMoveProjectToSpace,
     handleSpaceEditorSubmit,
@@ -3188,7 +3240,9 @@ export default function Sidebar() {
       );
       if (!confirmed) return;
 
-      try {
+      // Nested function so the `try` body stays free of value blocks — see the comment on
+      // `runAddProject` above for why React Compiler requires this shape.
+      const runRemoveProject = async () => {
         // `project.delete` refuses non-empty folders, so `Remove` clears threads first.
         const deletionResult = await deleteProjectThreads(projectId, {
           confirmMessage: null,
@@ -3222,6 +3276,10 @@ export default function Sidebar() {
               ? `Deleted ${deletionResult.deletedCount} ${pluralize(deletionResult.deletedCount, "thread")} and removed the project.`
               : "Project removed.",
         });
+      };
+
+      try {
+        await runRemoveProject();
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error removing project.";
         console.error("Failed to remove project", { projectId, error });
@@ -3897,8 +3955,8 @@ export default function Sidebar() {
     return (
       <SidebarIconButton
         icon={HiOutlineArchiveBox}
-        label="Archive thread"
-        title="Archive thread"
+        label={m.sidebar.thread.archive}
+        title={m.sidebar.thread.archive}
         data-testid={`thread-archive-${threadId}`}
         size={compact ? "sm" : "md"}
         // Match the pin and the right-side meta chips (shared trailing-icon size); subagent
@@ -4020,7 +4078,7 @@ export default function Sidebar() {
     return (
       <div className="mb-3">
         <div className="my-1 flex items-center justify-between px-2 py-1">
-          <span className={SIDEBAR_SECTION_LABEL_CLASS_NAME}>Pinned</span>
+          <span className={SIDEBAR_SECTION_LABEL_CLASS_NAME}>{m.sidebar.thread.pinned}</span>
         </div>
         <div className="flex flex-col gap-0.5">
           {pinnedThreads.map((thread) => renderPinnedThreadRow(thread))}
@@ -4400,7 +4458,7 @@ export default function Sidebar() {
                           </span>
                         }
                       />
-                      <TooltipPopup side="top">Temporary chat</TooltipPopup>
+                      <TooltipPopup side="top">{m.sidebar.thread.temporary}</TooltipPopup>
                     </Tooltip>
                   </div>
                 ) : undefined
@@ -4594,7 +4652,7 @@ export default function Sidebar() {
               <SidebarIconButton
                 icon={IoIosGitCompare}
                 label={`View pull requests for ${project.name}`}
-                tooltip="Pull requests"
+                tooltip={m.sidebar.actions.pullRequests}
                 tooltipSide="top"
                 onClick={(event) => {
                   event.preventDefault();
@@ -4689,7 +4747,7 @@ export default function Sidebar() {
                           showMoreThreadsForProject(project.cwd, threadListExtraPages);
                         }}
                       >
-                        <span>Show more</span>
+                        <span>{m.sidebar.actions.showMore}</span>
                       </SidebarMenuSubButton>
                     )}
                     {canShowLessThreads && (
@@ -4707,7 +4765,7 @@ export default function Sidebar() {
                           showLessThreadsForProject(project.cwd, threadListExtraPages);
                         }}
                       >
-                        <span>Show less</span>
+                        <span>{m.sidebar.actions.showLess}</span>
                       </SidebarMenuSubButton>
                     )}
                   </div>
@@ -5086,23 +5144,6 @@ export default function Sidebar() {
     desktopUpdateButtonHasSecondaryLabel && "min-h-6 py-0.5",
     desktopUpdateButtonInteractivityClasses,
   );
-  const newThreadShortcutLabel =
-    shortcutLabelForCommand(keybindings, "chat.new") ??
-    shortcutLabelForCommand(keybindings, "chat.newLatestProject");
-  const newChatShortcutLabel =
-    shortcutLabelForCommand(keybindings, "chat.newChat") ??
-    shortcutLabelForCommand(keybindings, "chat.newLocal");
-  const newTerminalThreadShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newTerminal");
-  const searchShortcutLabel =
-    shortcutLabelForCommand(keybindings, "sidebar.search") ??
-    (isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K");
-  const importThreadShortcutLabel =
-    shortcutLabelForCommand(keybindings, "sidebar.importThread") ??
-    (isMacPlatform(navigator.platform) ? "⌘I" : "Ctrl+I");
-  const addProjectShortcutLabel =
-    shortcutLabelForCommand(keybindings, "sidebar.addProject") ??
-    (isMacPlatform(navigator.platform) ? "⇧⌘O" : "Ctrl+Shift+O");
-  const usageSettingsShortcutLabel = shortcutLabelForCommand(keybindings, "settings.usage");
   const searchPaletteProjects = useMemo<SidebarSearchProject[]>(
     () =>
       projects.map((project) => ({
@@ -5118,12 +5159,12 @@ export default function Sidebar() {
           chatWorkspaceRoot,
           studioWorkspaceRoot,
         })
-          ? spaceDisplayName(project.spaceId, spaces)
+          ? spaceDisplayName(project.spaceId, spaces, voidSpace)
           : "Global",
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,
       })),
-    [chatWorkspaceRoot, homeDir, projects, spaces, studioWorkspaceRoot],
+    [chatWorkspaceRoot, homeDir, projects, spaces, studioWorkspaceRoot, voidSpace],
   );
   const searchPaletteActions = useMemo<SidebarSearchAction[]>(
     () => [
@@ -5190,13 +5231,15 @@ export default function Sidebar() {
         ? [
             {
               id: "switch-space-void",
-              label: `Switch to ${VOID_SPACE_NAME}`,
+              label: `Switch to ${voidSpace.name}`,
               description: "Jump to unassigned projects.",
-              keywords: ["space", "switch", "void", "unassigned"],
+              // "void" stays a keyword after a rename: it is what the palette answered to
+              // before, and it is still the only word for this group in the docs.
+              keywords: ["space", "switch", "void", "unassigned", voidSpace.name],
               requiresQuery: true,
               run: () => handleSelectSpace(null),
               icon: ({ className }: { className?: string }) => (
-                <SpaceIcon icon={VOID_SPACE_ICON} className={className} />
+                <SpaceIcon icon={voidSpace.icon} className={className} />
               ),
             } satisfies SidebarSearchAction,
           ]
@@ -5234,6 +5277,7 @@ export default function Sidebar() {
       openSpaceCreator,
       spaces,
       usageSettingsShortcutLabel,
+      voidSpace,
     ],
   );
 
@@ -5513,7 +5557,7 @@ export default function Sidebar() {
           <SidebarGroup className="px-2 pt-2 pb-0">
             <Alert variant="warning" className="rounded-2xl border-warning/40 bg-warning/8">
               <TriangleAlertIcon />
-              <AlertTitle>Intel build on Apple Silicon</AlertTitle>
+              <AlertTitle>{m.sidebar.intelBuildWarning}</AlertTitle>
               <AlertDescription>{arm64IntelBuildWarningDescription}</AlertDescription>
               {desktopUpdateButtonAction !== "none" ? (
                 <AlertAction>
@@ -5569,12 +5613,12 @@ export default function Sidebar() {
                     <>
                       <SidebarPrimaryAction
                         icon={NewThreadIcon}
-                        label="New studio chat"
+                        label={m.sidebar.actions.newStudioChat}
                         onClick={handleCreateStudioChat}
                       />
                       <SidebarPrimaryAction
                         icon={SearchIcon}
-                        label="Search"
+                        label={m.sidebar.actions.search}
                         active={searchPaletteOpen}
                         onClick={() => {
                           setSearchPaletteOpen(true);
@@ -5586,14 +5630,14 @@ export default function Sidebar() {
                     <>
                       <SidebarPrimaryAction
                         icon={NewThreadIcon}
-                        label="New thread"
+                        label={m.sidebar.actions.newThread}
                         onClick={handlePrimaryNewThread}
                         onMouseEnter={prefetchModelsForPrimaryNewThread}
                         onFocus={prefetchModelsForPrimaryNewThread}
                       />
                       <SidebarPrimaryAction
                         icon={SearchIcon}
-                        label="Search"
+                        label={m.sidebar.actions.search}
                         active={searchPaletteOpen}
                         onClick={() => {
                           setSearchPaletteOpen(true);
@@ -5602,7 +5646,7 @@ export default function Sidebar() {
                       />
                       <SidebarPrimaryAction
                         icon={KanbanIcon}
-                        label="Kanban"
+                        label={m.sidebar.actions.kanban}
                         active={isOnKanban}
                         onClick={() => {
                           void navigate({ to: "/kanban" });
@@ -5610,7 +5654,7 @@ export default function Sidebar() {
                       />
                       <SidebarPrimaryAction
                         icon={IoIosGitCompare}
-                        label="Pull requests"
+                        label={m.sidebar.actions.pullRequests}
                         active={isOnPullRequests}
                         badge={pullRequestsReviewBadge}
                         onClick={() => {
@@ -5622,7 +5666,7 @@ export default function Sidebar() {
                       />
                       <SidebarPrimaryAction
                         icon={ClockIcon}
-                        label="Automations"
+                        label={m.sidebar.actions.automations}
                         active={isOnAutomations}
                         badge={automationAttentionBadge}
                         onClick={() => {
@@ -5640,12 +5684,12 @@ export default function Sidebar() {
                 <SidebarGroup className="px-1.5 py-1.5">
                   {renderPinnedThreadsSection()}
                   {renderListSectionHeader(
-                    "Studio",
+                    m.sidebar.views.studio,
                     <>
                       <SidebarIconButton
                         icon={NewThreadIcon}
-                        label="New studio chat"
-                        tooltip="New studio chat"
+                        label={m.sidebar.actions.newStudioChat}
+                        tooltip={m.sidebar.actions.newStudioChat}
                         tooltipSide="top"
                         onClick={handleCreateStudioChat}
                       />
@@ -5675,12 +5719,16 @@ export default function Sidebar() {
                     spaces={spaces}
                     activeSpaceId={activeSpaceId}
                     activityBySpaceId={spaceActivityById}
+                    voidSpace={voidSpace}
                     onSelect={handleSelectSpace}
                     onCreate={() => openSpaceCreator()}
                     onEdit={(space) => openSpaceEditor(space.id)}
                     onDelete={(space) => void handleDeleteSpace(space.id)}
                     onReorder={handleReorderSpaces}
                     onRenameSpace={(space, name) => void handleRenameSpace(space, name)}
+                    onEditVoid={openVoidEditor}
+                    onRenameVoid={handleRenameVoid}
+                    onResetVoid={resetVoidSpace}
                     onDropProject={(projectId, spaceId) =>
                       void handleMoveProjectToSpace(projectId, spaceId)
                     }
@@ -5688,7 +5736,7 @@ export default function Sidebar() {
                   />
                   {renderPinnedThreadsSection()}
                   {renderListSectionHeader(
-                    "Projects",
+                    m.sidebar.views.threads,
                     <>
                       {standardProjects.length > 0 ? (
                         <SidebarIconButton
@@ -5724,9 +5772,9 @@ export default function Sidebar() {
                       />
                       <SidebarIconButton
                         icon={AddPlusIcon}
-                        label="Add project"
+                        label={m.sidebar.actions.addProject}
                         onClick={handleStartAddProject}
-                        tooltip="Add project"
+                        tooltip={m.sidebar.actions.addProject}
                         tooltipSide="right"
                       />
                     </>,
@@ -5768,10 +5816,10 @@ export default function Sidebar() {
                     <div
                       className="space-y-2 px-2 pt-4"
                       aria-live="polite"
-                      aria-label="Loading projects"
+                      aria-label={m.sidebar.projects.loading}
                     >
                       <div className="text-center text-[length:var(--app-font-size-ui,12px)] text-muted-foreground/58">
-                        Loading projects...
+                        {m.sidebar.projects.loadingEllipsis}
                       </div>
                       <div className="mx-auto grid w-full max-w-42 gap-1.5 opacity-70">
                         <div className="h-2 rounded-full bg-muted/55 animate-pulse" />
@@ -5819,7 +5867,7 @@ export default function Sidebar() {
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
                     <span className="truncate font-system-ui text-[length:var(--app-font-size-ui,12px)] font-normal text-muted-foreground/79">
-                      Chats
+                      {m.sidebar.chats.title}
                     </span>
                     <DisclosureChevron
                       open={chatSectionExpanded}
@@ -5836,7 +5884,7 @@ export default function Sidebar() {
                   />
                   <SidebarIconButton
                     icon={NewThreadIcon}
-                    label="Open new chat home"
+                    label={m.sidebar.actions.openNewChatHome}
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
@@ -5866,7 +5914,7 @@ export default function Sidebar() {
                       )
                     ) : (
                       <div className="px-2 py-2 text-[length:var(--app-font-size-ui,12px)] text-muted-foreground/48">
-                        No chats yet
+                        {m.sidebar.chats.empty}
                       </div>
                     )}
                     {canShowMoreChatThreads || canShowLessChatThreads ? (
@@ -5881,7 +5929,7 @@ export default function Sidebar() {
                                 setChatThreadListExtraPages(chatThreadListEffectiveExtraPages + 1)
                               }
                             >
-                              <span>Show more</span>
+                              <span>{m.sidebar.actions.showMore}</span>
                             </SidebarMenuButton>
                           ) : null}
                           {canShowLessChatThreads ? (
@@ -5901,7 +5949,7 @@ export default function Sidebar() {
                                 )
                               }
                             >
-                              <span>Show less</span>
+                              <span>{m.sidebar.actions.showLess}</span>
                             </SidebarMenuButton>
                           ) : null}
                         </div>
@@ -5939,7 +5987,7 @@ export default function Sidebar() {
                     <SidebarLeadingIcon size="sm" tone={SIDEBAR_ROW_LABEL_TEXT_CLASS_NAME}>
                       <SidebarGlyph icon={SettingsIcon} variant="leading" />
                     </SidebarLeadingIcon>
-                    <span>Settings</span>
+                    <span>{m.sidebar.actions.settings}</span>
                   </SidebarMenuButton>
                 )}
                 {showDesktopUpdateButton ? (
@@ -5999,9 +6047,7 @@ export default function Sidebar() {
       <SpaceEditorDialog
         open={spaceEditorOpen}
         mode={spaceEditorMode}
-        {...(editedSpace
-          ? { initialValue: { name: editedSpace.name, icon: editedSpace.icon } }
-          : {})}
+        {...(spaceEditorInitialValue ? { initialValue: spaceEditorInitialValue } : {})}
         existingNames={spaceEditorExistingNames}
         onOpenChange={(open) => {
           if (!open) closeSpaceEditor();
@@ -6051,7 +6097,7 @@ export default function Sidebar() {
                 }
               >
                 <ProjectContextMenuIcon icon={FolderOpenIcon} />
-                <span>Open in Finder</span>
+                <span>{m.sidebar.projectMenu.openInFinder}</span>
               </MenuItem>
               <MenuItem
                 className={PROJECT_CONTEXT_MENU_ITEM_CLASS_NAME}
@@ -6063,7 +6109,7 @@ export default function Sidebar() {
                 }
               >
                 <ProjectContextMenuIcon icon={KanbanIcon} />
-                <span>Open in Kanban</span>
+                <span>{m.sidebar.projectMenu.openInKanban}</span>
               </MenuItem>
               <MenuItem
                 className={PROJECT_CONTEXT_MENU_ITEM_CLASS_NAME}
@@ -6075,7 +6121,7 @@ export default function Sidebar() {
                 }
               >
                 <ProjectContextMenuIcon icon={CopyIcon} />
-                <span>Copy Path</span>
+                <span>{m.sidebar.projectMenu.copyPath}</span>
               </MenuItem>
               <MenuSeparator />
               {projectContextMenuIsRunning ? (
@@ -6089,7 +6135,7 @@ export default function Sidebar() {
                   }
                 >
                   <ProjectContextMenuIcon icon={StopFilledIcon} />
-                  <span>Stop dev</span>
+                  <span>{m.sidebar.projectMenu.stopDev}</span>
                 </MenuItem>
               ) : (
                 <MenuItem
@@ -6102,7 +6148,7 @@ export default function Sidebar() {
                   }
                 >
                   <ProjectContextMenuIcon icon={PlayIcon} />
-                  <span>Start dev</span>
+                  <span>{m.sidebar.projectMenu.startDev}</span>
                 </MenuItem>
               )}
               {projectContextMenuHasOpenServer ? (
@@ -6116,7 +6162,7 @@ export default function Sidebar() {
                   }
                 >
                   <ProjectContextMenuIcon icon={ExternalLinkIcon} />
-                  <span>Open dev server</span>
+                  <span>{m.sidebar.projectMenu.openDevServer}</span>
                 </MenuItem>
               ) : null}
               <MenuSub keepOpenOnFocusOut>
@@ -6125,9 +6171,11 @@ export default function Sidebar() {
                       read-out of where it lives today. It wears the same secondary tone
                       as every other leading glyph in this menu. */}
                   <span className={PROJECT_CONTEXT_MENU_ICON_CLASS_NAME}>
-                    <SpaceIcon icon={spaceDisplayIcon(projectContextMenuProject.spaceId, spaces)} />
+                    <SpaceIcon
+                      icon={spaceDisplayIcon(projectContextMenuProject.spaceId, spaces, voidSpace)}
+                    />
                   </span>
-                  <span>Move to space</span>
+                  <span>{m.sidebar.projectMenu.moveToSpace}</span>
                 </MenuSubTrigger>
                 <ComposerPickerMenuSubPopup className="min-w-48">
                   <MenuRadioGroup
@@ -6140,8 +6188,8 @@ export default function Sidebar() {
                     }}
                   >
                     <MenuRadioItem value={VOID_SPACE_KEY}>
-                      <SpaceIcon icon={VOID_SPACE_ICON} className="size-3.5" />
-                      <span className="min-w-0 truncate">Void</span>
+                      <SpaceIcon icon={voidSpace.icon} className="size-3.5" />
+                      <span className="min-w-0 truncate">{voidSpace.name}</span>
                     </MenuRadioItem>
                     {spaces.map((space) => (
                       <MenuRadioItem key={space.id} value={space.id}>
@@ -6162,7 +6210,7 @@ export default function Sidebar() {
                     <span className={PROJECT_CONTEXT_MENU_ICON_CLASS_NAME}>
                       <AddPlusIcon />
                     </span>
-                    <span>New space…</span>
+                    <span>{m.sidebar.projectMenu.newSpace}</span>
                   </MenuItem>
                 </ComposerPickerMenuSubPopup>
               </MenuSub>
@@ -6174,7 +6222,7 @@ export default function Sidebar() {
                 }
               >
                 <ProjectContextMenuIcon icon={PencilIcon} />
-                <span>Edit name</span>
+                <span>{m.sidebar.projectMenu.editName}</span>
               </MenuItem>
               <MenuItem
                 className={PROJECT_CONTEXT_MENU_ITEM_CLASS_NAME}
@@ -6202,7 +6250,7 @@ export default function Sidebar() {
                   }
                 >
                   <ProjectContextMenuIcon icon={ArchiveIcon} />
-                  <span>Archive threads</span>
+                  <span>{m.sidebar.projectMenu.archiveThreads}</span>
                 </MenuItem>
               ) : null}
               {projectContextMenuHasAnyThreads ? (
@@ -6216,7 +6264,7 @@ export default function Sidebar() {
                   }
                 >
                   <ProjectContextMenuIcon icon={Trash2} />
-                  <span>Delete threads</span>
+                  <span>{m.sidebar.projectMenu.deleteThreads}</span>
                 </MenuItem>
               ) : null}
               <MenuSeparator />
@@ -6227,7 +6275,7 @@ export default function Sidebar() {
                 }
               >
                 <ProjectContextMenuIcon icon={XIcon} />
-                <span>Remove</span>
+                <span>{m.sidebar.projectMenu.remove}</span>
               </MenuItem>
             </MenuGroup>
           </ComposerPickerMenuPopup>
@@ -6246,7 +6294,7 @@ export default function Sidebar() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <PlayIcon className="size-4 text-emerald-500" />
-              Start dev
+              {m.sidebar.devServer.startTitle}
             </DialogTitle>
             <DialogDescription>
               {projectRunDialogProject ? projectRunDialogProject.name : "Project"}
@@ -6257,7 +6305,7 @@ export default function Sidebar() {
               htmlFor="project-run-command-input"
               className="block text-[length:var(--app-font-size-ui-xs,10px)] font-medium text-[var(--color-text-foreground-secondary)]"
             >
-              Command
+              {m.sidebar.devServer.commandLabel}
             </label>
             <Input
               id="project-run-command-input"
@@ -6266,7 +6314,7 @@ export default function Sidebar() {
               autoComplete="off"
               autoCapitalize="off"
               autoCorrect="off"
-              placeholder="e.g. npm run dev"
+              placeholder={m.sidebar.devServer.commandPlaceholder}
               value={projectRunDialogCommandDraft}
               aria-invalid={projectRunDialogCommandIsValid ? undefined : true}
               onChange={(event) => setProjectRunDialogCommandDraft(event.target.value)}
@@ -6279,13 +6327,13 @@ export default function Sidebar() {
             />
             {projectRunDialogCommandIsValid ? null : (
               <p className="text-[length:var(--app-font-size-ui-sm,11px)] text-destructive">
-                Enter a command to run.
+                {m.sidebar.devServer.commandHint}
               </p>
             )}
           </DialogPanel>
           <DialogFooter>
             <Button variant="outline" onClick={closeProjectRunDialog}>
-              Cancel
+              {m.sidebar.actions.cancel}
             </Button>
             <Button
               onClick={handleConfirmProjectRun}
@@ -6316,8 +6364,8 @@ export default function Sidebar() {
 
       <RenameDialog
         open={renameProjectDialogId !== null && renameProjectDialogProject !== null}
-        title="Rename project"
-        description="Keep it short and recognizable."
+        title={m.sidebar.renameProject.title}
+        description={m.sidebar.renameProject.description}
         initialValue={
           renameProjectDialogProject?.localName ?? renameProjectDialogProject?.name ?? ""
         }

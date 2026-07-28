@@ -10,6 +10,7 @@ import { deriveThreadMarkerLabel } from "~/threadMarkers";
 
 import { EnvironmentEditableChecklistRow } from "./EnvironmentEditableChecklistRow";
 import { EnvironmentCollapsibleSection } from "./EnvironmentRow";
+import { useMessages } from "~/i18n/context";
 
 const MARKER_SWATCH_CLASS: Record<ThreadMarker["color"], string> = {
   yellow: "bg-[color-mix(in_srgb,var(--color-text-accent)_14%,transparent)]",
@@ -35,11 +36,12 @@ export function EnvironmentMarkersSection({
   onRemove,
   onRename,
 }: EnvironmentMarkersSectionProps) {
+  const copy = useMessages().chat.environment;
   if (markers.length === 0) {
     return null;
   }
   return (
-    <EnvironmentCollapsibleSection label="Markers">
+    <EnvironmentCollapsibleSection label={copy.markers}>
       <ul className="flex flex-col">
         {markers.map((marker) => (
           <MarkerRow

@@ -21,6 +21,7 @@ import {
 } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Spinner } from "./ui/spinner";
+import { useMessages } from "~/i18n/context";
 
 interface PullRequestThreadDialogProps {
   open: boolean;
@@ -75,6 +76,7 @@ function PullRequestThreadDialogContent({
 }: Omit<PullRequestThreadDialogProps, "open"> & {
   onBusyChange: (busy: boolean) => void;
 }) {
+  const copy = useMessages().pullRequests;
   const queryClient = useQueryClient();
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const [reference, setReference] = useState(initialReference ?? "");
@@ -182,37 +184,34 @@ function PullRequestThreadDialogContent({
   const validationMessage = !referenceDirty
     ? null
     : reference.trim().length === 0
-      ? "Paste a GitHub pull request URL or enter 123 / #123."
+      ? copy.checkoutDialog.hint
       : parsedReference === null
-        ? "Use a GitHub pull request URL, 123, or #123."
+        ? copy.checkoutDialog.invalid
         : null;
   const errorMessage =
     validationMessage ??
     (resolvedPullRequest === null && resolvePullRequestQuery.isError
       ? resolvePullRequestQuery.error instanceof Error
         ? resolvePullRequestQuery.error.message
-        : "Failed to resolve pull request."
+        : copy.checkoutDialog.resolveFailed
       : preparePullRequestThreadMutation.error instanceof Error
         ? preparePullRequestThreadMutation.error.message
         : preparePullRequestThreadMutation.error
-          ? "Failed to prepare pull request thread."
+          ? copy.checkoutDialog.prepareFailed
           : null);
 
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Checkout Pull Request</DialogTitle>
-        <DialogDescription>
-          Resolve a GitHub pull request, then create the draft thread in the main repo or in a
-          dedicated worktree.
-        </DialogDescription>
+        <DialogTitle>{copy.checkoutDialog.title}</DialogTitle>
+        <DialogDescription>{copy.checkoutDialog.description}</DialogDescription>
       </DialogHeader>
       <DialogPanel className="space-y-4">
         <label className="grid gap-1.5">
-          <span className="text-xs font-medium text-foreground">Pull request</span>
+          <span className="text-xs font-medium text-foreground">{copy.checkoutDialog.label}</span>
           <Input
             ref={referenceInputRef}
-            placeholder="https://github.com/owner/repo/pull/42 or #42"
+            placeholder={copy.checkoutDialog.referencePlaceholder}
             value={reference}
             onChange={(event) => {
               setReferenceDirty(true);
@@ -250,7 +249,7 @@ function PullRequestThreadDialogContent({
         {isResolving ? (
           <div className="flex items-center gap-2 text-muted-foreground text-xs">
             <Spinner className="size-3.5" />
-            Resolving pull request...
+            {copy.checkoutDialog.resolving}
           </div>
         ) : null}
 
@@ -264,7 +263,7 @@ function PullRequestThreadDialogContent({
           onClick={() => onOpenChange(false)}
           disabled={preparePullRequestThreadMutation.isPending}
         >
-          Cancel
+          {copy.checkoutDialog.cancel}
         </Button>
         <Button
           type="button"
@@ -280,7 +279,9 @@ function PullRequestThreadDialogContent({
             preparePullRequestThreadMutation.isPending
           }
         >
-          {preparingMode === "local" ? "Preparing local..." : "Local"}
+          {preparingMode === "local"
+            ? copy.checkoutDialog.preparingLocal
+            : copy.checkoutDialog.local}
         </Button>
         <Button
           type="button"
@@ -295,7 +296,9 @@ function PullRequestThreadDialogContent({
             preparePullRequestThreadMutation.isPending
           }
         >
-          {preparingMode === "worktree" ? "Preparing worktree..." : "Worktree"}
+          {preparingMode === "worktree"
+            ? copy.checkoutDialog.preparingWorktree
+            : copy.checkoutDialog.worktree}
         </Button>
       </DialogFooter>
     </>

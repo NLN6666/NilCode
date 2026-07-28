@@ -20,6 +20,7 @@ import { PullRequestDiffStat } from "./PullRequestDiffStat";
 import { PullRequestMetaLine } from "./PullRequestMetaLine";
 import { PR_META_TEXT_CLASS_NAME } from "./pullRequestText";
 import { PullRequestWarningNote } from "./PullRequestWarningNote";
+import { useMessages } from "~/i18n/context";
 
 export function PullRequestCodeTab({
   input,
@@ -28,6 +29,7 @@ export function PullRequestCodeTab({
   input: PullRequestDetailInput;
   detail: PullRequestDetail;
 }) {
+  const copy = useMessages().pullRequests;
   const { resolvedTheme } = useTheme();
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(() => new Set());
   const diffQuery = useQuery(pullRequestDiffQueryOptions(input));
@@ -44,9 +46,7 @@ export function PullRequestCodeTab({
     <DiffWorkerPoolProvider>
       <div className="flex h-full min-h-0 flex-col">
         {diffQuery.data?.truncated ? (
-          <PullRequestWarningNote shape="banner">
-            Diff exceeded 8 MiB and was truncated.
-          </PullRequestWarningNote>
+          <PullRequestWarningNote shape="banner">{copy.code.truncated}</PullRequestWarningNote>
         ) : null}
         {patchTotals ? (
           <PullRequestMetaLine
@@ -55,7 +55,7 @@ export function PullRequestCodeTab({
               "border-b border-border/60 px-3 py-2 text-muted-foreground",
             )}
           >
-            <span>{patchTotals.fileCount} files</span>
+            <span>{copy.summary.fileCount(patchTotals.fileCount)}</span>
             <PullRequestDiffStat
               additions={patchTotals.additions}
               deletions={patchTotals.deletions}
@@ -64,7 +64,7 @@ export function PullRequestCodeTab({
           </PullRequestMetaLine>
         ) : null}
         {diffQuery.isPending ? (
-          <DiffPanelLoadingState label="Loading pull request diff…" />
+          <DiffPanelLoadingState label={copy.code.loading} />
         ) : (
           <DiffPanelPatchViewport
             renderablePatch={renderablePatch}

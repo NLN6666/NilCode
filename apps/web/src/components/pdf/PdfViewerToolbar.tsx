@@ -25,6 +25,7 @@ import {
 import { OpenInPicker } from "../chat/OpenInPicker";
 import { Badge } from "../ui/badge";
 import { Menu, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger } from "../ui/menu";
+import { useMessages } from "~/i18n/context";
 
 interface PdfViewerToolbarProps {
   fileName: string;
@@ -52,6 +53,7 @@ function zoomSelectionValue(mode: PdfZoomMode, scale: number): string {
 }
 
 export const PdfViewerToolbar = function PdfViewerToolbar(props: PdfViewerToolbarProps) {
+  const copy = useMessages().editor.pdf;
   const selectionValue = zoomSelectionValue(props.zoomMode, props.scale);
 
   return (
@@ -74,7 +76,7 @@ export const PdfViewerToolbar = function PdfViewerToolbar(props: PdfViewerToolba
 
       <div className="flex shrink-0 items-center gap-0.5">
         <ChatHeaderIconButton
-          label="Previous page"
+          label={copy.previousPage}
           tone="plain"
           disabled={props.currentPage <= 1}
           onClick={() => props.onJumpToPage(props.currentPage - 1)}
@@ -88,7 +90,7 @@ export const PdfViewerToolbar = function PdfViewerToolbar(props: PdfViewerToolba
           onJumpToPage={props.onJumpToPage}
         />
         <ChatHeaderIconButton
-          label="Next page"
+          label={copy.nextPage}
           tone="plain"
           disabled={props.currentPage >= props.numPages}
           onClick={() => props.onJumpToPage(props.currentPage + 1)}
@@ -99,7 +101,7 @@ export const PdfViewerToolbar = function PdfViewerToolbar(props: PdfViewerToolba
 
       <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
         <div className="flex items-center gap-0.5">
-          <ChatHeaderIconButton label="Zoom out" tone="plain" onClick={props.onZoomOut}>
+          <ChatHeaderIconButton label={copy.zoomOut} tone="plain" onClick={props.onZoomOut}>
             <MinusIcon aria-hidden="true" className="size-4" />
           </ChatHeaderIconButton>
           <Menu>
@@ -127,8 +129,8 @@ export const PdfViewerToolbar = function PdfViewerToolbar(props: PdfViewerToolba
                   }
                 }}
               >
-                <MenuRadioItem value="fit-width">Fit width</MenuRadioItem>
-                <MenuRadioItem value="fit-page">Fit page</MenuRadioItem>
+                <MenuRadioItem value="fit-width">{copy.fitWidth}</MenuRadioItem>
+                <MenuRadioItem value="fit-page">{copy.fitPage}</MenuRadioItem>
                 <MenuSeparator className="mx-1" />
                 {PDF_ZOOM_PRESETS.map((preset) => {
                   const percent = String(Math.round(preset * 100));
@@ -141,7 +143,7 @@ export const PdfViewerToolbar = function PdfViewerToolbar(props: PdfViewerToolba
               </MenuRadioGroup>
             </ComposerPickerMenuPopup>
           </Menu>
-          <ChatHeaderIconButton label="Zoom in" tone="plain" onClick={props.onZoomIn}>
+          <ChatHeaderIconButton label={copy.zoomIn} tone="plain" onClick={props.onZoomIn}>
             <PlusIcon aria-hidden="true" className="size-4" />
           </ChatHeaderIconButton>
         </div>
@@ -165,6 +167,7 @@ function PdfPageIndicator({
   numPages: number;
   onJumpToPage: (pageNumber: number) => void;
 }) {
+  const pageCopy = useMessages().editor.pdf;
   // The caller keys this editor by currentPage, so every navigation gets a new
   // draft even when the page sequence returns A -> B -> A.
   const [draft, setDraft] = useState(String(currentPage));
@@ -187,7 +190,7 @@ function PdfPageIndicator({
       <input
         value={draft}
         inputMode="numeric"
-        aria-label="Current page"
+        aria-label={pageCopy.currentPage}
         className="h-6 w-8 rounded-sm border border-border/60 bg-transparent text-center text-[11px] text-foreground tabular-nums outline-none focus-visible:border-[color:var(--color-border-focus)]"
         onChange={(event) => setDraft(event.target.value.replace(/[^0-9]/g, ""))}
         onBlur={commit}

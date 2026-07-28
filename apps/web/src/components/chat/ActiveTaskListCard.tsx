@@ -27,6 +27,7 @@ import {
   COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME,
   COMPOSER_STACKED_PANEL_ICON_CLASS_NAME,
 } from "./composerStackedPanelStyles";
+import { useMessages } from "~/i18n/context";
 
 interface ActiveTaskListCardProps {
   activeTaskList: ActiveTaskListState;
@@ -49,11 +50,16 @@ function taskStatusIcon(status: ActiveTaskListState["tasks"][number]["status"]) 
 
 export function ActiveTaskListCard({
   activeTaskList,
-  backgroundTaskCount = 0,
-  compact = false,
+  backgroundTaskCount: backgroundTaskCountProp,
+  compact: compactProp,
   onCompactChange,
   onOpenSidebar,
 }: ActiveTaskListCardProps) {
+  const messages = useMessages();
+  const copy = messages.chat.tasks;
+  const taskBannerCopy = messages.composer.taskBanner;
+  const backgroundTaskCount = backgroundTaskCountProp ?? 0;
+  const compact = compactProp ?? false;
   const totalCount = activeTaskList.tasks.length;
   const completedCount = activeTaskList.tasks.filter((task) => task.status === "completed").length;
   const hasInProgressTask = activeTaskList.tasks.some((task) => task.status === "inProgress");
@@ -69,7 +75,7 @@ export function ActiveTaskListCard({
             <PiSlidersHorizontal className={COMPOSER_STACKED_PANEL_ICON_CLASS_NAME} />
           )}
           <ComposerStackedPanelRowLabel tone="meta">
-            {completedCount} out of {totalCount} tasks completed
+            {copy.completed(completedCount, totalCount)}
           </ComposerStackedPanelRowLabel>
         </ComposerStackedPanelRowMain>
         <div className="flex shrink-0 items-center gap-0.5">
@@ -79,8 +85,8 @@ export function ActiveTaskListCard({
             size="icon-xs"
             className={COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME}
             onClick={onOpenSidebar}
-            aria-label="Open tasks sidebar"
-            title="Open tasks sidebar"
+            aria-label={copy.openSidebar}
+            title={copy.openSidebar}
           >
             <PiSidebarSimple className="size-3" />
           </Button>
@@ -90,8 +96,8 @@ export function ActiveTaskListCard({
             size="icon-xs"
             className={COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME}
             onClick={() => onCompactChange(!compact)}
-            aria-label={compact ? "Expand task banner" : "Collapse task banner"}
-            title={compact ? "Expand task banner" : "Collapse task banner"}
+            aria-label={compact ? taskBannerCopy.expand : taskBannerCopy.collapse}
+            title={compact ? taskBannerCopy.expand : taskBannerCopy.collapse}
           >
             {compact ? (
               <PiArrowsOutSimple className="size-3" />

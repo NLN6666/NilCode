@@ -103,6 +103,7 @@ export function upsertProjectRunCommandScripts(input: {
     command,
     icon: "play",
     runOnWorktreeCreate: false,
+    port: null,
   };
   return [...input.scripts, runScript];
 }

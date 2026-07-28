@@ -74,6 +74,7 @@ import {
 import { Open, resolveAvailableEditors } from "./open";
 import { makeDispatchCommandNormalizer } from "./orchestration/dispatchCommandNormalization";
 import { makeImportThreadHandler } from "./orchestration/importThreadRoute";
+import { mirrorLaunchConfigIntoProject } from "./launchConfigMirror";
 import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine";
 import { ProviderCommandReactor } from "./orchestration/Services/ProviderCommandReactor";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
@@ -789,6 +790,13 @@ const makeWsRpcHandlersLayer = () =>
             projectionReadModelQuery.getShellSnapshot(),
             "Failed to load orchestration shell snapshot",
           ),
+        [ORCHESTRATION_WS_METHODS.getThreadDetailSnapshot]: (input) =>
+          rpcEffect(
+            projectionReadModelQuery
+              .getThreadDetailSnapshotById(input.threadId)
+              .pipe(Effect.map(Option.getOrNull)),
+            "Failed to load orchestration thread detail snapshot",
+          ),
         [ORCHESTRATION_WS_METHODS.repairState]: () =>
           rpcEffect(orchestrationEngine.repairState(), "Failed to repair orchestration state"),
         [ORCHESTRATION_WS_METHODS.getTurnDiff]: (input) =>
@@ -985,6 +993,36 @@ const makeWsRpcHandlersLayer = () =>
           rpcEffect(workspaceEntries.search(input), "Failed to search workspace entries"),
         [WS_METHODS.projectsDiscoverScripts]: (input) =>
           rpcEffect(workspaceEntries.discoverScripts(input), "Failed to discover project scripts"),
+        [WS_METHODS.projectsReadLaunchConfig]: (input) =>
+          rpcEffect(
+            workspaceEntries.readLaunchConfig(input).pipe(
+              Effect.tap((state) =>
+                input.projectId === undefined
+                  ? Effect.void
+                  : mirrorLaunchConfigIntoProject({
+                      orchestrationEngine,
+                      projectionSnapshotQuery: projectionReadModelQuery,
+                      projectId: input.projectId,
+                      state,
+                    }),
+              ),
+            ),
+            "Failed to read project launch config",
+          ),
+        [WS_METHODS.projectsWriteLaunchConfig]: (input) =>
+          rpcEffect(
+            workspaceEntries.writeLaunchConfig(input).pipe(
+              Effect.tap((state) =>
+                mirrorLaunchConfigIntoProject({
+                  orchestrationEngine,
+                  projectionSnapshotQuery: projectionReadModelQuery,
+                  projectId: input.projectId,
+                  state,
+                }),
+              ),
+            ),
+            "Failed to write project launch config",
+          ),
         [WS_METHODS.projectsSearchLocalEntries]: (input) =>
           rpcEffect(workspaceEntries.searchLocal(input), "Failed to search local entries"),
         [WS_METHODS.projectsReadFile]: (input) =>
@@ -1082,6 +1120,11 @@ const makeWsRpcHandlersLayer = () =>
           rpcEffect(gitStatusBroadcaster.getStatus(input), "Failed to read git status"),
         [WS_METHODS.gitReadWorkingTreeDiff]: (input) =>
           rpcEffect(gitManager.readWorkingTreeDiff(input), "Failed to read working tree diff"),
+        [WS_METHODS.gitWorkingTreeDiffStats]: (input) =>
+          rpcEffect(
+            gitManager.readWorkingTreeDiffStats(input),
+            "Failed to read working tree diff stats",
+          ),
         [WS_METHODS.gitSummarizeDiff]: (input) =>
           rpcEffect(gitManager.summarizeDiff(input), "Failed to summarize diff"),
         [WS_METHODS.gitPull]: (input) =>

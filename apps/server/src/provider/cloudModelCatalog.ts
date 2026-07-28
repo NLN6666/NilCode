@@ -1,11 +1,12 @@
 // FILE: cloudModelCatalog.ts
 // Purpose: Fetches the public models.dev catalog and projects it onto Synara's
 //          provider/slug namespace, so newly released models are selectable
-//          without shipping a release. Supplies the roster only — capabilities
-//          stay locally defined (see below).
+//          without shipping a release. Supplies the roster plus the context
+//          window; the remaining capabilities stay locally defined (see below).
 // Layer: Server provider discovery
 // Exports: fetchCloudModelCatalog, projectCloudModelCatalog,
-//          CLOUD_MODEL_CATALOG_URL, clearCloudModelCatalogCacheForTests
+//          readCachedCloudModelContextWindow, CLOUD_MODEL_CATALOG_URL,
+//          clearCloudModelCatalogCacheForTests
 
 import type { CloudModelDescriptor, ProviderKind } from "@synara/contracts";
 import { decodeOutboundJson, outboundHttp } from "@synara/shared/outboundHttp";
@@ -47,6 +48,22 @@ let inFlight: Promise<CachedCatalog | null> | null = null;
 export function clearCloudModelCatalogCacheForTests(): void {
   cached = null;
   inFlight = null;
+}
+
+/**
+ * The catalog's context window for one slug, read from the cached copy only.
+ *
+ * Synchronous by design: the context budget is resolved on the turn path, and a
+ * network read there would stall a turn behind models.dev. A cold cache yields
+ * `undefined` so the caller falls back to the built-in table — the behaviour
+ * that predates this catalog — and the next mount of the model picker warms it.
+ */
+export function readCachedCloudModelContextWindow(
+  provider: ProviderKind,
+  slug: string,
+): number | undefined {
+  return cached?.modelsByProvider[provider]?.find((model) => model.slug === slug)
+    ?.contextWindowTokens;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

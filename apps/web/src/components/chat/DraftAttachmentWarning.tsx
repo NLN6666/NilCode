@@ -4,19 +4,16 @@
 //   accessible label, and the explanatory copy. Keeps the wording and affordance from
 //   drifting between the two surfaces.
 // Layer: Chat attachment presentation
-// Exports: DraftAttachmentWarningIcon, DRAFT_ATTACHMENT_WARNING_LABEL,
-//   DRAFT_ATTACHMENT_WARNING_DESCRIPTION
+// Exports: DraftAttachmentWarningIcon
+//
+// The wording itself lives in `composer.attachments.draftWarning*` so both chips read
+// the same catalog entries instead of importing English constants from here.
 
 import { forwardRef, type ComponentPropsWithoutRef } from "react";
 
+import { useMessages } from "~/i18n/context";
 import { CircleAlertIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
-
-/** Accessible label on the warning glyph. */
-export const DRAFT_ATTACHMENT_WARNING_LABEL = "Draft attachment may not persist";
-/** Explanatory copy shown in the hover tooltip / detail row. */
-export const DRAFT_ATTACHMENT_WARNING_DESCRIPTION =
-  "Draft attachment is kept in memory and may be lost on navigation.";
 
 // `inline` sits in a card's detail row; `badge` floats over an image thumbnail
 // (opaque surface + shadow so it stays legible on any preview).
@@ -30,13 +27,15 @@ type DraftAttachmentWarningIconProps = ComponentPropsWithoutRef<"span"> & {
 export const DraftAttachmentWarningIcon = forwardRef<
   HTMLSpanElement,
   DraftAttachmentWarningIconProps
->(function DraftAttachmentWarningIcon({ variant = "inline", className, ...rest }, ref) {
+>(function DraftAttachmentWarningIcon({ variant: variantProp, className, ...rest }, ref) {
+  const copy = useMessages().composer.attachments;
+  const variant = variantProp ?? "inline";
   return (
     <span
       ref={ref}
       {...rest}
       role="img"
-      aria-label={DRAFT_ATTACHMENT_WARNING_LABEL}
+      aria-label={copy.draftWarningLabel}
       className={cn(
         "inline-flex shrink-0 items-center justify-center rounded-full text-amber-600",
         variant === "badge" ? "size-5 bg-[var(--composer-surface)] shadow-sm" : "size-4",

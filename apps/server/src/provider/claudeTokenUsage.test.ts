@@ -1,6 +1,7 @@
 import type { ModelUsage, SDKControlGetContextUsageResponse } from "@anthropic-ai/claude-agent-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { readCachedCloudModelContextWindow } from "./cloudModelCatalog.ts";
 import {
   claudePromptTokensFromRawUsage,
   decideClaudeContextUsageWarnings,
@@ -12,7 +13,14 @@ import {
   resolveEffectiveClaudeContextWindow,
   resolveSelectedClaudeAutoCompactWindow,
   snapshotFromClaudeContextUsage,
+  withClaudeModelContextWindow,
 } from "./claudeTokenUsage.ts";
+
+vi.mock("./cloudModelCatalog.ts", () => ({
+  readCachedCloudModelContextWindow: vi.fn(),
+}));
+
+const cachedContextWindowMock = vi.mocked(readCachedCloudModelContextWindow);
 
 describe("Claude token arithmetic", () => {
   it("counts fresh, cache-write, and cache-read tokens while ignoring malformed values", () => {
@@ -173,6 +181,36 @@ describe("Claude context selection", () => {
         lastKnownContextWindow: 1_000_000,
       }),
     ).toBe(1_000_000);
+  });
+
+  it("prefers the live models.dev window over the built-in table", () => {
+    // A model the catalog knows and the local table does not is the whole point
+    // of sourcing this live: models ship between Synara releases.
+    cachedContextWindowMock.mockReturnValue(2_000_000);
+    expect(resolveClaudeApiModelIdContextWindowMaxTokens("claude-opus-6")).toBe(2_000_000);
+    expect(cachedContextWindowMock).toHaveBeenCalledWith("claudeAgent", "claude-opus-6");
+
+    // A cold cache or an unusable catalog value must not erase the local baseline.
+    cachedContextWindowMock.mockReturnValue(undefined);
+    expect(resolveClaudeApiModelIdContextWindowMaxTokens("claude-opus-5")).toBe(1_000_000);
+    cachedContextWindowMock.mockReturnValue(0);
+    expect(resolveClaudeApiModelIdContextWindowMaxTokens("claude-opus-5")).toBe(1_000_000);
+  });
+
+  it("reports the model window alongside a smaller compaction budget", () => {
+    // The pair the UI needs: `maxTokens` is what this session gets before it
+    // compacts, `contextWindowTokens` is what the model actually holds.
+    const usage = { usedTokens: 10, maxTokens: 200_000 } as const;
+    expect(withClaudeModelContextWindow(usage, 1_000_000)).toEqual({
+      usedTokens: 10,
+      maxTokens: 200_000,
+      contextWindowTokens: 1_000_000,
+    });
+
+    // An unknown or nonsensical capacity must leave the snapshot untouched
+    // rather than publish a window the runtime never reported.
+    expect(withClaudeModelContextWindow(usage, undefined)).toBe(usage);
+    expect(withClaudeModelContextWindow(usage, 0)).toBe(usage);
   });
 
   it("takes the largest valid context window from model usage", () => {

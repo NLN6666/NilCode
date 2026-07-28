@@ -20,6 +20,7 @@ import { readNativeApi } from "~/nativeApi";
 
 import { FileEntryIcon } from "../FileEntryIcon";
 import { EnvironmentLabeledSection, EnvironmentRow } from "./EnvironmentRow";
+import { useMessages } from "~/i18n/context";
 
 function revealEntryInFinder(entry: StudioOutputEntry) {
   const api = readNativeApi();
@@ -33,6 +34,7 @@ export function EnvironmentStudioOutputsSection({
   threadId: ThreadId;
   enabled: boolean;
 }) {
+  const copy = useMessages().chat.environment;
   const outputsQuery = useQuery(studioThreadOutputsQueryOptions({ threadId, enabled }));
   const fileOpener = useWorkspaceFileOpener();
 
@@ -50,7 +52,7 @@ export function EnvironmentStudioOutputsSection({
   }
 
   return (
-    <EnvironmentLabeledSection label="Output">
+    <EnvironmentLabeledSection label={copy.output}>
       {entries.map((entry) => (
         <EnvironmentRow
           key={entry.fullPath}

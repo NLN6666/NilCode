@@ -17,7 +17,7 @@ import { ProviderIcon } from "../ProviderIcon";
 import { ChatPaneDropOverlay } from "../chat-drop-overlay/ChatPaneDropOverlay";
 import { PanelStateMessage } from "./PanelStateMessage";
 import {
-  ChatMountSkeleton,
+  ChatMountLoader,
   DeferredChatView,
   LazyBrowserPanel,
   LazyDiffPanel,
@@ -77,6 +77,7 @@ import {
   CHAT_MAIN_VIEWPORT_SHELL_CLASS_NAME,
 } from "./composerPickerStyles";
 import { cn } from "~/lib/utils";
+import { useMessages } from "~/i18n/context";
 
 const SPLIT_PANE_PANEL_DEFAULT_WIDTH_PX = 22 * 16;
 const BROWSER_SPLIT_PANE_PANEL_DEFAULT_WIDTH_PX = 30 * 16;
@@ -108,6 +109,7 @@ function SplitPaneEmbeddedPanel(props: {
     patch: Partial<Pick<SplitViewPanePanelState, "panel" | "diffTurnId" | "diffFilePath">>,
   ) => void;
 }) {
+  const paneCopy = useMessages().chat.panes;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const panelWidthStorageKey =
     props.panel === "browser" ? "browser" : props.panel === "diff" ? "diff" : "panel";
@@ -205,7 +207,7 @@ function SplitPaneEmbeddedPanel(props: {
         onPointerDown={startResize}
       />
       {props.panel === "browser" ? (
-        <Suspense fallback={<PanelStateMessage>Loading browser...</PanelStateMessage>}>
+        <Suspense fallback={<PanelStateMessage>{paneCopy.loadingBrowser}</PanelStateMessage>}>
           <LazyBrowserPanel
             mode="sidebar"
             threadId={props.threadId}
@@ -239,6 +241,7 @@ function SplitPaneEmptyState(props: {
   excludedThreadIds: ReadonlySet<ThreadId>;
   onSelectThread: (threadId: ThreadId) => void;
 }) {
+  const splitCopy = useMessages().chat.split;
   return (
     <div
       className={cn(
@@ -249,7 +252,7 @@ function SplitPaneEmptyState(props: {
       onMouseDown={props.onFocus}
     >
       <div className="w-full max-w-sm space-y-4">
-        <p className="text-center text-sm font-medium text-foreground/70">Select a chat</p>
+        <p className="text-center text-sm font-medium text-foreground/70">{splitCopy.selectChat}</p>
         <div className="max-h-[60vh] space-y-1 overflow-y-auto">
           {props.threads.map((thread) => {
             const isUsed = props.excludedThreadIds.has(thread.id);
@@ -580,6 +583,7 @@ function SplitPaneSurface(props: {
 }
 
 export function SplitChatSurface(props: { splitViewId: SplitViewId; routeThreadId: ThreadId }) {
+  const splitCopy = useMessages().chat.split;
   const navigate = useNavigate();
   const { handleNewChat } = useHandleNewChat();
   const selectAllThreads = createAllThreadsSelector();
@@ -881,7 +885,7 @@ export function SplitChatSurface(props: { splitViewId: SplitViewId; routeThreadI
   const splitThreadIds = new Set(activeSplitView ? resolveSplitViewThreadIds(activeSplitView) : []);
 
   if (!activeSplitView) {
-    return <ChatMountSkeleton />;
+    return <ChatMountLoader />;
   }
 
   const chooseThreadForPane = (threadId: ThreadId, paneOverride?: PaneId) => {
@@ -982,9 +986,9 @@ export function SplitChatSurface(props: { splitViewId: SplitViewId; routeThreadI
       >
         <DialogPopup className="max-w-lg">
           <DialogHeader className="items-center text-center">
-            <DialogTitle>Choose Chat</DialogTitle>
+            <DialogTitle>{splitCopy.chooseChat}</DialogTitle>
             <DialogDescription className="max-w-sm text-center">
-              Pick which chat should appear in the focused split pane.
+              {splitCopy.chooseChatHint}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-3">
@@ -1021,7 +1025,7 @@ export function SplitChatSurface(props: { splitViewId: SplitViewId; routeThreadI
             </div>
             <DialogFooter variant="bare">
               <Button type="button" variant="outline" onClick={() => setThreadPickerPaneId(null)}>
-                Cancel
+                {splitCopy.cancel}
               </Button>
             </DialogFooter>
           </DialogPanel>

@@ -16,6 +16,7 @@ import type { ActiveTaskListState } from "../session-logic";
 import type { LatestProposedPlanState } from "../session-logic";
 import { formatTimestamp } from "../timestampFormat";
 import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "../proposedPlan";
+import { useMessages } from "~/i18n/context";
 import { ProposedPlanActions } from "./chat/ProposedPlanActions";
 
 function stepStatusIcon(status: string): React.ReactNode {
@@ -57,6 +58,7 @@ const PlanSidebar = function PlanSidebar({
   timestampFormat,
   onClose,
 }: PlanSidebarProps) {
+  const m = useMessages();
   const [proposedPlanExpanded, setProposedPlanExpanded] = useState(false);
   const planMarkdown = activeProposedPlan?.planMarkdown ?? null;
   const displayedPlanMarkdown = planMarkdown ? stripDisplayedPlanMarkdown(planMarkdown) : null;
@@ -71,7 +73,7 @@ const PlanSidebar = function PlanSidebar({
             variant="secondary"
             className="rounded-md bg-[color-mix(in_srgb,var(--color-accent-blue)_10%,transparent)] px-1.5 py-0 text-[10px] font-semibold text-[var(--color-accent-blue)]"
           >
-            Plan
+            {m.sidebar.planSidebar.title}
           </Badge>
           {activeTaskList ? (
             <span className="text-[11px] text-muted-foreground/60">
@@ -92,7 +94,7 @@ const PlanSidebar = function PlanSidebar({
             size="icon-xs"
             variant="ghost"
             onClick={onClose}
-            aria-label="Close plan sidebar"
+            aria-label={m.sidebar.planSidebar.close}
             className="text-muted-foreground/50 hover:text-foreground/70"
           >
             <PanelRightCloseIcon className="size-3.5" />
@@ -113,7 +115,9 @@ const PlanSidebar = function PlanSidebar({
           {/* Tasks */}
           {activeTaskList && activeTaskList.tasks.length > 0 ? (
             <div className="space-y-1">
-              <p className="mb-2 text-[10px] font-semibold text-muted-foreground/40">Steps</p>
+              <p className="mb-2 text-[10px] font-semibold text-muted-foreground/40">
+                {m.sidebar.planSidebar.steps}
+              </p>
               {activeTaskList.tasks.map((task) => (
                 <div
                   key={`${task.status}:${task.task}`}
@@ -175,9 +179,11 @@ const PlanSidebar = function PlanSidebar({
           {/* Empty state */}
           {!activeTaskList && !planMarkdown ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <p className="text-[13px] text-muted-foreground/40">No active plan yet.</p>
+              <p className="text-[13px] text-muted-foreground/40">
+                {m.sidebar.planSidebar.emptyTitle}
+              </p>
               <p className="mt-1 text-[11px] text-muted-foreground/30">
-                Plans will appear here when generated.
+                {m.sidebar.planSidebar.emptyDescription}
               </p>
             </div>
           ) : null}

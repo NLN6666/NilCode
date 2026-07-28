@@ -9,6 +9,7 @@ import { type ButtonHTMLAttributes, type ReactNode, useState } from "react";
 import { ChevronRightIcon, FileIcon } from "~/lib/icons";
 import { formatPastedTextCountLabel, pastedTextTitle } from "~/lib/composerPastedText";
 import { AttachmentCard } from "./AttachmentCard";
+import { useMessages } from "~/i18n/context";
 
 interface PastedTextCardMetrics {
   lineCount: number;
@@ -70,6 +71,7 @@ export function ComposerPastedTextCard({
   onShowInTextField,
   onRemove,
 }: ComposerPastedTextCardProps) {
+  const copy = useMessages().chat.message;
   return (
     <PastedTextCardShell
       text={text}
@@ -80,7 +82,7 @@ export function ComposerPastedTextCard({
           onMouseDown={(event) => event.preventDefault()}
           onClick={onShowInTextField}
         >
-          Show in text field
+          {copy.showInTextField}
           <ChevronRightIcon className="size-2.5" />
         </PastedTextCardAction>
       }
@@ -96,6 +98,7 @@ interface UserMessagePastedTextCardProps {
 // Transcript echo: the same card, but the action expands the full pasted content
 // in place (read-only) instead of editing.
 export function UserMessagePastedTextCard({ text, metrics }: UserMessagePastedTextCardProps) {
+  const copy = useMessages().composer.attachments;
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -108,7 +111,7 @@ export function UserMessagePastedTextCard({ text, metrics }: UserMessagePastedTe
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
           >
-            {expanded ? "Hide text" : "Show text"}
+            {expanded ? copy.hideText : copy.showText}
             <span className="opacity-65">· {formatPastedTextCountLabel(metrics)}</span>
           </PastedTextCardAction>
         }

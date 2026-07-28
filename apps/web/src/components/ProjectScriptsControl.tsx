@@ -11,7 +11,9 @@ import {
   ListChecksIcon,
   PlayIcon,
   PlusIcon,
+  SearchIcon,
   SettingsIcon,
+  StopIcon,
 } from "~/lib/icons";
 import React, { type FormEvent, type KeyboardEvent, useCallback, useMemo, useState } from "react";
 
@@ -58,25 +60,28 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Menu, MenuItem, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
+import { useMessages } from "../i18n/context";
 import { Switch } from "./ui/switch";
 import { Textarea } from "./ui/textarea";
 
-const SCRIPT_ICONS: Array<{ id: ProjectScriptIcon; label: string }> = [
-  { id: "play", label: "Play" },
-  { id: "test", label: "Test" },
-  { id: "lint", label: "Lint" },
-  { id: "configure", label: "Configure" },
-  { id: "build", label: "Build" },
-  { id: "debug", label: "Debug" },
+/** Icon order is locale-free; the labels resolve against the active catalog. */
+const SCRIPT_ICON_IDS: ReadonlyArray<ProjectScriptIcon> = [
+  "play",
+  "test",
+  "lint",
+  "configure",
+  "build",
+  "debug",
 ];
 
 function ScriptIcon({
   icon,
-  className = "size-3.5",
+  className: classNameProp,
 }: {
   icon: ProjectScriptIcon;
   className?: string;
 }) {
+  const className = classNameProp ?? "size-3.5";
   if (icon === "test") return <FlaskConicalIcon className={className} />;
   if (icon === "lint") return <ListChecksIcon className={className} />;
   if (icon === "configure") return <SettingsIcon className={className} />;
@@ -91,7 +96,27 @@ export interface NewProjectScriptInput {
   icon: ProjectScriptIcon;
   runOnWorktreeCreate: boolean;
   keybinding: string | null;
+  /** Declared preview port, or null when the action serves nothing. */
+  port: number | null;
 }
+
+/**
+ * Parse the port field. Returns `undefined` for input that is present but not a
+ * usable port, so the caller can distinguish "left blank" from "typed garbage".
+ */
+export function parseProjectScriptPort(value: string): number | null | undefined {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  if (!/^\d+$/.test(trimmed)) {
+    return undefined;
+  }
+  const port = Number(trimmed);
+  return Number.isInteger(port) && port >= 1 && port <= 65_535 ? port : undefined;
+}
+
+const NO_RUNNING_SCRIPTS: ReadonlySet<string> = new Set<string>();
 
 interface ProjectScriptsControlProps {
   scripts: ProjectScript[];
@@ -99,7 +124,12 @@ interface ProjectScriptsControlProps {
   preferredScriptId?: string | null;
   showInlineControls?: boolean;
   hideInlineLabel?: boolean;
+  /** Actions whose service is alive right now. These render as Stop instead of Run. */
+  runningScriptIds?: ReadonlySet<string>;
   onRunScript: (script: ProjectScript) => void;
+  onStopScript?: (script: ProjectScript) => void;
+  /** Omitted where there is no project to inspect; the affordance hides itself. */
+  onDetectServices?: (() => void) | undefined;
   onAddScript: (input: NewProjectScriptInput) => Promise<void> | void;
   onUpdateScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void> | void;
   onDeleteScript: (scriptId: string) => Promise<void> | void;
@@ -159,14 +189,22 @@ function keybindingFromEvent(event: KeyboardEvent<HTMLInputElement>): string | n
 export default function ProjectScriptsControl({
   scripts,
   keybindings,
-  preferredScriptId = null,
-  showInlineControls = true,
-  hideInlineLabel = false,
+  preferredScriptId: preferredScriptIdProp,
+  showInlineControls: showInlineControlsProp,
+  hideInlineLabel: hideInlineLabelProp,
+  runningScriptIds: runningScriptIdsProp,
   onRunScript,
+  onStopScript,
+  onDetectServices,
   onAddScript,
   onUpdateScript,
   onDeleteScript,
 }: ProjectScriptsControlProps) {
+  const copy = useMessages().projectTools.scripts;
+  const preferredScriptId = preferredScriptIdProp ?? null;
+  const showInlineControls = showInlineControlsProp ?? true;
+  const hideInlineLabel = hideInlineLabelProp ?? false;
+  const runningScriptIds = runningScriptIdsProp ?? NO_RUNNING_SCRIPTS;
   const addScriptFormId = React.useId();
   const [editingScriptId, setEditingScriptId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -175,6 +213,7 @@ export default function ProjectScriptsControl({
   const [icon, setIcon] = useState<ProjectScriptIcon>("play");
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [runOnWorktreeCreate, setRunOnWorktreeCreate] = useState(false);
+  const [port, setPort] = useState("");
   const [keybinding, setKeybinding] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -208,11 +247,16 @@ export default function ProjectScriptsControl({
     const trimmedName = name.trim();
     const trimmedCommand = command.trim();
     if (trimmedName.length === 0) {
-      setValidationError("Name is required.");
+      setValidationError(copy.nameRequired);
       return;
     }
     if (trimmedCommand.length === 0) {
-      setValidationError("Command is required.");
+      setValidationError(copy.commandRequired);
+      return;
+    }
+    const parsedPort = parseProjectScriptPort(port);
+    if (parsedPort === undefined) {
+      setValidationError(copy.portInvalid);
       return;
     }
 
@@ -234,6 +278,7 @@ export default function ProjectScriptsControl({
         icon,
         runOnWorktreeCreate,
         keybinding: keybindingRule?.key ?? null,
+        port: parsedPort,
       } satisfies NewProjectScriptInput;
       if (editingScriptId) {
         await onUpdateScript(editingScriptId, payload);
@@ -243,7 +288,7 @@ export default function ProjectScriptsControl({
       setDialogOpen(false);
       setIconPickerOpen(false);
     } catch (error) {
-      setValidationError(error instanceof Error ? error.message : "Failed to save action.");
+      setValidationError(error instanceof Error ? error.message : copy.saveFailed);
     }
   };
 
@@ -254,6 +299,7 @@ export default function ProjectScriptsControl({
     setIcon("play");
     setIconPickerOpen(false);
     setRunOnWorktreeCreate(false);
+    setPort("");
     setKeybinding("");
     setValidationError(null);
     setDialogOpen(true);
@@ -266,10 +312,47 @@ export default function ProjectScriptsControl({
     setIcon(script.icon);
     setIconPickerOpen(false);
     setRunOnWorktreeCreate(script.runOnWorktreeCreate);
+    setPort(script.port === null || script.port === undefined ? "" : String(script.port));
     setKeybinding(keybindingValueForCommand(keybindings, commandForProjectScript(script.id)) ?? "");
     setValidationError(null);
     setDialogOpen(true);
   };
+
+  // One click target per action: Run while it is idle, Stop once its service is
+  // live. The icon carries the mode; the label keeps showing the action's name so
+  // the button neither jumps in width nor loses which service it controls.
+  const toggleScript = useCallback(
+    (script: ProjectScript) => {
+      if (runningScriptIds.has(script.id) && onStopScript) {
+        onStopScript(script);
+        return;
+      }
+      onRunScript(script);
+    },
+    [onRunScript, onStopScript, runningScriptIds],
+  );
+
+  // Shared by the populated dropdown and the empty-state one. A project with no
+  // actions yet is exactly when this matters most, so the empty state grows a
+  // dropdown rather than leaving the affordance unreachable.
+  const trailingMenuItems = (
+    <>
+      <MenuItem className={actionMenuItemClassName} onClick={openAddDialog}>
+        <PlusIcon className="size-4 text-muted-foreground" />
+        <span className="col-span-2 min-w-0 truncate">{copy.add}</span>
+      </MenuItem>
+      {onDetectServices ? (
+        <MenuItem
+          className={actionMenuItemClassName}
+          onClick={onDetectServices}
+          title={copy.detectServicesHint}
+        >
+          <SearchIcon className="size-4 text-muted-foreground" />
+          <span className="col-span-2 min-w-0 truncate">{copy.detectServices}</span>
+        </MenuItem>
+      ) : null}
+    </>
+  );
 
   const confirmDeleteScript = useCallback(() => {
     if (!editingScriptId) return;
@@ -281,18 +364,30 @@ export default function ProjectScriptsControl({
   return (
     <>
       {showInlineControls && primaryScript ? (
-        <ChatHeaderSplitGroup label="Project actions">
+        <ChatHeaderSplitGroup label={copy.group}>
           <ChatHeaderButton
             className={cn(
               CHAT_HEADER_SPLIT_LEADING_CLASS_NAME,
               "min-w-0 gap-1.5 px-2.5",
               hideInlineLabel ? "px-2" : "max-w-44",
             )}
-            onClick={() => onRunScript(primaryScript)}
-            aria-label={`Run ${primaryScript.name}`}
-            title={`Run ${primaryScript.name}`}
+            onClick={() => toggleScript(primaryScript)}
+            aria-label={
+              runningScriptIds.has(primaryScript.id)
+                ? copy.stopAria(primaryScript.name)
+                : copy.run(primaryScript.name)
+            }
+            title={
+              runningScriptIds.has(primaryScript.id)
+                ? copy.stopAria(primaryScript.name)
+                : copy.run(primaryScript.name)
+            }
           >
-            <ScriptIcon icon={primaryScript.icon} className="size-3.5 shrink-0" />
+            {runningScriptIds.has(primaryScript.id) ? (
+              <StopIcon className="size-3.5 shrink-0 text-destructive" />
+            ) : (
+              <ScriptIcon icon={primaryScript.icon} className="size-3.5 shrink-0" />
+            )}
             <span
               className={cn(
                 "max-w-32 truncate font-normal",
@@ -307,7 +402,7 @@ export default function ProjectScriptsControl({
             <MenuTrigger
               render={
                 <ChatHeaderIconButton
-                  label="Script actions"
+                  label={copy.menu}
                   tone="outline"
                   className={CHAT_HEADER_SPLIT_TRAILING_CLASS_NAME}
                 />
@@ -321,13 +416,19 @@ export default function ProjectScriptsControl({
                   keybindings,
                   commandForProjectScript(script.id),
                 );
+                const isRunning = runningScriptIds.has(script.id);
                 return (
                   <MenuItem
                     key={script.id}
                     className={actionMenuItemClassName}
-                    onClick={() => onRunScript(script)}
+                    onClick={() => toggleScript(script)}
+                    aria-label={isRunning ? copy.stopAria(script.name) : copy.run(script.name)}
                   >
-                    <ScriptIcon icon={script.icon} className="size-4 text-muted-foreground" />
+                    {isRunning ? (
+                      <StopIcon className="size-4 text-destructive" />
+                    ) : (
+                      <ScriptIcon icon={script.icon} className="size-4 text-muted-foreground" />
+                    )}
                     <span className="min-w-0 truncate">
                       {script.runOnWorktreeCreate ? `${script.name} (setup)` : script.name}
                     </span>
@@ -359,10 +460,42 @@ export default function ProjectScriptsControl({
                   </MenuItem>
                 );
               })}
-              <MenuItem className={actionMenuItemClassName} onClick={openAddDialog}>
-                <PlusIcon className="size-4 text-muted-foreground" />
-                <span className="col-span-2 min-w-0 truncate">Add action</span>
-              </MenuItem>
+              {trailingMenuItems}
+            </ComposerPickerMenuPopup>
+          </Menu>
+        </ChatHeaderSplitGroup>
+      ) : showInlineControls && onDetectServices ? (
+        <ChatHeaderSplitGroup label={copy.group}>
+          <ChatHeaderButton
+            className={cn(
+              CHAT_HEADER_SPLIT_LEADING_CLASS_NAME,
+              "gap-1.5 px-2.5",
+              hideInlineLabel && "px-2",
+            )}
+            onClick={openAddDialog}
+            aria-label={copy.add}
+            title={copy.add}
+          >
+            <PlusIcon className="size-3.5" />
+            <span className={cn("font-normal", hideInlineLabel ? "sr-only" : "hidden sm:inline")}>
+              {copy.add}
+            </span>
+          </ChatHeaderButton>
+          <ChatHeaderSplitDivider />
+          <Menu highlightItemOnHover={false}>
+            <MenuTrigger
+              render={
+                <ChatHeaderIconButton
+                  label={copy.menu}
+                  tone="outline"
+                  className={CHAT_HEADER_SPLIT_TRAILING_CLASS_NAME}
+                />
+              }
+            >
+              <ChevronDownIcon className="size-3.5" />
+            </MenuTrigger>
+            <ComposerPickerMenuPopup align="end" className="min-w-64" sideOffset={8}>
+              {trailingMenuItems}
             </ComposerPickerMenuPopup>
           </Menu>
         </ChatHeaderSplitGroup>
@@ -370,12 +503,12 @@ export default function ProjectScriptsControl({
         <ChatHeaderButton
           className={cn("gap-1.5 px-2.5", hideInlineLabel && "px-2")}
           onClick={openAddDialog}
-          aria-label="Add action"
-          title="Add action"
+          aria-label={copy.add}
+          title={copy.add}
         >
           <PlusIcon className="size-3.5" />
           <span className={cn("font-normal", hideInlineLabel ? "sr-only" : "hidden sm:inline")}>
-            Add action
+            {copy.add}
           </span>
         </ChatHeaderButton>
       ) : null}
@@ -394,6 +527,7 @@ export default function ProjectScriptsControl({
           setCommand("");
           setIcon("play");
           setRunOnWorktreeCreate(false);
+          setPort("");
           setKeybinding("");
           setValidationError(null);
         }}
@@ -401,15 +535,13 @@ export default function ProjectScriptsControl({
       >
         <DialogPopup>
           <DialogHeader>
-            <DialogTitle>{isEditing ? "Edit Action" : "Add Action"}</DialogTitle>
-            <DialogDescription>
-              Actions are project-scoped commands you can run from the top bar or keybindings.
-            </DialogDescription>
+            <DialogTitle>{isEditing ? copy.editTitle : copy.addTitle}</DialogTitle>
+            <DialogDescription>{copy.description}</DialogDescription>
           </DialogHeader>
           <DialogPanel>
             <form id={addScriptFormId} className="space-y-4" onSubmit={submitAddScript}>
               <div className="space-y-1.5">
-                <Label htmlFor="script-name">Name</Label>
+                <Label htmlFor="script-name">{copy.name}</Label>
                 <div className="flex items-center gap-2">
                   <Popover onOpenChange={setIconPickerOpen} open={iconPickerOpen}>
                     <PopoverTrigger
@@ -418,7 +550,7 @@ export default function ProjectScriptsControl({
                           type="button"
                           variant="outline"
                           className="size-9 shrink-0 hover:bg-popover active:bg-popover data-pressed:bg-popover"
-                          aria-label="Choose icon"
+                          aria-label={copy.chooseIcon}
                         />
                       }
                     >
@@ -426,11 +558,11 @@ export default function ProjectScriptsControl({
                     </PopoverTrigger>
                     <PopoverPopup align="start">
                       <div className="grid grid-cols-3 gap-2">
-                        {SCRIPT_ICONS.map((entry) => {
-                          const isSelected = entry.id === icon;
+                        {SCRIPT_ICON_IDS.map((entryId) => {
+                          const isSelected = entryId === icon;
                           return (
                             <button
-                              key={entry.id}
+                              key={entryId}
                               type="button"
                               className={`relative flex flex-col items-center gap-2 rounded-md border px-2 py-2 text-xs ${
                                 isSelected
@@ -438,12 +570,12 @@ export default function ProjectScriptsControl({
                                   : "border-[color:var(--color-border-light)] hover:bg-[var(--sidebar-accent)]"
                               }`}
                               onClick={() => {
-                                setIcon(entry.id);
+                                setIcon(entryId);
                                 setIconPickerOpen(false);
                               }}
                             >
-                              <ScriptIcon icon={entry.id} className="size-4" />
-                              <span>{entry.label}</span>
+                              <ScriptIcon icon={entryId} className="size-4" />
+                              <span>{copy.icons[entryId]}</span>
                             </button>
                           );
                         })}
@@ -453,36 +585,48 @@ export default function ProjectScriptsControl({
                   <Input
                     id="script-name"
                     autoFocus
-                    placeholder="Test"
+                    placeholder={copy.namePlaceholder}
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                   />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="script-keybinding">Keybinding</Label>
+                <Label htmlFor="script-keybinding">{copy.keybinding}</Label>
                 <Input
                   id="script-keybinding"
-                  placeholder="Press shortcut"
+                  placeholder={copy.keybindingPlaceholder}
                   value={keybinding}
                   readOnly
                   onKeyDown={captureKeybinding}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Press a shortcut. Use <code>Backspace</code> to clear.
+                  {copy.keybindingHintBefore} <code>{copy.keybindingHintKey}</code>{" "}
+                  {copy.keybindingHintAfter}
                 </p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="script-command">Command</Label>
+                <Label htmlFor="script-command">{copy.command}</Label>
                 <Textarea
                   id="script-command"
-                  placeholder="bun test"
+                  placeholder={copy.commandPlaceholder}
                   value={command}
                   onChange={(event) => setCommand(event.target.value)}
                 />
               </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="script-port">{copy.port}</Label>
+                <Input
+                  id="script-port"
+                  inputMode="numeric"
+                  placeholder={copy.portPlaceholder}
+                  value={port}
+                  onChange={(event) => setPort(event.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">{copy.portHint}</p>
+              </div>
               <label className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-sm">
-                <span>Run automatically on worktree creation</span>
+                <span>{copy.runOnWorktreeCreate}</span>
                 <Switch
                   checked={runOnWorktreeCreate}
                   onCheckedChange={(checked) => setRunOnWorktreeCreate(Boolean(checked))}
@@ -499,7 +643,7 @@ export default function ProjectScriptsControl({
                 className="mr-auto"
                 onClick={() => setDeleteConfirmOpen(true)}
               >
-                Delete
+                {copy.delete}
               </Button>
             )}
             <Button
@@ -510,10 +654,10 @@ export default function ProjectScriptsControl({
                 setDialogOpen(false);
               }}
             >
-              Cancel
+              {copy.cancel}
             </Button>
             <Button form={addScriptFormId} type="submit" size="sm">
-              {isEditing ? "Save changes" : "Save action"}
+              {isEditing ? copy.saveChanges : copy.save}
             </Button>
           </DialogFooter>
         </DialogPopup>
@@ -522,15 +666,15 @@ export default function ProjectScriptsControl({
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete action "{name}"?</AlertDialogTitle>
-            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+            <AlertDialogTitle>{copy.deleteConfirmTitle(name)}</AlertDialogTitle>
+            <AlertDialogDescription>{copy.deleteConfirmDescription}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogClose render={<Button variant="outline" size="sm" />}>
-              Cancel
+              {copy.cancel}
             </AlertDialogClose>
             <Button variant="destructive" size="sm" onClick={confirmDeleteScript}>
-              Delete action
+              {copy.deleteConfirm}
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>

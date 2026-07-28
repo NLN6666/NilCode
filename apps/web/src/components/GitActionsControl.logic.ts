@@ -4,6 +4,13 @@ import type {
   GitStatusResult,
 } from "@synara/contracts";
 import { isTemporaryWorktreeBranch, resolveUniqueSynaraBranchName } from "@synara/shared/git";
+import { git as defaultGitCopy } from "~/i18n/locales/en/git";
+
+/**
+ * The `git` catalog group. These resolvers default to English so their unit tests can keep
+ * asserting plain strings; the running app always passes the active catalog.
+ */
+export type GitCopy = typeof defaultGitCopy;
 
 export type GitActionIconName = "commit" | "push" | "pr";
 
@@ -27,7 +34,6 @@ export interface GitQuickAction {
 }
 
 const FALLBACK_DEFAULT_BRANCH_NAMES = new Set(["main", "master"]);
-const CREATE_PR_UNAVAILABLE_HINT = "No branch changes to include in a PR.";
 
 export interface DefaultBranchActionDialogCopy {
   title: string;
@@ -80,29 +86,31 @@ export function buildGitActionProgressStages(input: {
   pushTarget?: string;
   featureBranch?: boolean;
   shouldPushBeforePr?: boolean;
+  copy?: GitCopy;
 }): string[] {
-  const branchStages = input.featureBranch ? ["Preparing feature branch..."] : [];
-  const pushStage = input.pushTarget ? `Pushing to ${input.pushTarget}...` : "Pushing...";
+  const progress = (input.copy ?? defaultGitCopy).progress;
+  const branchStages = input.featureBranch ? [progress.preparingFeatureBranch] : [];
+  const pushStage = input.pushTarget ? progress.pushingTo(input.pushTarget) : progress.pushing;
   if (input.action === "push") {
     return [pushStage];
   }
   if (input.action === "create_pr") {
-    return input.shouldPushBeforePr ? [pushStage, "Creating PR..."] : ["Creating PR..."];
+    return input.shouldPushBeforePr ? [pushStage, progress.creatingPr] : [progress.creatingPr];
   }
   const shouldIncludeCommitStages =
     !input.forcePushOnly && (input.action === "commit" || input.hasWorkingTreeChanges);
   const commitStages = !shouldIncludeCommitStages
     ? []
     : input.hasCustomCommitMessage
-      ? ["Committing..."]
-      : ["Generating commit message...", "Committing..."];
+      ? [progress.committing]
+      : [progress.generatingCommitMessage, progress.committing];
   if (input.action === "commit") {
     return [...branchStages, ...commitStages];
   }
   if (input.action === "commit_push") {
     return [...branchStages, ...commitStages, pushStage];
   }
-  return [...branchStages, ...commitStages, pushStage, "Creating PR..."];
+  return [...branchStages, ...commitStages, pushStage, progress.creatingPr];
 }
 
 const withDescription = (title: string, description: string | undefined) =>
@@ -157,13 +165,19 @@ function tracksDefaultUpstream(
   return FALLBACK_DEFAULT_BRANCH_NAMES.has(trackedBranchName);
 }
 
-export function summarizeGitResult(result: GitRunStackedActionResult): {
+export function summarizeGitResult(
+  result: GitRunStackedActionResult,
+  copy: GitCopy = defaultGitCopy,
+): {
   title: string;
   description?: string;
 } {
   if (result.pr.status === "created" || result.pr.status === "opened_existing") {
     const prNumber = result.pr.number ? ` #${result.pr.number}` : "";
-    const title = `${result.pr.status === "created" ? "Created PR" : "Opened PR"}${prNumber}`;
+    const title =
+      result.pr.status === "created"
+        ? copy.result.createdPr(prNumber)
+        : copy.result.openedPr(prNumber);
     return withDescription(title, truncateText(result.pr.title));
   }
 
@@ -171,20 +185,20 @@ export function summarizeGitResult(result: GitRunStackedActionResult): {
     const shortSha = shortenSha(result.commit.commitSha);
     const branch = result.push.upstreamBranch ?? result.push.branch;
     const pushedCommitPart = shortSha ? ` ${shortSha}` : "";
-    const branchPart = branch ? ` to ${branch}` : "";
+    const branchPart = branch ? copy.result.pushedToBranch(branch) : "";
     return withDescription(
-      `Pushed${pushedCommitPart}${branchPart}`,
+      copy.result.pushed(pushedCommitPart, branchPart),
       truncateText(result.commit.subject),
     );
   }
 
   if (result.commit.status === "created") {
     const shortSha = shortenSha(result.commit.commitSha);
-    const title = shortSha ? `Committed ${shortSha}` : "Committed changes";
+    const title = shortSha ? copy.result.committed(shortSha) : copy.result.committedChanges;
     return withDescription(title, truncateText(result.commit.subject));
   }
 
-  return { title: "Done" };
+  return { title: copy.result.done };
 }
 
 export function buildMenuItems(
@@ -193,6 +207,7 @@ export function buildMenuItems(
   hasOriginRemote = true,
   isDefaultBranch = false,
   defaultBranchName?: string | null,
+  copy: GitCopy = defaultGitCopy,
 ): GitActionMenuItem[] {
   if (!gitStatus) return [];
 
@@ -227,7 +242,7 @@ export function buildMenuItems(
   return [
     {
       id: "commit",
-      label: "Commit",
+      label: copy.actions.commit,
       disabled: !canCommit,
       icon: "commit",
       kind: "open_dialog",
@@ -237,7 +252,7 @@ export function buildMenuItems(
       ? [
           {
             id: "commit_push" as const,
-            label: "Commit & push",
+            label: copy.actions.commitPush,
             disabled: !canCommitPush,
             icon: "push" as const,
             kind: "open_dialog" as const,
@@ -247,7 +262,7 @@ export function buildMenuItems(
       : []),
     {
       id: "push",
-      label: isDefaultBranch ? "Commit & push" : "Push",
+      label: isDefaultBranch ? copy.actions.commitPush : copy.actions.push,
       disabled: !(isDefaultBranch ? canCommitPush : canPush),
       icon: "push",
       kind: "open_dialog",
@@ -256,14 +271,14 @@ export function buildMenuItems(
     hasOpenPr
       ? {
           id: "pr",
-          label: "Create PR",
+          label: copy.actions.createPr,
           disabled: !canOpenPr,
           icon: "pr",
           kind: "open_pr",
         }
       : {
           id: "pr",
-          label: "Create PR",
+          label: copy.actions.createPr,
           disabled: !canCreatePr,
           icon: "pr",
           kind: "open_dialog",
@@ -279,17 +294,23 @@ export function resolveQuickAction(
   hasOriginRemote = true,
   shouldOfferCreateBranch = false,
   _defaultBranchName?: string | null,
+  copy: GitCopy = defaultGitCopy,
 ): GitQuickAction {
   if (isBusy) {
-    return { label: "Commit", disabled: true, kind: "show_hint", hint: "Git action in progress." };
+    return {
+      label: copy.actions.commit,
+      disabled: true,
+      kind: "show_hint",
+      hint: copy.hints.busy,
+    };
   }
 
   if (!gitStatus) {
     return {
-      label: "Commit",
+      label: copy.actions.commit,
       disabled: true,
       kind: "show_hint",
-      hint: "Git status is unavailable.",
+      hint: copy.hints.noStatus,
     };
   }
 
@@ -303,22 +324,22 @@ export function resolveQuickAction(
   if (!hasBranch) {
     if (shouldOfferCreateBranch) {
       return {
-        label: "Create Branch",
+        label: copy.actions.createBranch,
         disabled: false,
         kind: "create_branch",
       };
     }
     return {
-      label: "Commit",
+      label: copy.actions.commit,
       disabled: true,
       kind: "show_hint",
-      hint: "Create and checkout a branch before pushing or opening a PR.",
+      hint: copy.hints.createBranchFirst,
     };
   }
 
   if (!gitStatus.hasUpstream && shouldOfferCreateBranch) {
     return {
-      label: "Create Branch",
+      label: copy.actions.createBranch,
       disabled: false,
       kind: "create_branch",
     };
@@ -327,16 +348,16 @@ export function resolveQuickAction(
   if (gitStatus.hasUpstream) {
     if (isDiverged) {
       return {
-        label: "Sync branch",
+        label: copy.actions.syncBranch,
         disabled: true,
         kind: "show_hint",
-        hint: "Branch has diverged from upstream. Rebase/merge first.",
+        hint: copy.hints.diverged,
       };
     }
 
     if (isBehind) {
       return {
-        label: "Pull",
+        label: copy.actions.pull,
         disabled: false,
         kind: "run_pull",
       };
@@ -345,18 +366,23 @@ export function resolveQuickAction(
 
   if (hasChanges) {
     if (!gitStatus.hasUpstream && !hasOriginRemote) {
-      return { label: "Commit", disabled: false, kind: "run_action", action: "commit" };
+      return {
+        label: copy.actions.commit,
+        disabled: false,
+        kind: "run_action",
+        action: "commit",
+      };
     }
     if (hasOpenPr || isDefaultBranch) {
       return {
-        label: "Commit & push",
+        label: copy.actions.commitPush,
         disabled: false,
         kind: "run_action",
         action: "commit_push",
       };
     }
     return {
-      label: "Commit, push & PR",
+      label: copy.actions.commitPushPr,
       disabled: false,
       kind: "run_action",
       action: "commit_push_pr",
@@ -366,36 +392,36 @@ export function resolveQuickAction(
   if (!gitStatus.hasUpstream) {
     if (!hasOriginRemote) {
       if (hasOpenPr && !isAhead) {
-        return { label: "View PR", disabled: false, kind: "open_pr" };
+        return { label: copy.actions.viewPr, disabled: false, kind: "open_pr" };
       }
       return {
-        label: "Push",
+        label: copy.actions.push,
         disabled: true,
         kind: "show_hint",
-        hint: 'Add an "origin" remote before pushing or creating a PR.',
+        hint: copy.hints.addOriginPushOrPr,
       };
     }
     if (!isAhead) {
       if (hasOpenPr) {
-        return { label: "View PR", disabled: false, kind: "open_pr" };
+        return { label: copy.actions.viewPr, disabled: false, kind: "open_pr" };
       }
       return {
-        label: "Push",
+        label: copy.actions.push,
         disabled: true,
         kind: "show_hint",
-        hint: "No local commits to push.",
+        hint: copy.hints.noCommitsPush,
       };
     }
     if (hasOpenPr || isDefaultBranch) {
       return {
-        label: isDefaultBranch ? "Commit & push" : "Push",
+        label: isDefaultBranch ? copy.actions.commitPush : copy.actions.push,
         disabled: false,
         kind: "run_action",
         action: isDefaultBranch ? "commit_push" : "push",
       };
     }
     return {
-      label: "Push & create PR",
+      label: copy.actions.pushCreatePr,
       disabled: false,
       kind: "run_action",
       action: "create_pr",
@@ -405,14 +431,14 @@ export function resolveQuickAction(
   if (isAhead) {
     if (hasOpenPr || isDefaultBranch) {
       return {
-        label: isDefaultBranch ? "Commit & push" : "Push",
+        label: isDefaultBranch ? copy.actions.commitPush : copy.actions.push,
         disabled: false,
         kind: "run_action",
         action: isDefaultBranch ? "commit_push" : "push",
       };
     }
     return {
-      label: "Push & create PR",
+      label: copy.actions.pushCreatePr,
       disabled: false,
       kind: "run_action",
       action: "create_pr",
@@ -420,14 +446,14 @@ export function resolveQuickAction(
   }
 
   if (hasOpenPr && gitStatus.hasUpstream) {
-    return { label: "View PR", disabled: false, kind: "open_pr" };
+    return { label: copy.actions.viewPr, disabled: false, kind: "open_pr" };
   }
 
   return {
-    label: "Commit",
+    label: copy.actions.commit,
     disabled: true,
     kind: "show_hint",
-    hint: "Branch is up to date. No action needed.",
+    hint: copy.hints.branchUpToDate,
   };
 }
 
@@ -436,6 +462,7 @@ export function resolveCreatePrActionAvailability(input: {
   isDefaultBranch?: boolean;
   hasOriginRemote?: boolean;
   defaultBranchName?: string | null | undefined;
+  copy?: GitCopy;
 }): { canRun: boolean; hint: string | null } {
   const canRun = canRunCreatePrAction({
     gitStatus: input.gitStatus,
@@ -447,30 +474,42 @@ export function resolveCreatePrActionAvailability(input: {
 
   return {
     canRun,
-    hint: canRun ? null : CREATE_PR_UNAVAILABLE_HINT,
+    hint: canRun ? null : (input.copy ?? defaultGitCopy).hints.noBranchChangesForPr,
   };
 }
 
 export function resolvePullActionAvailability(input: {
   gitStatus: GitStatusResult | null;
   isBusy: boolean;
+  copy?: GitCopy;
 }): { canRun: boolean; hint: string | null } {
   const { gitStatus, isBusy } = input;
-  if (isBusy) return { canRun: false, hint: "Git action in progress." };
-  if (!gitStatus) return { canRun: false, hint: "Git status is unavailable." };
+  const hints = (input.copy ?? defaultGitCopy).hints;
+  if (isBusy) return { canRun: false, hint: hints.busy };
+  if (!gitStatus) return { canRun: false, hint: hints.noStatus };
   if (gitStatus.branch === null) {
-    return { canRun: false, hint: "Detached HEAD: checkout a branch before pulling." };
+    return { canRun: false, hint: hints.detachedPull };
   }
   if (!gitStatus.hasUpstream) {
-    return { canRun: false, hint: "Current branch has no upstream to pull from." };
+    return { canRun: false, hint: hints.noUpstreamPull };
   }
   if (gitStatus.aheadCount > 0 && gitStatus.behindCount > 0) {
     return { canRun: false, hint: "Branch has diverged from upstream. Rebase/merge first." };
   }
   if (gitStatus.behindCount <= 0) {
-    return { canRun: false, hint: "Branch is already up to date." };
+    return { canRun: false, hint: hints.alreadyUpToDate };
   }
   return { canRun: true, hint: null };
+}
+
+/** Environment panel should promote Pull while it is available or already running. */
+export function shouldShowEnvironmentPanelPullRow(input: {
+  quickAction: GitQuickAction;
+  isPullRunning: boolean;
+}): boolean {
+  return (
+    input.isPullRunning || (input.quickAction.kind === "run_pull" && !input.quickAction.disabled)
+  );
 }
 
 export function shouldOfferCreateBranchPrompt(input: {
@@ -502,36 +541,38 @@ export function resolveDefaultBranchActionDialogCopy(input: {
   action: DefaultBranchConfirmableAction;
   branchName: string;
   includesCommit: boolean;
+  copy?: GitCopy;
 }): DefaultBranchActionDialogCopy {
   const branchLabel = input.branchName;
-  const suffix = ` on "${branchLabel}". You can continue on this branch or create a feature branch and run the same action there.`;
+  const dialog = (input.copy ?? defaultGitCopy).defaultBranchDialog;
+  const suffix = dialog.onBranchSuffix(branchLabel);
 
   if (input.action === "push" || input.action === "commit_push") {
     if (input.includesCommit) {
       return {
-        title: "Commit & push to default branch?",
-        description: `This action will commit and push changes${suffix}`,
-        continueLabel: `Commit & push to ${branchLabel}`,
+        title: dialog.commitPushTitle,
+        description: dialog.commitPushDescription(suffix),
+        continueLabel: dialog.commitPushContinue(branchLabel),
       };
     }
     return {
-      title: "Push to default branch?",
-      description: `This action will push local commits${suffix}`,
-      continueLabel: `Push to ${branchLabel}`,
+      title: dialog.pushTitle,
+      description: dialog.pushDescription(suffix),
+      continueLabel: dialog.pushContinue(branchLabel),
     };
   }
 
   if (input.includesCommit) {
     return {
-      title: "Create feature branch, commit & PR?",
-      description: `Pull requests can't be opened from "${branchLabel}" into itself. This action will create a feature branch, commit your changes there, push it, and create the PR.`,
-      continueLabel: "Create feature branch & continue",
+      title: dialog.featureBranchCommitPrTitle,
+      description: dialog.featureBranchCommitPrDescription(branchLabel),
+      continueLabel: dialog.createFeatureBranch,
     };
   }
   return {
-    title: "Create feature branch & PR?",
-    description: `Pull requests can't be opened from "${branchLabel}" into itself. This action will create a feature branch from your current commits, push it, and create the PR.`,
-    continueLabel: "Create feature branch & continue",
+    title: dialog.featureBranchPrTitle,
+    description: dialog.featureBranchPrDescription(branchLabel),
+    continueLabel: dialog.createFeatureBranch,
   };
 }
 

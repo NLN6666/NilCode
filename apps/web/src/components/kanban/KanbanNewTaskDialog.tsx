@@ -38,6 +38,7 @@ import { ComposerReferenceAttachments } from "~/components/chat/ComposerReferenc
 import { ComposerVoiceButton } from "~/components/chat/ComposerVoiceButton";
 import { ComposerVoiceRecorderBar } from "~/components/chat/ComposerVoiceRecorderBar";
 import { useComposerVoiceController } from "~/components/chat/useComposerVoiceController";
+import { resolveRuntimeModelDescriptor } from "~/components/chat/runtimeModelCapabilities";
 import {
   COMPOSER_COMMAND_MENU_INLINE_WRAPPER_CLASS_NAME,
   COMPOSER_EDITOR_MIN_HEIGHT_CLASS_NAME,
@@ -63,6 +64,10 @@ import { ChevronRightIcon, PaperclipIcon } from "~/lib/icons";
 import { formatComposerMentionToken } from "~/lib/composerMentions";
 import { findProviderStatus } from "~/lib/providerAvailability";
 import { resolveProviderDiscoveryCwd } from "~/lib/providerDiscovery";
+import {
+  normalizeRuntimeModeForProvider,
+  providerModelSupportsAutoRuntimeMode,
+} from "~/lib/runtimeMode";
 import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { cn } from "~/lib/utils";
 import {
@@ -81,6 +86,7 @@ import { KanbanTaskProjectPicker } from "./KanbanTaskProjectPicker";
 import { useKanbanTaskComposerMenu } from "./useKanbanTaskComposerMenu";
 import { useKanbanTaskScratchDraft } from "./useKanbanTaskScratchDraft";
 import { useKanbanTaskSubmit } from "./useKanbanTaskSubmit";
+import { useMessages } from "~/i18n/context";
 
 const EMPTY_COMPOSER_FILES: ReadonlyArray<ComposerFileAttachment> = [];
 
@@ -108,12 +114,13 @@ export function KanbanNewTaskDialog({
   onOpenChange,
   projectOptions,
   initialProjectId,
-  initialSendAsDraft = false,
+  initialSendAsDraft: initialSendAsDraftProp,
 }: KanbanNewTaskDialogProps) {
+  const copy = useMessages().workspace.kanban;
+  const initialSendAsDraft = initialSendAsDraftProp ?? false;
   const { settings } = useAppSettings();
   const { resolvedTheme } = useTheme();
   const assistantDeliveryMode = resolveAssistantDeliveryMode(settings);
-  // Manual memoization kept: this file does not compile under React Compiler (see compile-report).
   const providerOptionsForDispatch = useMemo(() => getProviderStartOptions(settings), [settings]);
   const projects = useStore((state) => state.projects);
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
@@ -139,9 +146,10 @@ export function KanbanNewTaskDialog({
     nonPersistedComposerImageIdSet,
     selectedProvider,
     selectedModel,
+    selectedModelSupportsAutoMode,
     selectedProviderModelOptions,
     setPrompt,
-    handleProviderModelChange,
+    handleProviderModelChange: setScratchProviderModel,
     addComposerImages,
     removeComposerImage,
     clearComposerAssistantSelections,
@@ -162,7 +170,6 @@ export function KanbanNewTaskDialog({
   const [isTraitsPickerOpen, setIsTraitsPickerOpen] = useState(false);
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
-
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
     [projects, selectedProjectId],
@@ -178,6 +185,10 @@ export function KanbanNewTaskDialog({
   const voiceProviderStatus = useMemo(
     () => findProviderStatus(providerStatuses, "codex"),
     [providerStatuses],
+  );
+  const selectedProviderStatus = useMemo(
+    () => findProviderStatus(providerStatuses, selectedProvider),
+    [providerStatuses, selectedProvider],
   );
 
   const modelHintByProvider = useMemo<Partial<Record<ProviderKind, string | null>>>(
@@ -198,6 +209,42 @@ export function KanbanNewTaskDialog({
     cwd: providerModelDiscoveryCwd,
     modelHintByProvider,
   });
+  const selectedRuntimeModelForCapabilities = useMemo(
+    () =>
+      selectedRuntimeModel ??
+      (selectedProvider === "claudeAgent" && typeof selectedModelSupportsAutoMode === "boolean"
+        ? {
+            slug: selectedModel ?? "default",
+            name: selectedModel ?? "default",
+            supportsAutoMode: selectedModelSupportsAutoMode,
+          }
+        : undefined),
+    [selectedModel, selectedModelSupportsAutoMode, selectedProvider, selectedRuntimeModel],
+  );
+  const handleProviderModelChange = useCallback(
+    (provider: ProviderKind, model: Parameters<typeof setScratchProviderModel>[1]) => {
+      const runtimeModel = resolveRuntimeModelDescriptor({
+        provider,
+        model,
+        runtimeModels: runtimeModelsByProvider[provider],
+      });
+      setRuntimeMode((current) => normalizeRuntimeModeForProvider(current, provider));
+      setScratchProviderModel(provider, model, runtimeModel?.supportsAutoMode);
+    },
+    [runtimeModelsByProvider, setScratchProviderModel],
+  );
+  useEffect(() => {
+    if (
+      runtimeMode === "auto" &&
+      !providerModelSupportsAutoRuntimeMode(
+        selectedProvider,
+        selectedRuntimeModelForCapabilities,
+        selectedProviderStatus,
+      )
+    ) {
+      setRuntimeMode("approval-required");
+    }
+  }, [runtimeMode, selectedProvider, selectedProviderStatus, selectedRuntimeModelForCapabilities]);
   const trimmedPrompt = prompt.trim();
   const hasSendableContent =
     trimmedPrompt.length > 0 ||
@@ -215,6 +262,7 @@ export function KanbanNewTaskDialog({
     hasSendableContent,
     selectedProvider,
     selectedModel,
+    selectedModelSupportsAutoMode: selectedRuntimeModelForCapabilities?.supportsAutoMode,
     taskPreview,
     trimmedPrompt,
     scratchThreadId,
@@ -282,14 +330,27 @@ export function KanbanNewTaskDialog({
     }
     const firstOption = modelOptionsByProvider[selectedProvider][0];
     if (firstOption) {
-      useComposerDraftStore
-        .getState()
-        .setModelSelection(
-          scratchThreadId,
-          buildModelSelection(selectedProvider, firstOption.slug),
-        );
+      useComposerDraftStore.getState().setModelSelection(
+        scratchThreadId,
+        buildModelSelection(
+          selectedProvider,
+          firstOption.slug,
+          undefined,
+          resolveRuntimeModelDescriptor({
+            provider: selectedProvider,
+            model: firstOption.slug,
+            runtimeModels: runtimeModelsByProvider[selectedProvider],
+          })?.supportsAutoMode,
+        ),
+      );
     }
-  }, [modelOptionsByProvider, scratchThreadId, selectedModel, selectedProvider]);
+  }, [
+    modelOptionsByProvider,
+    runtimeModelsByProvider,
+    scratchThreadId,
+    selectedModel,
+    selectedProvider,
+  ]);
 
   const handleTranscriptReady = useCallback(
     (transcript: string) => {
@@ -345,11 +406,8 @@ export function KanbanNewTaskDialog({
       onUnsupportedFiles: (files) => {
         toastManager.add({
           type: "warning",
-          title: "Only images can be attached to new tasks.",
-          description:
-            files.length === 1
-              ? "That file was not added."
-              : `${files.length} files were not added.`,
+          title: copy.imagesOnly,
+          description: files.length === 1 ? copy.oneFileRejected : copy.filesRejected(files.length),
         });
       },
     },
@@ -400,13 +458,10 @@ export function KanbanNewTaskDialog({
             />
             <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
             <DialogTitle className="font-system-ui truncate font-medium text-[length:var(--app-font-size-ui,12px)] leading-none">
-              New task
+              {copy.newTask}
             </DialogTitle>
           </div>
-          <DialogDescription className="sr-only">
-            Draft a prompt and place it in the board&apos;s Draft column. Drag it to In Progress to
-            send it.
-          </DialogDescription>
+          <DialogDescription className="sr-only">{copy.newTaskDescription}</DialogDescription>
         </DialogHeader>
         {/* Flush, borderless composer body: same Lexical prompt editor and attachment row as chat. */}
         <DialogPanel
@@ -427,7 +482,7 @@ export function KanbanNewTaskDialog({
                 {isLocalFolderBrowserOpen ? (
                   <ComposerLocalDirectoryMenu
                     mentionQuery={mentionTriggerQuery}
-                    rootLabel={localFolderBrowseRootPath ?? "Local folders unavailable"}
+                    rootLabel={localFolderBrowseRootPath ?? copy.localFoldersUnavailable}
                     homeDir={serverConfigQuery.data?.homeDir ?? null}
                     onSelectEntry={(absolutePath) =>
                       handleSelectLocalDirectoryMention(absolutePath)
@@ -467,7 +522,7 @@ export function KanbanNewTaskDialog({
               terminalContexts={composerTerminalContexts}
               mentionReferences={composerMentions}
               disabled={voice.isVoiceTranscribing}
-              placeholder="Describe the task, @tag files/folders, paste images, or use / for skills"
+              placeholder={copy.promptPlaceholder}
               className={cn(
                 COMPOSER_EDITOR_MIN_HEIGHT_CLASS_NAME,
                 COMPOSER_EDITOR_TYPOGRAPHY_CLASS_NAME,
@@ -506,6 +561,9 @@ export function KanbanNewTaskDialog({
                     onEnvModeChange={setEnvMode}
                   />
                   <RuntimeUsageControls
+                    provider={selectedProvider}
+                    runtimeModel={selectedRuntimeModelForCapabilities}
+                    providerStatus={selectedProviderStatus}
                     runtimeMode={runtimeMode}
                     onRuntimeModeChange={setRuntimeMode}
                   />
@@ -560,8 +618,8 @@ export function KanbanNewTaskDialog({
                   size="icon-sm"
                   variant="ghost"
                   className="mr-1 shrink-0 text-muted-foreground/70 hover:text-foreground"
-                  aria-label="Attach images"
-                  title="Attach images"
+                  aria-label={copy.attachImages}
+                  title={copy.attachImages}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <PaperclipIcon className="size-4" />
@@ -583,10 +641,10 @@ export function KanbanNewTaskDialog({
                   checked={sendAsDraft}
                   onCheckedChange={(checked) => setSendAsDraft(checked === true)}
                 />
-                Send as draft
+                {copy.sendAsDraft}
               </label>
               <Button size="sm" onClick={handleCreateRequest} disabled={!canCreate}>
-                {isCreating ? "Creating..." : "Create task"}
+                {isCreating ? copy.creating : copy.createTask}
               </Button>
             </div>
           </div>

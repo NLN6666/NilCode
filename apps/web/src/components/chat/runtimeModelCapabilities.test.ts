@@ -1,6 +1,10 @@
+import type { ProviderModelDescriptor } from "@synara/contracts";
 import { describe, expect, it } from "vitest";
 
-import { getRuntimeAwareModelCapabilities } from "./runtimeModelCapabilities";
+import {
+  getRuntimeAwareModelCapabilities,
+  resolveRuntimeModelDescriptor,
+} from "./runtimeModelCapabilities";
 import { withCloudModelDescriptors } from "~/providerModelOptions";
 
 const efforts = (input: Parameters<typeof getRuntimeAwareModelCapabilities>[0]) =>
@@ -95,5 +99,26 @@ describe("withCloudModelDescriptors", () => {
     expect(withCloudModelDescriptors([], [{ slug: "m", name: "M" }])[0]).not.toHaveProperty(
       "supportedReasoningEfforts",
     );
+  });
+});
+
+describe("resolveRuntimeModelDescriptor", () => {
+  it("matches a Claude model by its resolved canonical id", () => {
+    const runtimeModels: ReadonlyArray<ProviderModelDescriptor> = [
+      {
+        slug: "sonnet",
+        resolvedModel: "claude-sonnet-5",
+        name: "Claude Sonnet 5",
+        supportsAutoMode: false,
+      },
+    ];
+
+    expect(
+      resolveRuntimeModelDescriptor({
+        provider: "claudeAgent",
+        model: "claude-sonnet-5",
+        runtimeModels,
+      }),
+    ).toBe(runtimeModels[0]);
   });
 });

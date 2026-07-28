@@ -9,6 +9,7 @@ import { cn } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
 import { IconButton } from "../ui/icon-button";
 import { toastManager } from "../ui/toast";
+import { useMessages } from "~/i18n/context";
 
 type PlanActionVariant = "outline" | "ghost";
 
@@ -21,15 +22,16 @@ interface ProposedPlanActionsProps {
   iconClassName?: string;
 }
 
-// Manual memoization kept: this file does not compile under React Compiler (see compile-report).
 export const ProposedPlanActions = memo(function ProposedPlanActions({
   planMarkdown,
   workspaceRoot,
-  variant = "outline",
+  variant: variantProp,
   className,
   buttonClassName,
   iconClassName,
 }: ProposedPlanActionsProps) {
+  const copy = useMessages().chat.plan;
+  const variant = variantProp ?? "outline";
   const [isDownloading, setIsDownloading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const filename = useMemo(() => buildProposedPlanMarkdownFilename(planMarkdown), [planMarkdown]);
@@ -127,7 +129,7 @@ export const ProposedPlanActions = memo(function ProposedPlanActions({
   return (
     <div className={cn("flex items-center gap-1", className)}>
       <PlanActionButton
-        label="Download to .plan folder"
+        label={copy.downloadToPlanFolder}
         onClick={handleDownload}
         variant={variant}
         className={buttonClassName}
@@ -136,7 +138,7 @@ export const ProposedPlanActions = memo(function ProposedPlanActions({
         <ArrowDownIcon className={cn("size-3.5", iconClassName)} />
       </PlanActionButton>
       <PlanActionButton
-        label="Export markdown file"
+        label={copy.exportMarkdown}
         onClick={handleExport}
         variant={variant}
         className={buttonClassName}
@@ -161,7 +163,7 @@ function PlanActionButton({
   onClick,
   variant,
   className,
-  busy = false,
+  busy: busyProp,
   children,
 }: {
   label: string;
@@ -171,6 +173,7 @@ function PlanActionButton({
   busy?: boolean;
   children: ReactNode;
 }) {
+  const busy = busyProp ?? false;
   return (
     <IconButton
       label={label}

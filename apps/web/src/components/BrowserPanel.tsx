@@ -37,10 +37,7 @@ import {
   isBlankBrowserTabUrl,
   resolveCopyableBrowserTabUrl,
 } from "@synara/shared/browserSession";
-import {
-  BROWSER_COPY_LINK_TOAST_TITLE,
-  isBrowserCopyLinkChord,
-} from "@synara/shared/browserShortcuts";
+import { isBrowserCopyLinkChord } from "@synara/shared/browserShortcuts";
 
 import { isElectron } from "~/env";
 import { readNativeApi } from "~/nativeApi";
@@ -82,6 +79,7 @@ import { Input } from "./ui/input";
 import { Menu, MenuItem, MenuSeparator, MenuTrigger } from "./ui/menu";
 import { Skeleton } from "./ui/skeleton";
 import { toastManager } from "./ui/toast";
+import { useMessages } from "~/i18n/context";
 
 interface BrowserPanelProps {
   mode: DiffPanelMode;
@@ -351,6 +349,7 @@ function isBrowserPerfLoggingEnabled(): boolean {
 
 // Keeps a restored browser pane visually occupied while the live webview hydrates.
 function BrowserRuntimePreview(props: { title: string; detail: string }) {
+  const copy = useMessages().browser;
   return (
     <div
       className="absolute inset-0 flex items-center justify-center bg-background/35 p-6"
@@ -374,7 +373,7 @@ function BrowserRuntimePreview(props: { title: string; detail: string }) {
           </div>
         </div>
         <div className="mt-4 min-w-0 text-center">
-          <p className="text-xs font-medium text-foreground">Restoring browser</p>
+          <p className="text-xs font-medium text-foreground">{copy.restoringRuntime}</p>
           <p className="mt-1 truncate text-[11px] text-muted-foreground" title={props.detail}>
             {props.title}
           </p>
@@ -439,13 +438,14 @@ function BrowserLocalServersHome({
   onRefresh: () => void;
   servers: readonly ServerLocalServerProcess[];
 }) {
+  const copy = useMessages().browser.localServers;
   const hasServers = servers.length > 0;
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col overflow-hidden bg-[#0d0d0d] text-white">
       <div className="mx-auto flex h-full w-full max-w-[52rem] flex-col px-8 py-9">
         <div className="flex shrink-0 items-center justify-between">
-          <p className="text-[15px] font-medium text-white/35">Local</p>
+          <p className="text-[15px] font-medium text-white/35">{copy.title}</p>
           <Button
             type="button"
             variant="ghost"
@@ -453,8 +453,8 @@ function BrowserLocalServersHome({
             className="size-8 text-white/35 hover:bg-white/[0.06] hover:text-white/70"
             disabled={loading}
             onClick={onRefresh}
-            aria-label="Refresh local servers"
-            title="Refresh local servers"
+            aria-label={copy.refresh}
+            title={copy.refresh}
           >
             <RefreshCwIcon className={cn("size-4", loading && "animate-spin")} />
           </Button>
@@ -465,14 +465,14 @@ function BrowserLocalServersHome({
             {loading ? (
               <>
                 <RefreshCwIcon className="mb-4 size-12 animate-spin text-white/20" />
-                <p className="text-base font-semibold text-white">Scanning local servers</p>
-                <p className="mt-2 text-sm text-white/35">Checking localhost ports</p>
+                <p className="text-base font-semibold text-white">{copy.scanning}</p>
+                <p className="mt-2 text-sm text-white/35">{copy.checkingPorts}</p>
               </>
             ) : (
               <>
                 <GlobeIcon className="mb-4 size-16 stroke-[1.5] text-white/30" />
-                <p className="text-base font-semibold text-white">No local servers</p>
-                <p className="mt-2 text-sm text-white/35">Try another browser URL</p>
+                <p className="text-base font-semibold text-white">{copy.none}</p>
+                <p className="mt-2 text-sm text-white/35">{copy.tryAnother}</p>
               </>
             )}
           </div>
@@ -513,9 +513,13 @@ export function BrowserPanel({
   mode,
   threadId,
   onClosePanel,
-  runtimeMode = "live",
+  runtimeMode: runtimeModeProp,
   onRequestLive,
 }: BrowserPanelProps) {
+  const browserCopy = useMessages().browser;
+  // Defaults belong in the body, never in the destructuring pattern: React Compiler cannot lower an
+  // AssignmentPattern there and silently drops the whole component's memoization.
+  const runtimeMode = runtimeModeProp ?? "live";
   const api = readNativeApi();
   const isLiveRuntime = runtimeMode === "live";
   const threadBrowserState = useBrowserStateStore(selectThreadBrowserState(threadId));
@@ -585,6 +589,7 @@ export function BrowserPanel({
   const localServersQuery = useQuery(serverLocalServersQueryOptions(showLocalServersHome));
   const activeTabStatus = activeTab?.status ?? "suspended";
   const browserChromeStatus = resolveBrowserChromeStatus({
+    copy: browserCopy.status,
     localError,
     threadLastError: threadBrowserState?.lastError,
     activeTabStatus: showLocalServersHome ? "live" : activeTabStatus,
@@ -1465,17 +1470,17 @@ export function BrowserPanel({
             anchor,
           },
           timeout: 1_200,
-          title: "Browser screenshot copied",
+          title: browserCopy.toast.screenshotCopied,
         });
         return;
       }
 
       toastManager.add({
         type: "success",
-        title: "Browser screenshot copied",
+        title: browserCopy.toast.screenshotCopied,
       });
     });
-  }, [activeTab, api, ensureLiveRuntime, runBrowserAction, threadId]);
+  }, [activeTab, api, browserCopy, ensureLiveRuntime, runBrowserAction, threadId]);
 
   const copyActiveTabLink = useCallback(() => {
     if (!activeTab) {
@@ -1499,13 +1504,13 @@ export function BrowserPanel({
     }
     void clipboard.writeText(url).then(
       () => {
-        toastManager.add({ type: "success", title: BROWSER_COPY_LINK_TOAST_TITLE });
+        toastManager.add({ type: "success", title: browserCopy.toast.linkCopied });
       },
       () => {
         // Clipboard writes can reject without user gesture; nothing actionable to surface.
       },
     );
-  }, [activeTab, api, runBrowserAction, threadId]);
+  }, [activeTab, api, browserCopy, runBrowserAction, threadId]);
 
   // React chrome focus path: the native page handles the chord through the desktop main
   // process, so this only fires when the address bar/tab strip (not the page) is focused.
@@ -1548,9 +1553,9 @@ export function BrowserPanel({
       if (event.threadId !== threadId) {
         return;
       }
-      toastManager.add({ type: "success", title: BROWSER_COPY_LINK_TOAST_TITLE });
+      toastManager.add({ type: "success", title: browserCopy.toast.linkCopied });
     });
-  }, [api, isLiveRuntime, threadId]);
+  }, [api, browserCopy, isLiveRuntime, threadId]);
 
   const onCloseTab = useCallback(
     (tabId: string) => {
@@ -1597,7 +1602,7 @@ export function BrowserPanel({
             }}
           >
             <ArrowLeftIcon className="size-3.5" />
-            <span className="sr-only">Go back</span>
+            <span className="sr-only">{browserCopy.nav.goBack}</span>
           </Button>
           <Button
             type="button"
@@ -1618,7 +1623,7 @@ export function BrowserPanel({
             }}
           >
             <ArrowRightIcon className="size-3.5" />
-            <span className="sr-only">Go forward</span>
+            <span className="sr-only">{browserCopy.nav.goForward}</span>
           </Button>
           <Button
             type="button"
@@ -1643,7 +1648,7 @@ export function BrowserPanel({
             ) : (
               <RefreshCwIcon className="size-3.5" />
             )}
-            <span className="sr-only">Reload</span>
+            <span className="sr-only">{browserCopy.nav.reload}</span>
           </Button>
         </div>
         <form
@@ -1678,7 +1683,7 @@ export function BrowserPanel({
               isAddressEditingRef.current = false;
               setIsAddressFocused(false);
             }}
-            placeholder="Search or enter a URL"
+            placeholder={browserCopy.nav.addressPlaceholder}
             className={cn(
               "min-w-0 [-webkit-app-region:no-drag]",
               BROWSER_CHROME_CONTROL_CLASS_NAME,
@@ -1727,14 +1732,18 @@ export function BrowserPanel({
           size="icon-sm"
           className="size-7"
           disabled={!activeTab || isAnnotating}
-          aria-label={isPicking ? "Stop picking an element" : "Pick an element"}
+          aria-label={
+            isPicking ? browserCopy.actions.stopPickElement : browserCopy.actions.pickElement
+          }
           aria-pressed={isPicking}
-          title={isPicking ? "Stop picking an element (Esc)" : "Pick an element"}
+          title={
+            isPicking ? browserCopy.actions.stopPickElementHint : browserCopy.actions.pickElement
+          }
           onClick={onTogglePicking}
         >
           <CursorClickIcon className="size-3.5" />
           <span className="sr-only">
-            {isPicking ? "Stop picking an element" : "Pick an element"}
+            {isPicking ? browserCopy.actions.stopPickElement : browserCopy.actions.pickElement}
           </span>
         </Button>
         {/* While annotating, the overlay's own Cancel / Add to chat buttons are the only way
@@ -1745,13 +1754,13 @@ export function BrowserPanel({
           size="icon-sm"
           className="size-7"
           disabled={!activeTab || isAnnotating}
-          aria-label="Annotate the page"
+          aria-label={browserCopy.actions.annotate}
           aria-pressed={isAnnotating}
-          title="Annotate the page"
+          title={browserCopy.actions.annotate}
           onClick={onToggleAnnotating}
         >
           <PencilIcon className="size-3.5" />
-          <span className="sr-only">Annotate the page</span>
+          <span className="sr-only">{browserCopy.actions.annotate}</span>
         </Button>
         <Button
           ref={copyScreenshotButtonRef}
@@ -1760,12 +1769,12 @@ export function BrowserPanel({
           size="icon-sm"
           className="size-7"
           disabled={!activeTab}
-          aria-label="Copy screenshot"
-          title="Copy screenshot"
+          aria-label={browserCopy.actions.copyScreenshot}
+          title={browserCopy.actions.copyScreenshot}
           onClick={onCopyScreenshotToClipboard}
         >
           <CameraIcon className="size-3.5" />
-          <span className="sr-only">Copy screenshot</span>
+          <span className="sr-only">{browserCopy.actions.copyScreenshot}</span>
         </Button>
         <Button
           type="button"
@@ -1773,12 +1782,12 @@ export function BrowserPanel({
           size="icon-sm"
           className="size-7"
           disabled={!activeTab}
-          aria-label="Copy link"
-          title="Copy link"
+          aria-label={browserCopy.actions.copyLink}
+          title={browserCopy.actions.copyLink}
           onClick={copyActiveTabLink}
         >
           <LinkIcon className="size-3.5" />
-          <span className="sr-only">Copy link</span>
+          <span className="sr-only">{browserCopy.actions.copyLink}</span>
         </Button>
         <Menu modal={false}>
           <MenuTrigger
@@ -1788,7 +1797,7 @@ export function BrowserPanel({
                 variant="ghost"
                 size="icon-sm"
                 className="size-7"
-                aria-label="Browser actions"
+                aria-label={browserCopy.actions.menu}
               />
             }
           >
@@ -1801,7 +1810,7 @@ export function BrowserPanel({
           >
             <MenuItem className={BROWSER_ACTION_MENU_ITEM_CLASS_NAME} onClick={onCreateTab}>
               <BrowserActionMenuIcon icon={PlusIcon} />
-              <span>New tab</span>
+              <span>{browserCopy.actions.newTab}</span>
             </MenuItem>
             <MenuItem
               className={BROWSER_ACTION_MENU_ITEM_CLASS_NAME}
@@ -1809,7 +1818,7 @@ export function BrowserPanel({
               onClick={onCaptureScreenshot}
             >
               <BrowserActionMenuIcon icon={CameraIcon} />
-              <span>Capture screenshot</span>
+              <span>{browserCopy.actions.captureScreenshot}</span>
             </MenuItem>
             <MenuItem
               className={BROWSER_ACTION_MENU_ITEM_CLASS_NAME}
@@ -1821,12 +1830,12 @@ export function BrowserPanel({
               }}
             >
               <BrowserActionMenuIcon icon={ExternalLinkIcon} />
-              <span>Open externally</span>
+              <span>{browserCopy.actions.openExternally}</span>
             </MenuItem>
             <MenuSeparator />
             <MenuItem className={BROWSER_ACTION_MENU_ITEM_CLASS_NAME} onClick={onClosePanel}>
               <BrowserActionMenuIcon icon={XIcon} />
-              <span>Close browser panel</span>
+              <span>{browserCopy.actions.closePanel}</span>
             </MenuItem>
           </ComposerPickerMenuPopup>
         </Menu>
@@ -1837,7 +1846,7 @@ export function BrowserPanel({
   if (!api && isLiveRuntime) {
     return (
       <DiffPanelShell mode={mode} header={header}>
-        <DiffPanelLoadingState label="Browser is unavailable." />
+        <DiffPanelLoadingState label={browserCopy.status.unavailable} />
       </DiffPanelShell>
     );
   }
@@ -1892,7 +1901,7 @@ export function BrowserPanel({
                       });
                     }}
                   >
-                    {tab.title || "Untitled"}
+                    {tab.title || browserCopy.untitledTab}
                   </button>
                   <Button
                     type="button"
@@ -1905,7 +1914,7 @@ export function BrowserPanel({
                     }}
                   >
                     <XIcon className="size-3" />
-                    <span className="sr-only">Close tab</span>
+                    <span className="sr-only">{browserCopy.actions.closeTab}</span>
                   </Button>
                 </div>
               );
@@ -1928,12 +1937,12 @@ export function BrowserPanel({
         <div className="relative min-h-0 flex-1 bg-transparent">
           {!isLiveRuntime ? (
             <BrowserRuntimePreview
-              title={activeTab?.title || "Browser is sleeping"}
-              detail={activeTab?.lastCommittedUrl ?? activeTab?.url ?? "Restoring cached browser"}
+              title={activeTab?.title || browserCopy.sleeping}
+              detail={activeTab?.lastCommittedUrl ?? activeTab?.url ?? browserCopy.restoringCached}
             />
           ) : !workspaceReady ? (
             <div className="absolute inset-0 z-10">
-              <DiffPanelLoadingState label="Starting browser..." />
+              <DiffPanelLoadingState label={browserCopy.status.starting} />
             </div>
           ) : null}
           {isLiveRuntime ? (

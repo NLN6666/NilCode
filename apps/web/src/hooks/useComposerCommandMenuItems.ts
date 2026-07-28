@@ -32,6 +32,7 @@ import {
   shouldHideProviderNativeCommandFromComposerMenu,
 } from "../composerSlashCommands";
 import { threadMentionPathForThreadId } from "@synara/shared/threadMentions";
+import { useMessages } from "~/i18n/context";
 
 import type { ComposerCommandItem } from "../components/chat/ComposerCommandMenu";
 import type { ProviderModelOption } from "../providerModelOptions";
@@ -353,6 +354,7 @@ export function useComposerCommandMenuItems(input: {
     readonly currentThreadId: string | null;
   };
 }): ComposerCommandItem[] {
+  const slashCommandDescriptions = useMessages().composer.slashCommands;
   const {
     composerTrigger,
     provider,
@@ -478,16 +480,18 @@ export function useComposerCommandMenuItems(input: {
       ? availableCommands.filter((command) => surfaceAppSlashCommands.has(command))
       : availableCommands;
     const visibleAppCommandSet = new Set(visibleAppCommands);
-    const builtInItems = filterComposerSlashCommands(composerTrigger.query, visibleAppCommands).map(
-      (definition) => ({
-        id: `slash:${definition.command}`,
-        type: "slash-command" as const,
-        command: definition.command,
-        label: definition.label,
-        description: definition.description,
-        source: definition.source,
-      }),
-    );
+    const builtInItems = filterComposerSlashCommands(
+      composerTrigger.query,
+      visibleAppCommands,
+      slashCommandDescriptions,
+    ).map((definition) => ({
+      id: `slash:${definition.command}`,
+      type: "slash-command" as const,
+      command: definition.command,
+      label: definition.label,
+      description: definition.description,
+      source: definition.source,
+    }));
     const providerCommandItems = providerNativeCommands
       .filter(
         (command) =>

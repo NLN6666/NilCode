@@ -10,6 +10,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { FILE_COMMENT_TEXT_MAX_CHARS, normalizeFileCommentText } from "~/lib/fileComments";
 import { SynaraLogo } from "../SynaraLogo";
 import { Button } from "../ui/button";
+import { useMessages } from "~/i18n/context";
 
 interface FileLineCommentBoxProps {
   // Pre-formatted target label, e.g. "line 12" or "lines 3-5".
@@ -22,6 +23,7 @@ interface FileLineCommentBoxProps {
 }
 
 export function FileLineCommentBox(props: FileLineCommentBoxProps) {
+  const copy = useMessages().chat.lineComment;
   const { onCancel, onSubmit } = props;
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -73,23 +75,23 @@ export function FileLineCommentBox(props: FileLineCommentBoxProps) {
           <span className="editor-file-viewer__comment-badge">
             <SynaraLogo className="size-3 text-[var(--color-text-foreground-secondary)]" />
           </span>
-          Local comment
+          {copy.localComment}
         </span>
-        <span className="text-[12px] text-muted-foreground">Comment on {props.lineLabel}</span>
+        <span className="text-[12px] text-muted-foreground">{copy.commentOn(props.lineLabel)}</span>
       </div>
       <textarea
         ref={textareaRef}
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Request change"
+        placeholder={copy.placeholder}
         rows={2}
         maxLength={FILE_COMMENT_TEXT_MAX_CHARS}
         className="editor-file-viewer__comment-input"
       />
       <div className="flex items-center justify-end gap-1">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-          Cancel
+          {copy.cancel}
         </Button>
         <Button
           type="button"
@@ -99,7 +101,7 @@ export function FileLineCommentBox(props: FileLineCommentBoxProps) {
           disabled={!canSubmit}
           onClick={submit}
         >
-          Comment
+          {copy.submit}
         </Button>
       </div>
     </div>

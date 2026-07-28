@@ -15,6 +15,7 @@ import { PickerPanelShell } from "./chat/PickerPanelShell";
 import { FileEntryIcon } from "./chat/FileEntryIcon";
 import { DiffStat } from "./chat/DiffStatLabel";
 import { IconButton } from "./ui/icon-button";
+import { useMessages } from "../i18n/context";
 import { Menu, MenuItem, MenuTrigger } from "./ui/menu";
 import {
   resolveFileDiffPath,
@@ -79,6 +80,7 @@ export function DiffPanelFileJumpMenu(props: {
   resolvedTheme: "light" | "dark";
   onSelectFile: (filePath: string) => void;
 }) {
+  const copy = useMessages().diff;
   const [fileSearchQuery, setFileSearchQuery] = useState("");
 
   const filteredFiles = filterRenderableFilesForSearch(props.renderableFiles, fileSearchQuery);
@@ -97,8 +99,8 @@ export function DiffPanelFileJumpMenu(props: {
             variant="ghost"
             size="icon-xs"
             className="text-muted-foreground hover:text-foreground"
-            label="Jump to file"
-            title="Jump to file"
+            label={copy.actions.jumpToFile}
+            title={copy.actions.jumpToFile}
           >
             <SearchIcon className="size-3.5" />
           </IconButton>
@@ -111,7 +113,7 @@ export function DiffPanelFileJumpMenu(props: {
         className="w-[min(24rem,calc(100vw-2rem))] min-w-[18rem]"
       >
         <PickerPanelShell
-          searchPlaceholder="Jump to file"
+          searchPlaceholder={copy.actions.jumpToFile}
           query={fileSearchQuery}
           onQueryChange={setFileSearchQuery}
           stopSearchKeyPropagation
@@ -121,9 +123,9 @@ export function DiffPanelFileJumpMenu(props: {
           listMaxHeightClassName="max-h-64"
         >
           {props.renderableFiles.length === 0 ? (
-            <p className="px-2.5 py-3 text-[11px] text-muted-foreground">No files in this diff.</p>
+            <p className="px-2.5 py-3 text-[11px] text-muted-foreground">{copy.empty.noFiles}</p>
           ) : filteredFiles.length === 0 ? (
-            <p className="px-2.5 py-3 text-[11px] text-muted-foreground">No matching files.</p>
+            <p className="px-2.5 py-3 text-[11px] text-muted-foreground">{copy.empty.noMatches}</p>
           ) : (
             filteredFiles.map((fileDiff) => {
               const filePath = resolveFileDiffPath(fileDiff);

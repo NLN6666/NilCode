@@ -24,6 +24,7 @@ import { ensureNativeApi } from "~/nativeApi";
 import { PullRequestActorLabel } from "./PullRequestActorLabel";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { parseFindingComment, type PullRequestCommentSeverity } from "./pullRequestComment.logic";
+import { useMessages } from "~/i18n/context";
 
 function severityToneClassName(severity: PullRequestCommentSeverity): string {
   if (severity === "High") return "text-destructive";
@@ -35,7 +36,7 @@ export function PullRequestCommentCard({
   comment,
   prUrl,
   workspaceRoot,
-  defaultOpen = true,
+  defaultOpen: defaultOpenProp,
 }: {
   comment: PullRequestComment;
   prUrl: string;
@@ -44,6 +45,8 @@ export function PullRequestCommentCard({
    *  dozens of markdown trees. */
   defaultOpen?: boolean;
 }) {
+  const copy = useMessages().pullRequests;
+  const defaultOpen = defaultOpenProp ?? true;
   const [open, setOpen] = useState(defaultOpen);
   const finding = parseFindingComment(comment.body);
   const replyUrl = comment.url ?? prUrl;
@@ -90,13 +93,13 @@ export function PullRequestCommentCard({
                   severityToneClassName(finding.severity),
                 )}
               >
-                {finding.severity} Severity
+                {copy.summary.severity(finding.severity)}
               </p>
             </div>
           ) : null}
           <PullRequestMarkdown
             text={finding ? finding.body : comment.body}
-            fallback="_No review body._"
+            fallback={copy.summary.noReviewBody}
             cwd={workspaceRoot}
           />
           <div className="mt-2 flex justify-end">
@@ -108,7 +111,7 @@ export function PullRequestCommentCard({
                 "rounded px-1.5 py-0.5 font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
               )}
             >
-              Reply
+              {copy.actions.reply}
             </button>
           </div>
         </div>

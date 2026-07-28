@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "../i18n/locales/en";
 import {
   browserAddressDisplayValue,
   buildBrowserAddressSuggestions,
@@ -135,6 +136,7 @@ describe("resolveBrowserChromeStatus", () => {
         activeTabStatus: "ready",
         hasActiveTab: true,
         workspaceReady: true,
+        copy: en.browser.status,
       }),
     ).toEqual({
       tone: "error",
@@ -150,6 +152,7 @@ describe("resolveBrowserChromeStatus", () => {
         activeTabStatus: "ready",
         hasActiveTab: true,
         workspaceReady: true,
+        copy: en.browser.status,
       }),
     ).toBeNull();
   });
@@ -162,6 +165,7 @@ describe("resolveBrowserChromeStatus", () => {
         activeTabStatus: "suspended",
         hasActiveTab: false,
         workspaceReady: false,
+        copy: en.browser.status,
       }),
     ).toEqual({
       tone: "default",

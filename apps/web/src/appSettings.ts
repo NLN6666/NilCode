@@ -28,6 +28,12 @@ import {
   APP_SNAP_SHORTCUT_MODIFIERS,
   DEFAULT_APP_SNAP_SHORTCUT,
 } from "@synara/shared/appSnapShortcut";
+import {
+  detectSystemLocale,
+  type Locale,
+  readNavigatorLocaleTags,
+  SUPPORTED_LOCALES,
+} from "@synara/shared/i18n";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { EnvMode } from "./components/BranchToolbar.logic";
 import { normalizeCursorModelVariantBaseId } from "./cursorModelVariants";
@@ -78,6 +84,16 @@ export const TERMINAL_FONT_FAMILY_SUGGESTIONS: ReadonlyArray<string> = [
   "Consolas",
 ];
 
+export const AppLocale = Schema.Literals(SUPPORTED_LOCALES);
+export type AppLocale = typeof AppLocale.Type;
+
+/**
+ * First launch follows the operating system and falls back to English when it recognizes nothing.
+ * Resolved once at module load: navigator preferences do not change during a session, and this
+ * keeps the value stable for the reset-to-default comparison in settings.
+ */
+export const DEFAULT_LOCALE: Locale = detectSystemLocale(readNavigatorLocaleTags());
+
 export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"]);
 export type TimestampFormat = typeof TimestampFormat.Type;
 export const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
@@ -87,6 +103,9 @@ export const DEFAULT_SIDEBAR_PROJECT_SORT_ORDER: SidebarProjectSortOrder = "manu
 export const SidebarThreadSortOrder = Schema.Literals(["updated_at", "created_at"]);
 export type SidebarThreadSortOrder = typeof SidebarThreadSortOrder.Type;
 export const DEFAULT_SIDEBAR_THREAD_SORT_ORDER: SidebarThreadSortOrder = "updated_at";
+export const FollowUpBehavior = Schema.Literals(["queue", "steer"]);
+export type FollowUpBehavior = typeof FollowUpBehavior.Type;
+export const DEFAULT_FOLLOW_UP_BEHAVIOR: FollowUpBehavior = "queue";
 
 export const UiDensity = Schema.Literals(UI_DENSITY_MODES);
 export type UiDensity = typeof UiDensity.Type;
@@ -228,6 +247,7 @@ export const AppSettingsSchema = Schema.Struct({
   showEnvironmentMarkers: Schema.Boolean.pipe(withDefaults(() => true)),
   showEnvironmentInstructions: Schema.Boolean.pipe(withDefaults(() => true)),
   showEnvironmentNotepad: Schema.Boolean.pipe(withDefaults(() => true)),
+  followUpBehavior: FollowUpBehavior.pipe(withDefaults(() => DEFAULT_FOLLOW_UP_BEHAVIOR)),
   enableAssistantStreaming: Schema.Boolean.pipe(withDefaults(() => true)),
   enableProviderUpdateChecks: Schema.Boolean.pipe(withDefaults(() => true)),
   enableNativeFontSmoothing: Schema.Boolean.pipe(withDefaults(getDefaultNativeFontSmoothing)),
@@ -248,6 +268,7 @@ export const AppSettingsSchema = Schema.Struct({
   sidebarThreadSortOrder: SidebarThreadSortOrder.pipe(
     withDefaults(() => DEFAULT_SIDEBAR_THREAD_SORT_ORDER),
   ),
+  language: AppLocale.pipe(withDefaults(() => DEFAULT_LOCALE)),
   timestampFormat: TimestampFormat.pipe(withDefaults(() => DEFAULT_TIMESTAMP_FORMAT)),
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
@@ -1140,6 +1161,24 @@ export function resolveAssistantDeliveryMode(
   settings: Pick<AppSettings, "enableAssistantStreaming">,
 ): AssistantDeliveryMode {
   return settings.enableAssistantStreaming ? "streaming" : "buffered";
+}
+
+/**
+ * Resolves the dispatch mode for a composer submit. The preference applies only
+ * while a turn is live; Ctrl/Cmd+Enter temporarily selects the opposite mode.
+ */
+export function resolveFollowUpDispatchMode(input: {
+  behavior: FollowUpBehavior;
+  hasLiveTurn: boolean;
+  useOppositeBehavior?: boolean;
+}): FollowUpBehavior {
+  if (!input.hasLiveTurn) {
+    return "queue";
+  }
+  if (!input.useOppositeBehavior) {
+    return input.behavior;
+  }
+  return input.behavior === "queue" ? "steer" : "queue";
 }
 
 export function getCustomBinaryPathForProvider(

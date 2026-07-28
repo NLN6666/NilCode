@@ -21,6 +21,7 @@ import { type TimestampFormat } from "../../appSettings";
 import { type TurnDiffSummary, type WorktreeSetupSnapshot } from "../../types";
 import { ArrowDownIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
+import { ELEVATED_HOVER_SURFACE_CLASS_NAME } from "~/surfaceStyles";
 import { DISCLOSURE_CONTENT_MOTION_CLASS } from "~/lib/disclosureMotion";
 import { type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ChatEmptyStateHero } from "./ChatEmptyStateHero";
@@ -29,6 +30,7 @@ import { MessageTrail } from "./MessageTrail";
 import { createActiveTrailStore, deriveMessageTrailItems } from "./messageTrail.logic";
 import { AgentActivityDetailView } from "./AgentActivityDetailView";
 import type { AgentActivityDetail } from "./agentActivity.logic";
+import { useMessages } from "~/i18n/context";
 
 interface ChatTranscriptPaneProps {
   activeThreadId: string;
@@ -79,9 +81,6 @@ interface ChatTranscriptPaneProps {
   resolvedTheme: "light" | "dark";
   revertTurnCountByUserMessageId: Map<MessageId, number>;
   scrollButtonVisible: boolean;
-  subagentToolTraceByThreadId?: ComponentProps<
-    typeof MessagesTimeline
-  >["subagentToolTraceByThreadId"];
   terminalWorkspaceTerminalTabActive: boolean;
   timelineEntries: ComponentProps<typeof MessagesTimeline>["timelineEntries"];
   timestampFormat: TimestampFormat;
@@ -139,7 +138,6 @@ export function ChatTranscriptPane({
   resolvedTheme,
   revertTurnCountByUserMessageId,
   scrollButtonVisible,
-  subagentToolTraceByThreadId,
   terminalWorkspaceTerminalTabActive,
   timelineEntries,
   timestampFormat,
@@ -147,6 +145,7 @@ export function ChatTranscriptPane({
   workspaceRoot,
   worktreeSetup,
 }: ChatTranscriptPaneProps) {
+  const messageCopy = useMessages().chat.message;
   const scrollButtonFrameStyle: CSSProperties | undefined = contentInsetRightPx
     ? { paddingRight: contentInsetRightPx }
     : undefined;
@@ -183,7 +182,6 @@ export function ChatTranscriptPane({
             markdownCwd={markdownCwd}
             onBack={onCloseAgentActivityDetail}
             onImageExpand={onExpandTimelineImage}
-            onOpenThread={onOpenThread}
             timestampFormat={timestampFormat}
           />
         ) : (
@@ -208,7 +206,6 @@ export function ChatTranscriptPane({
             onOpenTurnDiff={onOpenTurnDiff}
             onOpenThread={onOpenThread}
             {...(onOpenAutomation ? { onOpenAutomation } : {})}
-            {...(subagentToolTraceByThreadId ? { subagentToolTraceByThreadId } : {})}
             revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
             onRevertUserMessage={onRevertUserMessage}
             {...(onUndoTurnFiles ? { onUndoTurnFiles } : {})}
@@ -266,11 +263,12 @@ export function ChatTranscriptPane({
               type="button"
               onClick={onScrollToBottom}
               data-scroll-anchor-ignore
-              aria-label="Scroll to bottom"
+              aria-label={messageCopy.scrollToBottom}
               aria-hidden={!scrollButtonVisible}
               tabIndex={scrollButtonVisible ? 0 : -1}
               className={cn(
-                "flex size-8 items-center justify-center rounded-full border border-[color:var(--color-border)] bg-[var(--color-background-elevated-primary-opaque)] text-[var(--color-text-foreground)] backdrop-blur-md transition-colors hover:cursor-pointer hover:bg-[var(--color-background-elevated-secondary)]",
+                "flex size-8 items-center justify-center rounded-full border border-[color:var(--color-border)] bg-[var(--color-background-elevated-primary-opaque)] text-[var(--color-text-foreground)] backdrop-blur-md hover:cursor-pointer",
+                ELEVATED_HOVER_SURFACE_CLASS_NAME,
                 scrollButtonVisible ? "pointer-events-auto" : "pointer-events-none",
               )}
             >

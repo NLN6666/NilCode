@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { getProviderStartOptions, useAppSettings } from "~/appSettings";
+import { useMessages } from "~/i18n/context";
 import {
   CHAT_SURFACE_HEADER_DIVIDER_CLASS_NAME,
   CHAT_SURFACE_HEADER_HEIGHT_CLASS,
@@ -25,11 +26,13 @@ import {
 } from "~/hooks/useDesktopTopBarGutter";
 import { CentralIcon } from "~/lib/central-icons";
 import { cn } from "~/lib/utils";
+import { ELEVATED_HOVER_SURFACE_CLASS_NAME } from "~/surfaceStyles";
 import { ensureNativeApi } from "~/nativeApi";
 import { useStore } from "~/store";
 import { createAllThreadsSelector } from "~/storeSelectors";
 import {
   type AutomationFormState,
+  type AutomationsCopy,
   AutomationDialog,
   acknowledgedRiskIdsForFormWarnings,
   automationAttentionLabel,
@@ -73,7 +76,7 @@ function AutomationListRow({
   detail,
   meta,
   onDelete,
-  dimmed = false,
+  dimmed: dimmedProp,
 }: {
   readonly onClick: () => void;
   readonly leading: ReactNode;
@@ -83,6 +86,8 @@ function AutomationListRow({
   readonly onDelete?: () => void;
   readonly dimmed?: boolean;
 }) {
+  const copy = useMessages().automations;
+  const dimmed = dimmedProp ?? false;
   return (
     // A div with role="button" (not a real <button>) so inline controls like the hover delete
     // can be nested buttons; the keydown guard lets those controls handle their own events
@@ -98,7 +103,10 @@ function AutomationListRow({
           onClick();
         }
       }}
-      className="group flex w-full cursor-pointer items-start gap-2.5 rounded-md px-2 py-2.5 text-left transition-colors hover:bg-[var(--color-background-elevated-secondary)]"
+      className={cn(
+        "group flex w-full cursor-pointer items-start gap-2.5 rounded-md px-2 py-2.5 text-left",
+        ELEVATED_HOVER_SURFACE_CLASS_NAME,
+      )}
     >
       <span className="mt-0.5 flex shrink-0">{leading}</span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -127,8 +135,8 @@ function AutomationListRow({
       {onDelete ? (
         <button
           type="button"
-          aria-label="Delete automation"
-          title="Delete"
+          aria-label={copy.actions.deleteAutomation}
+          title={copy.actions.delete}
           onClick={(event) => {
             event.stopPropagation();
             onDelete();
@@ -156,18 +164,19 @@ function rowSubtitle(
   definition: AutomationDefinition,
   latestRun: AutomationRun | null,
   now: number,
+  copy: AutomationsCopy,
 ): string {
   const segments = [formatCadenceLong(definition.schedule)];
   if (isLiveRun(latestRun)) {
-    segments.push(runStatusLabel(latestRun.status));
+    segments.push(runStatusLabel(latestRun.status, copy.runStatus));
     return segments.join(" · ");
   }
-  const attention = latestRun === null ? null : automationAttentionLabel(latestRun);
+  const attention = latestRun === null ? null : automationAttentionLabel(latestRun, copy.attention);
   if (definition.enabled) {
     const nextRun = formatNextRun(definition.nextRunAt, now);
-    if (nextRun) segments.push(`Next run ${nextRun}`);
+    if (nextRun) segments.push(copy.nextRunIn(nextRun));
   } else if (attention === null && automationLifecycleState(definition) === "done") {
-    segments.push("Done");
+    segments.push(copy.lifecycle.done);
   }
   if (attention) segments.push(attention);
   return segments.join(" · ");
@@ -175,6 +184,7 @@ function rowSubtitle(
 
 function AutomationsRouteView() {
   const navigate = useNavigate();
+  const copy = useMessages().automations;
   const { settings } = useAppSettings();
   const desktopTopBarTrafficLightGutterClassName = useDesktopTopBarTrafficLightGutterClassName();
   const desktopTopBarWindowControlsGutterClassName =
@@ -261,7 +271,7 @@ function AutomationsRouteView() {
   };
 
   const deleteDefinition = async (definition: AutomationDefinition) => {
-    const confirmed = await ensureNativeApi().dialogs.confirm(`Delete "${definition.name}"?`);
+    const confirmed = await ensureNativeApi().dialogs.confirm(copy.deleteConfirm(definition.name));
     if (!confirmed) return;
     deleteMutation.mutate(definition);
   };
@@ -292,8 +302,8 @@ function AutomationsRouteView() {
           return <CentralIcon name={icon.name} className={icon.className} />;
         })()}
         title={definition.name}
-        detail={rowSubtitle(definition, latestRun, now)}
-        meta={hasUnreadResult(latestRun) ? "New result" : undefined}
+        detail={rowSubtitle(definition, latestRun, now, copy)}
+        meta={hasUnreadResult(latestRun) ? copy.newResult : undefined}
         onDelete={() => void deleteDefinition(definition)}
       />
     );
@@ -307,13 +317,13 @@ function AutomationsRouteView() {
           type="button"
           onClick={() => setStatusFilter(value)}
           className={cn(
-            "rounded-lg px-2.5 py-1 text-xs font-medium capitalize transition-colors",
+            "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
             statusFilter === value
               ? "bg-[var(--color-background-elevated-secondary)] text-foreground"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
-          {value}
+          {copy.filters[value]}
         </button>
       ))}
     </div>
@@ -324,7 +334,7 @@ function AutomationsRouteView() {
       {renderStatusFilter()}
       {filteredDefinitions.length === 0 ? (
         <div className="px-2 py-4 text-xs text-muted-foreground">
-          {statusFilter === "paused" ? "No paused automations." : "No active automations."}
+          {statusFilter === "paused" ? copy.empty.nonePaused : copy.empty.noneActive}
         </div>
       ) : (
         <div className="flex flex-col">{filteredDefinitions.map(renderRow)}</div>
@@ -357,8 +367,8 @@ function AutomationsRouteView() {
                 type="button"
                 size="icon-sm"
                 variant="ghost"
-                aria-label="Refresh"
-                title="Refresh"
+                aria-label={copy.actions.refresh}
+                title={copy.actions.refresh}
                 onClick={() => void refetch()}
               >
                 <CentralIcon name="arrow-rotate-clockwise" className="size-4" />
@@ -370,7 +380,7 @@ function AutomationsRouteView() {
                 disabled={projects.length === 0}
               >
                 <CentralIcon name="plus-small" className="size-4" />
-                New automation
+                {copy.newAutomation}
               </Button>
             </div>
           </div>
@@ -379,18 +389,14 @@ function AutomationsRouteView() {
         <main className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 pb-12 pt-8">
             <h1 className="px-2 font-heading text-2xl font-semibold tracking-tight text-foreground">
-              Automations
+              {copy.title}
             </h1>
             {isLoading ? (
-              <div className="py-16 text-center text-sm text-muted-foreground">
-                Loading automations...
-              </div>
+              <div className="py-16 text-center text-sm text-muted-foreground">{copy.loading}</div>
             ) : data.definitions.length === 0 ? (
               <div className="flex flex-col items-center gap-1 py-16 text-center">
-                <p className="text-sm font-medium text-foreground">No automations yet</p>
-                <p className="max-w-xs text-xs text-muted-foreground">
-                  Schedule a prompt to run on its own, or wake an existing thread on a loop.
-                </p>
+                <p className="text-sm font-medium text-foreground">{copy.empty.title}</p>
+                <p className="max-w-xs text-xs text-muted-foreground">{copy.empty.description}</p>
               </div>
             ) : (
               renderAutomationList()

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
+
+import { en } from "~/i18n/locales/en";
 import { groupCommandItems, type ComposerCommandItem } from "./ComposerCommandMenu";
+
+const GROUP_LABELS = en.composer.commandMenu.groups;
 
 describe("groupCommandItems", () => {
   it("groups mention suggestions as plugins, chats, agents, then local", () => {
@@ -85,7 +89,7 @@ describe("groupCommandItems", () => {
       },
     ];
 
-    expect(groupCommandItems(items, "mention", true)).toEqual([
+    expect(groupCommandItems(items, "mention", true, GROUP_LABELS)).toEqual([
       {
         id: "plugins",
         label: "Plugins",
@@ -152,7 +156,7 @@ describe("groupCommandItems", () => {
       },
     ];
 
-    expect(groupCommandItems(items, "slash-command", true)).toEqual([
+    expect(groupCommandItems(items, "slash-command", true, GROUP_LABELS)).toEqual([
       {
         id: "built-in",
         label: "Built-in",

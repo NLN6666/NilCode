@@ -52,6 +52,11 @@ import {
   COMPOSER_COMMAND_MENU_ITEM_CLASS_NAME,
   COMPOSER_COMMAND_MENU_SURFACE_CLASS_NAME,
 } from "./composerPickerStyles";
+import { useMessages } from "~/i18n/context";
+import type { Messages } from "~/i18n/locales/en";
+
+/** The command-menu slice of the active catalog, threaded into the pure helpers below. */
+type CommandMenuCopy = Messages["composer"]["commandMenu"];
 
 function humanizeProviderCommandName(command: string): string {
   return command
@@ -63,44 +68,48 @@ function humanizeProviderCommandName(command: string): string {
 
 function commandMenuTitle(
   item: Extract<ComposerCommandItem, { type: "slash-command" | "provider-native-command" }>,
+  copy: CommandMenuCopy["commands"],
 ): string {
   switch (item.command) {
     case "clear":
-      return "Clear";
+      return copy.clear;
     case "compact":
-      return "Compact Context";
+      return copy.compact;
     case "model":
-      return "Model";
+      return copy.model;
     case "fast":
-      return "Fast Mode";
+      return copy.fast;
     case "plan":
-      return "Plan Mode";
+      return copy.plan;
     case "default":
-      return "Default Mode";
+      return copy.default;
     case "review":
-      return "Code Review";
+      return copy.review;
     case "fork":
-      return "Fork";
+      return copy.fork;
     case "side":
-      return "Sidechat";
+      return copy.side;
     case "status":
-      return "Status";
+      return copy.status;
     case "subagents":
-      return "Subagents";
+      return copy.subagents;
     case "feedback":
-      return "Feedback Synara";
+      return copy.feedback;
     default:
       return humanizeProviderCommandName(item.command);
   }
 }
 
-function commandMenuTrailingMeta(item: ComposerCommandItem): string | null {
+function commandMenuTrailingMeta(
+  item: ComposerCommandItem,
+  copy: CommandMenuCopy["meta"],
+): string | null {
   if (item.type === "agent") {
-    return item.group === "model" ? "switch model" : "delegate task to subagent";
+    return item.group === "model" ? copy.switchModel : copy.delegateTask;
   }
 
   if (item.type === "plugin") {
-    return "Plugin";
+    return copy.plugin;
   }
 
   if (item.type === "thread") {
@@ -108,7 +117,7 @@ function commandMenuTrailingMeta(item: ComposerCommandItem): string | null {
   }
 
   if (item.type === "local-root") {
-    return "Local";
+    return copy.local;
   }
 
   if (item.type === "skill") {
@@ -116,12 +125,12 @@ function commandMenuTrailingMeta(item: ComposerCommandItem): string | null {
   }
 
   if (item.type === "mcp-tool") {
-    if (item.unavailable) return "Unavailable";
-    return item.toolName === null ? "MCP server" : "MCP tool";
+    if (item.unavailable) return copy.unavailable;
+    return item.toolName === null ? copy.mcpServer : copy.mcpTool;
   }
 
   if (item.type === "model") {
-    return "Model";
+    return copy.model;
   }
 
   if (item.type === "slash-command" || item.type === "provider-native-command") {
@@ -273,6 +282,7 @@ export function groupCommandItems(
   items: ComposerCommandItem[],
   triggerKind: ComposerTriggerKind | null,
   groupSlashCommandSections: boolean,
+  labels: CommandMenuCopy["groups"],
 ): ComposerCommandGroupModel[] {
   if (triggerKind === "mention") {
     const pluginItems = items.filter((item) => item.type === "plugin");
@@ -294,22 +304,22 @@ export function groupCommandItems(
 
     const groups: ComposerCommandGroupModel[] = [];
     if (pluginItems.length > 0) {
-      groups.push({ id: "plugins", label: "Plugins", items: pluginItems });
+      groups.push({ id: "plugins", label: labels.plugins, items: pluginItems });
     }
     if (threadItems.length > 0) {
-      groups.push({ id: "chats", label: "Chats", items: threadItems });
+      groups.push({ id: "chats", label: labels.chats, items: threadItems });
     }
     if (agentItems.length > 0) {
-      groups.push({ id: "subagents", label: "Your agents", items: agentItems });
+      groups.push({ id: "subagents", label: labels.subagents, items: agentItems });
     }
     if (builtInAgentItems.length > 0) {
-      groups.push({ id: "built-in-agents", label: "Synara agents", items: builtInAgentItems });
+      groups.push({ id: "built-in-agents", label: labels.builtInAgents, items: builtInAgentItems });
     }
     if (modelAliasItems.length > 0) {
-      groups.push({ id: "model-aliases", label: "Models", items: modelAliasItems });
+      groups.push({ id: "model-aliases", label: labels.models, items: modelAliasItems });
     }
     if (localItems.length > 0) {
-      groups.push({ id: "local", label: "Local", items: localItems });
+      groups.push({ id: "local", label: labels.local, items: localItems });
     }
     if (otherItems.length > 0) {
       groups.push({ id: "other", label: null, items: otherItems });
@@ -333,13 +343,13 @@ export function groupCommandItems(
 
   const groups: ComposerCommandGroupModel[] = [];
   if (builtInItems.length > 0) {
-    groups.push({ id: "built-in", label: "Built-in", items: builtInItems });
+    groups.push({ id: "built-in", label: labels.builtIn, items: builtInItems });
   }
   if (providerItems.length > 0) {
-    groups.push({ id: "provider", label: "Provider", items: providerItems });
+    groups.push({ id: "provider", label: labels.provider, items: providerItems });
   }
   if (skillItems.length > 0) {
-    groups.push({ id: "skills", label: "Skills", items: skillItems });
+    groups.push({ id: "skills", label: labels.skills, items: skillItems });
   }
   if (otherItems.length > 0) {
     groups.push({ id: "other", label: null, items: otherItems });
@@ -358,12 +368,16 @@ export function ComposerCommandMenu(props: {
   onHighlightedItemChange: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
 }) {
+  const composerCopy = useMessages().composer;
+  const commandMenuCopy = composerCopy.commandMenu;
   const itemRefs = useRef<Record<string, HTMLElement | null>>({});
   const groups = groupCommandItems(
     props.items,
     props.triggerKind,
     props.groupSlashCommandSections ?? true,
+    commandMenuCopy.groups,
   );
+  const shouldRenderList = props.items.length > 0 || props.triggerKind === "mention";
 
   useEffect(() => {
     if (!props.activeItemId) {
@@ -386,68 +400,79 @@ export function ComposerCommandMenu(props: {
       }}
     >
       <div className={COMPOSER_COMMAND_MENU_SURFACE_CLASS_NAME}>
-        <CommandList className="max-h-72 scroll-py-1 p-1">
-          {groups.map((group, groupIndex) => (
-            <div key={group.id}>
-              {groupIndex > 0 ? <CommandSeparator className="my-0.5" /> : null}
-              <CommandGroup>
-                {group.label ? (
-                  <CommandGroupLabel className={COMPOSER_COMMAND_GROUP_LABEL_CLASSNAME}>
-                    {group.label}
-                  </CommandGroupLabel>
-                ) : null}
-                {group.items.map((item) => (
-                  <ComposerCommandMenuItem
-                    key={item.id}
-                    item={item}
-                    resolvedTheme={props.resolvedTheme}
-                    isActive={props.activeItemId === item.id}
-                    itemRef={(node) => storeCommandItemNode(itemRefs, item.id, node)}
-                    onHighlight={props.onHighlightedItemChange}
-                    onSelect={props.onSelect}
-                  />
-                ))}
-              </CommandGroup>
-            </div>
-          ))}
-          {props.triggerKind === "mention" ? (
-            <>
-              {groups.length > 0 ? <CommandSeparator className="my-0.5" /> : null}
-              {/* This footer is informational copy, not a selectable result group. */}
-              <div className="pt-0.5 pb-2">
-                <p
-                  className={cn(
-                    COMPOSER_COMMAND_GROUP_LABEL_CLASSNAME,
-                    "px-2 py-0 font-medium text-muted-foreground text-xs",
-                  )}
-                >
-                  Files
-                </p>
-                <p className="px-2 pt-0.5 text-[11px] text-muted-foreground/55">
-                  Type to search for files
-                </p>
+        {shouldRenderList ? (
+          <CommandList className="max-h-72 scroll-py-1 p-1">
+            {groups.map((group, groupIndex) => (
+              <div key={group.id}>
+                {groupIndex > 0 ? <CommandSeparator className="my-0.5" /> : null}
+                <CommandGroup>
+                  {group.label ? (
+                    <CommandGroupLabel className={COMPOSER_COMMAND_GROUP_LABEL_CLASSNAME}>
+                      {group.label}
+                    </CommandGroupLabel>
+                  ) : null}
+                  {group.items.map((item) => (
+                    <ComposerCommandMenuItem
+                      key={item.id}
+                      item={item}
+                      resolvedTheme={props.resolvedTheme}
+                      isActive={props.activeItemId === item.id}
+                      itemRef={(node) => {
+                        itemRefs.current[item.id] = node;
+                      }}
+                      onHighlight={props.onHighlightedItemChange}
+                      onSelect={props.onSelect}
+                    />
+                  ))}
+                </CommandGroup>
               </div>
-            </>
-          ) : null}
-        </CommandList>
+            ))}
+            {props.triggerKind === "mention" ? (
+              <>
+                {groups.length > 0 ? <CommandSeparator className="my-0.5" /> : null}
+                {/* This footer is informational copy, not a selectable result group. */}
+                <div className="pt-0.5 pb-2">
+                  <p
+                    className={cn(
+                      COMPOSER_COMMAND_GROUP_LABEL_CLASSNAME,
+                      "px-2 py-0 font-medium text-muted-foreground text-xs",
+                    )}
+                  >
+                    {composerCopy.commandMenu.files}
+                  </p>
+                  <p className="px-2 pt-0.5 text-[11px] text-muted-foreground/55">
+                    {composerCopy.commandMenu.filesHint}
+                  </p>
+                </div>
+              </>
+            ) : null}
+          </CommandList>
+        ) : null}
         {props.items.length === 0 && (
-          <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">
+          <p
+            className={cn(
+              "text-muted-foreground/50 text-[11px]",
+              props.isLoading
+                ? "flex h-[calc(1.625rem+0.5rem)] items-center px-2 text-left"
+                : "px-2 py-1.5",
+            )}
+          >
             {props.isLoading
               ? props.triggerKind === "mention"
-                ? "Searching mentions..."
+                ? commandMenuCopy.loading.mentions
                 : props.triggerKind === "skill"
-                  ? "Loading skills..."
+                  ? commandMenuCopy.loading.skills
                   : props.triggerKind === "mcp-tool"
-                    ? "Connecting to MCP servers..."
-                    : "Loading commands..."
+                    ? commandMenuCopy.loading.mcp
+                    : commandMenuCopy.loading.commands
               : (props.emptyStateText ??
                 (props.triggerKind === "mention"
-                  ? "No matching plugin, chat, or file."
+                  ? commandMenuCopy.empty.mention
                   : props.triggerKind === "skill"
-                    ? "No matching skill."
+                    ? commandMenuCopy.empty.skill
                     : props.triggerKind === "mcp-tool"
-                      ? "No MCP tools are configured for this agent."
-                      : "No matching command."))}
+                      ? commandMenuCopy.empty.mcp
+                      : commandMenuCopy.empty.command))}
           </p>
         )}
       </div>
@@ -564,8 +589,19 @@ function ComposerCommandItemIcon(props: {
   );
 }
 
-// Manual memoization kept: this file does not compile under React Compiler (see compile-report).
-const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
+// Props are destructured rather than read off a `props` object: `itemRef` lands on a JSX `ref`,
+// which makes React Compiler treat it as a ref — and through `props.itemRef` that verdict spreads
+// to the whole `props` object, so every later `props.x` read looks like a ref access during render
+// and the component bails out of compilation entirely. Separate bindings keep the verdict on
+// `itemRef` alone. Do not collapse these back into a `props` parameter.
+const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem({
+  item,
+  resolvedTheme,
+  isActive,
+  itemRef,
+  onHighlight,
+  onSelect,
+}: {
   item: ComposerCommandItem;
   resolvedTheme: "light" | "dark";
   isActive: boolean;
@@ -573,42 +609,39 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   onHighlight: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
 }) {
-  const secondaryText = commandMenuSecondaryText(props.item);
-  const trailingMeta = commandMenuTrailingMeta(props.item);
+  const commandMenuCopy = useMessages().composer.commandMenu;
+  const secondaryText = commandMenuSecondaryText(item);
+  const trailingMeta = commandMenuTrailingMeta(item, commandMenuCopy.meta);
   // A server we could not probe stays visible so the user knows why its tools are missing, but
   // it is dimmed and inert — there is nothing to insert.
-  const isUnavailable = props.item.type === "mcp-tool" && props.item.unavailable === true;
+  const isUnavailable = item.type === "mcp-tool" && item.unavailable === true;
 
   return (
     <CommandItem
-      ref={props.itemRef}
-      value={props.item.id}
+      ref={itemRef}
+      value={item.id}
       className={cn(
         COMPOSER_COMMAND_MENU_ITEM_CLASS_NAME,
-        props.isActive && COMPOSER_COMMAND_MENU_ITEM_ACTIVE_CLASS_NAME,
+        isActive && COMPOSER_COMMAND_MENU_ITEM_ACTIVE_CLASS_NAME,
         isUnavailable && "opacity-50",
       )}
       onMouseMove={() => {
-        if (!props.isActive) props.onHighlight(props.item.id);
+        if (!isActive) onHighlight(item.id);
       }}
       onMouseDown={(event) => {
         event.preventDefault();
       }}
       onClick={() => {
-        props.onSelect(props.item);
+        onSelect(item);
       }}
     >
-      <ComposerCommandItemIcon
-        item={props.item}
-        resolvedTheme={props.resolvedTheme}
-        isActive={props.isActive}
-      />
+      <ComposerCommandItemIcon item={item} resolvedTheme={resolvedTheme} isActive={isActive} />
       <div className="min-w-0 flex flex-1 items-center gap-3">
         <div className="min-w-0 flex flex-1 items-center gap-1.5 overflow-hidden">
           <span className="shrink-0 text-[11.5px] font-medium text-foreground/80">
-            {props.item.type === "slash-command" || props.item.type === "provider-native-command"
-              ? commandMenuTitle(props.item)
-              : props.item.label}
+            {item.type === "slash-command" || item.type === "provider-native-command"
+              ? commandMenuTitle(item, commandMenuCopy.commands)
+              : item.label}
           </span>
           {secondaryText ? (
             <span className="truncate text-[11px] text-muted-foreground/55">{secondaryText}</span>
@@ -623,14 +656,3 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
     </CommandItem>
   );
 });
-
-// Ref-callback body kept out of the compiled component: React Compiler cannot
-// tell a custom `itemRef` prop is a ref callback and would reject the render-
-// scoped mutation otherwise.
-function storeCommandItemNode(
-  refs: { current: Record<string, HTMLElement | null> },
-  itemId: string,
-  node: HTMLElement | null,
-): void {
-  refs.current[itemId] = node;
-}

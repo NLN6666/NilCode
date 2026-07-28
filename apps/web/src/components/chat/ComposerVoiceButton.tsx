@@ -3,6 +3,7 @@
 // Layer: Chat composer presentation
 // Depends on: shared button styling and caller-owned voice recording state callbacks.
 
+import { useMessages } from "~/i18n/context";
 import { Loader2Icon, MicIcon } from "~/lib/icons";
 import { Button } from "../ui/button";
 
@@ -13,11 +14,12 @@ export const ComposerVoiceButton = function ComposerVoiceButton(props: {
   durationLabel: string;
   onClick: () => void;
 }) {
+  const copy = useMessages().composer.voice;
   const label = props.isTranscribing
-    ? "Transcribing voice note"
+    ? copy.transcribing
     : props.isRecording
-      ? `Stop voice note (${props.durationLabel})`
-      : "Record voice note";
+      ? copy.stop(props.durationLabel)
+      : copy.record;
 
   return (
     <Button

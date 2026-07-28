@@ -8,6 +8,7 @@ import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { APP_TRANSLUCENT_POPUP_SURFACE_BASE_CLASS_NAME } from "../chat/composerPickerStyles";
+import { useMessages } from "~/i18n/context";
 
 const ComboboxContext = React.createContext<{
   chipsRef: React.RefObject<Element | null> | null;
@@ -57,8 +58,8 @@ function ComboboxChipsInput({
 function ComboboxInput({
   className,
   inputClassName,
-  showTrigger = true,
-  showClear = false,
+  showTrigger: showTriggerProp,
+  showClear: showClearProp,
   startAddon,
   size,
   ...props
@@ -70,6 +71,8 @@ function ComboboxInput({
   size?: "sm" | "default" | "lg" | number;
   ref?: React.Ref<HTMLInputElement>;
 }) {
+  const showTrigger = showTriggerProp ?? true;
+  const showClear = showClearProp ?? false;
   const sizeValue = (size ?? "default") as "sm" | "default" | "lg" | number;
 
   return (
@@ -139,10 +142,10 @@ function ComboboxTrigger({ className, children, ...props }: ComboboxPrimitive.Tr
 function ComboboxPopup({
   className,
   children,
-  side = "bottom",
-  sideOffset = 4,
+  side: sideProp,
+  sideOffset: sideOffsetProp,
   alignOffset,
-  align = "start",
+  align: alignProp,
   anchor: anchorProp,
   ...props
 }: ComboboxPrimitive.Popup.Props & {
@@ -152,6 +155,9 @@ function ComboboxPopup({
   side?: ComboboxPrimitive.Positioner.Props["side"];
   anchor?: ComboboxPrimitive.Positioner.Props["anchor"];
 }) {
+  const side = sideProp ?? "bottom";
+  const sideOffset = sideOffsetProp ?? 4;
+  const align = alignProp ?? "start";
   const { chipsRef } = React.useContext(ComboboxContext);
   const anchor = anchorProp ?? chipsRef;
 
@@ -189,11 +195,12 @@ function ComboboxPopup({
 function ComboboxItem({
   className,
   children,
-  hideIndicator = false,
+  hideIndicator: hideIndicatorProp,
   ...props
 }: ComboboxPrimitive.Item.Props & {
   hideIndicator?: boolean;
 }) {
+  const hideIndicator = hideIndicatorProp ?? false;
   return (
     <ComboboxPrimitive.Item
       className={cn(
@@ -347,9 +354,10 @@ function ComboboxChip({ children, ...props }: ComboboxPrimitive.Chip.Props) {
 }
 
 function ComboboxChipRemove(props: ComboboxPrimitive.ChipRemove.Props) {
+  const copy = useMessages().app.ui;
   return (
     <ComboboxPrimitive.ChipRemove
-      aria-label="Remove"
+      aria-label={copy.remove}
       className="h-full shrink-0 cursor-pointer px-1.5 opacity-80 hover:opacity-100 [&_svg:not([class*='size-'])]:size-4 sm:[&_svg:not([class*='size-'])]:size-3.5"
       data-slot="combobox-chip-remove"
       {...props}

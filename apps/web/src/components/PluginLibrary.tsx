@@ -63,6 +63,7 @@ import {
   useDesktopTopBarTrafficLightGutterClassName,
   useDesktopTopBarWindowControlsGutterClassName,
 } from "~/hooks/useDesktopTopBarGutter";
+import { useMessages } from "../i18n/context";
 import { Skeleton } from "./ui/skeleton";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -107,9 +108,9 @@ function pluginEntryKey(entry: Pick<PluginEntry, "marketplacePath" | "plugin">):
   return `${entry.marketplacePath}::${entry.plugin.name}`;
 }
 
-function sectionTitle(value: string): string {
+function sectionTitle(value: string, unknownLabel: string): string {
   const n = value.trim();
-  return n.length === 0 ? "Unknown" : n;
+  return n.length === 0 ? unknownLabel : n;
 }
 
 function resolvePluginAccent(plugin: ProviderPluginDescriptor): string | undefined {
@@ -339,8 +340,8 @@ function PluginGridItem({ entry }: { entry: PluginEntry }) {
 }
 
 function SkillGridItem({ skill }: { skill: ProviderSkillDescriptor }) {
-  const description =
-    skill.interface?.shortDescription ?? skill.description ?? "No description available.";
+  const copy = useMessages().projectTools.library;
+  const description = skill.interface?.shortDescription ?? skill.description ?? copy.noDescription;
 
   return (
     <div className="flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-[var(--sidebar-accent)]">
@@ -363,6 +364,7 @@ function SectionHeader({ title }: { title: string }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function PluginLibrary() {
+  const copy = useMessages().projectTools.library;
   const desktopTopBarTrafficLightGutterClassName = useDesktopTopBarTrafficLightGutterClassName();
   const desktopTopBarWindowControlsGutterClassName =
     useDesktopTopBarWindowControlsGutterClassName();
@@ -513,7 +515,7 @@ export function PluginLibrary() {
       existing.entries.push(entry);
     } else {
       marketplaceSectionsByPath.set(entry.marketplacePath, {
-        title: sectionTitle(entry.marketplaceName),
+        title: sectionTitle(entry.marketplaceName, copy.unknownSection),
         entries: [entry],
       });
     }
@@ -545,12 +547,12 @@ export function PluginLibrary() {
           <SidebarHeaderNavigationControls />
           <div className="flex items-end gap-3">
             <TabButton
-              label="Plugins"
+              label={copy.plugins}
               active={selectedTab === "plugins"}
               onClick={() => setSelectedTab("plugins")}
             />
             <TabButton
-              label="Skills"
+              label={copy.skills}
               active={selectedTab === "skills"}
               onClick={() => setSelectedTab("skills")}
             />
@@ -587,7 +589,7 @@ export function PluginLibrary() {
           {/* Hero */}
           <div className="px-6 py-10 text-center">
             <h1 className="text-[28px] font-semibold text-foreground">
-              Make {providerLabel} work your way
+              {copy.hero(providerLabel)}
             </h1>
           </div>
 
@@ -605,7 +607,7 @@ export function PluginLibrary() {
                   if (selectedTab === "plugins") setPluginSearch(e.target.value);
                   else setSkillSearch(e.target.value);
                 }}
-                placeholder={selectedTab === "plugins" ? "Search plugins" : "Search skills"}
+                placeholder={selectedTab === "plugins" ? copy.searchPlugins : copy.searchSkills}
                 className="text-sm"
               />
             </InputGroup>
@@ -618,9 +620,7 @@ export function PluginLibrary() {
               (pluginsQuery.data?.marketplaceLoadErrors.length ?? 0) > 0)) && (
             <div className="mx-auto max-w-2xl space-y-1.5 px-6 pb-4">
               {!discoveryCwd && selectedTab === "skills" ? (
-                <InlineWarning>
-                  Skills need a workspace path. Open a project or thread first.
-                </InlineWarning>
+                <InlineWarning>{copy.skillsNeedWorkspace}</InlineWarning>
               ) : null}
               {selectedTab === "plugins" && pluginsQuery.data?.remoteSyncError ? (
                 <InlineWarning>{pluginsQuery.data.remoteSyncError}</InlineWarning>
@@ -629,7 +629,10 @@ export function PluginLibrary() {
               (pluginsQuery.data?.marketplaceLoadErrors.length ?? 0) > 0 ? (
                 <InlineWarning>
                   {pluginsQuery.data?.marketplaceLoadErrors
-                    .map((err) => `${sectionTitle(err.marketplacePath)}: ${err.message}`)
+                    .map(
+                      (err) =>
+                        `${sectionTitle(err.marketplacePath, copy.unknownSection)}: ${err.message}`,
+                    )
                     .join(" • ")}
                 </InlineWarning>
               ) : null}
@@ -643,8 +646,8 @@ export function PluginLibrary() {
                 {!canListPlugins ? (
                   <div className="mx-auto max-w-2xl">
                     <EmptyPanel
-                      title={`Plugins unavailable for ${providerLabel}`}
-                      description="This provider does not expose plugin discovery."
+                      title={copy.pluginsUnavailable(providerLabel)}
+                      description={copy.pluginsUnavailableDetail}
                     />
                   </div>
                 ) : pluginsQuery.isLoading && pluginEntries.length === 0 ? (
@@ -654,10 +657,7 @@ export function PluginLibrary() {
                     ))}
                   </div>
                 ) : filteredPluginEntries.length === 0 ? (
-                  <EmptyPanel
-                    title="No installed plugins found"
-                    description="This view only shows plugins already available in your Codex setup."
-                  />
+                  <EmptyPanel title={copy.noPlugins} description={copy.noPluginsDetail} />
                 ) : (
                   <div className="space-y-6">
                     {marketplaceSections.map((section) => (
@@ -678,8 +678,8 @@ export function PluginLibrary() {
                 {!canListSkills ? (
                   <div className="mx-auto max-w-2xl">
                     <EmptyPanel
-                      title={`Skills unavailable for ${providerLabel}`}
-                      description="This provider does not expose skill discovery."
+                      title={copy.skillsUnavailable(providerLabel)}
+                      description={copy.skillsUnavailableDetail}
                     />
                   </div>
                 ) : skillsQuery.isLoading && discoveredSkills.length === 0 ? (
@@ -689,10 +689,10 @@ export function PluginLibrary() {
                     ))}
                   </div>
                 ) : filteredSkills.length === 0 ? (
-                  <EmptyPanel title="No skills found" description="No skills match this search." />
+                  <EmptyPanel title={copy.noSkills} description={copy.noSkillsDetail} />
                 ) : (
                   <div>
-                    <SectionHeader title="Skills" />
+                    <SectionHeader title={copy.skills} />
                     <div className="grid grid-cols-1 sm:grid-cols-2">
                       {filteredSkills.map((skill) => (
                         <SkillGridItem key={skill.path} skill={skill} />

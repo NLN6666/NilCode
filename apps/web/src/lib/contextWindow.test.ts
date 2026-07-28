@@ -49,6 +49,36 @@ describe("contextWindow", () => {
     expect(snapshot?.compactsAutomatically).toBe(true);
   });
 
+  it("keeps the model window distinct from the configured compaction budget", () => {
+    const snapshot = deriveLatestContextWindowSnapshot([
+      makeActivity("activity-1", "context-window.updated", {
+        usedTokens: 12_000,
+        maxTokens: 200_000,
+        contextWindowTokens: 1_000_000,
+      }),
+      // The configured session window overrides the meter denominator; it must
+      // not overwrite the model's capacity, or a 1M model reads as a 200k one.
+      makeActivity("activity-2", "context-window.configured", { maxTokens: 200_000 }),
+    ]);
+
+    expect(snapshot?.maxTokens).toBe(200_000);
+    expect(snapshot?.contextWindowTokens).toBe(1_000_000);
+  });
+
+  it("leaves the model window unknown when the runtime does not report one", () => {
+    // Codex reports only `model_context_window`, which lands in `maxTokens`.
+    // Inventing a capacity from it would be a guess, so it stays null.
+    const snapshot = deriveLatestContextWindowSnapshot([
+      makeActivity("activity-1", "context-window.updated", {
+        usedTokens: 5_000,
+        maxTokens: 400_000,
+      }),
+    ]);
+
+    expect(snapshot?.maxTokens).toBe(400_000);
+    expect(snapshot?.contextWindowTokens).toBeNull();
+  });
+
   it("ignores malformed payloads", () => {
     const snapshot = deriveLatestContextWindowSnapshot([
       makeActivity("activity-1", "context-window.updated", {}),

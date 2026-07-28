@@ -5,6 +5,7 @@ import { XIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { Button, dialogActionButtonClassName } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { useMessages } from "~/i18n/context";
 
 const DialogCreateHandle = DialogPrimitive.createHandle;
 
@@ -75,13 +76,16 @@ const dialogPanelFieldClassName =
 function DialogPopup({
   className,
   children,
-  showCloseButton = true,
-  bottomStickOnMobile = true,
+  showCloseButton: showCloseButtonProp,
+  bottomStickOnMobile: bottomStickOnMobileProp,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
   bottomStickOnMobile?: boolean;
 }) {
+  const copy = useMessages().app.ui;
+  const showCloseButton = showCloseButtonProp ?? true;
+  const bottomStickOnMobile = bottomStickOnMobileProp ?? true;
   return (
     <DialogPortal>
       <DialogBackdrop />
@@ -101,7 +105,7 @@ function DialogPopup({
           {children}
           {showCloseButton && (
             <DialogPrimitive.Close
-              aria-label="Close"
+              aria-label={copy.close}
               className="absolute end-2 top-2"
               render={<Button size="icon-sm" variant="ghost" />}
             >
@@ -129,11 +133,12 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
 
 function DialogFooter({
   className,
-  variant = "default",
+  variant: variantProp,
   ...props
 }: React.ComponentProps<"div"> & {
   variant?: "default" | "bare";
 }) {
+  const variant = variantProp ?? "default";
   return (
     <div
       className={cn(
@@ -173,9 +178,10 @@ function DialogDescription({ className, ...props }: DialogPrimitive.Description.
 
 function DialogPanel({
   className,
-  scrollFade = true,
+  scrollFade: scrollFadeProp,
   ...props
 }: React.ComponentProps<"div"> & { scrollFade?: boolean }) {
+  const scrollFade = scrollFadeProp ?? true;
   return (
     <ScrollArea scrollFade={scrollFade}>
       <div

@@ -17,6 +17,7 @@ import {
   CommandId,
   EventId,
   IsoDateTime,
+  LocalServerPort,
   MessageId,
   NonNegativeInt,
   PositiveInt,
@@ -32,6 +33,7 @@ import {
 export const ORCHESTRATION_WS_METHODS = {
   getSnapshot: "orchestration.getSnapshot",
   getShellSnapshot: "orchestration.getShellSnapshot",
+  getThreadDetailSnapshot: "orchestration.getThreadDetailSnapshot",
   dispatchCommand: "orchestration.dispatchCommand",
   importThread: "orchestration.importThread",
   repairState: "orchestration.repairState",
@@ -90,6 +92,7 @@ export const ClaudeModelSelection = Schema.Struct({
   provider: Schema.Literal("claudeAgent"),
   model: TrimmedNonEmptyString,
   options: Schema.optional(ClaudeModelOptions),
+  supportsAutoMode: Schema.optional(Schema.Boolean),
 });
 export type ClaudeModelSelection = typeof ClaudeModelSelection.Type;
 
@@ -212,7 +215,7 @@ export const ProviderStartOptions = Schema.Struct({
 });
 export type ProviderStartOptions = typeof ProviderStartOptions.Type;
 
-export const RuntimeMode = Schema.Literals(["approval-required", "full-access"]);
+export const RuntimeMode = Schema.Literals(["approval-required", "auto", "full-access"]);
 export type RuntimeMode = typeof RuntimeMode.Type;
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 export const ProviderInteractionMode = Schema.Literals(["default", "plan"]);
@@ -221,7 +224,12 @@ export const DEFAULT_PROVIDER_INTERACTION_MODE: ProviderInteractionMode = "defau
 const SidechatSourceThreadId = Schema.optional(Schema.NullOr(ThreadId)).pipe(
   Schema.withDecodingDefault(() => null),
 );
-export const ProviderRequestKind = Schema.Literals(["command", "file-read", "file-change"]);
+export const ProviderRequestKind = Schema.Literals([
+  "command",
+  "file-read",
+  "file-change",
+  "permissions",
+]);
 export type ProviderRequestKind = typeof ProviderRequestKind.Type;
 export const AssistantDeliveryMode = Schema.Literals(["buffered", "streaming"]);
 export type AssistantDeliveryMode = typeof AssistantDeliveryMode.Type;
@@ -376,6 +384,14 @@ export const ProjectScript = Schema.Struct({
   command: TrimmedNonEmptyString,
   icon: ProjectScriptIcon,
   runOnWorktreeCreate: Schema.Boolean,
+  /**
+   * Port the action's server is expected to listen on, when declared by a
+   * `.nilcode/launch.json` configuration. Drives preview readiness probing
+   * without relying on port sniffing. Null for actions that serve nothing.
+   */
+  port: Schema.optional(Schema.NullOr(LocalServerPort)).pipe(
+    Schema.withDecodingDefault(() => null),
+  ),
 });
 export type ProjectScript = typeof ProjectScript.Type;
 
@@ -2426,6 +2442,16 @@ export const OrchestrationSubscribeThreadInput = Schema.Struct({
 });
 export type OrchestrationSubscribeThreadInput = typeof OrchestrationSubscribeThreadInput.Type;
 
+export const OrchestrationGetThreadDetailSnapshotInput = OrchestrationSubscribeThreadInput;
+export type OrchestrationGetThreadDetailSnapshotInput =
+  typeof OrchestrationGetThreadDetailSnapshotInput.Type;
+
+export const OrchestrationGetThreadDetailSnapshotResult = Schema.NullOr(
+  OrchestrationThreadDetailSnapshot,
+);
+export type OrchestrationGetThreadDetailSnapshotResult =
+  typeof OrchestrationGetThreadDetailSnapshotResult.Type;
+
 export const OrchestrationImportThreadInput = Schema.Struct({
   threadId: ThreadId,
   externalId: TrimmedNonEmptyString,
@@ -2450,6 +2476,10 @@ export const OrchestrationRpcSchemas = {
   getShellSnapshot: {
     input: OrchestrationGetShellSnapshotInput,
     output: OrchestrationGetShellSnapshotResult,
+  },
+  getThreadDetailSnapshot: {
+    input: OrchestrationGetThreadDetailSnapshotInput,
+    output: OrchestrationGetThreadDetailSnapshotResult,
   },
   repairState: {
     input: OrchestrationRepairStateInput,

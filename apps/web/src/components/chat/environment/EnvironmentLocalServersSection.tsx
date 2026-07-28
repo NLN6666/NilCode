@@ -24,6 +24,7 @@ import {
   EnvironmentRowBody,
   EnvironmentRowChevron,
 } from "./EnvironmentRow";
+import { useMessages } from "~/i18n/context";
 
 function describeServerCount(count: number): string {
   if (count === 0) return "No servers running";
@@ -38,13 +39,14 @@ function LocalServersRefreshButton({
   refreshing: boolean;
   onRefresh: () => void;
 }) {
+  const copy = useMessages().chat.environment;
   return (
     <MenuItem
       closeOnClick={false}
       disabled={refreshing}
       onClick={onRefresh}
-      aria-label="Refresh local servers"
-      title="Refresh"
+      aria-label={copy.refreshLocalServers}
+      title={copy.refresh}
       className="inline-flex size-5 items-center justify-center rounded-md p-0 text-muted-foreground/60 transition-colors hover:bg-[var(--color-background-button-secondary-hover)] hover:text-[var(--color-text-foreground)] data-highlighted:bg-[var(--color-background-button-secondary-hover)] data-highlighted:text-[var(--color-text-foreground)]"
     >
       <RefreshCwIcon className={cn("size-3", refreshing && "animate-spin")} />
@@ -128,6 +130,7 @@ function LocalServersPlaceholder({
 }
 
 export function EnvironmentLocalServersSection({ enabled }: { enabled: boolean }) {
+  const copy = useMessages().chat.environment;
   const queryClient = useQueryClient();
   const localServersQuery = useQuery(serverLocalServersQueryOptions(enabled));
   const stopLocalServerMutation = useMutation(
@@ -162,7 +165,7 @@ export function EnvironmentLocalServersSection({ enabled }: { enabled: boolean }
       <MenuTrigger render={<button type="button" className={ENVIRONMENT_ROW_CLASS_NAME} />}>
         <EnvironmentRowBody
           icon={<GlobeIcon className={ENVIRONMENT_ROW_ICON_CLASS_NAME} aria-hidden />}
-          label="Local Servers"
+          label={copy.localServers}
           trailing={trailing}
         />
       </MenuTrigger>
@@ -180,12 +183,12 @@ export function EnvironmentLocalServersSection({ enabled }: { enabled: boolean }
         {localServersQuery.isLoading ? (
           <LocalServersPlaceholder
             icon={<RefreshCwIcon className="size-4 animate-spin" />}
-            title="Scanning local ports"
+            title={copy.scanningPorts}
           />
         ) : localServersQuery.isError ? (
           <LocalServersPlaceholder
             icon={<GlobeIcon className="size-4" />}
-            title="Couldn't scan local ports"
+            title={copy.scanFailed}
             subtitle={
               localServersQuery.error instanceof Error
                 ? localServersQuery.error.message
@@ -195,8 +198,8 @@ export function EnvironmentLocalServersSection({ enabled }: { enabled: boolean }
         ) : serverCount === 0 ? (
           <LocalServersPlaceholder
             icon={<GlobeIcon className="size-4" />}
-            title="No servers running"
-            subtitle="Local dev servers will appear here."
+            title={copy.noServers}
+            subtitle={copy.noServersHint}
           />
         ) : (
           <div className="flex flex-col gap-0.5">

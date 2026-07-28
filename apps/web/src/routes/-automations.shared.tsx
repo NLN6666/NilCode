@@ -16,16 +16,20 @@ import {
   type RuntimeMode,
   type ThreadId,
 } from "@synara/contracts";
+import { automationRequiresTargetThread } from "@synara/shared/automationMode";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useAppSettings } from "~/appSettings";
+import { useMessages } from "~/i18n/context";
+import type { Messages } from "~/i18n/locales/en";
 import type { Thread } from "~/types";
 import {
   ComposerPickerMenuPopup,
   ComposerPickerMenuSubPopup,
 } from "~/components/chat/ComposerPickerMenuPopup";
 import { ProviderModelPicker } from "~/components/chat/ProviderModelPicker";
+import { RUNTIME_AUTO_ICON_ACCENT_CLASS_NAME } from "~/components/chat/composerPickerStyles";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Dialog, DialogPopup, DialogTitle } from "~/components/ui/dialog";
@@ -64,8 +68,8 @@ import {
   formatNextRun,
   formatSchedule,
   formFromDefinition,
-  groupHeartbeatAutomationsByTargetThread,
-  heartbeatAutomationsForThread,
+  groupAutomationsByContinuedThread,
+  automationsForThread,
   isFormSubmittable,
   isoFromDatetimeLocal,
   modelSelectionForProjectChange,
@@ -87,7 +91,14 @@ import {
 } from "~/lib/automationForm";
 import { SkillCubeIcon, WorktreeIcon } from "~/lib/icons";
 import { CentralIcon } from "~/lib/central-icons";
+import { resolveRuntimeModelDescriptor } from "~/components/chat/runtimeModelCapabilities";
 import { resolveProviderDiscoveryCwd } from "~/lib/providerDiscovery";
+import {
+  normalizeRuntimeModeForProvider,
+  providerModelSupportsAutoRuntimeMode,
+  providerSupportsAutoRuntimeMode,
+} from "~/lib/runtimeMode";
+import { findProviderStatus } from "~/lib/providerAvailability";
 import { cn } from "~/lib/utils";
 import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { ensureNativeApi } from "~/nativeApi";
@@ -119,8 +130,8 @@ export {
   formatNextRun,
   formatSchedule,
   formFromDefinition,
-  groupHeartbeatAutomationsByTargetThread,
-  heartbeatAutomationsForThread,
+  groupAutomationsByContinuedThread,
+  automationsForThread,
   isFormSubmittable,
   isoFromDatetimeLocal,
   modelSelectionForProjectChange,
@@ -141,30 +152,23 @@ export {
   type ScheduleKind,
 };
 
-/** Starter prompts surfaced behind the composer's "Use template" button. */
-export const AUTOMATION_TEMPLATES: readonly {
+/** The `automations` catalog group, threaded into the locale-free helpers below. */
+export type AutomationsCopy = Messages["automations"];
+
+export type AutomationTemplate = {
   readonly label: string;
   readonly name: string;
   readonly prompt: string;
-}[] = [
-  {
-    label: "Triage new crashes",
-    name: "Triage crashes",
-    prompt: "Look for new crashes in $sentry and open a fix PR for the most impactful one.",
-  },
-  {
-    label: "Update dependencies",
-    name: "Update dependencies",
-    prompt:
-      "Check for outdated dependencies, bump the safe minor and patch versions, then run the tests.",
-  },
-  {
-    label: "Daily standup summary",
-    name: "Daily summary",
-    prompt:
-      "Summarize what changed on the main branch in the last 24 hours as a short standup update.",
-  },
-];
+};
+
+/** Starter prompts surfaced behind the composer's "Use template" button. */
+export function automationTemplates(copy: AutomationsCopy): readonly AutomationTemplate[] {
+  return [
+    copy.templates.triageCrashes,
+    copy.templates.updateDependencies,
+    copy.templates.dailySummary,
+  ];
+}
 
 export function formatRelativeTime(iso: string | null): string {
   if (!iso) return "";
@@ -298,45 +302,29 @@ export function automationAttentionCount(runs: readonly AutomationRun[]): number
   return unresolvedTriageRuns(runs).length;
 }
 
-export function runStatusLabel(status: AutomationRun["status"]): string {
-  switch (status) {
-    case "pending":
-      return "Queued";
-    case "claimed":
-      return "Starting";
-    case "running":
-      return "Running";
-    case "waiting-for-approval":
-      return "Waiting for approval";
-    case "succeeded":
-      return "Completed";
-    case "failed":
-      return "Failed";
-    case "cancelled":
-      return "Cancelled";
-    case "interrupted":
-      return "Interrupted";
-    case "skipped":
-      return "Skipped";
-  }
+export function runStatusLabel(
+  status: AutomationRun["status"],
+  copy: AutomationsCopy["runStatus"],
+): string {
+  return copy[status];
 }
 
-export function runResultSummary(run: AutomationRun): string {
+export function runResultSummary(run: AutomationRun, copy: AutomationsCopy): string {
   if (run.result?.summary) return run.result.summary;
   if (run.error) return run.error;
   switch (run.result?.outcome) {
     case "findings":
-      return "Found something to review";
+      return copy.runOutcome.findings;
     case "no-findings":
-      return "No findings";
+      return copy.runOutcome.noFindings;
     case "changed-files":
-      return "Changed files";
+      return copy.runOutcome.changedFiles;
     case "needs-attention":
-      return "Needs attention";
+      return copy.runOutcome.needsAttention;
     case "unknown":
-      return run.threadId ? "Completed; open the thread for the reply" : "Completed";
+      return run.threadId ? copy.runOutcome.completedOpenThread : copy.runOutcome.completed;
     case undefined:
-      return runStatusLabel(run.status);
+      return runStatusLabel(run.status, copy.runStatus);
   }
 }
 
@@ -359,16 +347,28 @@ export function canCancelAutomationRun(run: AutomationRun): boolean {
  * the run ended normally (or is still progressing). Drives the amber glyph and the
  * subtitle warning segment on automation list rows.
  */
-export function automationAttentionLabel(run: AutomationRun): string | null {
+export function runNeedsAttention(run: AutomationRun): boolean {
+  return (
+    run.status === "waiting-for-approval" ||
+    run.status === "failed" ||
+    run.status === "cancelled" ||
+    run.status === "interrupted"
+  );
+}
+
+export function automationAttentionLabel(
+  run: AutomationRun,
+  copy: AutomationsCopy["attention"],
+): string | null {
   switch (run.status) {
     case "waiting-for-approval":
-      return "Waiting for approval";
+      return copy.waitingForApproval;
     case "failed":
-      return "Last run failed";
+      return copy.failed;
     case "cancelled":
-      return "Last run cancelled";
+      return copy.cancelled;
     case "interrupted":
-      return "Last run interrupted";
+      return copy.interrupted;
     default:
       return null;
   }
@@ -413,7 +413,7 @@ export function automationListRowIcon(
   if (latestRun?.status === "succeeded") {
     return { name: "circle-check", className: "size-4 text-green-500" };
   }
-  if (latestRun && automationAttentionLabel(latestRun) !== null) {
+  if (latestRun && runNeedsAttention(latestRun)) {
     return { name: "exclamation-circle", className: "size-4 text-amber-500" };
   }
   if (definition.nextRunAt) {
@@ -438,7 +438,7 @@ export function automationStatusDotClass(
   ) {
     return "text-blue-500";
   }
-  if (latestRun && automationAttentionLabel(latestRun) !== null) return "text-amber-500";
+  if (latestRun && runNeedsAttention(latestRun)) return "text-amber-500";
   return "text-foreground/70";
 }
 
@@ -738,45 +738,46 @@ type IntervalCadenceOption = {
 };
 
 /** Interval cadence presets shown by default; second-level intervals are preserved when present. */
-const INTERVAL_PRESETS: readonly IntervalCadenceOption[] = [
-  { amount: "15", unit: "minutes", label: "Every 15 min" },
-  { amount: "30", unit: "minutes", label: "Every 30 min" },
-  { amount: "120", unit: "minutes", label: "Every 2 hours" },
-  { amount: "360", unit: "minutes", label: "Every 6 hours" },
-  { amount: "720", unit: "minutes", label: "Every 12 hours" },
-  { amount: "1440", unit: "minutes", label: "Every 24 hours" },
-];
+function intervalPresets(copy: AutomationsCopy["interval"]): readonly IntervalCadenceOption[] {
+  return (["15", "30", "120", "360", "720", "1440"] as const).map((amount) => ({
+    amount,
+    unit: "minutes" as const,
+    label: copy.everyMinutes(amount),
+  }));
+}
 
 function intervalOptionValue(option: Pick<IntervalCadenceOption, "amount" | "unit">): string {
   return `${option.unit}:${option.amount}`;
 }
 
-function intervalOptionLabel(amount: string, unit: IntervalUnit): string {
-  return unit === "seconds" ? `Every ${amount} sec` : `Every ${amount} min`;
+function intervalOptionLabel(
+  amount: string,
+  unit: IntervalUnit,
+  copy: AutomationsCopy["interval"],
+): string {
+  return unit === "seconds" ? copy.everySeconds(amount) : copy.everyMinutes(amount);
 }
 
 /** Heartbeat run-count presets ("" = unlimited). */
-const MAX_ITERATION_PRESETS: readonly CadenceOption[] = [
-  { value: "", label: "Unlimited" },
-  { value: "10", label: "10 runs" },
-  { value: "25", label: "25 runs" },
-  { value: "50", label: "50 runs" },
-  { value: "100", label: "100 runs" },
-  { value: "250", label: "250 runs" },
-];
-
-function maxIterationLabel(value: string): string {
-  return value === "1" ? "1 run" : `${value} runs`;
+function maxIterationPresets(
+  copy: AutomationsCopy["maxIterationOption"],
+): readonly CadenceOption[] {
+  return [
+    { value: "", label: copy.unlimited },
+    ...["10", "25", "50", "100", "250"].map((value) => ({ value, label: copy.runs(value) })),
+  ];
 }
 
 export function maxIterationOptions(
   currentValue: string | number | null | undefined,
+  copy: AutomationsCopy["maxIterationOption"],
 ): readonly { readonly value: string; readonly label: string }[] {
+  const presets = maxIterationPresets(copy);
   const value = currentValue == null ? "" : String(currentValue).trim();
-  if (!/^\d+$/.test(value) || MAX_ITERATION_PRESETS.some((preset) => preset.value === value)) {
-    return MAX_ITERATION_PRESETS;
+  if (!/^\d+$/.test(value) || presets.some((preset) => preset.value === value)) {
+    return presets;
   }
-  return [{ value, label: maxIterationLabel(value) }, ...MAX_ITERATION_PRESETS];
+  return [{ value, label: copy.runs(value) }, ...presets];
 }
 
 // Shown at the top of an automation's detail panel when saving or manual run actions need
@@ -792,17 +793,15 @@ export function AutomationApprovalBanner({
   readonly onApprove: () => void;
   readonly onApproveAndRun: () => void;
 }) {
+  const m = useMessages();
   if (warnings.length === 0) {
     return null;
   }
   return (
     <Alert variant="warning">
-      <AlertTitle>Approval needed</AlertTitle>
+      <AlertTitle>{m.automations.approval.title}</AlertTitle>
       <AlertDescription>
-        <span>
-          This automation needs your approval once before Synara can save changes. When a warning
-          blocks manual runs, Run now stays disabled until you approve it.
-        </span>
+        <span>{m.automations.approval.description}</span>
         <ul className="flex flex-col gap-1.5">
           {warnings.map((warning) => (
             <li key={warning.id} className="text-xs">
@@ -813,10 +812,10 @@ export function AutomationApprovalBanner({
         </ul>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={onApprove}>
-            Approve
+            {m.automations.approval.approve}
           </Button>
           <Button type="button" size="sm" disabled={busy} onClick={onApproveAndRun}>
-            Approve &amp; run now
+            {m.automations.approval.approveAndRun}
           </Button>
         </div>
       </AlertDescription>
@@ -828,10 +827,12 @@ export function AutomationModelPicker({
   value,
   projectCwd,
   onChange,
+  onAutoModeSupportChange,
 }: {
   readonly value: ModelSelection;
   readonly projectCwd: string | null;
   readonly onChange: (value: ModelSelection) => void;
+  readonly onAutoModeSupportChange?: (supported: boolean) => void;
 }) {
   const { settings } = useAppSettings();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
@@ -845,12 +846,34 @@ export function AutomationModelPicker({
     activeProjectCwd: projectCwd,
     serverCwd: serverConfigQuery.data?.cwd ?? null,
   });
-  const { modelOptionsByProvider, loadingModelProviders } = useProviderModelCatalog({
+  const {
+    modelOptionsByProvider,
+    loadingModelProviders,
+    runtimeModelsByProvider,
+    selectedRuntimeModel,
+  } = useProviderModelCatalog({
     selectedProvider: value.provider,
     discoveryEnabled: open,
     cwd: providerModelDiscoveryCwd,
     modelHintByProvider,
   });
+  const providerStatus = findProviderStatus(providerStatuses, value.provider);
+  const persistedRuntimeModel =
+    value.provider === "claudeAgent" && typeof value.supportsAutoMode === "boolean"
+      ? {
+          slug: value.model,
+          name: value.model,
+          supportsAutoMode: value.supportsAutoMode,
+        }
+      : undefined;
+  const autoModeSupported = providerModelSupportsAutoRuntimeMode(
+    value.provider,
+    selectedRuntimeModel ?? persistedRuntimeModel,
+    providerStatus,
+  );
+  useEffect(() => {
+    onAutoModeSupportChange?.(autoModeSupported);
+  }, [autoModeSupported, onAutoModeSupportChange]);
 
   return (
     <ProviderModelPicker
@@ -865,9 +888,32 @@ export function AutomationModelPicker({
       providerOrder={settings.providerOrder}
       open={open}
       onOpenChange={setOpen}
-      onProviderModelChange={(provider, model) => onChange(buildModelSelection(provider, model))}
+      onProviderModelChange={(provider, model) => {
+        const runtimeModel = resolveRuntimeModelDescriptor({
+          provider,
+          model,
+          runtimeModels: runtimeModelsByProvider[provider],
+        });
+        onChange(buildModelSelection(provider, model, undefined, runtimeModel?.supportsAutoMode));
+      }}
     />
   );
+}
+
+export function reconcileAutomationFormAutoModeSupport(
+  form: AutomationFormState,
+  supported: boolean,
+): AutomationFormState {
+  const modelSelection =
+    form.modelSelection.provider === "claudeAgent" &&
+    form.modelSelection.supportsAutoMode !== supported
+      ? { ...form.modelSelection, supportsAutoMode: supported }
+      : form.modelSelection;
+  const runtimeMode =
+    !supported && form.runtimeMode === "auto" ? "approval-required" : form.runtimeMode;
+  return modelSelection !== form.modelSelection || runtimeMode !== form.runtimeMode
+    ? { ...form, modelSelection, runtimeMode }
+    : form;
 }
 
 export function AutomationDialog({
@@ -876,8 +922,8 @@ export function AutomationDialog({
   form,
   projects,
   threads,
-  warnings = [],
-  acknowledgedWarningIds = new Set(),
+  warnings: warningsProp,
+  acknowledgedWarningIds: acknowledgedWarningIdsProp,
   onOpenChange,
   onFormChange,
   onToggleWarning,
@@ -897,10 +943,30 @@ export function AutomationDialog({
   readonly onSubmit: () => void;
   readonly busy: boolean;
 }) {
+  const m = useMessages();
+  const copy = m.automations;
+  const warnings: readonly AutomationDraftWarning[] = warningsProp ?? [];
+  const acknowledgedWarningIds: ReadonlySet<AutomationDraftWarningId> =
+    acknowledgedWarningIdsProp ?? new Set<AutomationDraftWarningId>();
   const setField = <K extends keyof AutomationFormState>(key: K, value: AutomationFormState[K]) =>
     onFormChange({ ...form, [key]: value });
   const projectThreads = threads.filter((thread) => thread.projectId === form.projectId);
   const selectedProject = projects.find((project) => project.id === form.projectId);
+  const [selectedModelSupportsAuto, setSelectedModelSupportsAuto] = useState(() =>
+    form.modelSelection.provider === "claudeAgent"
+      ? form.modelSelection.supportsAutoMode !== false
+      : providerSupportsAutoRuntimeMode(form.modelSelection.provider),
+  );
+  const handleAutoModeSupportChange = useCallback(
+    (supported: boolean) => {
+      setSelectedModelSupportsAuto(supported);
+      const reconciled = reconcileAutomationFormAutoModeSupport(form, supported);
+      if (reconciled !== form) {
+        onFormChange(reconciled);
+      }
+    },
+    [form, onFormChange],
+  );
   const schedule = scheduleFromForm(form);
   const fastIntervalLimitMessage = automationFastIntervalLimitMessage(form);
   const hasBlockingWarning = hasBlockingAutomationDraftWarnings(warnings, acknowledgedWarningIds);
@@ -909,38 +975,39 @@ export function AutomationDialog({
     amount: form.intervalAmount,
     unit: form.intervalUnit,
   });
-  const maxIterationPresets = maxIterationOptions(form.maxIterations);
-  const intervalPresets = INTERVAL_PRESETS.some(
-    (preset) => intervalOptionValue(preset) === intervalValue,
-  )
-    ? INTERVAL_PRESETS
+  const maxIterationChoices = maxIterationOptions(form.maxIterations, copy.maxIterationOption);
+  const presets = intervalPresets(copy.interval);
+  const intervalChoices = presets.some((preset) => intervalOptionValue(preset) === intervalValue)
+    ? presets
     : [
         {
           amount: form.intervalAmount,
           unit: form.intervalUnit,
-          label: intervalOptionLabel(form.intervalAmount, form.intervalUnit),
+          label: intervalOptionLabel(form.intervalAmount, form.intervalUnit, copy.interval),
         },
-        ...INTERVAL_PRESETS,
+        ...presets,
       ];
 
   const chooseProject = (projectId: string) => {
     const targetStillMatches =
       form.targetThreadId.length > 0 &&
       threads.some((thread) => thread.id === form.targetThreadId && thread.projectId === projectId);
+    const modelSelection = modelSelectionForProjectChange(
+      projects,
+      form.projectId,
+      projectId,
+      form.modelSelection,
+    );
     onFormChange({
       ...form,
       projectId,
-      modelSelection: modelSelectionForProjectChange(
-        projects,
-        form.projectId,
-        projectId,
-        form.modelSelection,
-      ),
+      modelSelection,
+      runtimeMode: normalizeRuntimeModeForProvider(form.runtimeMode, modelSelection.provider),
       targetThreadId: targetStillMatches ? form.targetThreadId : "",
     });
   };
 
-  const applyTemplate = (template: (typeof AUTOMATION_TEMPLATES)[number]) =>
+  const applyTemplate = (template: AutomationTemplate) =>
     onFormChange({
       ...form,
       name: form.name.trim() ? form.name : template.name,
@@ -960,15 +1027,15 @@ export function AutomationDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogPopup showCloseButton={false} className="max-w-3xl">
         <DialogTitle className="sr-only">
-          {editing ? "Edit automation" : "New automation"}
+          {editing ? copy.editAutomation : copy.newAutomation}
         </DialogTitle>
 
         <div className="flex items-start gap-3 px-5 pt-5">
           <input
             value={form.name}
             onChange={(event) => setField("name", event.target.value)}
-            placeholder="Automation title"
-            aria-label="Automation title"
+            placeholder={copy.dialog.namePlaceholder}
+            aria-label={copy.dialog.nameLabel}
             autoFocus
             className="min-w-0 flex-1 bg-transparent py-1 font-system-ui text-lg font-medium text-foreground outline-none placeholder:text-muted-foreground/50"
           />
@@ -977,17 +1044,17 @@ export function AutomationDialog({
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label="About automations"
-              title="Automations run this prompt on a schedule and open the result as a thread."
+              aria-label={copy.dialog.aboutLabel}
+              title={copy.dialog.aboutHint}
             >
               <CentralIcon name="info-simple" className="size-4" />
             </Button>
             <Menu>
               <MenuTrigger render={<Button variant="outline" size="sm" />}>
-                Use template
+                {copy.actions.useTemplate}
               </MenuTrigger>
               <ComposerPickerMenuPopup align="end" className="w-52">
-                {AUTOMATION_TEMPLATES.map((template) => (
+                {automationTemplates(copy).map((template) => (
                   <MenuItem key={template.label} onClick={() => applyTemplate(template)}>
                     {template.label}
                   </MenuItem>
@@ -998,7 +1065,7 @@ export function AutomationDialog({
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label="Close"
+              aria-label={copy.actions.close}
               disabled={busy}
               onClick={() => onOpenChange(false)}
             >
@@ -1017,8 +1084,8 @@ export function AutomationDialog({
                 submit();
               }
             }}
-            placeholder="Add prompt e.g. look for crashes in $sentry"
-            aria-label="Automation prompt"
+            placeholder={copy.dialog.promptPlaceholder}
+            aria-label={copy.dialog.promptLabel}
             className="min-h-[15rem] w-full flex-1 resize-none overflow-y-auto bg-transparent font-system-ui text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/50"
           />
 
@@ -1056,7 +1123,9 @@ export function AutomationDialog({
 
         <div className="flex flex-wrap items-center gap-2 px-4 pb-4 pt-1">
           <div className="flex flex-1 flex-wrap items-center gap-0.5">
-            {form.mode === "standalone" ? (
+            {/* Heartbeat runs inherit the target thread's environment; every other mode
+                opens its own thread and therefore picks one. */}
+            {automationRequiresTargetThread(form.mode) ? null : (
               <Menu>
                 <MenuTrigger render={<Button variant="ghost" size="sm" className={CHIP_CLASS} />}>
                   <WorktreeIcon className="size-4" />
@@ -1078,13 +1147,13 @@ export function AutomationDialog({
                   </MenuRadioGroup>
                 </ComposerPickerMenuPopup>
               </Menu>
-            ) : null}
+            )}
 
             <Menu>
               <MenuTrigger render={<Button variant="ghost" size="sm" className={CHIP_CLASS} />}>
                 <CentralIcon name="folder-2" className="size-4" />
                 <span className="max-w-[10rem] truncate">
-                  {selectedProject?.name ?? "Select project"}
+                  {selectedProject?.name ?? copy.dialog.selectProject}
                 </span>
                 <CentralIcon name="chevron-down-small" className="size-3.5 opacity-60" />
               </MenuTrigger>
@@ -1102,7 +1171,14 @@ export function AutomationDialog({
             <AutomationModelPicker
               value={form.modelSelection}
               projectCwd={selectedProject?.cwd ?? null}
-              onChange={(value) => setField("modelSelection", value)}
+              onChange={(value) => {
+                onFormChange({
+                  ...form,
+                  modelSelection: value,
+                  runtimeMode: normalizeRuntimeModeForProvider(form.runtimeMode, value.provider),
+                });
+              }}
+              onAutoModeSupportChange={handleAutoModeSupportChange}
             />
 
             <Menu>
@@ -1113,7 +1189,7 @@ export function AutomationDialog({
               </MenuTrigger>
               <ComposerPickerMenuPopup align="start" className="w-56">
                 <MenuGroup>
-                  <MenuGroupLabel>Schedule</MenuGroupLabel>
+                  <MenuGroupLabel>{copy.dialog.schedule}</MenuGroupLabel>
                   <MenuRadioGroup
                     value={form.scheduleKind}
                     onValueChange={(value) => setField("scheduleKind", value as ScheduleKind)}
@@ -1129,7 +1205,7 @@ export function AutomationDialog({
                   <>
                     <MenuSeparator />
                     <MenuGroup>
-                      <MenuGroupLabel>Every</MenuGroupLabel>
+                      <MenuGroupLabel>{copy.dialog.every}</MenuGroupLabel>
                       <MenuRadioGroup
                         value={intervalValue}
                         onValueChange={(value) => {
@@ -1143,7 +1219,7 @@ export function AutomationDialog({
                           }
                         }}
                       >
-                        {intervalPresets.map((preset) => (
+                        {intervalChoices.map((preset) => (
                           <MenuRadioItem
                             key={intervalOptionValue(preset)}
                             value={intervalOptionValue(preset)}
@@ -1159,7 +1235,7 @@ export function AutomationDialog({
                   <>
                     <MenuSeparator />
                     <MenuGroup>
-                      <MenuGroupLabel>Run at</MenuGroupLabel>
+                      <MenuGroupLabel>{copy.dialog.runAt}</MenuGroupLabel>
                       <div className="px-2 py-1">
                         <input
                           type="datetime-local"
@@ -1176,7 +1252,7 @@ export function AutomationDialog({
                   <>
                     <MenuSeparator />
                     <MenuGroup>
-                      <MenuGroupLabel>Cron</MenuGroupLabel>
+                      <MenuGroupLabel>{copy.dialog.cron}</MenuGroupLabel>
                       <div className="px-2 py-1">
                         <input
                           value={form.cronExpression}
@@ -1192,7 +1268,7 @@ export function AutomationDialog({
                   <>
                     <MenuSeparator />
                     <MenuGroup>
-                      <MenuGroupLabel>Day</MenuGroupLabel>
+                      <MenuGroupLabel>{copy.dialog.day}</MenuGroupLabel>
                       <MenuRadioGroup
                         value={form.dayOfWeek}
                         onValueChange={(value) => setField("dayOfWeek", value)}
@@ -1213,7 +1289,7 @@ export function AutomationDialog({
                     <MenuSeparator />
                     <MenuSub>
                       <MenuSubTrigger>
-                        Time
+                        {copy.dialog.time}
                         <span className="ml-auto pr-1 tabular-nums text-muted-foreground">
                           {form.timeOfDay}
                         </span>
@@ -1237,12 +1313,12 @@ export function AutomationDialog({
                   <>
                     <MenuSeparator />
                     <MenuGroup>
-                      <MenuGroupLabel>Timezone</MenuGroupLabel>
+                      <MenuGroupLabel>{copy.dialog.timezone}</MenuGroupLabel>
                       <div className="px-2 py-1">
                         <input
                           value={form.timezone}
                           onChange={(event) => setField("timezone", event.target.value)}
-                          placeholder="Europe/Rome"
+                          placeholder={copy.dialog.timezonePlaceholder}
                           className="w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         />
                       </div>
@@ -1258,8 +1334,8 @@ export function AutomationDialog({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Run mode"
-                    title="Run mode"
+                    aria-label={copy.dialog.runMode}
+                    title={copy.dialog.runMode}
                     className="rounded-lg text-[var(--color-text-foreground-secondary)]"
                   />
                 }
@@ -1268,22 +1344,25 @@ export function AutomationDialog({
               </MenuTrigger>
               <ComposerPickerMenuPopup align="start" className="w-56">
                 <MenuGroup>
-                  <MenuGroupLabel>Mode</MenuGroupLabel>
+                  <MenuGroupLabel>{copy.dialog.mode}</MenuGroupLabel>
                   <MenuRadioGroup
                     value={form.mode}
                     onValueChange={(value) => setField("mode", value as AutomationMode)}
                   >
-                    <MenuRadioItem value="standalone">Standalone</MenuRadioItem>
-                    <MenuRadioItem value="heartbeat">Heartbeat</MenuRadioItem>
+                    <MenuRadioItem value="standalone">{copy.mode.standalone}</MenuRadioItem>
+                    <MenuRadioItem value="dedicated">{copy.mode.dedicated}</MenuRadioItem>
+                    <MenuRadioItem value="heartbeat">{copy.mode.heartbeat}</MenuRadioItem>
                   </MenuRadioGroup>
                 </MenuGroup>
-                {form.mode === "heartbeat" ? (
+                {/* Only heartbeat continues a thread the user picks; a dedicated automation
+                    creates and keeps its own. */}
+                {automationRequiresTargetThread(form.mode) ? (
                   <>
                     <MenuSeparator />
                     <MenuGroup>
-                      <MenuGroupLabel>Target thread</MenuGroupLabel>
+                      <MenuGroupLabel>{copy.dialog.targetThread}</MenuGroupLabel>
                       {projectThreads.length === 0 ? (
-                        <MenuItem disabled>No threads in this project</MenuItem>
+                        <MenuItem disabled>{copy.dialog.noThreads}</MenuItem>
                       ) : (
                         <MenuRadioGroup
                           value={form.targetThreadId}
@@ -1299,35 +1378,35 @@ export function AutomationDialog({
                         </MenuRadioGroup>
                       )}
                     </MenuGroup>
-                    <MenuSeparator />
-                    <MenuGroup>
-                      <MenuGroupLabel>Stop when</MenuGroupLabel>
-                      <div className="px-2 py-1">
-                        <input
-                          value={form.stopWhen}
-                          onChange={(event) => setField("stopWhen", event.target.value)}
-                          placeholder="PR is ready to merge"
-                          className="w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        />
-                      </div>
-                    </MenuGroup>
-                    <MenuSeparator />
-                    <MenuCheckboxItem
-                      checked={form.stopOnError}
-                      onCheckedChange={(checked) => setField("stopOnError", checked)}
-                    >
-                      Stop on error
-                    </MenuCheckboxItem>
                   </>
                 ) : null}
                 <MenuSeparator />
                 <MenuGroup>
-                  <MenuGroupLabel>Max iterations</MenuGroupLabel>
+                  <MenuGroupLabel>{copy.dialog.stopWhen}</MenuGroupLabel>
+                  <div className="px-2 py-1">
+                    <input
+                      value={form.stopWhen}
+                      onChange={(event) => setField("stopWhen", event.target.value)}
+                      placeholder={copy.dialog.stopWhenPlaceholder}
+                      className="w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                  </div>
+                </MenuGroup>
+                <MenuSeparator />
+                <MenuCheckboxItem
+                  checked={form.stopOnError}
+                  onCheckedChange={(checked) => setField("stopOnError", checked)}
+                >
+                  {copy.dialog.stopOnError}
+                </MenuCheckboxItem>
+                <MenuSeparator />
+                <MenuGroup>
+                  <MenuGroupLabel>{copy.dialog.maxIterations}</MenuGroupLabel>
                   <MenuRadioGroup
                     value={form.maxIterations}
                     onValueChange={(value) => setField("maxIterations", value)}
                   >
-                    {maxIterationPresets.map((preset) => (
+                    {maxIterationChoices.map((preset) => (
                       <MenuRadioItem key={preset.value || "unlimited"} value={preset.value}>
                         {preset.label}
                       </MenuRadioItem>
@@ -1336,15 +1415,17 @@ export function AutomationDialog({
                 </MenuGroup>
                 <MenuSeparator />
                 <MenuGroup>
-                  <MenuGroupLabel>Notify</MenuGroupLabel>
+                  <MenuGroupLabel>{copy.dialog.notify}</MenuGroupLabel>
                   <MenuRadioGroup
                     value={form.notificationPolicy}
                     onValueChange={(value) =>
                       setField("notificationPolicy", value as AutomationNotificationPolicy)
                     }
                   >
-                    <MenuRadioItem value="all">All runs</MenuRadioItem>
-                    <MenuRadioItem value="failed-runs-only">Failed runs only</MenuRadioItem>
+                    <MenuRadioItem value="all">{copy.notifyPolicy.all}</MenuRadioItem>
+                    <MenuRadioItem value="failed-runs-only">
+                      {copy.notifyPolicy.failedRunsOnly}
+                    </MenuRadioItem>
                   </MenuRadioGroup>
                 </MenuGroup>
               </ComposerPickerMenuPopup>
@@ -1356,21 +1437,44 @@ export function AutomationDialog({
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    aria-label="Permissions"
-                    title="Permissions"
+                    aria-label={copy.dialog.permissions}
+                    title={copy.dialog.permissions}
                     className="rounded-lg text-[var(--color-text-foreground-secondary)]"
                   />
                 }
               >
-                <CentralIcon name="brain" className="size-4" />
+                <CentralIcon
+                  name={
+                    form.runtimeMode === "auto"
+                      ? "shield-code"
+                      : form.runtimeMode === "full-access"
+                        ? "shield-access"
+                        : "brain"
+                  }
+                  className={cn(
+                    "size-4",
+                    form.runtimeMode === "auto" && RUNTIME_AUTO_ICON_ACCENT_CLASS_NAME,
+                  )}
+                />
               </MenuTrigger>
               <ComposerPickerMenuPopup align="start" className="w-48">
                 <MenuRadioGroup
                   value={form.runtimeMode}
                   onValueChange={(value) => setField("runtimeMode", value as RuntimeMode)}
                 >
-                  <MenuRadioItem value="approval-required">Approval required</MenuRadioItem>
-                  <MenuRadioItem value="full-access">Full access</MenuRadioItem>
+                  <MenuRadioItem value="approval-required">
+                    {copy.runtimeMode.approvalRequired}
+                  </MenuRadioItem>
+                  {selectedModelSupportsAuto ? (
+                    <MenuRadioItem value="auto">
+                      <CentralIcon
+                        name="shield-code"
+                        className={cn("size-4", RUNTIME_AUTO_ICON_ACCENT_CLASS_NAME)}
+                      />
+                      {copy.runtimeMode.auto}
+                    </MenuRadioItem>
+                  ) : null}
+                  <MenuRadioItem value="full-access">{copy.runtimeMode.fullAccess}</MenuRadioItem>
                 </MenuRadioGroup>
               </ComposerPickerMenuPopup>
             </Menu>
@@ -1383,10 +1487,10 @@ export function AutomationDialog({
               disabled={busy}
               onClick={() => onOpenChange(false)}
             >
-              Cancel
+              {copy.actions.cancel}
             </Button>
             <Button type="button" onClick={submit} disabled={busy || !submittable}>
-              {editing ? "Save" : "Create"}
+              {editing ? copy.actions.save : copy.actions.create}
             </Button>
           </div>
         </div>

@@ -7,42 +7,27 @@ import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
 import { ServerConfig } from "../../config.ts";
-import { getTelemetryIdentifier } from "../Identify.ts";
 import { AnalyticsService } from "../Services/AnalyticsService.ts";
 import { AnalyticsServiceLayerLive } from "./AnalyticsService.ts";
 
-interface RecordedBatchRequest {
+interface RecordedRequest {
+  readonly method: string;
   readonly path: string;
-  readonly body: {
-    readonly batch?: ReadonlyArray<{
-      readonly event?: string;
-      readonly properties?: {
-        readonly index?: number;
-        readonly clientType?: string;
-      };
-    }>;
-  } | null;
-}
-
-interface RecordedBatchBody {
-  readonly batch: ReadonlyArray<{
-    readonly event?: string;
-    readonly properties?: {
-      readonly index?: number;
-      readonly clientType?: string;
-    };
-  }>;
 }
 
 it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
-  it.effect("flush drains all buffered events across multiple batches", () =>
+  // The event call sites are kept as hooks for a future local/self-hosted sink,
+  // but the live layer must never send anything off the machine.
+  it.effect("records and flushes without performing any network delivery", () =>
     Effect.gen(function* () {
-      const capturedRequests: Array<RecordedBatchRequest> = [];
+      const capturedRequests: Array<RecordedRequest> = [];
       const serverConfigLayer = ServerConfig.layerTest(process.cwd(), {
         prefix: "synara-telemetry-base-",
       });
 
       const telemetryLayer = AnalyticsServiceLayerLive.pipe(Layer.provideMerge(serverConfigLayer));
+      // Configured as if telemetry were fully enabled: nothing may be delivered
+      // even when a key, a host, and an opt-in flag are all present.
       const configLayer = ConfigProvider.layer(
         ConfigProvider.fromUnknown({
           SYNARA_TELEMETRY_ENABLED: true,
@@ -51,20 +36,10 @@ it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
           SYNARA_TELEMETRY_FLUSH_BATCH_SIZE: 20,
         }),
       );
-      const batchServerLayer = HttpServer.serve(
+      const captureServerLayer = HttpServer.serve(
         Effect.gen(function* () {
           const request = yield* HttpServerRequest.HttpServerRequest;
-          if (request.method !== "POST") {
-            return HttpServerResponse.empty({ status: 404 });
-          }
-
-          const payload = yield* request.json.pipe(
-            Effect.map((body) => body as RecordedBatchRequest["body"]),
-            Effect.catch(() => Effect.succeed(null)),
-          );
-
-          capturedRequests.push({ path: request.url, body: payload });
-
+          capturedRequests.push({ method: request.method, path: request.url });
           return HttpServerResponse.jsonUnsafe({});
         }),
       );
@@ -74,46 +49,18 @@ it.layer(NodeServices.layer)("AnalyticsService test", (it) => {
       );
 
       yield* Effect.gen(function* () {
-        yield* Layer.launch(batchServerLayer).pipe(Effect.forkScoped);
-        const telemetryIdentifier = yield* getTelemetryIdentifier;
-        assert.equal(telemetryIdentifier !== null, true);
+        yield* Layer.launch(captureServerLayer).pipe(Effect.forkScoped);
         const analytics = yield* AnalyticsService;
 
         for (let index = 0; index < 45; index += 1) {
-          yield* analytics.record("test.flush.drain", { index });
+          yield* analytics.record("test.telemetry.disabled", { index });
         }
 
         yield* analytics.flush;
       }).pipe(Effect.provide(runtimeLayer));
 
-      const batchRequests = capturedRequests.filter(
-        (request): request is RecordedBatchRequest & { readonly body: RecordedBatchBody } =>
-          Array.isArray(request.body?.batch),
-      );
-      assert.equal(batchRequests.length, 3);
-      assert.equal(
-        batchRequests.every((request) => request.path === "/batch/" || request.path === "/batch"),
-        true,
-      );
-      const deliveredIndexes = batchRequests.flatMap((request) =>
-        request.body.batch
-          .filter((event) => event.event === "test.flush.drain")
-          .map((event) => event.properties?.index)
-          .filter((index): index is number => typeof index === "number"),
-      );
-
-      const sorted = deliveredIndexes.toSorted((a, b) => a - b);
-      assert.equal(sorted.length, 45);
-      assert.deepEqual(
-        sorted,
-        Array.from({ length: 45 }, (_, index) => index),
-      );
-      assert.equal(
-        batchRequests.every((request) =>
-          request.body.batch.every((event) => event.properties?.clientType === "cli-web-client"),
-        ),
-        true,
-      );
+      // Covers delivery on record, on flush, and on scope close.
+      assert.deepEqual(capturedRequests, []);
     }),
   );
 });

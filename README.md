@@ -48,6 +48,15 @@ Synara is still very early. Expect bugs, rough edges, and fast-moving internals.
 
 Focused issues and PRs are welcome, especially bug fixes, reliability fixes, and small maintenance improvements.
 
+## Acknowledgements
+
+The Simplified Chinese translation builds on prior community localization work:
+
+- [tttnny/synara-chinese-localization](https://github.com/tttnny/synara-chinese-localization) — a zh-CN phrase corpus whose terminology choices the built-in translation follows.
+- [@a1072970354-code](https://github.com/a1072970354-code) — [issue #202](https://github.com/Emanuele-web04/synara/issues/202), a zh-CN proof of concept that mapped out which UI regions must never be translated (terminals, diffs, code editors, AI replies).
+
+Thank you both.
+
 ## Contributing
 
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening an issue or PR.

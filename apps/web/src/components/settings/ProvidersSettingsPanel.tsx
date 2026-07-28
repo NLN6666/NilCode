@@ -9,7 +9,6 @@ import {
   type ServerSettings,
 } from "@synara/contracts";
 import { PROVIDER_DESCRIPTORS } from "@synara/shared/providerMetadata";
-import { pluralize } from "@synara/shared/text";
 import {
   closestCenter,
   DndContext,
@@ -30,6 +29,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type MouseEvent, type ReactNode, useCallback, useMemo, useState } from "react";
 
 import type { AppSettings, AppSettingsBinding } from "~/appSettings";
+import { useMessages } from "../../i18n/context";
+import type { Messages } from "../../i18n/locales/en";
 import { CentralIcon } from "~/lib/central-icons";
 import { DownloadIcon, ExternalLinkIcon, Loader2Icon } from "~/lib/icons";
 import {
@@ -48,7 +49,13 @@ import {
   withProviderUpdateTimeout,
 } from "~/providerUpdates";
 import { SETTINGS_TARGETS } from "~/settingsNavigation";
-import { SETTINGS_INSET_LIST_CLASS_NAME, SETTINGS_RADIUS_CLASS_NAME } from "~/settingsPanelStyles";
+import {
+  SETTINGS_INSET_LIST_CLASS_NAME,
+  SETTINGS_INSET_RADIUS_CLASS_NAME,
+  SETTINGS_OUTLINED_SURFACE_CLASS_NAME,
+  SETTINGS_STACKED_ROWS_DIVIDER_CLASS_NAME,
+} from "~/settingsPanelStyles";
+import { ELEVATED_HOVER_SURFACE_RAISED_TEXT_CLASS_NAME } from "~/surfaceStyles";
 
 import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
@@ -80,26 +87,53 @@ type ProviderInstallPasswordConfiguredKey =
   | "openCodeServerPasswordConfigured";
 type ProviderInstallBooleanKey = "openCodeExperimentalWebSockets";
 
+type ProvidersCopy = Messages["settings"]["providers"];
+
+type ProviderInstallFieldCopy = {
+  readonly label: string;
+  readonly placeholder?: string;
+  readonly description: ReactNode;
+};
+
+/**
+ * Each field names its own catalog entry instead of carrying copy, so a locale that renames a
+ * label cannot drift from the settings key it belongs to. Binary-path fields build their hint
+ * from the shared sentence and mark the executable so it still renders as inline code.
+ */
+type ProviderInstallCopy = (copy: ProvidersCopy) => ProviderInstallFieldCopy;
+
+/** Renders `binary` inside the sentence as <code>, wherever the translation places it. */
+function withInlineCode(sentence: string, binary: string): ReactNode {
+  const index = sentence.indexOf(binary);
+  if (index < 0) return sentence;
+  return (
+    <>
+      {sentence.slice(0, index)}
+      <code>{binary}</code>
+      {sentence.slice(index + binary.length)}
+    </>
+  );
+}
+
+function binaryHint(copy: ProvidersCopy, binary: string): ReactNode {
+  return withInlineCode(copy.binaryHint(binary), binary);
+}
+
 type ProviderInstallTextField = {
   readonly kind: "text";
   readonly settingsKey: ProviderInstallTextKey;
-  readonly label: string;
-  readonly placeholder: string;
-  readonly description: ReactNode;
+  readonly copy: ProviderInstallCopy;
 };
 type ProviderInstallPasswordField = {
   readonly kind: "password";
   readonly settingsKey: ProviderInstallPasswordKey;
   readonly configuredKey: ProviderInstallPasswordConfiguredKey;
-  readonly label: string;
-  readonly placeholder: string;
-  readonly description: ReactNode;
+  readonly copy: ProviderInstallCopy;
 };
 type ProviderInstallBooleanField = {
   readonly kind: "boolean";
   readonly settingsKey: ProviderInstallBooleanKey;
-  readonly label: string;
-  readonly description: ReactNode;
+  readonly copy: ProviderInstallCopy;
 };
 type ProviderInstallField =
   | ProviderInstallTextField
@@ -107,7 +141,10 @@ type ProviderInstallField =
   | ProviderInstallBooleanField;
 type ProviderInstallSettings = {
   readonly provider: ProviderKind;
-  readonly docs: ReadonlyArray<{ readonly label: string; readonly href: string }>;
+  readonly docs: ReadonlyArray<{
+    readonly labelKey: keyof ProvidersCopy["docs"];
+    readonly href: string;
+  }>;
   readonly fields: readonly ProviderInstallField[];
 };
 
@@ -121,120 +158,94 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
   {
     provider: "codex",
     docs: [
-      { label: "Install", href: "https://help.openai.com/en/articles/11096431" },
-      { label: "Update", href: "https://help.openai.com/en/articles/11096431" },
-      { label: "Config", href: "https://github.com/openai/codex/blob/main/docs/config.md" },
+      { labelKey: "install", href: "https://help.openai.com/en/articles/11096431" },
+      { labelKey: "update", href: "https://help.openai.com/en/articles/11096431" },
+      { labelKey: "config", href: "https://github.com/openai/codex/blob/main/docs/config.md" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "codexBinaryPath",
-        label: "Codex binary path",
-        placeholder: "Codex binary path",
-        description: (
-          <>
-            Leave blank to use <code>codex</code> from your PATH.
-          </>
-        ),
+        copy: (c) => ({ ...c.fields.codexBinaryPath, description: binaryHint(c, "codex") }),
       },
       {
         kind: "text",
         settingsKey: "codexHomePath",
-        label: "CODEX_HOME path",
-        placeholder: "CODEX_HOME",
-        description: "Optional custom Codex home and config directory.",
+        copy: (c) => c.fields.codexHomePath,
       },
     ],
   },
   {
     provider: "claudeAgent",
     docs: [
-      { label: "Install", href: "https://code.claude.com/docs/en/installation" },
-      { label: "Update", href: "https://code.claude.com/docs/en/installation#update-claude-code" },
-      { label: "Config", href: "https://code.claude.com/docs/en/settings" },
+      { labelKey: "install", href: "https://code.claude.com/docs/en/installation" },
+      {
+        labelKey: "update",
+        href: "https://code.claude.com/docs/en/installation#update-claude-code",
+      },
+      { labelKey: "config", href: "https://code.claude.com/docs/en/settings" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "claudeBinaryPath",
-        label: "Claude binary path",
-        placeholder: "Claude binary path",
-        description: (
-          <>
-            Leave blank to use <code>claude</code> from your PATH.
-          </>
-        ),
+        copy: (c) => ({ ...c.fields.claudeBinaryPath, description: binaryHint(c, "claude") }),
       },
     ],
   },
   {
     provider: "cursor",
     docs: [
-      { label: "Install", href: "https://docs.cursor.com/en/cli/installation" },
-      { label: "Update", href: "https://docs.cursor.com/en/cli/installation#updates" },
-      { label: "Config", href: "https://docs.cursor.com/en/cli/overview" },
+      { labelKey: "install", href: "https://docs.cursor.com/en/cli/installation" },
+      { labelKey: "update", href: "https://docs.cursor.com/en/cli/installation#updates" },
+      { labelKey: "config", href: "https://docs.cursor.com/en/cli/overview" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "cursorBinaryPath",
-        label: "Cursor binary path",
-        placeholder: "Cursor Agent or Cursor CLI path",
-        description: (
-          <>
-            Leave blank to use <code>cursor-agent</code> from your PATH. Cursor editor CLI paths are
-            accepted too.
-          </>
-        ),
+        copy: (c) => ({
+          ...c.fields.cursorBinaryPath,
+          description: withInlineCode(c.cursorBinaryHint("cursor-agent"), "cursor-agent"),
+        }),
       },
       {
         kind: "text",
         settingsKey: "cursorApiEndpoint",
-        label: "Cursor API endpoint",
-        placeholder: "https://api2.cursor.sh",
-        description: "Optional Cursor API endpoint override passed to `cursor-agent -e`.",
+        copy: (c) => c.fields.cursorApiEndpoint,
       },
     ],
   },
   {
     provider: "antigravity",
     docs: [
-      { label: "Install", href: "https://antigravity.google/docs/cli-using" },
-      { label: "Reference", href: "https://antigravity.google/docs/cli-reference" },
-      { label: "Hooks", href: "https://antigravity.google/docs/hooks" },
+      { labelKey: "install", href: "https://antigravity.google/docs/cli-using" },
+      { labelKey: "reference", href: "https://antigravity.google/docs/cli-reference" },
+      { labelKey: "hooks", href: "https://antigravity.google/docs/hooks" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "antigravityBinaryPath",
-        label: "Antigravity binary path",
-        placeholder: "Antigravity CLI binary path",
-        description: (
-          <>
-            Leave blank to use <code>agy</code> from your PATH.
-          </>
-        ),
+        copy: (c) => ({
+          ...c.fields.antigravityBinaryPath,
+          description: binaryHint(c, "agy"),
+        }),
       },
     ],
   },
   {
     provider: "grok",
     docs: [
-      { label: "Install", href: "https://docs.x.ai/build/overview" },
-      { label: "Headless", href: "https://docs.x.ai/build/cli/headless-scripting" },
-      { label: "Config", href: "https://docs.x.ai/build/overview" },
+      { labelKey: "install", href: "https://docs.x.ai/build/overview" },
+      { labelKey: "headless", href: "https://docs.x.ai/build/cli/headless-scripting" },
+      { labelKey: "config", href: "https://docs.x.ai/build/overview" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "grokBinaryPath",
-        label: "Grok binary path",
-        placeholder: "Grok binary path",
-        description: (
-          <>
-            Leave blank to use <code>grok</code> from your PATH.
-          </>
-        ),
+        copy: (c) => ({ ...c.fields.grokBinaryPath, description: binaryHint(c, "grok") }),
       },
     ],
   },
@@ -242,7 +253,7 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
     provider: "droid",
     docs: [
       {
-        label: "Quickstart",
+        labelKey: "quickstart",
         href: "https://docs.factory.ai/cli/getting-started/quickstart.md",
       },
     ],
@@ -250,120 +261,87 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
       {
         kind: "text",
         settingsKey: "droidBinaryPath",
-        label: "Droid binary path",
-        placeholder: "droid",
-        description: (
-          <>
-            Leave blank to use <code>droid</code> from your PATH.
-          </>
-        ),
+        copy: (c) => ({ ...c.fields.droidBinaryPath, description: binaryHint(c, "droid") }),
       },
     ],
   },
   {
     provider: "kilo",
     docs: [
-      { label: "Install", href: "https://kilo.ai/docs/cli" },
-      { label: "Update", href: "https://kilo.ai/docs/cli" },
-      { label: "Config", href: "https://kilo.ai/docs/cli#configuration" },
+      { labelKey: "install", href: "https://kilo.ai/docs/cli" },
+      { labelKey: "update", href: "https://kilo.ai/docs/cli" },
+      { labelKey: "config", href: "https://kilo.ai/docs/cli#configuration" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "kiloBinaryPath",
-        label: "Kilo binary path",
-        placeholder: "Kilo binary path",
-        description: (
-          <>
-            Leave blank to use <code>kilo</code> from your PATH.
-          </>
-        ),
+        copy: (c) => ({ ...c.fields.kiloBinaryPath, description: binaryHint(c, "kilo") }),
       },
       {
         kind: "text",
         settingsKey: "kiloServerUrl",
-        label: "Kilo server URL",
-        placeholder: "http://127.0.0.1:4096",
-        description: "Optional existing Kilo server URL. Leave blank to spawn a local server.",
+        copy: (c) => c.fields.kiloServerUrl,
       },
       {
         kind: "password",
         settingsKey: "kiloServerPassword",
         configuredKey: "kiloServerPasswordConfigured",
-        label: "Kilo server password",
-        placeholder: "Kilo server password",
-        description: "Optional password for an externally managed Kilo server.",
+        copy: (c) => c.fields.kiloServerPassword,
       },
     ],
   },
   {
     provider: "opencode",
     docs: [
-      { label: "Install", href: "https://opencode.ai/docs/" },
-      { label: "Update", href: "https://opencode.ai/docs/cli/" },
-      { label: "Config", href: "https://opencode.ai/docs/config/" },
+      { labelKey: "install", href: "https://opencode.ai/docs/" },
+      { labelKey: "update", href: "https://opencode.ai/docs/cli/" },
+      { labelKey: "config", href: "https://opencode.ai/docs/config/" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "openCodeBinaryPath",
-        label: "OpenCode binary path",
-        placeholder: "OpenCode binary path",
-        description: (
-          <>
-            Leave blank to use <code>opencode</code> from your PATH.
-          </>
-        ),
+        copy: (c) => ({
+          ...c.fields.openCodeBinaryPath,
+          description: binaryHint(c, "opencode"),
+        }),
       },
       {
         kind: "text",
         settingsKey: "openCodeServerUrl",
-        label: "OpenCode server URL",
-        placeholder: "http://127.0.0.1:4096",
-        description: "Optional existing OpenCode server URL. Leave blank to spawn a local server.",
+        copy: (c) => c.fields.openCodeServerUrl,
       },
       {
         kind: "password",
         settingsKey: "openCodeServerPassword",
         configuredKey: "openCodeServerPasswordConfigured",
-        label: "OpenCode server password",
-        placeholder: "OpenCode server password",
-        description: "Optional password for an externally managed OpenCode server.",
+        copy: (c) => c.fields.openCodeServerPassword,
       },
       {
         kind: "boolean",
         settingsKey: "openCodeExperimentalWebSockets",
-        label: "OpenAI response WebSockets",
-        description:
-          "Use Opencode's experimental OpenAI response WebSocket transport for managed local servers.",
+        copy: (c) => c.fields.openCodeExperimentalWebSockets,
       },
     ],
   },
   {
     provider: "pi",
     docs: [
-      { label: "Install", href: "https://pi.dev/docs/latest" },
-      { label: "Update", href: "https://pi.dev/docs/latest/settings" },
-      { label: "Config", href: "https://pi.dev/docs/latest/settings" },
+      { labelKey: "install", href: "https://pi.dev/docs/latest" },
+      { labelKey: "update", href: "https://pi.dev/docs/latest/settings" },
+      { labelKey: "config", href: "https://pi.dev/docs/latest/settings" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "piBinaryPath",
-        label: "Pi binary path",
-        placeholder: "Pi binary path",
-        description: (
-          <>
-            Leave blank to use <code>pi</code> from your PATH.
-          </>
-        ),
+        copy: (c) => ({ ...c.fields.piBinaryPath, description: binaryHint(c, "pi") }),
       },
       {
         kind: "text",
         settingsKey: "piAgentDir",
-        label: "Pi agent directory",
-        placeholder: "Pi agent directory",
-        description: "Optional custom Pi agent directory for auth, models, skills, and commands.",
+        copy: (c) => c.fields.piAgentDir,
       },
     ],
   },
@@ -439,6 +417,7 @@ function SortableProviderVisibilityRow(props: {
   isHidden: boolean;
   onHiddenChange: (hidden: boolean) => void;
 }) {
+  const m = useMessages();
   const {
     attributes,
     listeners,
@@ -454,7 +433,8 @@ function SortableProviderVisibilityRow(props: {
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        `flex items-center justify-between gap-3 ${SETTINGS_RADIUS_CLASS_NAME} border border-[color:var(--color-border)] bg-transparent px-3 py-2.5`,
+        SETTINGS_OUTLINED_SURFACE_CLASS_NAME,
+        "flex items-center justify-between gap-3 px-3 py-2.5",
         isDragging && "z-10 opacity-80 shadow-lg",
       )}
     >
@@ -463,10 +443,11 @@ function SortableProviderVisibilityRow(props: {
           type="button"
           ref={setActivatorNodeRef}
           className={cn(
-            "inline-flex size-6 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground transition-colors hover:bg-[var(--color-background-elevated-secondary)] hover:text-foreground active:cursor-grabbing",
-            SETTINGS_RADIUS_CLASS_NAME,
+            "inline-flex size-6 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground active:cursor-grabbing",
+            ELEVATED_HOVER_SURFACE_RAISED_TEXT_CLASS_NAME,
+            SETTINGS_INSET_RADIUS_CLASS_NAME,
           )}
-          aria-label={`Reorder ${props.option.title}`}
+          aria-label={m.settings.providers.picker.reorder(props.option.title)}
           {...attributes}
           {...listeners}
         >
@@ -477,32 +458,31 @@ function SortableProviderVisibilityRow(props: {
       <Switch
         checked={!props.isHidden}
         onCheckedChange={(checked) => props.onHiddenChange(!Boolean(checked))}
-        aria-label={`Show ${props.option.title} in the provider picker`}
+        aria-label={m.settings.providers.picker.showInPicker(props.option.title)}
       />
     </div>
   );
 }
 
 function ProviderDocsLinks({ docs }: { docs: ProviderInstallSettings["docs"] }) {
+  const m = useMessages();
   return (
-    <div className={cn(SETTINGS_INSET_LIST_CLASS_NAME, "px-3 py-2.5")}>
+    <div className={cn(SETTINGS_OUTLINED_SURFACE_CLASS_NAME, "px-3 py-2.5")}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <span className="text-xs font-medium text-foreground">CLI docs</span>
+        <span className="text-xs font-medium text-foreground">
+          {m.settings.providers.tools.cliDocs}
+        </span>
         <div className="flex flex-wrap gap-2">
           {docs.map((doc) => (
-            <a
-              key={`${doc.label}:${doc.href}`}
-              href={doc.href}
-              target="_blank"
-              rel="noreferrer"
-              className={cn(
-                "inline-flex h-7 items-center gap-1.5 border border-[color:var(--color-border)] bg-transparent px-2.5 text-xs text-muted-foreground transition-colors hover:bg-[var(--color-background-elevated-secondary)] hover:text-foreground",
-                SETTINGS_RADIUS_CLASS_NAME,
-              )}
+            <Button
+              key={`${doc.labelKey}:${doc.href}`}
+              variant="outline"
+              size="sm"
+              render={<a href={doc.href} target="_blank" rel="noreferrer" />}
             >
-              <span>{doc.label}</span>
+              <span>{m.settings.providers.docs[doc.labelKey]}</span>
               <ExternalLinkIcon className="size-3" />
-            </a>
+            </Button>
           ))}
         </div>
       </div>
@@ -516,27 +496,45 @@ function formatProviderVersion(value: string | null | undefined): string | null 
   return trimmed.startsWith("v") ? trimmed : `v${trimmed}`;
 }
 
-function providerUpdateStatusLabel(provider: ServerProviderStatus): string | null {
+function providerUpdateStatusLabel(
+  provider: ServerProviderStatus,
+  copy: ProvidersCopy,
+): string | null {
   const state = provider.updateState?.status;
-  if (state === "queued") return "Update queued";
-  if (state === "running") return "Updating";
-  if (state === "succeeded") return "Updated";
-  if (state === "failed") return "Update failed";
-  if (state === "unchanged") return "Still outdated";
+  if (state === "queued") return copy.update.queued;
+  if (state === "running") return copy.update.running;
+  if (state === "succeeded") return copy.update.succeeded;
+  if (state === "failed") return copy.update.failed;
+  if (state === "unchanged") return copy.update.unchanged;
   const advisory = provider.versionAdvisory;
   if (advisory?.status === "behind_latest" && advisory.latestVersion) {
     const currentVersion = formatProviderVersion(advisory.currentVersion);
     const latestVersion = formatProviderVersion(advisory.latestVersion);
-    return currentVersion ? `${currentVersion} -> ${latestVersion}` : `Latest ${latestVersion}`;
+    return currentVersion
+      ? `${currentVersion} -> ${latestVersion}`
+      : copy.update.latest(latestVersion ?? "");
   }
   const currentVersion = formatProviderVersion(provider.version);
-  return currentVersion ? `Current ${currentVersion}` : null;
+  return currentVersion ? copy.update.current(currentVersion) : null;
 }
 
-function providerUpdateFailureMessage(provider: ServerProviderStatus | undefined): string | null {
+function providerUpdateFailureMessage(
+  provider: ServerProviderStatus | undefined,
+  copy: ProvidersCopy,
+): string | null {
   const state = provider?.updateState;
   if (!state || (state.status !== "failed" && state.status !== "unchanged")) return null;
-  return state.output?.trim() || state.message || "The provider update did not complete.";
+  return state.output?.trim() || state.message || copy.update.didNotComplete;
+}
+
+/** Same "off / N available / none" line under both the updates and the installed-CLI rows. */
+function providerCheckStatusLabel(
+  copy: ProvidersCopy,
+  checksEnabled: boolean,
+  outdatedCount: number,
+): string {
+  if (!checksEnabled) return copy.checkStatus.off;
+  return outdatedCount > 0 ? copy.checkStatus.available(outdatedCount) : copy.checkStatus.none;
 }
 
 function ProviderUpdateAction(props: {
@@ -545,6 +543,7 @@ function ProviderUpdateAction(props: {
   disabled: boolean;
   onUpdate: (provider: ProviderKind) => void;
 }) {
+  const m = useMessages();
   const advisory = props.providerStatus.versionAdvisory;
   return (
     <Button
@@ -552,7 +551,11 @@ function ProviderUpdateAction(props: {
       size="xs"
       variant="outline"
       disabled={props.disabled}
-      title={advisory?.updateCommand ? `Run ${advisory.updateCommand}` : undefined}
+      title={
+        advisory?.updateCommand
+          ? m.settings.providers.update.runCommand(advisory.updateCommand)
+          : undefined
+      }
       onClick={(event: MouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();
         props.onUpdate(props.providerStatus.provider);
@@ -563,7 +566,7 @@ function ProviderUpdateAction(props: {
       ) : (
         <DownloadIcon className="size-3.5" />
       )}
-      {props.active ? "Updating" : "Update"}
+      {props.active ? m.settings.providers.update.running : m.settings.providers.update.action}
     </Button>
   );
 }
@@ -573,6 +576,8 @@ function ProviderInstallFieldControl(props: {
   settings: AppSettings;
   updateSettings: (patch: Partial<AppSettings>) => void;
 }) {
+  const m = useMessages();
+  const copy = props.field.copy(m.settings.providers);
   const id = `provider-install-${props.field.settingsKey}`;
   if (props.field.kind === "boolean") {
     return (
@@ -581,10 +586,8 @@ function ProviderInstallFieldControl(props: {
         className="flex items-start justify-between gap-3 rounded-md border border-border/70 bg-background/60 px-3 py-2"
       >
         <span className="min-w-0">
-          <span className="block text-xs font-medium text-foreground">{props.field.label}</span>
-          <span className="mt-1 block text-xs text-muted-foreground">
-            {props.field.description}
-          </span>
+          <span className="block text-xs font-medium text-foreground">{copy.label}</span>
+          <span className="mt-1 block text-xs text-muted-foreground">{copy.description}</span>
         </span>
         <Switch
           id={id}
@@ -602,7 +605,7 @@ function ProviderInstallFieldControl(props: {
   const isPassword = props.field.kind === "password";
   return (
     <label htmlFor={id} className="block">
-      <span className="block text-xs font-medium text-foreground">{props.field.label}</span>
+      <span className="block text-xs font-medium text-foreground">{copy.label}</span>
       <DebouncedSettingTextInput
         id={id}
         size="sm"
@@ -614,14 +617,14 @@ function ProviderInstallFieldControl(props: {
         }
         placeholder={
           isPassword && configured
-            ? "Configured — enter a replacement or leave blank"
-            : props.field.placeholder
+            ? m.settings.providers.tools.passwordConfigured
+            : copy.placeholder
         }
         type={isPassword ? "password" : undefined}
         autoComplete={isPassword ? "new-password" : undefined}
         spellCheck={false}
       />
-      <span className="mt-1 block text-xs text-muted-foreground">{props.field.description}</span>
+      <span className="mt-1 block text-xs text-muted-foreground">{copy.description}</span>
     </label>
   );
 }
@@ -639,6 +642,7 @@ function ProviderToolRow(props: {
   onUpdate: (provider: ProviderKind) => void;
   updateSettings: (patch: Partial<AppSettings>) => void;
 }) {
+  const m = useMessages();
   const title = PROVIDER_DISPLAY_NAMES[props.config.provider];
   const isDirty = isProviderInstallConfigDirty(props.config, props.settings, props.defaults);
   const showProviderUpdateStatus = props.providerStatus
@@ -655,11 +659,11 @@ function ProviderToolRow(props: {
   const providerUpdateLabel = props.providerStatus
     ? !props.settings.enableProviderUpdateChecks
       ? currentProviderVersion
-        ? `Current ${currentProviderVersion}`
+        ? m.settings.providers.update.current(currentProviderVersion)
         : null
       : providerUpdateSuppressed
         ? null
-        : providerUpdateStatusLabel(props.providerStatus)
+        : providerUpdateStatusLabel(props.providerStatus, m.settings.providers)
     : null;
   const updateActive = Boolean(
     (props.providerStatus && isProviderUpdateActive(props.providerStatus)) ||
@@ -680,7 +684,9 @@ function ProviderToolRow(props: {
           >
             <span className="min-w-0 flex-1 text-sm font-medium text-foreground">{title}</span>
             {isDirty ? (
-              <span className="shrink-0 text-[11px] text-muted-foreground">Custom</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">
+                {m.settings.providers.tools.custom}
+              </span>
             ) : null}
             {providerUpdateLabel ? (
               <span
@@ -717,11 +723,11 @@ function ProviderToolRow(props: {
                 <div className="text-xs text-muted-foreground">
                   {updateAdvisory.canUpdate && updateAdvisory.updateCommand ? (
                     <>
-                      <span>Command: </span>
+                      <span>{m.settings.providers.tools.command}</span>
                       <code className="font-mono">{updateAdvisory.updateCommand}</code>
                     </>
                   ) : (
-                    "A newer version is available, but Synara could not identify a safe one-click update command for this installation."
+                    m.settings.providers.tools.noSafeCommand
                   )}
                 </div>
               ) : null}
@@ -753,6 +759,7 @@ export function ProvidersSettingsPanel({
   active,
   resetEpoch,
 }: ProvidersSettingsPanelProps) {
+  const m = useMessages();
   const queryClient = useQueryClient();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const serverSettingsQuery = useQuery(serverSettingsQueryOptions());
@@ -836,14 +843,17 @@ export function ProvidersSettingsPanel({
       })
         .then((result) => {
           const refreshedProvider = result.providers.find((status) => status.provider === provider);
-          const failureMessage = providerUpdateFailureMessage(refreshedProvider);
+          const failureMessage = providerUpdateFailureMessage(
+            refreshedProvider,
+            m.settings.providers,
+          );
           if (failureMessage) {
             const manualCommand = refreshedProvider?.versionAdvisory?.updateCommand?.trim();
             toastManager.add({
               type: "error",
-              title: `Could not update ${PROVIDER_DISPLAY_NAMES[provider]}`,
+              title: m.settings.providers.update.failedTitle(PROVIDER_DISPLAY_NAMES[provider]),
               description: manualCommand
-                ? `${failureMessage}\n\nCopy the command below to update manually in a terminal.`
+                ? m.settings.providers.update.manualHint(failureMessage)
                 : failureMessage,
               ...(manualCommand ? { data: { copyText: manualCommand } } : {}),
             });
@@ -851,15 +861,16 @@ export function ProvidersSettingsPanel({
           }
           toastManager.add({
             type: "success",
-            title: `${PROVIDER_DISPLAY_NAMES[provider]} update finished`,
-            description: "New sessions will use the refreshed provider.",
+            title: m.settings.providers.update.finishedTitle(PROVIDER_DISPLAY_NAMES[provider]),
+            description: m.settings.providers.update.finishedDescription,
           });
         })
         .catch((error: unknown) => {
           toastManager.add({
             type: "error",
-            title: `Could not update ${PROVIDER_DISPLAY_NAMES[provider]}`,
-            description: error instanceof Error ? error.message : "The provider update failed.",
+            title: m.settings.providers.update.failedTitle(PROVIDER_DISPLAY_NAMES[provider]),
+            description:
+              error instanceof Error ? error.message : m.settings.providers.update.requestFailed,
           });
         })
         .finally(async () => {
@@ -873,7 +884,7 @@ export function ProvidersSettingsPanel({
           });
         });
     },
-    [queryClient, updatingProviders],
+    [m, queryClient, updatingProviders],
   );
 
   if (!active) return null;
@@ -881,14 +892,15 @@ export function ProvidersSettingsPanel({
   return (
     <div className="space-y-6">
       <div id={SETTINGS_TARGETS.providerUpdates}>
-        <SettingsSection title="Updates">
+        <SettingsSection title={m.settings.providers.updates.title}>
           <SettingsRow
-            title="Automatic CLI update checks"
-            description="Check Codex, Claude, and other provider CLIs for newer versions in the background."
+            title={m.settings.providers.updates.autoChecks.title}
+            anchorKey="providers:automatic-cli-update-checks"
+            description={m.settings.providers.updates.autoChecks.description}
             resetAction={
               settings.enableProviderUpdateChecks !== defaults.enableProviderUpdateChecks ? (
                 <SettingResetButton
-                  label="CLI update checks"
+                  label={m.settings.providers.updates.autoChecks.resetLabel}
                   onClick={() =>
                     updateSettings({
                       enableProviderUpdateChecks: defaults.enableProviderUpdateChecks,
@@ -903,35 +915,37 @@ export function ProvidersSettingsPanel({
                 onCheckedChange={(checked) =>
                   updateSettings({ enableProviderUpdateChecks: Boolean(checked) })
                 }
-                aria-label="Automatic CLI update checks"
+                aria-label={m.settings.providers.updates.autoChecks.ariaLabel}
               />
             }
           />
 
           <SettingsRow
-            title="Provider updates"
-            description="Review installed provider tools that Synara can safely update."
-            status={
-              !settings.enableProviderUpdateChecks
-                ? "Automatic checks off"
-                : outdatedProviderCount > 0
-                  ? `${outdatedProviderCount} ${pluralize(outdatedProviderCount, "update")} available`
-                  : "No provider updates detected"
-            }
+            title={m.settings.providers.updates.providerUpdates.title}
+            anchorKey="providers:provider-updates"
+            description={m.settings.providers.updates.providerUpdates.description}
+            status={providerCheckStatusLabel(
+              m.settings.providers,
+              settings.enableProviderUpdateChecks,
+              outdatedProviderCount,
+            )}
           >
             {settings.enableProviderUpdateChecks && outdatedProviderStatuses.length > 0 ? (
               <div
                 className={cn(
                   "mt-4",
                   SETTINGS_INSET_LIST_CLASS_NAME,
-                  "divide-y divide-[color:var(--color-border)]",
+                  SETTINGS_STACKED_ROWS_DIVIDER_CLASS_NAME,
                 )}
               >
                 {outdatedProviderStatuses.map((providerStatus) => {
                   const updateActive =
                     isProviderUpdateActive(providerStatus) ||
                     updatingProviders.has(providerStatus.provider);
-                  const updateLabel = providerUpdateStatusLabel(providerStatus);
+                  const updateLabel = providerUpdateStatusLabel(
+                    providerStatus,
+                    m.settings.providers,
+                  );
                   return (
                     <SettingsListRow
                       key={providerStatus.provider}
@@ -946,7 +960,9 @@ export function ProvidersSettingsPanel({
                             onUpdate={(provider) => void runProviderUpdate(provider)}
                           />
                         ) : (
-                          <span className="text-[11px] text-muted-foreground">Manual update</span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {m.settings.providers.updates.manualUpdate}
+                          </span>
                         )
                       }
                     />
@@ -958,21 +974,22 @@ export function ProvidersSettingsPanel({
         </SettingsSection>
       </div>
 
-      <SettingsSection title="Provider picker">
+      <SettingsSection title={m.settings.providers.picker.title}>
         <SettingsRow
-          title="Visible providers"
-          description="Drag providers into your preferred picker order and hide the ones you don't use. The provider you're currently using on a thread always stays visible."
+          title={m.settings.providers.picker.visible.title}
+          anchorKey="providers:visible-providers"
+          description={m.settings.providers.picker.visible.description}
           status={
             hiddenProviderCount > 0
-              ? `${hiddenProviderCount} ${pluralize(hiddenProviderCount, "provider")} hidden`
+              ? m.settings.providers.picker.hiddenCount(hiddenProviderCount)
               : isProviderOrderDirty
-                ? "Custom order"
-                : "All providers visible"
+                ? m.settings.providers.picker.customOrder
+                : m.settings.providers.picker.allVisible
           }
           resetAction={
             hiddenProviderCount > 0 || isProviderOrderDirty ? (
               <SettingResetButton
-                label="provider picker"
+                label={m.settings.providers.picker.visible.resetLabel}
                 onClick={() =>
                   updateSettings({
                     hiddenProviders: defaults.hiddenProviders,
@@ -1017,21 +1034,20 @@ export function ProvidersSettingsPanel({
       </SettingsSection>
 
       <div>
-        <SettingsSection title="Provider tools">
+        <SettingsSection title={m.settings.providers.tools.title}>
           <SettingsRow
-            title="Installed CLIs"
-            description="Review provider versions and update tools. Open a row only when you need binary overrides."
-            status={
-              !settings.enableProviderUpdateChecks
-                ? "Automatic checks off"
-                : outdatedProviderCount > 0
-                  ? `${outdatedProviderCount} ${pluralize(outdatedProviderCount, "update")} available`
-                  : "No provider updates detected"
-            }
+            title={m.settings.providers.tools.installed.title}
+            anchorKey="providers:installed-clis"
+            description={m.settings.providers.tools.installed.description}
+            status={providerCheckStatusLabel(
+              m.settings.providers,
+              settings.enableProviderUpdateChecks,
+              outdatedProviderCount,
+            )}
             resetAction={
               installSettingsDirty ? (
                 <SettingResetButton
-                  label="provider tools"
+                  label={m.settings.providers.tools.installed.resetLabel}
                   onClick={() => {
                     updateSettings(createProviderInstallResetPatch(defaults));
                     setOpenInstallProviders(createClosedProviderInstallDisclosureState());

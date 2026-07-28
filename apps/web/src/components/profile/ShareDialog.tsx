@@ -20,6 +20,8 @@ import {
   type ShareTarget,
   shareIntentUrl,
 } from "./shareCardExport";
+import { useMessages } from "~/i18n/context";
+import { dialogs as defaultDialogCopy } from "~/i18n/locales/en/dialogs";
 
 const PREVIEW_WIDTH = 480;
 const CARD_EXPORT_SIZE = { width: SHARE_CARD_WIDTH, height: SHARE_CARD_HEIGHT } as const;
@@ -46,6 +48,7 @@ export function ShareDialog({
   open,
   onOpenChange,
 }: ShareDialogProps) {
+  const copy = useMessages().dialogs.share;
   const cardRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState<ShareTarget | "copy" | "save" | null>(null);
@@ -131,9 +134,9 @@ export function ShareDialog({
       .then((blob) => {
         if (blob) {
           downloadBlob(blob, `synara-stats-${stats.timezone.today}.png`);
-          setStatus("Saved PNG to your downloads.");
+          setStatus(defaultDialogCopy.share.savedPng);
         } else {
-          setStatus("Could not render the image.");
+          setStatus(defaultDialogCopy.share.renderFailed);
         }
       })
       .finally(() => {
@@ -147,7 +150,7 @@ export function ShareDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup className="sm:max-w-[560px]">
-        <DialogTitle className="text-center text-xl">Share your activity</DialogTitle>
+        <DialogTitle className="text-center text-xl">{copy.title}</DialogTitle>
         <div className="mt-5 flex flex-col items-center gap-7 px-2 pb-3">
           <div
             ref={previewRef}
@@ -175,8 +178,8 @@ export function ShareDialog({
 
           <div className="flex flex-wrap items-start justify-center gap-x-6 gap-y-4">
             <ShareButton
-              label="Copy"
-              ariaLabel="Copy stat card"
+              label={copy.copy}
+              ariaLabel={copy.copyStatCard}
               busy={busy === "copy"}
               disabled={actionsDisabled}
               onClick={() => void handleCopy()}
@@ -208,8 +211,8 @@ export function ShareDialog({
               <SiReddit className="size-5" />
             </ShareButton>
             <ShareButton
-              label="Save"
-              ariaLabel="Save stat card"
+              label={copy.save}
+              ariaLabel={copy.saveStatCard}
               busy={busy === "save"}
               disabled={actionsDisabled}
               onClick={() => void handleSave()}
@@ -230,22 +233,22 @@ export function ShareDialog({
 function copyStatusMessage(result: CopyResult): string {
   switch (result) {
     case "copied":
-      return "Copied image to clipboard.";
+      return defaultDialogCopy.share.copiedToClipboard;
     case "render-failed":
-      return "Could not render the image.";
+      return defaultDialogCopy.share.renderFailed;
     case "clipboard-unavailable":
-      return "Image copy unavailable. Use Save instead.";
+      return defaultDialogCopy.share.copyUnavailable;
   }
 }
 
 function shareStatusMessage(result: CopyResult): string {
   switch (result) {
     case "copied":
-      return "Image copied to clipboard — paste it into your post.";
+      return defaultDialogCopy.share.copiedForPost;
     case "render-failed":
-      return "Composer opened. Use Save to attach the image.";
+      return defaultDialogCopy.share.composerOpened;
     case "clipboard-unavailable":
-      return "Composer opened. Image copy unavailable; use Save to attach.";
+      return defaultDialogCopy.share.composerOpenedNoCopy;
   }
 }
 

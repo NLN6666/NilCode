@@ -50,39 +50,70 @@ export const ORIGIN_SECTION_ORDER = [
   "agents",
   "project",
 ] as const;
-export function skillOriginInfo(scope: string | undefined): SkillOriginInfo {
+/**
+ * Structural subset of the `settings.skills` catalog group. The panel passes `m.settings.skills`
+ * straight through, so adding a label here is a compile error in every locale — the same safety
+ * net the catalogs themselves provide. Provider names are product nouns and stay untranslated.
+ */
+export interface SettingsSkillLabels {
+  readonly sharedSkills: string;
+  readonly fromOrigin: (label: string) => string;
+  readonly noDescription: string;
+  readonly origins: {
+    readonly shared: string;
+    readonly project: string;
+    readonly personal: string;
+  };
+}
+
+/** Provider behind an origin scope, independent of any display copy. */
+function originProvider(scope: string | undefined): ProviderKind | null {
+  switch (scope) {
+    case "codex":
+      return "codex";
+    case "claude":
+      return "claudeAgent";
+    case "cursor":
+      return "cursor";
+    case "antigravity":
+      return "antigravity";
+    case "grok":
+      return "grok";
+    case "droid":
+      return "droid";
+    case "kilo":
+      return "kilo";
+    case "opencode":
+      return "opencode";
+    case "pi":
+      return "pi";
+    default:
+      return null;
+  }
+}
+
+export function skillOriginInfo(
+  scope: string | undefined,
+  labels: SettingsSkillLabels["origins"],
+): SkillOriginInfo {
+  const provider = originProvider(scope);
+  if (provider) {
+    return { label: PROVIDER_DISPLAY_NAMES[provider], provider };
+  }
   switch (scope) {
     case "synara":
       return { label: "Synara", provider: null };
-    case "codex":
-      return { label: PROVIDER_DISPLAY_NAMES.codex, provider: "codex" };
-    case "claude":
-      return { label: PROVIDER_DISPLAY_NAMES.claudeAgent, provider: "claudeAgent" };
-    case "cursor":
-      return { label: PROVIDER_DISPLAY_NAMES.cursor, provider: "cursor" };
-    case "antigravity":
-      return { label: PROVIDER_DISPLAY_NAMES.antigravity, provider: "antigravity" };
-    case "grok":
-      return { label: PROVIDER_DISPLAY_NAMES.grok, provider: "grok" };
-    case "droid":
-      return { label: PROVIDER_DISPLAY_NAMES.droid, provider: "droid" };
-    case "kilo":
-      return { label: PROVIDER_DISPLAY_NAMES.kilo, provider: "kilo" };
-    case "opencode":
-      return { label: PROVIDER_DISPLAY_NAMES.opencode, provider: "opencode" };
-    case "pi":
-      return { label: PROVIDER_DISPLAY_NAMES.pi, provider: "pi" };
     case "agents":
-      return { label: "Shared (.agents)", provider: null };
+      return { label: labels.shared, provider: null };
     case "project":
-      return { label: "Project", provider: null };
+      return { label: labels.project, provider: null };
     default:
-      return { label: scope ?? "Personal", provider: null };
+      return { label: scope ?? labels.personal, provider: null };
   }
 }
 
 export function providersForSkillOrigin(origin: string): ProviderKind[] {
-  const provider = skillOriginInfo(origin).provider;
+  const provider = originProvider(origin);
   return provider ? [provider] : [];
 }
 
@@ -113,11 +144,11 @@ function sourceSortKey(source: SettingsSkillSource): string {
   return `${originRank(source.origin).toString().padStart(2, "0")}\u0000${source.skill.path}`;
 }
 
-function sectionTitle(section: string): string {
+function sectionTitle(section: string, labels: SettingsSkillLabels): string {
   if (section === SHARED_SKILLS_SECTION) {
-    return "Shared skills";
+    return labels.sharedSkills;
   }
-  return `From ${skillOriginInfo(section).label}`;
+  return labels.fromOrigin(skillOriginInfo(section, labels.origins).label);
 }
 
 function sectionRank(section: string): number {
@@ -131,6 +162,7 @@ function sectionRank(section: string): number {
 // stay visible as sources instead of letting the first origin hide the rest.
 export function buildSettingsSkillGroups(
   skills: ReadonlyArray<ProviderSkillDescriptor>,
+  labels: SettingsSkillLabels,
 ): SettingsSkillGroup[] {
   const groups = new Map<string, SettingsSkillSource[]>();
   for (const skill of skills) {
@@ -139,7 +171,7 @@ export function buildSettingsSkillGroups(
     const source: SettingsSkillSource = {
       skill,
       origin,
-      originInfo: skillOriginInfo(origin),
+      originInfo: skillOriginInfo(origin, labels.origins),
     };
     groups.set(key, [...(groups.get(key) ?? []), source]);
   }
@@ -161,7 +193,9 @@ export function buildSettingsSkillGroups(
       const section =
         sources.length > 1 ? SHARED_SKILLS_SECTION : (sources[0]?.origin ?? PERSONAL_ORIGIN);
       const description =
-        primarySkill.interface?.shortDescription ?? primarySkill.description ?? "No description.";
+        primarySkill.interface?.shortDescription ??
+        primarySkill.description ??
+        labels.noDescription;
       return {
         key,
         displayName: skillDisplayName(primarySkill),
@@ -178,16 +212,17 @@ export function buildSettingsSkillGroups(
 
 export function buildSettingsSkillSections(
   skills: ReadonlyArray<ProviderSkillDescriptor>,
+  labels: SettingsSkillLabels,
 ): SettingsSkillSection[] {
   const sections = new Map<string, SettingsSkillGroup[]>();
-  for (const group of buildSettingsSkillGroups(skills)) {
+  for (const group of buildSettingsSkillGroups(skills, labels)) {
     sections.set(group.section, [...(sections.get(group.section) ?? []), group]);
   }
 
   return [...sections.entries()]
     .map(([key, groups]) => ({
       key,
-      title: sectionTitle(key),
+      title: sectionTitle(key, labels),
       groups,
     }))
     .sort((left, right) => sectionRank(left.key) - sectionRank(right.key));
