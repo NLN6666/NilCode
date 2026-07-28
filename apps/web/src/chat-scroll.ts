@@ -31,29 +31,59 @@ export function isScrollContainerNearBottom(
   return getScrollContainerDistanceFromBottom(position) <= threshold;
 }
 
-// How long the animated post-send auto-follow may wait for the freshly
-// appended tail rows to reach the DOM. The list measures new rows in its own
-// state before it flushes the grown content height, so a glide issued in that
-// gap gets clamped to the stale bottom: it no-ops and a later unanimated snap
-// does the real travel — the visible send flick. The deadline bounds
-// degenerate cases (e.g. a transcript change that never grows the scrollable
-// area), where gliding immediately is still the best behavior left.
-export const ANIMATED_AUTO_FOLLOW_MEASURE_WAIT_MS = 500;
+// The post-send glide eases toward the *live* bottom re-read every frame instead
+// of a target precomputed once: the virtualized list's estimated content height
+// oscillates while freshly appended rows get measured, and a fixed-target smooth
+// scroll first overshoots the inflated estimate and then gets clamped back when
+// the measurement lands — the visible send bounce.
+export const AUTO_FOLLOW_GLIDE_TIME_CONSTANT_MS = 90;
+export const AUTO_FOLLOW_GLIDE_MIN_STEP_PX = 12;
+export const AUTO_FOLLOW_GLIDE_SETTLE_EPSILON_PX = 1;
+// How long the glide keeps polling for downward travel before giving up when a
+// transcript change never grows the scrollable area.
+export const AUTO_FOLLOW_GLIDE_IDLE_WAIT_MS = 500;
+// Absolute bound so a pathological layout loop cannot hold the glide forever.
+export const AUTO_FOLLOW_GLIDE_MAX_DURATION_MS = 1500;
 
-interface AnimatedAutoFollowDelayInput {
-  animated: boolean;
-  /** The list has a real measured size for the tail row (not an estimate). */
-  tailSizeKnown: boolean;
-  /** The DOM gained downward travel since the auto-follow was scheduled. */
-  tailLaidOut: boolean;
-  now: number;
-  waitDeadline: number;
+const REFERENCE_FRAME_DT_MS = 16.7;
+// A heavy commit can delay the first glide frame by far more than a frame;
+// clamping to ~2 frames keeps that first step from swallowing the whole travel.
+const MAX_GLIDE_FRAME_DT_MS = 34;
+
+/**
+ * Distance to travel this frame. Exponential ease-out against the remaining
+ * distance keeps the motion continuous when the target moves mid-glide; the
+ * minimum step (scaled by frame time) bounds the asymptotic tail.
+ */
+export function computeAutoFollowGlideStep(distancePx: number, frameDtMs: number): number {
+  if (!Number.isFinite(distancePx) || distancePx <= 0) return 0;
+  const dt =
+    Number.isFinite(frameDtMs) && frameDtMs > 0
+      ? Math.min(frameDtMs, MAX_GLIDE_FRAME_DT_MS)
+      : REFERENCE_FRAME_DT_MS;
+  const fraction = 1 - Math.exp(-dt / AUTO_FOLLOW_GLIDE_TIME_CONSTANT_MS);
+  const minStep = AUTO_FOLLOW_GLIDE_MIN_STEP_PX * (dt / REFERENCE_FRAME_DT_MS);
+  return Math.min(distancePx, Math.max(minStep, distancePx * fraction));
 }
 
-export function shouldDelayAnimatedAutoFollowScroll(input: AnimatedAutoFollowDelayInput): boolean {
-  if (!input.animated) return false;
-  if (input.now >= input.waitDeadline) return false;
-  return !(input.tailSizeKnown && input.tailLaidOut);
+export type AutoFollowGlidePhase = "waiting" | "moving" | "settled";
+
+interface AutoFollowGlidePhaseInput {
+  distancePx: number;
+  /** The glide already moved the viewport at least once. */
+  hasTraveled: boolean;
+  now: number;
+  startedAt: number;
+}
+
+export function resolveAutoFollowGlidePhase(
+  input: AutoFollowGlidePhaseInput,
+): AutoFollowGlidePhase {
+  const elapsed = input.now - input.startedAt;
+  if (elapsed >= AUTO_FOLLOW_GLIDE_MAX_DURATION_MS) return "settled";
+  if (input.distancePx > AUTO_FOLLOW_GLIDE_SETTLE_EPSILON_PX) return "moving";
+  if (input.hasTraveled) return "settled";
+  return elapsed >= AUTO_FOLLOW_GLIDE_IDLE_WAIT_MS ? "settled" : "waiting";
 }
 
 interface AtEndReportGuardInput {

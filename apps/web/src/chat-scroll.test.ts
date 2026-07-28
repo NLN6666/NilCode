@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ANIMATED_AUTO_FOLLOW_MEASURE_WAIT_MS,
+  AUTO_FOLLOW_GLIDE_IDLE_WAIT_MS,
+  AUTO_FOLLOW_GLIDE_MAX_DURATION_MS,
+  AUTO_FOLLOW_GLIDE_MIN_STEP_PX,
   AUTO_SCROLL_BOTTOM_THRESHOLD_PX,
   USER_SCROLL_INTENT_WINDOW_MS,
+  computeAutoFollowGlideStep,
   getScrollContainerDistanceFromBottom,
   isScrollContainerNearBottom,
-  shouldDelayAnimatedAutoFollowScroll,
+  resolveAutoFollowGlidePhase,
   shouldIgnoreListAtEndReport,
 } from "./chat-scroll";
 
@@ -159,64 +162,101 @@ describe("shouldIgnoreListAtEndReport", () => {
   });
 });
 
-describe("shouldDelayAnimatedAutoFollowScroll", () => {
-  it("never delays unanimated re-sticks", () => {
-    expect(
-      shouldDelayAnimatedAutoFollowScroll({
-        animated: false,
-        tailSizeKnown: false,
-        tailLaidOut: false,
-        now: 1_000,
-        waitDeadline: 1_500,
-      }),
-    ).toBe(false);
+describe("computeAutoFollowGlideStep", () => {
+  it("returns zero when there is no distance left to travel", () => {
+    expect(computeAutoFollowGlideStep(0, 16.7)).toBe(0);
+    expect(computeAutoFollowGlideStep(-40, 16.7)).toBe(0);
+    expect(computeAutoFollowGlideStep(Number.NaN, 16.7)).toBe(0);
   });
 
-  it("launches the glide once the tail is measured and in the DOM", () => {
-    expect(
-      shouldDelayAnimatedAutoFollowScroll({
-        animated: true,
-        tailSizeKnown: true,
-        tailLaidOut: true,
-        now: 1_000,
-        waitDeadline: 1_500,
-      }),
-    ).toBe(false);
+  it("never overshoots the remaining distance", () => {
+    expect(computeAutoFollowGlideStep(5, 16.7)).toBe(5);
+    expect(computeAutoFollowGlideStep(2, 1_000)).toBe(2);
   });
 
-  it("waits while the appended tail row is still an estimate", () => {
-    expect(
-      shouldDelayAnimatedAutoFollowScroll({
-        animated: true,
-        tailSizeKnown: false,
-        tailLaidOut: true,
-        now: 1_000,
-        waitDeadline: 1_500,
-      }),
-    ).toBe(true);
+  it("eases proportionally to the remaining distance", () => {
+    const nearStep = computeAutoFollowGlideStep(100, 16.7);
+    const farStep = computeAutoFollowGlideStep(1_000, 16.7);
+    expect(farStep).toBeGreaterThan(nearStep);
+    expect(farStep).toBeLessThan(1_000);
   });
 
-  it("waits while the grown content has not reached the DOM", () => {
-    expect(
-      shouldDelayAnimatedAutoFollowScroll({
-        animated: true,
-        tailSizeKnown: true,
-        tailLaidOut: false,
-        now: 1_000,
-        waitDeadline: 1_500,
-      }),
-    ).toBe(true);
+  it("keeps a minimum step so the asymptotic tail stays bounded", () => {
+    expect(computeAutoFollowGlideStep(1_000_000, 16.7)).toBeGreaterThanOrEqual(
+      AUTO_FOLLOW_GLIDE_MIN_STEP_PX,
+    );
+    expect(computeAutoFollowGlideStep(50, 16.7)).toBeGreaterThanOrEqual(
+      AUTO_FOLLOW_GLIDE_MIN_STEP_PX,
+    );
   });
 
-  it("gives up once the wait deadline passes", () => {
+  it("scales with frame time so slower frames travel farther", () => {
+    const oneFrame = computeAutoFollowGlideStep(1_000, 16.7);
+    const doubleFrame = computeAutoFollowGlideStep(1_000, 33.4);
+    expect(doubleFrame).toBeGreaterThan(oneFrame);
+  });
+
+  it("falls back to a reference frame time for invalid deltas", () => {
+    expect(computeAutoFollowGlideStep(1_000, Number.NaN)).toBe(
+      computeAutoFollowGlideStep(1_000, 16.7),
+    );
+    expect(computeAutoFollowGlideStep(1_000, 0)).toBe(computeAutoFollowGlideStep(1_000, 16.7));
+  });
+});
+
+describe("resolveAutoFollowGlidePhase", () => {
+  it("keeps moving while there is distance left", () => {
     expect(
-      shouldDelayAnimatedAutoFollowScroll({
-        animated: true,
-        tailSizeKnown: false,
-        tailLaidOut: false,
-        now: 1_000 + ANIMATED_AUTO_FOLLOW_MEASURE_WAIT_MS,
-        waitDeadline: 1_000 + ANIMATED_AUTO_FOLLOW_MEASURE_WAIT_MS,
+      resolveAutoFollowGlidePhase({
+        distancePx: 120,
+        hasTraveled: true,
+        now: 1_100,
+        startedAt: 1_000,
       }),
-    ).toBe(false);
+    ).toBe("moving");
+  });
+
+  it("waits at the bottom until the appended tail grows the scrollable area", () => {
+    expect(
+      resolveAutoFollowGlidePhase({
+        distancePx: 0,
+        hasTraveled: false,
+        now: 1_100,
+        startedAt: 1_000,
+      }),
+    ).toBe("waiting");
+  });
+
+  it("settles once the traveled glide reaches the bottom", () => {
+    expect(
+      resolveAutoFollowGlidePhase({
+        distancePx: 0,
+        hasTraveled: true,
+        now: 1_100,
+        startedAt: 1_000,
+      }),
+    ).toBe("settled");
+  });
+
+  it("gives up waiting when the transcript change never grows the area", () => {
+    expect(
+      resolveAutoFollowGlidePhase({
+        distancePx: 0,
+        hasTraveled: false,
+        now: 1_000 + AUTO_FOLLOW_GLIDE_IDLE_WAIT_MS,
+        startedAt: 1_000,
+      }),
+    ).toBe("settled");
+  });
+
+  it("hard-stops at the maximum duration even with distance left", () => {
+    expect(
+      resolveAutoFollowGlidePhase({
+        distancePx: 500,
+        hasTraveled: true,
+        now: 1_000 + AUTO_FOLLOW_GLIDE_MAX_DURATION_MS,
+        startedAt: 1_000,
+      }),
+    ).toBe("settled");
   });
 });
