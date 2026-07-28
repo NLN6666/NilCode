@@ -165,9 +165,9 @@ describe("appendPenPoint", () => {
   it("drops points inside the jitter threshold", () => {
     const original = penItem([{ x: 0, y: 0 }]);
 
-    expect(
-      appendPenPoint(original, { x: ANNOTATION_PEN_MIN_POINT_DISTANCE_PX / 2, y: 0 }),
-    ).toBe(original);
+    expect(appendPenPoint(original, { x: ANNOTATION_PEN_MIN_POINT_DISTANCE_PX / 2, y: 0 })).toBe(
+      original,
+    );
   });
 });
 
@@ -449,8 +449,30 @@ describe("renderAnnotationScene", () => {
     ]);
 
     // drawImage(base) first, then shrink into the corner, then blow it back up.
-    expect(context.drawImage).toHaveBeenNthCalledWith(2, context.canvas, 0, 0, 100, 50, 0, 0, 10, 5);
-    expect(context.drawImage).toHaveBeenNthCalledWith(3, context.canvas, 0, 0, 10, 5, 0, 0, 100, 50);
+    expect(context.drawImage).toHaveBeenNthCalledWith(
+      2,
+      context.canvas,
+      0,
+      0,
+      100,
+      50,
+      0,
+      0,
+      10,
+      5,
+    );
+    expect(context.drawImage).toHaveBeenNthCalledWith(
+      3,
+      context.canvas,
+      0,
+      0,
+      10,
+      5,
+      0,
+      0,
+      100,
+      50,
+    );
     // Turned off for the pixelation pass, then put back the way it was found.
     expect(context.smoothingWrites).toEqual([false, true]);
     expect(context.imageSmoothingEnabled).toBe(true);

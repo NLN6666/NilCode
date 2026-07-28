@@ -615,9 +615,7 @@ export function normalizeFileComments(
   return normalizedComments;
 }
 
-export function normalizeBrowserElement(
-  element: BrowserElementDraft,
-): BrowserElementDraft | null {
+export function normalizeBrowserElement(element: BrowserElementDraft): BrowserElementDraft | null {
   const normalized = normalizeBrowserElementSelection(element);
   if (!normalized) {
     return null;

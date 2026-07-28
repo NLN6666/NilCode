@@ -1135,8 +1135,7 @@ export function BrowserPanel({
 
   const composerAttachmentCount =
     composerDraftImageCount + composerDraftFileCount + composerDraftAssistantSelectionCount;
-  const composerAttachmentsAreFull =
-    composerAttachmentCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS;
+  const composerAttachmentsAreFull = composerAttachmentCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS;
   const attachmentLimitMessage = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} references per message.`;
 
   const onCaptureScreenshot = useCallback(() => {

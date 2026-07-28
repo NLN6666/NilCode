@@ -196,9 +196,7 @@ function readBackendNodeId(params: unknown): number | null {
     return null;
   }
   const backendNodeId = params.backendNodeId;
-  return typeof backendNodeId === "number" && Number.isFinite(backendNodeId)
-    ? backendNodeId
-    : null;
+  return typeof backendNodeId === "number" && Number.isFinite(backendNodeId) ? backendNodeId : null;
 }
 
 function readObjectId(result: unknown): string | null {
@@ -209,9 +207,7 @@ function readObjectId(result: unknown): string | null {
   if (!isRecord(object)) {
     return null;
   }
-  return typeof object.objectId === "string" && object.objectId.length > 0
-    ? object.objectId
-    : null;
+  return typeof object.objectId === "string" && object.objectId.length > 0 ? object.objectId : null;
 }
 
 function readCallFunctionValue(result: unknown): unknown {
@@ -344,10 +340,7 @@ export class BrowserElementPicker {
    * be armed right now. `setInspectMode({mode:"none"})` is idempotent, so an extra call on a
    * never-armed page is harmless.
    */
-  private async bailOutIfSuperseded(
-    target: BrowserTabInput,
-    generation: number,
-  ): Promise<boolean> {
+  private async bailOutIfSuperseded(target: BrowserTabInput, generation: number): Promise<boolean> {
     if (this.sessions.get(target.threadId)?.generation === generation) {
       return false;
     }

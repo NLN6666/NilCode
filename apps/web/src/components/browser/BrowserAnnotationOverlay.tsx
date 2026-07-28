@@ -11,14 +11,7 @@
 //  - The page is frozen up front (the caller captures a screenshot), so nothing here touches
 //    the live page and scrolling can never desync a mark from what it points at.
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type PointerEvent,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 
 import {
   ANNOTATION_COLORS,

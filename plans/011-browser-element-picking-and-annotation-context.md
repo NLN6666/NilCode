@@ -52,13 +52,13 @@ Executor: 动代码前先完整读完本计划。遵守 STOP 条件，完成后�
 
 ## 已确认的设计决策（不要重新论证，直接实现）
 
-| 决策 | 选定方案 | 理由 |
-| --- | --- | --- |
-| 上下文流向 | 写入 composer 草稿，用户点发送才生效 | 用户明确要求；契合既有 `fileComments` / `terminalContexts` 模式 |
-| 元素产物形态 | 结构文本 chip **+** 元素区域裁剪图 | agent 既能定位代码（selector/HTML/样式），又能看见长相（视觉类问题） |
-| painting 绘制层 | **先截图，再在静态图上画** | 不碰页面 DOM、不受 CSP 限制、native 与 renderer 两种 surface 都成立；页面冻结反而避免滚动/动画干扰标注 |
-| 拾取高亮 | **CDP 原生 `Overlay.setInspectMode`** | 零注入、跨 iframe 自动生效、实现量最小；外观是 Chrome DevTools 蓝紫盒模型，可接受 |
-| 裁剪图开关 | 默认附带，不做开关 | 它就是普通 image 附件，不想要直接在附件区删除即可；加开关是多余状态 |
+| 决策            | 选定方案                              | 理由                                                                                                   |
+| --------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 上下文流向      | 写入 composer 草稿，用户点发送才生效  | 用户明确要求；契合既有 `fileComments` / `terminalContexts` 模式                                        |
+| 元素产物形态    | 结构文本 chip **+** 元素区域裁剪图    | agent 既能定位代码（selector/HTML/样式），又能看见长相（视觉类问题）                                   |
+| painting 绘制层 | **先截图，再在静态图上画**            | 不碰页面 DOM、不受 CSP 限制、native 与 renderer 两种 surface 都成立；页面冻结反而避免滚动/动画干扰标注 |
+| 拾取高亮        | **CDP 原生 `Overlay.setInspectMode`** | 零注入、跨 iframe 自动生效、实现量最小；外观是 Chrome DevTools 蓝紫盒模型，可接受                      |
+| 裁剪图开关      | 默认附带，不做开关                    | 它就是普通 image 附件，不想要直接在附件区删除即可；加开关是多余状态                                    |
 
 ## 不可协商的约束
 
@@ -80,7 +80,7 @@ Executor: 动代码前先完整读完本计划。遵守 STOP 条件，完成后�
 
 ```ts
 export interface BrowserElementRect {
-  x: number;      // 文档坐标（含滚动偏移），CSS 像素
+  x: number; // 文档坐标（含滚动偏移），CSS 像素
   y: number;
   width: number;
   height: number;
@@ -89,14 +89,14 @@ export interface BrowserElementRect {
 export interface BrowserElementSelection {
   tabId: string;
   pageUrl: string;
-  selector: string;            // 稳定 CSS 选择器
-  tagName: string;             // 小写
+  selector: string; // 稳定 CSS 选择器
+  tagName: string; // 小写
   elementId: string | null;
   classNames: string[];
-  textSnippet: string | null;  // 已截断
-  outerHtmlSnippet: string;    // 已截断
+  textSnippet: string | null; // 已截断
+  outerHtmlSnippet: string; // 已截断
   rect: BrowserElementRect;
-  computedStyles: Record<string, string>;  // 白名单属性
+  computedStyles: Record<string, string>; // 白名单属性
 }
 
 // 用 type 别名而非空 interface 继承，避免 no-empty-interface lint 报错
@@ -106,7 +106,7 @@ export type BrowserCancelElementPickInput = BrowserThreadInput;
 export interface BrowserElementPickedEvent {
   threadId: ThreadId;
   selection: BrowserElementSelection;
-  screenshot: BrowserCaptureScreenshotResult | null;  // 裁剪失败时为 null，不影响文本上下文
+  screenshot: BrowserCaptureScreenshotResult | null; // 裁剪失败时为 null，不影响文本上下文
 }
 
 export interface BrowserElementPickCancelledEvent {
@@ -158,21 +158,37 @@ export const BROWSER_ELEMENT_MAX_CLASS_NAMES = 12;
 
 // 白名单：够 agent 判断布局/视觉问题，又不至于把数百个属性灌进 prompt
 export const BROWSER_ELEMENT_STYLE_ALLOWLIST = [
-  "display", "position", "width", "height",
-  "margin", "padding", "color", "background-color",
-  "font-size", "font-family", "font-weight", "line-height",
-  "border", "border-radius", "flex-direction", "align-items",
-  "justify-content", "gap", "z-index", "overflow",
+  "display",
+  "position",
+  "width",
+  "height",
+  "margin",
+  "padding",
+  "color",
+  "background-color",
+  "font-size",
+  "font-family",
+  "font-weight",
+  "line-height",
+  "border",
+  "border-radius",
+  "flex-direction",
+  "align-items",
+  "justify-content",
+  "gap",
+  "z-index",
+  "overflow",
 ] as const;
 
 export function buildBrowserElementSelection(input: {
   tabId: string;
   pageUrl: string;
-  raw: unknown;             // Runtime.callFunctionOn 的返回值，未经信任
+  raw: unknown; // Runtime.callFunctionOn 的返回值，未经信任
 }): BrowserElementSelection | null;
 ```
 
 要求：
+
 - `raw` 逐字段做类型判断，任一必需字段缺失/类型错误 → 返回 `null`（调用方降级处理，不抛异常炸掉拾取）。
 - 字符串一律去掉控制字符、折叠空白、按上表常量截断（截断处补 `…`）。
 - `computedStyles` 只保留白名单键，且值同样截断。
@@ -213,7 +229,7 @@ function () {
   // 起拼 :nth-of-type 路径，向上最多 5 层。
   return {
     selector, tagName, elementId, classNames, textSnippet,
-    outerHtmlSnippet, 
+    outerHtmlSnippet,
     rect: { x: rect.left + scrollX, y: rect.top + scrollY, width: rect.width, height: rect.height },
     computedStyles,   // 只读白名单里的键
   };
@@ -238,12 +254,19 @@ export interface BrowserElementDraft extends BrowserElementSelection {
   createdAt: string;
 }
 
-export function createBrowserElementDraft(selection: BrowserElementSelection): BrowserElementDraft | null;
-export function browserElementDedupKey(draft: Pick<BrowserElementDraft, "pageUrl" | "selector">): string;
-export function formatBrowserElementLabel(d: BrowserElementDraft): string;    // "button.btn-primary"
-export function formatBrowserElementPreview(d: BrowserElementDraft): string;  // 主机名 + 文本片段
+export function createBrowserElementDraft(
+  selection: BrowserElementSelection,
+): BrowserElementDraft | null;
+export function browserElementDedupKey(
+  draft: Pick<BrowserElementDraft, "pageUrl" | "selector">,
+): string;
+export function formatBrowserElementLabel(d: BrowserElementDraft): string; // "button.btn-primary"
+export function formatBrowserElementPreview(d: BrowserElementDraft): string; // 主机名 + 文本片段
 export function buildBrowserElementsPromptBlock(items: readonly BrowserElementSelection[]): string;
-export function appendBrowserElementsToPrompt(prompt: string, items: readonly BrowserElementSelection[]): string;
+export function appendBrowserElementsToPrompt(
+  prompt: string,
+  items: readonly BrowserElementSelection[],
+): string;
 export function extractTrailingBrowserElements(prompt: string): ExtractedBrowserElements;
 export function stripTrailingBrowserElements(prompt: string): string;
 ```
@@ -307,36 +330,68 @@ export function resolveNextInteractionMode(current, action): BrowserPanelInterac
 
 ```ts
 export type AnnotationTool = "pen" | "rect" | "arrow" | "text" | "mosaic";
-export interface AnnotationPoint { x: number; y: number }
+export interface AnnotationPoint {
+  x: number;
+  y: number;
+}
 
-interface AnnotationItemBase { id: string }
+interface AnnotationItemBase {
+  id: string;
+}
 
 export interface AnnotationPenItem extends AnnotationItemBase {
-  tool: "pen"; color: string; lineWidth: number; points: AnnotationPoint[];
+  tool: "pen";
+  color: string;
+  lineWidth: number;
+  points: AnnotationPoint[];
 }
 export interface AnnotationRectItem extends AnnotationItemBase {
-  tool: "rect"; color: string; lineWidth: number; start: AnnotationPoint; end: AnnotationPoint;
+  tool: "rect";
+  color: string;
+  lineWidth: number;
+  start: AnnotationPoint;
+  end: AnnotationPoint;
 }
 export interface AnnotationArrowItem extends AnnotationItemBase {
-  tool: "arrow"; color: string; lineWidth: number; start: AnnotationPoint; end: AnnotationPoint;
+  tool: "arrow";
+  color: string;
+  lineWidth: number;
+  start: AnnotationPoint;
+  end: AnnotationPoint;
 }
 export interface AnnotationTextItem extends AnnotationItemBase {
-  tool: "text"; color: string; fontSize: number; text: string; at: AnnotationPoint;
+  tool: "text";
+  color: string;
+  fontSize: number;
+  text: string;
+  at: AnnotationPoint;
 }
 export interface AnnotationMosaicItem extends AnnotationItemBase {
-  tool: "mosaic"; blockSize: number; start: AnnotationPoint; end: AnnotationPoint;
+  tool: "mosaic";
+  blockSize: number;
+  start: AnnotationPoint;
+  end: AnnotationPoint;
 }
 
 export type AnnotationItem =
-  | AnnotationPenItem | AnnotationRectItem | AnnotationArrowItem
-  | AnnotationTextItem | AnnotationMosaicItem;
+  | AnnotationPenItem
+  | AnnotationRectItem
+  | AnnotationArrowItem
+  | AnnotationTextItem
+  | AnnotationMosaicItem;
 
 export const ANNOTATION_TEXT_MAX_CHARS = 120;
 export const ANNOTATION_MOSAIC_BLOCK_SIZE = 12;
 
 export function appendPenPoint(item: AnnotationPenItem, point: AnnotationPoint): AnnotationPenItem;
-export function normalizeRect(a: AnnotationPoint, b: AnnotationPoint): {
-  x: number; y: number; width: number; height: number;
+export function normalizeRect(
+  a: AnnotationPoint,
+  b: AnnotationPoint,
+): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 // —— 撤销/重做历史：经典 past/present/future 快照模型 ——
@@ -373,6 +428,7 @@ export async function renderAnnotatedImage(
 **架构要点：只用一个 canvas，底图也画进 canvas，不要用「`<img>` 底图 + 透明 canvas 覆盖」的双层结构。** 原因有二：马赛克必须能采样底层像素，双层结构下 canvas 读不到 `<img>` 的像素；而且单层结构让实时预览和最终导出走**同一个** `renderAnnotationScene`，预览所见即导出所得，从根上消除两者不一致的整类 bug。
 
 各工具渲染规则：
+
 - `pen`：`quadraticCurveTo` 平滑路径，`lineCap`/`lineJoin` 用 `round`。
 - `rect`：`normalizeRect` 后 `strokeRect`，要支持反向拖拽（从右下往左上拉）。
 - `arrow`：主线段 + 箭头两条短边，箭头大小随 `lineWidth` 缩放。

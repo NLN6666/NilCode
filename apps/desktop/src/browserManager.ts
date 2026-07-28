@@ -258,8 +258,7 @@ export class DesktopBrowserManager {
   private readonly listeners = new Set<BrowserStateListener>();
   private readonly copyLinkListeners = new Set<BrowserCopyLinkListener>();
   private readonly elementPickedListeners = new Set<BrowserElementPickedListener>();
-  private readonly elementPickCancelledListeners =
-    new Set<BrowserElementPickCancelledListener>();
+  private readonly elementPickCancelledListeners = new Set<BrowserElementPickCancelledListener>();
   // Element picking is its own state machine (CDP inspect mode + one-shot extraction);
   // this manager only forwards commands and lifecycle signals to it.
   private readonly elementPicker = new BrowserElementPicker({
