@@ -3,10 +3,14 @@
 
 /**
  * How long the process may keep draining its event loop after teardown before
- * the exit is forced. Long enough that a well-behaved loop empties on its own,
- * short enough to stay imperceptible when it does not.
+ * the exit is forced.
+ *
+ * A loop with nothing left empties within a millisecond, so this is not sized
+ * for the normal case — it is the margin for work that legitimately needs one
+ * more tick. Anything slower than this is holding open best-effort I/O, which
+ * is exactly what should not be waited on.
  */
-export const SHUTDOWN_DRAIN_GRACE_MS = 500;
+export const SHUTDOWN_DRAIN_GRACE_MS = 150;
 
 /**
  * Names a handle well enough to act on it: which child is still running, and

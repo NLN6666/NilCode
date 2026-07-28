@@ -3388,6 +3388,9 @@ async function stopBackendAndWaitForExit(timeoutMs = BACKEND_SHUTDOWN_TIMEOUT_MS
 
   if (process.platform === "win32") {
     const forceKillDelayMs = Math.min(BACKEND_FORCE_KILL_DELAY_MS, Math.max(0, timeoutMs - 500));
+    // Pairs with the backend's "stop signal received": the gap between the two
+    // is request latency, and anything before this line is desktop-side setup.
+    writeDesktopLogHeader("backend shutdown requested");
     try {
       const result = await stopWindowsBackendAndWait({
         child: backendChild,
@@ -3442,14 +3445,21 @@ async function shutdownDesktopRuntime(reason: string): Promise<void> {
   const shutdown = runAfterDesktopShutdown(
     stopBackendAndWaitForExit(),
     async () => {
+      // Staged like the backend's own shutdown log: this half runs after the
+      // backend is gone, so without markers its cost is indistinguishable from
+      // the backend being slow to exit.
+      writeDesktopLogHeader(`${reason} backend exited`);
       clearUpdateBackgroundBlurTimer();
       clearUpdateCheckTimeoutTimer();
       clearUpdatePollTimer();
       cancelBackendReadinessWait();
       appSnapManager?.dispose();
       appSnapManager = null;
+      writeDesktopLogHeader(`${reason} appsnap disposed`);
       await disposeBrowserUsePipeServerForShutdown(reason);
+      writeDesktopLogHeader(`${reason} browser-use pipe disposed`);
       browserManager.dispose();
+      writeDesktopLogHeader(`${reason} browser disposed`);
       restoreStdIoCapture?.();
       desktopShutdownComplete = true;
       writeDesktopLogHeader(`${reason} shutdown complete`);
