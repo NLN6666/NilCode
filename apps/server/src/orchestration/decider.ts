@@ -1592,6 +1592,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           attachments: command.message.attachments,
           ...(command.message.skills !== undefined ? { skills: command.message.skills } : {}),
           ...(command.message.mentions !== undefined ? { mentions: command.message.mentions } : {}),
+          ...(command.message.colorPreview !== undefined
+            ? { colorPreview: command.message.colorPreview }
+            : {}),
           dispatchMode,
           // Explicit "user" (not absent): edit-resends replay through a fresh
           // server-side turn.start without an origin, and the projection

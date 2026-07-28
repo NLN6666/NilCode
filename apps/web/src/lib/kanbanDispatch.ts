@@ -41,6 +41,7 @@ import { appendFileCommentsToPrompt, formatFileCommentTitleSeed } from "./fileCo
 import {
   filterPromptProviderMentionReferences,
   filterPromptSkillReferences,
+  promptIncludesColorPreviewMention,
 } from "./composerMentions";
 import {
   appendTerminalContextsToPrompt,
@@ -300,6 +301,7 @@ async function dispatchKanbanDraftThreadOnce(
           attachments: turnAttachments,
           ...(mentionedSkills.length > 0 ? { skills: mentionedSkills } : {}),
           ...(mentionedMentions.length > 0 ? { mentions: mentionedMentions } : {}),
+          ...(promptIncludesColorPreviewMention(outgoingMessageText) ? { colorPreview: true } : {}),
         },
         modelSelection,
         ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),

@@ -51,6 +51,28 @@ export function disclosureWidthClassName(
   return cn(DISCLOSURE_WIDTH_MOTION_CLASS, open ? openWidthClassName : "w-0", className);
 }
 
+/**
+ * Block-axis (height) reveal between two fixed heights, for surfaces that
+ * expand/collapse without collapsing to zero (e.g. the theme preview iframe,
+ * whose sandboxed content cannot report a natural height). Same timing curve
+ * as every other disclosure.
+ */
+export const DISCLOSURE_HEIGHT_MOTION_CLASS =
+  "overflow-hidden transition-[height] duration-220 ease-out motion-reduce:transition-none";
+
+export function disclosureHeightClassName(
+  open: boolean,
+  openHeightClassName: string,
+  closedHeightClassName: string,
+  className?: string,
+) {
+  return cn(
+    DISCLOSURE_HEIGHT_MOTION_CLASS,
+    open ? openHeightClassName : closedHeightClassName,
+    className,
+  );
+}
+
 export function disclosureShellClassName(open: boolean, className?: string) {
   return cn(
     DISCLOSURE_SHELL_MOTION_CLASS,

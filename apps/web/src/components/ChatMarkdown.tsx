@@ -30,6 +30,13 @@ import remarkMath from "remark-math";
 import { copyTextToClipboard } from "../hooks/useCopyToClipboard";
 import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffRendering";
 import { dedentCode, parseCodeFenceInfo, type CodeFenceInfo } from "../lib/codeFence";
+import { findHexColorMatches } from "../lib/colorSwatch";
+import { parseThemeFence } from "../lib/themeFence";
+import {
+  ChatMarkdownSourceContext,
+  ThemeHtmlFencePreview,
+  ThemePreviewCard,
+} from "./chat/ThemePreviewCard";
 import { getFileIconName, pathLooksLikeKnownFile } from "../file-icons";
 import { CentralIcon } from "~/lib/central-icons";
 import { isLocalImageMarkdownSrc } from "../lib/localImageUrls";
@@ -370,6 +377,128 @@ function splitTextNodeWithMarkers(
   }
   return nodes.length > 0 ? nodes : [node];
 }
+// ---------------------------------------------------------------------------
+// Inline hex color swatches (remark layer, same layer as the thread-marker
+// plugin above). MUST run after the marker plugin: markers resolve character
+// offsets against the raw text, and swatch insertion splits text nodes.
+// ---------------------------------------------------------------------------
+
+const COLOR_SWATCH_CLASS_NAME = "chat-color-swatch";
+
+type HastSwatchChild =
+  | { type: "text"; value: string }
+  | {
+      type: "element";
+      tagName: string;
+      properties: Record<string, unknown>;
+      children: HastSwatchChild[];
+    };
+
+function colorSwatchProperties(hex: string): Record<string, unknown> {
+  return {
+    className: [COLOR_SWATCH_CLASS_NAME],
+    style: `background-color: ${hex}`,
+    "aria-hidden": "true",
+  };
+}
+
+function colorSwatchHastElement(hex: string): HastSwatchChild {
+  return { type: "element", tagName: "span", properties: colorSwatchProperties(hex), children: [] };
+}
+
+function colorSwatchMarkdownNode(hex: string): MarkdownNode {
+  return {
+    type: "colorSwatch",
+    data: { hName: "span", hProperties: colorSwatchProperties(hex) },
+    children: [],
+  };
+}
+
+// Prose text: 6/8-digit hex only. The original hex text stays untouched; a
+// swatch node is inserted right before it.
+function splitTextNodeWithColorSwatches(node: MarkdownTextNode): MarkdownNode[] {
+  const matches = findHexColorMatches(node.value, "prose");
+  if (matches.length === 0) {
+    return [node];
+  }
+  const nodes: MarkdownNode[] = [];
+  let cursor = 0;
+  for (const match of matches) {
+    if (match.start > cursor) {
+      nodes.push({ type: "text", value: node.value.slice(cursor, match.start) });
+    }
+    nodes.push(colorSwatchMarkdownNode(match.hex));
+    nodes.push({ type: "text", value: node.value.slice(match.start, match.end) });
+    cursor = match.end;
+  }
+  if (cursor < node.value.length) {
+    nodes.push({ type: "text", value: node.value.slice(cursor) });
+  }
+  return nodes;
+}
+
+type MarkdownInlineCodeNode = {
+  type: "inlineCode";
+  value: string;
+  data?: Record<string, unknown>;
+};
+
+// Inline code: the backticks make 3/4-digit hex unambiguous too. The code span
+// keeps rendering as `<code>`; swatches ride in as extra hast children.
+function applyColorSwatchesToInlineCode(node: MarkdownInlineCodeNode): void {
+  const matches = findHexColorMatches(node.value, "inlineCode");
+  if (matches.length === 0) {
+    return;
+  }
+  const children: HastSwatchChild[] = [];
+  let cursor = 0;
+  for (const match of matches) {
+    if (match.start > cursor) {
+      children.push({ type: "text", value: node.value.slice(cursor, match.start) });
+    }
+    children.push(colorSwatchHastElement(match.hex));
+    children.push({ type: "text", value: node.value.slice(match.start, match.end) });
+    cursor = match.end;
+  }
+  if (cursor < node.value.length) {
+    children.push({ type: "text", value: node.value.slice(cursor) });
+  }
+  node.data = { ...(node.data ?? {}), hName: "code", hChildren: children };
+}
+
+function applyColorSwatchesToNode(node: MarkdownNode): void {
+  if (!node || typeof node !== "object" || !("children" in node) || !Array.isArray(node.children)) {
+    return;
+  }
+  const parent = node as MarkdownParentNode;
+  parent.children = (parent.children ?? []).flatMap((child) => {
+    if (child && typeof child === "object" && "type" in child) {
+      if (child.type === "text") {
+        return splitTextNodeWithColorSwatches(child as MarkdownTextNode);
+      }
+      if (child.type === "inlineCode") {
+        applyColorSwatchesToInlineCode(child as MarkdownInlineCodeNode);
+        return [child];
+      }
+      if (child.type === "code") {
+        // Fenced blocks never get swatches (post-processing Shiki HTML has a
+        // real cost on long blocks).
+        return [child];
+      }
+    }
+    applyColorSwatchesToNode(child);
+    return [child];
+  });
+}
+
+// Stateless, so a single module-level plugin instance keeps the remark plugin
+// array referentially stable across renders.
+function remarkColorSwatches() {
+  return (tree: MarkdownNode) => {
+    applyColorSwatchesToNode(tree);
+  };
+}
+
 const INLINE_MATH_HINT_REGEX = /[\\^_=+\-*/<>()[\]{}]/;
 const ALL_CAPS_DOLLAR_IDENTIFIER_REGEX = /^[A-Z][A-Z0-9_]{1,31}$/;
 
@@ -714,7 +843,7 @@ function nodeToPlainText(node: ReactNode): string {
 
 function extractCodeBlock(
   children: ReactNode,
-): { className: string | undefined; code: string } | null {
+): { className: string | undefined; code: string; meta: string | null } | null {
   const childNodes = Children.toArray(children);
   if (childNodes.length !== 1) {
     return null;
@@ -725,13 +854,23 @@ function extractCodeBlock(
   // below, so detect by shape (a valid element carrying the code text) rather
   // than by tag identity. `pre` only ever wraps a code element in markdown.
   const onlyChild = childNodes[0];
-  if (!isValidElement<{ className?: string; children?: ReactNode }>(onlyChild)) {
+  if (
+    !isValidElement<{
+      className?: string;
+      children?: ReactNode;
+      node?: { data?: { meta?: unknown } };
+    }>(onlyChild)
+  ) {
     return null;
   }
 
+  // mdast-util-to-hast stashes the fence meta (everything after the language
+  // token, e.g. the `theme` in ```html theme) on the code element's data.
+  const metaValue = onlyChild.props.node?.data?.meta;
   return {
     className: onlyChild.props.className,
     code: nodeToPlainText(onlyChild.props.children),
+    meta: typeof metaValue === "string" ? metaValue : null,
   };
 }
 
@@ -1071,14 +1210,23 @@ function ChatMarkdown({
         : null,
     [isUserVariant, mentionReferences, terminalContexts],
   );
+  // Cheap gate so hex-free text never even mounts the swatch plugin; the
+  // transcript re-parses every streamed frame, making this short-circuit real.
+  const hasHexCandidate = renderedText.includes("#");
   const remarkPlugins = useMemo<MarkdownRemarkPlugins>(() => {
-    if (composerChipsRemarkPlugin) {
-      return [...USER_MARKDOWN_REMARK_PLUGINS, composerChipsRemarkPlugin];
+    const plugins: MarkdownRemarkPlugins = composerChipsRemarkPlugin
+      ? [...USER_MARKDOWN_REMARK_PLUGINS, composerChipsRemarkPlugin]
+      : threadMarkerRemarkPlugin
+        ? [...MARKDOWN_REMARK_PLUGINS, threadMarkerRemarkPlugin]
+        : [...MARKDOWN_REMARK_PLUGINS];
+    // Order is load-bearing: the swatch plugin splits/inserts nodes, so it must
+    // run after every plugin that resolves character offsets (thread markers,
+    // composer chips).
+    if (hasHexCandidate) {
+      plugins.push(remarkColorSwatches);
     }
-    return threadMarkerRemarkPlugin
-      ? [...MARKDOWN_REMARK_PLUGINS, threadMarkerRemarkPlugin]
-      : MARKDOWN_REMARK_PLUGINS;
-  }, [composerChipsRemarkPlugin, threadMarkerRemarkPlugin]);
+    return plugins;
+  }, [composerChipsRemarkPlugin, hasHexCandidate, threadMarkerRemarkPlugin]);
   const rehypePlugins = isUserVariant ? USER_MARKDOWN_REHYPE_PLUGINS : MARKDOWN_REHYPE_PLUGINS;
   const markdownComponents = useMemo<Components>(
     () => ({
@@ -1132,16 +1280,34 @@ function ChatMarkdown({
           />
         );
       },
-      pre({ node: _node, children, ...props }) {
+      pre({ node, children, ...props }) {
         const codeBlock = extractCodeBlock(children);
         if (!codeBlock) {
           return <pre {...props}>{children}</pre>;
         }
 
-        const fence = parseCodeFenceInfo(extractRawFenceInfo(codeBlock.className));
+        const rawInfo = extractRawFenceInfo(codeBlock.className);
+        const fence = parseCodeFenceInfo(
+          codeBlock.meta !== null ? `${rawInfo} ${codeBlock.meta}` : rawInfo,
+        );
         const code = dedentCode(codeBlock.code);
 
-        return (
+        // Structured ```theme fence: upgrade to the swatch card only once the
+        // JSON parses. Anything else (streaming frames included) silently
+        // degrades to the plain code block below — never an error UI.
+        if (fence.themePreview === "structured") {
+          const parsed = parseThemeFence(codeBlock.code);
+          if (parsed.kind === "theme") {
+            return <ThemePreviewCard variant="structured" payload={parsed.payload} />;
+          }
+          if (parsed.reason === "invalid-shape" && !isStreaming && import.meta.env.DEV) {
+            console.warn(
+              "[theme-fence] valid JSON but not a valid theme payload; rendering as a code block",
+            );
+          }
+        }
+
+        const codeBlockElement = (
           <MarkdownCodeBlock code={code} fence={fence}>
             <CodeHighlightErrorBoundary fallback={<pre {...props}>{children}</pre>}>
               <Suspense fallback={<pre {...props}>{children}</pre>}>
@@ -1155,6 +1321,21 @@ function ChatMarkdown({
             </CodeHighlightErrorBoundary>
           </MarkdownCodeBlock>
         );
+
+        // ```html theme fence: the sandboxed preview mounts only once the
+        // fence has closed; until then the highlighted code block shows.
+        if (fence.themePreview === "html") {
+          return (
+            <ThemeHtmlFencePreview
+              html={codeBlock.code}
+              nodeEndOffset={node?.position?.end?.offset}
+              isStreaming={isStreaming}
+              fallback={codeBlockElement}
+            />
+          );
+        }
+
+        return codeBlockElement;
       },
       code({ node: _node, className, children, ...props }) {
         // Fenced blocks carry a `language-*` class and are rendered by `pre`;
@@ -1261,14 +1442,19 @@ function ChatMarkdown({
       className={`chat-markdown ${isUserVariant ? "chat-markdown--user " : ""}w-full min-w-0 ${className} text-foreground`}
       style={style}
     >
-      <ReactMarkdown
-        remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
-        components={markdownComponents}
-        urlTransform={markdownUrlTransform}
-      >
-        {renderedText}
-      </ReactMarkdown>
+      {/* The source context feeds the theme-fence previews (closed-fence
+          detection against the exact text being parsed) without widening the
+          memoized components map's dependency list to the streaming text. */}
+      <ChatMarkdownSourceContext.Provider value={renderedText}>
+        <ReactMarkdown
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypePlugins}
+          components={markdownComponents}
+          urlTransform={markdownUrlTransform}
+        >
+          {renderedText}
+        </ReactMarkdown>
+      </ChatMarkdownSourceContext.Provider>
     </div>
   );
 }

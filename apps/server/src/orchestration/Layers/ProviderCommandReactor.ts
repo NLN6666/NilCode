@@ -71,6 +71,11 @@ import {
   ProviderAdapterValidationError,
   ProviderServiceError,
 } from "../../provider/Errors.ts";
+import { buildColorPreviewInstructions } from "../../provider/colorPreviewPromptInjection.ts";
+import {
+  availablePromptInjectionChars,
+  PROVIDER_INPUT_SAFETY_MARGIN_CHARS,
+} from "../../provider/promptInjectionBudget.ts";
 import { buildInlineSkillInstructions } from "../../provider/skillPromptInjection.ts";
 import {
   appendThreadMentionContextBlocks,
@@ -297,7 +302,6 @@ const PROVIDER_COMMAND_SAFE_RETRY_DELAY = Duration.millis(50);
 const PROVIDER_COMMAND_INTERRUPT_TIMEOUT = Duration.seconds(10);
 const PROVIDER_COMMAND_STOP_TIMEOUT = Duration.seconds(15);
 const PROVIDER_COMMAND_EVENT_TIMEOUT = Duration.seconds(120);
-const PROVIDER_INPUT_SAFETY_MARGIN_CHARS = 1_000;
 const THREAD_MENTION_CONTEXT_SUFFIX_PREFIX_CHARS = 2;
 const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 const SIDECHAT_BOUNDARY_INSTRUCTION =
@@ -329,12 +333,8 @@ function availableProviderContextChars(input: {
 }
 
 function availableThreadMentionContextChars(messageText: string): number {
-  return Math.max(
-    0,
-    PROVIDER_SEND_TURN_MAX_INPUT_CHARS -
-      messageText.length -
-      PROVIDER_INPUT_SAFETY_MARGIN_CHARS -
-      THREAD_MENTION_CONTEXT_SUFFIX_PREFIX_CHARS,
+  return availablePromptInjectionChars(
+    messageText.length + THREAD_MENTION_CONTEXT_SUFFIX_PREFIX_CHARS,
   );
 }
 
@@ -1256,6 +1256,7 @@ const make = Effect.gen(function* () {
     readonly attachments?: ReadonlyArray<ChatAttachment>;
     readonly skills?: ReadonlyArray<ProviderSkillReference>;
     readonly mentions?: ReadonlyArray<ProviderMentionReference>;
+    readonly colorPreview?: boolean;
     readonly reviewTarget?: ProviderReviewTarget;
     readonly modelSelection?: ModelSelection;
     readonly providerOptions?: ProviderStartOptions;
@@ -1301,12 +1302,7 @@ const make = Effect.gen(function* () {
               buildInlineSkillInstructions({
                 provider: steerProvider,
                 skills: input.skills ?? [],
-                maxChars: Math.max(
-                  0,
-                  PROVIDER_SEND_TURN_MAX_INPUT_CHARS -
-                    messageText.length -
-                    PROVIDER_INPUT_SAFETY_MARGIN_CHARS,
-                ),
+                maxChars: availablePromptInjectionChars(messageText.length),
               }),
             ).pipe(
               Effect.catch((error) =>
@@ -1320,10 +1316,22 @@ const make = Effect.gen(function* () {
       const steerMessageWithSkills = steerSkillInlineText
         ? `${messageText}\n\n${steerSkillInlineText}`
         : messageText;
+      // Color-preview instructions compete with the skill inline text for the
+      // same injection budget: the budget is recomputed from the input length
+      // after skills were applied.
+      const steerColorPreviewText =
+        input.colorPreview === true
+          ? buildColorPreviewInstructions({
+              maxChars: availablePromptInjectionChars(steerMessageWithSkills.length),
+            })
+          : "";
+      const steerMessageWithInjections = steerColorPreviewText
+        ? `${steerMessageWithSkills}\n\n${steerColorPreviewText}`
+        : steerMessageWithSkills;
       const normalizedSteerInput = toNonEmptyProviderInput(
         normalizeSkillMentionTextForProvider({
           provider: steerProvider,
-          messageText: steerMessageWithSkills,
+          messageText: steerMessageWithInjections,
           ...(input.skills !== undefined ? { skills: input.skills } : {}),
         }),
       );
@@ -1489,12 +1497,7 @@ const make = Effect.gen(function* () {
             buildInlineSkillInstructions({
               provider: selectedProvider as ProviderKind,
               skills: input.skills ?? [],
-              maxChars: Math.max(
-                0,
-                PROVIDER_SEND_TURN_MAX_INPUT_CHARS -
-                  providerInputWithMentionContext.length -
-                  PROVIDER_INPUT_SAFETY_MARGIN_CHARS,
-              ),
+              maxChars: availablePromptInjectionChars(providerInputWithMentionContext.length),
             }),
           ).pipe(
             Effect.catch((error) =>
@@ -1508,10 +1511,22 @@ const make = Effect.gen(function* () {
     const providerInputWithSkills = skillInlineText
       ? `${providerInputWithMentionContext}\n\n${skillInlineText}`
       : providerInputWithMentionContext;
+    // Color-preview instructions share the injection budget with the inlined
+    // skills above: the remaining budget is derived from the input length after
+    // every earlier injection was applied.
+    const colorPreviewInlineText =
+      input.colorPreview === true
+        ? buildColorPreviewInstructions({
+            maxChars: availablePromptInjectionChars(providerInputWithSkills.length),
+          })
+        : "";
+    const providerInputWithInjections = colorPreviewInlineText
+      ? `${providerInputWithSkills}\n\n${colorPreviewInlineText}`
+      : providerInputWithSkills;
     const normalizedInput = toNonEmptyProviderInput(
       normalizeSkillMentionTextForProvider({
         provider: selectedProvider as ProviderKind,
-        messageText: providerInputWithSkills,
+        messageText: providerInputWithInjections,
         ...(input.skills !== undefined ? { skills: input.skills } : {}),
       }),
     );
@@ -2231,6 +2246,7 @@ const make = Effect.gen(function* () {
         ...(message.attachments !== undefined ? { attachments: resolvedAttachments } : {}),
         ...(message.skills !== undefined ? { skills: message.skills } : {}),
         ...(message.mentions !== undefined ? { mentions: message.mentions } : {}),
+        ...(message.colorPreview !== undefined ? { colorPreview: message.colorPreview } : {}),
         ...(event.payload.modelSelection !== undefined
           ? { modelSelection: event.payload.modelSelection }
           : {}),

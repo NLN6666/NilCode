@@ -7,7 +7,16 @@
 //             and the shared path basename helper (file-icons).
 
 import { getFiletypeFromFileName } from "@pierre/diffs";
+import { THEME_FENCE_HTML_MODIFIER, THEME_FENCE_LANGUAGE } from "@synara/contracts";
 import { basenameOfPath } from "../file-icons";
+
+/**
+ * Which color-theme preview a fence opts into: "structured" for ```theme
+ * (JSON payload), "html" for ```html theme (sandboxed markup preview), null
+ * for every ordinary fence. A bare ```html fence stays null on purpose — the
+ * trailing keyword is the rendering switch.
+ */
+export type ThemePreviewFenceKind = "structured" | "html" | null;
 
 export interface CodeFenceInfo {
   /** Highlighter language id (a valid Shiki language/alias, falling back to "text"). */
@@ -22,6 +31,8 @@ export interface CodeFenceInfo {
   readonly directory: string | null;
   /** Line range label like "173-186" (or a single line), else null. */
   readonly lineRange: string | null;
+  /** Theme-preview opt-in derived from the fence info, else null. */
+  readonly themePreview: ThemePreviewFenceKind;
 }
 
 function directoryFromPath(filePath: string, fileName: string): string | null {
@@ -41,6 +52,7 @@ function fileReferenceInfo(filePath: string, lineRange: string | null): CodeFenc
     fileName,
     directory: directoryFromPath(filePath, fileName),
     lineRange,
+    themePreview: null,
   };
 }
 
@@ -65,14 +77,32 @@ export function dedentCode(code: string): string {
 
 const CODE_REFERENCE_REGEX = /^(\d+):(\d+):(.+)$/;
 
-// Parses a fence info string. Recognizes Cursor-style file references
-// (`startLine:endLine:path`) and bare file paths, deriving the highlighter
-// language from the file extension. Everything else is treated as a plain
-// language token (preserving the legacy `gitignore` → `ini` alias).
+// Parses a fence info string (language token plus any trailing meta words).
+// Recognizes Cursor-style file references (`startLine:endLine:path`) and bare
+// file paths, deriving the highlighter language from the file extension, plus
+// the theme-preview fences (```theme and ```html theme). Everything else is
+// treated as a plain language token (preserving the legacy `gitignore` → `ini`
+// alias). Trailing meta words other than the theme modifier are ignored.
 export function parseCodeFenceInfo(rawInfo: string): CodeFenceInfo {
   const info = rawInfo.trim();
+  const tokens = info.split(/\s+/).filter((token) => token.length > 0);
+  const primary = tokens[0] ?? "";
 
-  const referenceMatch = info.match(CODE_REFERENCE_REGEX);
+  // Structured theme fence: the JSON degrades gracefully to a highlighted json
+  // code block whenever the payload does not parse.
+  if (primary === THEME_FENCE_LANGUAGE) {
+    return {
+      language: "json",
+      isFileReference: false,
+      filePath: null,
+      fileName: null,
+      directory: null,
+      lineRange: null,
+      themePreview: "structured",
+    };
+  }
+
+  const referenceMatch = primary.match(CODE_REFERENCE_REGEX);
   if (referenceMatch) {
     const [, start, end, filePath] = referenceMatch;
     if (start != null && end != null && filePath != null) {
@@ -82,12 +112,17 @@ export function parseCodeFenceInfo(rawInfo: string): CodeFenceInfo {
   }
 
   // A bare path (contains a separator) is treated as an un-ranged file reference.
-  if (info.includes("/") || info.includes("\\")) {
-    return fileReferenceInfo(info, null);
+  if (primary.includes("/") || primary.includes("\\")) {
+    return fileReferenceInfo(primary, null);
   }
 
+  // HTML theme fence: the language stays "html" so the block still highlights
+  // normally wherever the preview is not (yet) shown.
+  const themePreview: ThemePreviewFenceKind =
+    primary === "html" && tokens.slice(1).includes(THEME_FENCE_HTML_MODIFIER) ? "html" : null;
+
   // Shiki doesn't bundle a gitignore grammar; ini is a close match (#685).
-  const language = info === "gitignore" ? "ini" : info.length > 0 ? info : "text";
+  const language = primary === "gitignore" ? "ini" : primary.length > 0 ? primary : "text";
   return {
     language,
     isFileReference: false,
@@ -95,5 +130,6 @@ export function parseCodeFenceInfo(rawInfo: string): CodeFenceInfo {
     fileName: null,
     directory: null,
     lineRange: null,
+    themePreview,
   };
 }

@@ -109,6 +109,7 @@ import {
   formatComposerMentionToken,
   filterPromptProviderMentionReferences,
   filterPromptSkillReferences,
+  promptIncludesColorPreviewMention,
   providerMentionReferencesEqual,
   providerSkillReferencesEqual,
   skillMentionPrefix,
@@ -7867,6 +7868,9 @@ export default function ChatView({
       outgoingMessageText,
       selectedComposerMentionsForSend,
     );
+    // `@Preview` opts this turn into color-theme preview mode: the server
+    // injects the fence-format instructions only when the flag is set.
+    const colorPreviewForSend = promptIncludesColorPreviewMention(outgoingMessageText);
     const turnAttachmentsPromise = stageUploadComposerAttachments({
       threadId: threadIdForSend,
       images: composerImagesSnapshot,
@@ -8137,6 +8141,7 @@ export default function ChatView({
             ...(mentionedPluginMentionsForSend.length > 0
               ? { mentions: mentionedPluginMentionsForSend }
               : {}),
+            ...(colorPreviewForSend ? { colorPreview: true } : {}),
           },
           modelSelection: selectedModelSelectionForSend,
           ...(providerOptionsForDispatchForSend

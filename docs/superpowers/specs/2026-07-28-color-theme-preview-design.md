@@ -48,7 +48,7 @@ updated: 2026-07-28T12:11:55Z
 `PROVIDER_SEND_TURN_MAX_INPUT_CHARS − 已用长度 − PROVIDER_INPUT_SAFETY_MARGIN_CHARS`
 计算。两个注入源竞争同一预算，该计算应抽成共用函数，不得各算各的。
 
-注入内容说明两种围栏格式，并明确引导：**优先 ```theme，只在需要展示排版或组件效果时才用 ```html theme**。
+注入内容说明两种围栏格式，并明确引导：**优先 ` ```theme `，只在需要展示排版或组件效果时才用 ` ```html theme `**。
 
 ## 4. 渲染
 
@@ -56,11 +56,11 @@ updated: 2026-07-28T12:11:55Z
 
 按位置差异化匹配：
 
-| 位置 | 接受长度 | 理由 |
-|---|---|---|
-| 普通正文 | 6 位、8 位 | `#123` 是合法 3 位 hex，但正文里几乎总是 issue 引用；`#abc` 常是锚点 |
-| 行内代码 `` `…` `` | 3、4、6、8 位 | 反引号本身即"这是个值"的显式信号，误判风险为零 |
-| 代码块 | 不渲染 | 需后处理 Shiki 输出的 HTML 字符串，对长代码块有真实性能开销 |
+| 位置               | 接受长度      | 理由                                                                 |
+| ------------------ | ------------- | -------------------------------------------------------------------- |
+| 普通正文           | 6 位、8 位    | `#123` 是合法 3 位 hex，但正文里几乎总是 issue 引用；`#abc` 常是锚点 |
+| 行内代码 `` `…` `` | 3、4、6、8 位 | 反引号本身即"这是个值"的显式信号，误判风险为零                       |
+| 代码块             | 不渲染        | 需后处理 Shiki 输出的 HTML 字符串，对长代码块有真实性能开销          |
 
 匹配要求前后为非词字符边界，避免命中 `#deadbeef00` 这类长串的前缀。
 
@@ -151,28 +151,28 @@ accent #E2725B
 请应用到项目。
 ```
 
-这一路径明显弱于结构化路径，正是保留 ```theme 作为主路径并在注入里优先引导它的理由。
+这一路径明显弱于结构化路径，正是保留 ` ```theme ` 作为主路径并在注入里优先引导它的理由。
 
 ## 6. 改动清单
 
 **新增**
 
-| 文件 | 职责 |
-|---|---|
-| `packages/contracts` 内新增 schema | theme 围栏契约 |
-| `apps/web/src/lib/colorSwatch.ts` | hex 匹配与解析（纯函数） |
-| `apps/web/src/lib/themeFence.ts` | theme 围栏解析与降级判定（纯函数） |
-| `apps/web/src/components/chat/ThemePreviewCard.tsx` | 共用卡片外壳 |
-| `apps/server/src/provider/colorPreviewPromptInjection.ts` | 注入文本构建 |
+| 文件                                                      | 职责                               |
+| --------------------------------------------------------- | ---------------------------------- |
+| `packages/contracts` 内新增 schema                        | theme 围栏契约                     |
+| `apps/web/src/lib/colorSwatch.ts`                         | hex 匹配与解析（纯函数）           |
+| `apps/web/src/lib/themeFence.ts`                          | theme 围栏解析与降级判定（纯函数） |
+| `apps/web/src/components/chat/ThemePreviewCard.tsx`       | 共用卡片外壳                       |
+| `apps/server/src/provider/colorPreviewPromptInjection.ts` | 注入文本构建                       |
 
 **修改**
 
-| 文件 | 改动 |
-|---|---|
-| `apps/web/src/lib/composerMentions.ts` 及 composer tokenizer | `@Preview` token 分支 |
-| `apps/web/src/lib/codeFence.ts` | 识别 `theme` 修饰符 |
-| `apps/web/src/components/ChatMarkdown.tsx` | 挂载色块插件、theme 围栏分流 |
-| `apps/server/src/orchestration/Layers/ProviderCommandReactor.ts` | 两处注入点接入 |
+| 文件                                                             | 改动                         |
+| ---------------------------------------------------------------- | ---------------------------- |
+| `apps/web/src/lib/composerMentions.ts` 及 composer tokenizer     | `@Preview` token 分支        |
+| `apps/web/src/lib/codeFence.ts`                                  | 识别 `theme` 修饰符          |
+| `apps/web/src/components/ChatMarkdown.tsx`                       | 挂载色块插件、theme 围栏分流 |
+| `apps/server/src/orchestration/Layers/ProviderCommandReactor.ts` | 两处注入点接入               |
 
 解析逻辑抽成 `lib/` 纯函数而非写在组件里，使误判边界（`#123` vs `` `#123` ``）可用普通单测穷举，无需起 React。与仓库既有的 `codeFence.test.ts`、`composerMentions.test.ts` 模式一致。
 

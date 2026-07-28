@@ -1166,6 +1166,79 @@ label:has(> select#reasoning-effort) select {
   word-break: break-word;
 }
 
+/* Inline hex color swatch injected before hex literals in prose/inline code.
+   The translucent outline keeps pure-white swatches visible on light themes and
+   pure-black swatches visible on dark themes. */
+.chat-markdown .chat-color-swatch {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  margin-right: 0.3em;
+  border: 1px solid color-mix(in srgb, var(--foreground) 30%, transparent);
+  border-radius: 0.2em;
+}
+
+/* Theme preview card (```theme / ```html theme fences). Reuses the shared
+   codeblock surface; only the swatch rows, preview frame, and footer are new. */
+.chat-markdown .chat-theme-preview__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-chat-code-family);
+  font-size: var(--app-font-size-chat-code);
+}
+
+.chat-markdown .chat-theme-preview__row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chat-markdown .chat-theme-preview__swatch {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--foreground) 30%, transparent);
+  border-radius: 0.25rem;
+  padding: 0;
+  cursor: pointer;
+}
+
+.chat-markdown .chat-theme-preview__token {
+  min-width: 6rem;
+  color: var(--foreground);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.chat-markdown .chat-theme-preview__hex {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-markdown .chat-theme-preview__note {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--muted-foreground) 80%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-markdown .chat-theme-preview__frame {
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+.chat-markdown .chat-theme-preview__footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+  padding: 0.375rem 0.5rem;
+}
+
 .chat-markdown .chat-markdown-shiki .shiki {
   background: transparent !important;
   font-family: var(--font-chat-code-family) !important;

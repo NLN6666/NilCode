@@ -147,7 +147,24 @@ export function providerMentionMatchesToken(
   );
 }
 
-export type MentionChipKind = "path" | "plugin" | "thread";
+export type MentionChipKind = "path" | "plugin" | "thread" | "preview";
+
+/**
+ * Composer mention token that enables color-theme preview mode for the sent
+ * turn (`@Preview`). Matched case-insensitively, like skill mentions.
+ */
+export const COLOR_PREVIEW_MENTION_TOKEN = "Preview";
+
+const COLOR_PREVIEW_MENTION_KEY = normalizeMentionNameKey(COLOR_PREVIEW_MENTION_TOKEN);
+
+export function isColorPreviewMentionToken(token: string): boolean {
+  return normalizeMentionNameKey(token) === COLOR_PREVIEW_MENTION_KEY;
+}
+
+/** True when the outgoing prompt carries an `@Preview` mention token. */
+export function promptIncludesColorPreviewMention(prompt: string): boolean {
+  return collectPromptMentionNameKeys(prompt).has(COLOR_PREVIEW_MENTION_KEY);
+}
 
 export function isPluginProviderMentionReference(mention: ProviderMentionReference): boolean {
   return mention.path.startsWith("plugin://");
@@ -196,6 +213,9 @@ export function resolveMentionChipKind(
     )
   ) {
     return "plugin";
+  }
+  if (options?.kind === "preview" || isColorPreviewMentionToken(path)) {
+    return "preview";
   }
   return "path";
 }
