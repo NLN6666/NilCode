@@ -1160,11 +1160,33 @@ function ToolDetailsDisclosure(props: {
     <div className="group/tool-details min-w-0">
       <ToolRowTooltip content={props.tooltip}>{summaryButton}</ToolRowTooltip>
       {renderDetails ? (
-        <DisclosureRegion
-          open={motionOpen}
-          contentClassName={cn("min-w-0 pt-2", props.compact ? "ml-5" : "ml-7")}
-        >
-          <div data-tool-details-inline="true">
+        <DisclosureRegion open={motionOpen} contentClassName="flex min-w-0 pt-2">
+          {/* Occupies exactly the indent the details used to carry as a margin, so the
+              content keeps its alignment while the reclaimed strip becomes a full-height
+              collapse target reachable from anywhere in a long expansion. */}
+          <button
+            type="button"
+            aria-label="Collapse details"
+            data-tool-details-rail="true"
+            data-scroll-anchor-ignore="true"
+            className={cn(
+              "group/tool-rail relative flex-none cursor-pointer self-stretch focus-visible:outline-none",
+              props.compact ? "w-5" : "w-7",
+            )}
+            onClick={() => {
+              setDetailsOpen(false);
+            }}
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "absolute inset-y-0 w-px rounded-full bg-border/55 transition-colors",
+                "group-hover/tool-rail:bg-foreground/40 group-focus-visible/tool-rail:bg-foreground/40",
+                props.compact ? "left-2" : "left-2.5",
+              )}
+            />
+          </button>
+          <div className="min-w-0 flex-1" data-tool-details-inline="true">
             <ToolCallDetailsContent details={props.details} />
           </div>
         </DisclosureRegion>
