@@ -172,6 +172,54 @@ describe("MessagesTimeline tool group collapse", () => {
     }
   });
 
+  it("lets an expanded run be collapsed from the rail beside it", async () => {
+    const host = createTimelineHost();
+    const screen = await render(
+      <ToolGroupCollapseTimeline
+        timelineEntries={[
+          assistantEntry("narration-1", "Looking at the failing checks first.", false),
+          ...SETTLED_COMMANDS.map((command, index) => commandEntry(`settled-${index}`, command)),
+          assistantEntry("narration-2", "Now inspecting the working tree.", true),
+          ...LIVE_COMMANDS.map((command, index) => commandEntry(`live-${index}`, command)),
+        ]}
+      />,
+      { container: host },
+    );
+
+    try {
+      await expect.poll(() => findSummaryTrigger("Ran 4 commands") !== null).toBe(true);
+      const trigger = findSummaryTrigger("Ran 4 commands")!;
+      // A closed group must not leave a stray rail behind.
+      expect(document.querySelector('[data-collapse-rail="true"]')).toBeNull();
+
+      trigger.click();
+      await expect.poll(() => trigger.getAttribute("aria-expanded")).toBe("true");
+      await expect.poll(() => isVisibleOutsideClosedDisclosure(SETTLED_COMMANDS[0]!)).toBe(true);
+
+      const rail = document.querySelector<HTMLButtonElement>('[data-collapse-rail="true"]');
+      expect(rail, "an expanded run must carry a collapse rail").not.toBeNull();
+
+      // The rail is only useful if it spans the rows it belongs to — that is what makes
+      // it reachable after a long run has pushed its trigger off-screen.
+      const rowsHeight = [...document.querySelectorAll<HTMLElement>("[data-collapse-rail] ~ *")]
+        .map((element) => element.getBoundingClientRect().height)
+        .reduce((total, height) => total + height, 0);
+      expect(rowsHeight, "the expanded rows must have real height to span").toBeGreaterThan(40);
+      expect(rail!.getBoundingClientRect().height).toBeGreaterThanOrEqual(rowsHeight - 1);
+      expect(rail!.getBoundingClientRect().width).toBeGreaterThan(8);
+
+      rail!.click();
+
+      await expect.poll(() => trigger.getAttribute("aria-expanded")).toBe("false");
+      await expect
+        .poll(() => (document.body.textContent ?? "").includes(SETTLED_COMMANDS[0]!))
+        .toBe(false);
+    } finally {
+      await screen.unmount();
+      host.remove();
+    }
+  });
+
   it("collapses mid-turn as soon as a thinking block splits the live group", async () => {
     const host = createTimelineHost();
     // One live inline group: settled commands, then a thinking boundary, then

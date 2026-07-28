@@ -7,6 +7,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
+import { CollapseRail } from "../ui/CollapseRail";
 import { DisclosureChevron } from "../ui/DisclosureChevron";
 import { DisclosureRegion } from "../ui/DisclosureRegion";
 import { DISCLOSURE_CLEANUP_BUFFER_MS, DISCLOSURE_TRANSITION_MS } from "~/lib/disclosureMotion";
@@ -63,8 +64,13 @@ export function ToolCallGroupSummaryRow(props: {
         <span>{summary.label}</span>
         <DisclosureChevron open={open} className="text-muted-foreground/55" />
       </button>
-      <DisclosureRegion open={open}>
-        {shouldRenderChildren ? renderChildren() : null}
+      <DisclosureRegion open={open} contentClassName="flex min-w-0">
+        {shouldRenderChildren ? (
+          <>
+            <CollapseRail onCollapse={() => onToggle(false)} />
+            <div className="min-w-0 flex-1">{renderChildren()}</div>
+          </>
+        ) : null}
       </DisclosureRegion>
     </div>
   );

@@ -55,6 +55,7 @@ import { LinkChipIcon } from "../LinkChipIcon";
 import { normalizeCompactToolLabel } from "./MessagesTimeline.logic";
 import { SynaraLogo } from "../SynaraLogo";
 import { ToolCallDetailsContent } from "./ToolCallDetailsDialog";
+import { CollapseRail } from "../ui/CollapseRail";
 import { DisclosureChevron } from "../ui/DisclosureChevron";
 import { DisclosureRegion } from "../ui/DisclosureRegion";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -613,7 +614,6 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
                   key={`${workEntry.id}:${changedFilePath}`}
                   details={workEntry.toolDetails}
                   activity={workEntry.liveActivity}
-                  collapseLabel={rowCopy.collapseDetails}
                   compact={compact}
                   tooltip={<span className="whitespace-pre-wrap">{changedFilePath}</span>}
                   summaryClassName={editedRowClassName}
@@ -725,7 +725,6 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
               <ToolDetailsDisclosure
                 details={workEntry.toolDetails}
                 activity={workEntry.liveActivity}
-                collapseLabel={rowCopy.collapseDetails}
                 compact={compact}
                 timestampFormat={timestampFormat}
                 tooltip={toolRowTooltipContent(rawCommand, displayText, displayText, rowCopy)}
@@ -855,7 +854,6 @@ function AgentActivityOpenSurface(props: {
 
 function ToolDetailsDisclosure(props: {
   children: ReactNode;
-  collapseLabel: string;
   compact: boolean;
   dataFileChangeRow?: boolean | undefined;
   details?: TimelineWorkEntry["toolDetails"] | undefined;
@@ -938,31 +936,14 @@ function ToolDetailsDisclosure(props: {
       <ToolRowTooltip content={props.tooltip}>{summaryButton}</ToolRowTooltip>
       {renderDetails ? (
         <DisclosureRegion open={motionOpen} contentClassName="flex min-w-0 pt-2">
-          {/* Occupies exactly the indent the details used to carry as a margin, so the
-              content keeps its alignment while the reclaimed strip becomes a full-height
-              collapse target reachable from anywhere in a long expansion. */}
-          <button
-            type="button"
-            aria-label={props.collapseLabel}
-            data-tool-details-rail="true"
-            data-scroll-anchor-ignore="true"
-            className={cn(
-              "group/tool-rail relative flex-none cursor-pointer self-stretch focus-visible:outline-none",
-              props.compact ? "w-5" : "w-7",
-            )}
-            onClick={() => {
+          {/* Takes exactly the indent the details used to carry as a margin, so content
+              alignment is unchanged and the reclaimed strip becomes the collapse target. */}
+          <CollapseRail
+            width={props.compact ? "compact" : "regular"}
+            onCollapse={() => {
               setDetailsOpen(false);
             }}
-          >
-            <span
-              aria-hidden="true"
-              className={cn(
-                "absolute inset-y-0 w-px rounded-full bg-border/55 transition-colors",
-                "group-hover/tool-rail:bg-foreground/40 group-focus-visible/tool-rail:bg-foreground/40",
-                props.compact ? "left-2" : "left-2.5",
-              )}
-            />
-          </button>
+          />
           <div className="min-w-0 flex-1" data-tool-details-inline="true">
             <ToolCallDetailsContent
               details={props.details}

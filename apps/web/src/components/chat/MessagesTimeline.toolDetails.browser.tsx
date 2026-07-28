@@ -189,6 +189,52 @@ describe("MessagesTimeline tool details", () => {
     }
   });
 
+  it("hangs a full-height collapse rail beside expanded command details", async () => {
+    const host = createTimelineHost();
+    const screen = await render(<ToolDetailsTimeline />, { container: host });
+
+    try {
+      const trigger = document.querySelector<HTMLButtonElement>(
+        '[data-tool-detail-trigger="true"]',
+      );
+      expect(trigger).not.toBeNull();
+      trigger?.click();
+      await expect.poll(() => trigger?.getAttribute("aria-expanded")).toBe("true");
+      await new Promise<void>((resolve) => window.setTimeout(() => resolve(), 320));
+      await settleLayout();
+
+      const rail = document.querySelector<HTMLButtonElement>('[data-collapse-rail="true"]');
+      expect(rail, "the expanded details must carry a collapse rail").not.toBeNull();
+
+      const railRect = rail!.getBoundingClientRect();
+      const details = document.querySelector<HTMLElement>('[data-tool-details-inline="true"]');
+      const detailsRect = details!.getBoundingClientRect();
+
+      // The rail only works as a "collapse from anywhere" target if it actually spans
+      // the expansion — a zero-height or hairline-tall strip is unhittable.
+      expect(railRect.height, "rail must span the details it belongs to").toBeGreaterThanOrEqual(
+        detailsRect.height - 1,
+      );
+      expect(railRect.width, "rail must be wide enough to click").toBeGreaterThan(8);
+      expect(railRect.left, "rail must sit to the left of the details").toBeLessThanOrEqual(
+        detailsRect.left,
+      );
+
+      // And the line inside it must be painted, not collapsed to nothing.
+      const line = rail!.firstElementChild as HTMLElement | null;
+      expect(line).not.toBeNull();
+      const lineRect = line!.getBoundingClientRect();
+      expect(lineRect.height, "the rail line must be visible").toBeGreaterThan(0);
+
+      rail!.click();
+      await expect.poll(() => trigger?.getAttribute("aria-expanded")).toBe("false");
+    } finally {
+      await screen.unmount();
+      host.remove();
+      await settleLayout();
+    }
+  });
+
   it("keeps live activity compact and reveals technical metadata on demand", async () => {
     const host = createTimelineHost();
     const screen = await render(<LiveActivityTimeline />, { container: host });
