@@ -35,6 +35,17 @@ import {
  */
 const PROVIDER_RUNTIME_EVENT_RETENTION_SCAN_INTERVAL = PROVIDER_RUNTIME_EVENT_RETAIN_ACCEPTED;
 
+/**
+ * Per-entry ceiling for a truncated `payload.data` field.
+ *
+ * This journal is a UI/diagnostic projection, not the agent's context source —
+ * adapters hand tool results to the model in-process and resume from the
+ * provider's own session id, so nothing downstream of here re-feeds an agent.
+ * A bounded preview therefore keeps what this surface is for (seeing that the
+ * call happened, and roughly what it returned) while keeping the row storable.
+ */
+const PROVIDER_RUNTIME_EVENT_DATA_FIELD_PREVIEW_BYTES = 8 * 1024;
+
 const ProviderRuntimeEventJson = Schema.fromJsonString(ProviderRuntimeEvent);
 const encodeEvent = Schema.encodeEffect(ProviderRuntimeEventJson);
 const decodeEvent = Schema.decodeUnknownEffect(ProviderRuntimeEventJson);
@@ -44,6 +55,46 @@ const StoredRowSchema = Schema.Struct({
   eventJson: Schema.String,
 });
 const decodeStoredRow = Schema.decodeUnknownEffect(StoredRowSchema);
+
+/** Cut to a whole-character boundary so a sliced preview never ends mid-codepoint. */
+function utf8Prefix(text: string, maxBytes: number): string {
+  const encoded = Buffer.from(text, "utf8");
+  if (encoded.byteLength <= maxBytes) {
+    return text;
+  }
+  let end = maxBytes;
+  while (end > 0 && ((encoded[end] ?? 0) & 0xc0) === 0x80) {
+    end -= 1;
+  }
+  return encoded.subarray(0, end).toString("utf8");
+}
+
+function truncateDataField(value: unknown): unknown {
+  const json = JSON.stringify(value) ?? "";
+  const originalBytes = Buffer.byteLength(json, "utf8");
+  if (originalBytes <= PROVIDER_RUNTIME_EVENT_DATA_FIELD_PREVIEW_BYTES) {
+    return value;
+  }
+  return {
+    synaraTruncated: true,
+    reason: "provider runtime event exceeded the durable journal size limit",
+    originalBytes,
+    preview: utf8Prefix(json, PROVIDER_RUNTIME_EVENT_DATA_FIELD_PREVIEW_BYTES),
+  };
+}
+
+/**
+ * Bound `payload.data` field by field, so small identifiers (toolName, callId)
+ * survive alongside an oversized result rather than being lost with it.
+ */
+function truncateOversizedData(data: unknown): unknown {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    return truncateDataField(data);
+  }
+  return Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [key, truncateDataField(value)]),
+  );
+}
 
 const encodePersistableEvent = (event: ProviderRuntimeEvent) =>
   Effect.gen(function* () {
@@ -55,6 +106,7 @@ const encodePersistableEvent = (event: ProviderRuntimeEvent) =>
       return { event, eventJson };
     }
 
+    let candidate = event;
     if (event.raw !== undefined) {
       const compactedEvent = {
         ...event,
@@ -75,11 +127,39 @@ const encodePersistableEvent = (event: ProviderRuntimeEvent) =>
       if (Buffer.byteLength(compactedJson, "utf8") <= PROVIDER_RUNTIME_EVENT_MAX_BYTES) {
         return { event: compactedEvent, eventJson: compactedJson };
       }
+      candidate = compactedEvent;
+    }
+
+    // Compacting `raw` only reaches the provider's original protocol frame.
+    // Adapters that project tool output into the canonical payload instead
+    // (ClaudeAdapter puts the whole tool result in `payload.data`) stay
+    // oversized, and used to be quarantined outright — losing the fact that the
+    // call happened at all. Bounding the data keeps the event.
+    if (
+      candidate.type === "item.started" ||
+      candidate.type === "item.updated" ||
+      candidate.type === "item.completed"
+    ) {
+      const truncatedEvent = {
+        ...candidate,
+        payload: {
+          ...candidate.payload,
+          ...(candidate.payload.data !== undefined
+            ? { data: truncateOversizedData(candidate.payload.data) }
+            : {}),
+        },
+      } satisfies ProviderRuntimeEvent;
+      const truncatedJson = yield* encodeEvent(truncatedEvent).pipe(
+        Effect.mapError(toPersistenceDecodeError("ProviderRuntimeEvent.append.truncateData")),
+      );
+      if (Buffer.byteLength(truncatedJson, "utf8") <= PROVIDER_RUNTIME_EVENT_MAX_BYTES) {
+        return { event: truncatedEvent, eventJson: truncatedJson };
+      }
     }
 
     return yield* new PersistenceDecodeError({
       operation: "ProviderRuntimeEvent.append",
-      issue: `Provider runtime event exceeds ${PROVIDER_RUNTIME_EVENT_MAX_BYTES} bytes after raw payload compaction.`,
+      issue: `Provider runtime event exceeds ${PROVIDER_RUNTIME_EVENT_MAX_BYTES} bytes after raw payload compaction and data truncation.`,
     });
   });
 

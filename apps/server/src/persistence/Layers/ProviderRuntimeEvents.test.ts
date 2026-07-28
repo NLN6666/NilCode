@@ -230,6 +230,53 @@ layer("ProviderRuntimeEventRepository", (it) => {
     }),
   );
 
+  it.effect("truncates an oversized payload.data field instead of quarantining the event", () =>
+    Effect.gen(function* () {
+      const repository = yield* ProviderRuntimeEventRepository;
+      // Shape a Claude tool result: the whole output lands in payload.data,
+      // which raw compaction cannot reach, so this used to be dropped entirely.
+      const oversized = {
+        type: "item.completed",
+        eventId: EventId.makeUnsafe("runtime-event-oversized-data"),
+        provider: "claudeAgent",
+        createdAt: "2026-07-14T00:00:00.000Z",
+        threadId: ThreadId.makeUnsafe("thread-runtime-journal"),
+        turnId: TurnId.makeUnsafe("turn-runtime-journal"),
+        payload: {
+          itemType: "command_execution",
+          status: "completed",
+          title: "Bash",
+          data: {
+            toolName: "Bash",
+            callId: "call-1",
+            result: "y".repeat(PROVIDER_RUNTIME_EVENT_MAX_BYTES),
+          },
+        },
+      } satisfies ProviderRuntimeEvent;
+
+      const persisted = yield* repository.append(oversized);
+      const rows = yield* repository.readAfter({
+        sequenceExclusive: persisted.sequence - 1,
+        throughSequenceInclusive: persisted.sequence,
+        limit: 1,
+      });
+
+      const storedPayload = rows[0]?.event.payload as
+        | { readonly title?: unknown; readonly data?: Record<string, unknown> }
+        | undefined;
+      // Small identifiers survive next to the truncated result.
+      assert.strictEqual(storedPayload?.title, "Bash");
+      assert.strictEqual(storedPayload?.data?.toolName, "Bash");
+      assert.strictEqual(storedPayload?.data?.callId, "call-1");
+
+      const truncatedResult = storedPayload?.data?.result as
+        | { readonly synaraTruncated?: unknown; readonly preview?: unknown }
+        | undefined;
+      assert.strictEqual(truncatedResult?.synaraTruncated, true);
+      assert.isString(truncatedResult?.preview);
+    }),
+  );
+
   it.effect("journals every canonical event derived from one provider notification", () =>
     Effect.gen(function* () {
       const repository = yield* ProviderRuntimeEventRepository;
