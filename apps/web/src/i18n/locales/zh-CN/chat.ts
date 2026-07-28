@@ -157,6 +157,7 @@ export const chat: Chat = {
     moreToolUses: (count) => `另有 ${count} 次工具调用`,
     openThread: "打开会话",
     edited: "编辑了",
+    collapseDetails: "收起详情",
   },
 
   filePreview: {

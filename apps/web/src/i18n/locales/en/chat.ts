@@ -175,6 +175,7 @@ export const chat = {
     moreToolUses: (count: number) => `+${count} more tool uses`,
     openThread: "Open thread",
     edited: "Edited",
+    collapseDetails: "Collapse details",
   },
 
   /** Header above a previewed workspace file. */

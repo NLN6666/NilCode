@@ -2473,6 +2473,147 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
+  it("leaves the viewport put when a scroll gesture abandons the tail mid-stream", async () => {
+    let currentSnapshot = createSnapshotWithLongAssistantResponse();
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: currentSnapshot,
+    });
+    let patchedScrollContainer: HTMLElement | null = null;
+    let originalScrollTo: HTMLElement["scrollTo"] | null = null;
+
+    const syncActiveThread = (
+      update: (
+        thread: OrchestrationReadModel["threads"][number],
+      ) => OrchestrationReadModel["threads"][number],
+    ) => {
+      currentSnapshot = {
+        ...currentSnapshot,
+        snapshotSequence: currentSnapshot.snapshotSequence + 1,
+        threads: currentSnapshot.threads.map((thread) =>
+          thread.id === THREAD_ID ? update(thread) : thread,
+        ),
+        updatedAt: isoAt(currentSnapshot.snapshotSequence + 1_200),
+      };
+      fixture = { ...fixture, snapshot: currentSnapshot };
+      useStore.getState().syncServerReadModel(currentSnapshot);
+    };
+
+    try {
+      const scrollContainer = await waitForElement(
+        () => document.querySelector<HTMLElement>("[data-chat-scroll-container='true']"),
+        "Unable to find message scroll container.",
+      );
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      scrollContainer.dispatchEvent(new Event("scroll"));
+      await waitForLayout();
+
+      const scrollToCalls: ScrollToOptions[] = [];
+      patchedScrollContainer = scrollContainer;
+      originalScrollTo = scrollContainer.scrollTo;
+      scrollContainer.scrollTo = ((options?: ScrollToOptions | number, y?: number) => {
+        const normalized: ScrollToOptions =
+          typeof options === "object" && options !== null
+            ? options
+            : {
+                ...(typeof options === "number" ? { left: options } : {}),
+                ...(typeof y === "number" ? { top: y } : {}),
+              };
+        scrollToCalls.push(normalized);
+        if (typeof normalized.left === "number") scrollContainer.scrollLeft = normalized.left;
+        if (typeof normalized.top === "number") scrollContainer.scrollTop = normalized.top;
+        scrollContainer.dispatchEvent(new Event("scroll"));
+      }) as typeof scrollContainer.scrollTo;
+      // Let mount-time tail/image expansion retries (max 260ms) settle before isolating
+      // the scrolls caused by the transitions below.
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 300));
+      await waitForLayout();
+
+      // Put a streaming assistant message on the tail so the list is in live-follow mode
+      // — the exact state in which the transcript used to drag the viewport back down.
+      const liveMessageId = MessageId.makeUnsafe("msg-assistant-scroll-release-live");
+      syncActiveThread((thread) => ({
+        ...thread,
+        messages: [
+          ...thread.messages,
+          {
+            ...createAssistantMessage({
+              id: liveMessageId,
+              text: "Streaming tail before the user scrolls away",
+              offsetSeconds: 2_400,
+            }),
+            streaming: true,
+          },
+        ],
+        updatedAt: isoAt(2_400),
+      }));
+      await waitForLayout();
+
+      // Scroll away exactly the way a person does: a wheel gesture, then the scroll it
+      // produces. Both must be seen for the transcript to hand over the viewport.
+      scrollContainer.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -240 }));
+      scrollContainer.scrollTop = 0;
+      scrollContainer.dispatchEvent(new Event("scroll"));
+      await vi.waitFor(() => {
+        expect(getScrollContainerDistanceFromBottom(scrollContainer)).toBeGreaterThan(
+          AUTO_SCROLL_BOTTOM_THRESHOLD_PX,
+        );
+      });
+      await waitForLayout();
+
+      const scrollTopAfterGesture = scrollContainer.scrollTop;
+      scrollToCalls.length = 0;
+
+      // More streamed text, then the turn settling — the two events that previously
+      // yanked the viewport back to the bottom.
+      syncActiveThread((thread) => ({
+        ...thread,
+        messages: thread.messages.map((message) =>
+          message.id === liveMessageId
+            ? {
+                ...message,
+                text: `${message.text} … and a good deal more streamed output arriving now`,
+                updatedAt: isoAt(2_401),
+              }
+            : message,
+        ),
+        updatedAt: isoAt(2_401),
+      }));
+      await waitForLayout();
+
+      syncActiveThread((thread) => ({
+        ...thread,
+        messages: thread.messages.map((message) =>
+          message.id === liveMessageId
+            ? {
+                ...message,
+                streaming: false,
+                completedAt: isoAt(2_402),
+                updatedAt: isoAt(2_402),
+              }
+            : message,
+        ),
+        updatedAt: isoAt(2_402),
+      }));
+      await waitForLayout();
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 300));
+      await waitForLayout();
+
+      expect(scrollToCalls, "streaming must not re-stick a viewport the user moved").toHaveLength(
+        0,
+      );
+      expect(getScrollContainerDistanceFromBottom(scrollContainer)).toBeGreaterThan(
+        AUTO_SCROLL_BOTTOM_THRESHOLD_PX,
+      );
+      expect(Math.abs(scrollContainer.scrollTop - scrollTopAfterGesture)).toBeLessThanOrEqual(1);
+    } finally {
+      if (patchedScrollContainer && originalScrollTo) {
+        patchedScrollContainer.scrollTo = originalScrollTo;
+      }
+      await mounted.cleanup();
+    }
+  });
+
   it("sends unmarked automation questions as normal chat messages", async () => {
     const mounted = await mountChatView({
       viewport: DEFAULT_VIEWPORT,
