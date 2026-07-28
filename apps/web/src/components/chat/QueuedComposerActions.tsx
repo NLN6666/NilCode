@@ -20,6 +20,9 @@ type QueuedComposerActionsProps = {
   onSteer: (queuedTurn: QueuedComposerTurn) => void;
   onRemove: (queuedTurnId: string) => void;
   onEdit: (queuedTurn: QueuedComposerTurn) => void;
+  /** True when the live provider has no native steer, so sending discards the
+   *  answer in flight. The label says so instead of promising Codex semantics. */
+  interruptsLiveTurn: boolean;
 };
 
 function QueuedComposerActions({
@@ -27,13 +30,19 @@ function QueuedComposerActions({
   onSteer,
   onRemove,
   onEdit,
+  interruptsLiveTurn,
 }: QueuedComposerActionsProps) {
   const copy = useMessages().composer.queued;
   return (
     <div className="flex shrink-0 items-center gap-0">
-      <Button variant="subtle" size="chip" onClick={() => void onSteer(queuedTurn)}>
+      <Button
+        variant="subtle"
+        size="chip"
+        title={interruptsLiveTurn ? copy.steerInterruptHint : copy.steerHint}
+        onClick={() => void onSteer(queuedTurn)}
+      >
         <SteerIcon />
-        <span>{copy.steer}</span>
+        <span>{interruptsLiveTurn ? copy.steerInterrupt : copy.steer}</span>
       </Button>
       <IconButton
         variant="ghost"

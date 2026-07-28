@@ -67,6 +67,8 @@ interface ComposerQueuedHeaderProps {
   /** Workspace root used to resolve local file links/mentions inside the parsed preview. */
   cwd?: string | undefined;
   attachedToPrevious?: boolean;
+  /** Whether steering has to stop the live turn first — see providerSteer. */
+  interruptsLiveTurn: boolean;
 }
 
 export const ComposerQueuedHeader = function ComposerQueuedHeader({
@@ -76,6 +78,7 @@ export const ComposerQueuedHeader = function ComposerQueuedHeader({
   onEdit,
   cwd,
   attachedToPrevious: attachedToPreviousProp,
+  interruptsLiveTurn,
 }: ComposerQueuedHeaderProps) {
   const copy = useMessages().composer.queued;
   const attachedToPrevious = attachedToPreviousProp ?? false;
@@ -106,6 +109,7 @@ export const ComposerQueuedHeader = function ComposerQueuedHeader({
             onSteer={onSteer}
             onRemove={onRemove}
             onEdit={onEdit}
+            interruptsLiveTurn={interruptsLiveTurn}
           />
         </ComposerStackedPanelRow>
       ))}

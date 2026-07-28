@@ -154,6 +154,12 @@ export const composer = {
     defaultTitle: "Queued follow-up",
     codeBlock: "Code block",
     steer: "Steer",
+    /** Providers without a native steer have to stop the live turn first, so the
+     *  action is labelled for what it actually does rather than for what steering
+     *  means on Codex. */
+    steerInterrupt: "Send now",
+    steerHint: "Send this into the running turn",
+    steerInterruptHint: "Stops the current response, then sends this message",
     delete: "Delete queued follow-up",
     menu: "Queued follow-up actions",
     edit: "Edit queued prompt",

@@ -51,6 +51,7 @@ import {
 } from "@synara/shared/conversationEdit";
 import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@synara/shared/git";
 import { claudeSelectionRequiresRestart } from "@synara/shared/model";
+import { providerSupportsNativeSteer } from "@synara/shared/providerSteer";
 import {
   formatProviderDeliveryBlockDetail,
   PROVIDER_DELIVERY_BLOCK_SUMMARY,
@@ -2134,9 +2135,11 @@ const make = Effect.gen(function* () {
       // still projected as running), so recheck live state and dispatch a
       // settled codex "steer" as a normal queued turn — the native steer path
       // would skip the turn-start checkpoint.
-      const isCodexSteer =
-        event.payload.dispatchMode === "steer" && providerName === "codex" && hasLiveTurn;
-      if (!isCodexSteer && hasLiveTurn) {
+      const isNativeSteer =
+        event.payload.dispatchMode === "steer" &&
+        providerSupportsNativeSteer(providerName as ProviderKind) &&
+        hasLiveTurn;
+      if (!isNativeSteer && hasLiveTurn) {
         yield* enqueueQueuedTurnStart(event);
         // The promotion raced another live turn and was re-queued. Release
         // only when that exact blocking turn settles, not on any late
@@ -2212,11 +2215,11 @@ const make = Effect.gen(function* () {
           ? { providerOptions: event.payload.providerOptions }
           : {}),
       }).pipe(Effect.forkScoped);
-      // Only a codex steer against a genuinely live turn keeps steer
+      // Only a native steer against a genuinely live turn keeps steer
       // semantics; anything else that reaches direct dispatch runs as a
       // normal queued turn (with its turn-start checkpoint).
       const immediateDispatchMode =
-        event.payload.dispatchMode === "steer" && !isCodexSteer
+        event.payload.dispatchMode === "steer" && !isNativeSteer
           ? "queue"
           : event.payload.dispatchMode;
       const editResendKey = editResendTurnStartKey(event.payload.threadId, event.payload.messageId);

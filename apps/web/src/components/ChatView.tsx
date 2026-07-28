@@ -43,6 +43,7 @@ import { getModelCapabilities, normalizeModelSlug } from "@synara/shared/model";
 import { resolveTailUserMessageEditTarget } from "@synara/shared/conversationEdit";
 import { threadExportBlockedReason } from "@synara/shared/threadExport";
 import { pendingRequestInstanceKey } from "@synara/shared/threadSummary";
+import { steerInterruptsLiveTurn } from "@synara/shared/providerSteer";
 import {
   buildPromptThreadTitleFallback,
   GENERIC_CHAT_THREAD_TITLE,
@@ -8061,7 +8062,7 @@ export default function ChatView({
       // gate keys off it rather than the requested model selection.
       const liveProviderForSteerGate =
         activeThread?.session?.provider ?? selectedModelSelectionForSend.provider;
-      if (dispatchMode === "steer" && liveProviderForSteerGate !== "codex") {
+      if (dispatchMode === "steer" && steerInterruptsLiveTurn(liveProviderForSteerGate)) {
         setQueuedSteerGate({
           sawInterruptGap: false,
           gapStartedAt: null,
@@ -8555,7 +8556,7 @@ export default function ChatView({
       // gate keys off it rather than the requested model selection.
       const livePlanProviderForSteerGate =
         activeThread?.session?.provider ?? modelSelectionForPlanDispatch.provider;
-      if (dispatchMode === "steer" && livePlanProviderForSteerGate !== "codex") {
+      if (dispatchMode === "steer" && steerInterruptsLiveTurn(livePlanProviderForSteerGate)) {
         setQueuedSteerGate({
           sawInterruptGap: false,
           gapStartedAt: null,
@@ -10767,6 +10768,9 @@ export default function ChatView({
                 onSteer={onSteerQueuedComposerTurn}
                 onRemove={removeQueuedComposerTurn}
                 onEdit={onEditQueuedComposerTurn}
+                interruptsLiveTurn={steerInterruptsLiveTurn(
+                  activeThread?.session?.provider ?? selectedProvider,
+                )}
                 cwd={threadWorkspaceCwd ?? undefined}
                 attachedToPrevious={
                   showComposerLiveChangesHeader ||

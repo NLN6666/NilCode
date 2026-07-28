@@ -12,6 +12,10 @@
       "types": "./src/runtimeMode.ts",
       "import": "./src/runtimeMode.ts"
     },
+    "./providerSteer": {
+      "types": "./src/providerSteer.ts",
+      "import": "./src/providerSteer.ts"
+    },
     "./git": {
       "types": "./src/git.ts",
       "import": "./src/git.ts"
