@@ -1920,6 +1920,16 @@ export function BrowserPanel({
               );
             })}
           </div>
+          {threadBrowserState?.agentControlActive ? (
+            // Its own pill rather than a chrome status, so an error still stays visible.
+            <div
+              className="flex shrink-0 items-center gap-1.5 rounded-full border border-border/60 bg-background/80 px-2.5 py-1 text-[11px] leading-none text-muted-foreground"
+              title={browserCopy.agentControl}
+            >
+              <span aria-hidden className="size-1.5 rounded-full bg-emerald-500" />
+              {browserCopy.agentControl}
+            </div>
+          ) : null}
           {browserChromeStatus ? (
             <div
               className={cn(

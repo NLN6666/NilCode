@@ -79,6 +79,7 @@ function createHost(options: { gateOn?: string } = {}) {
 
   const host: BrowserElementPickHost = {
     attachTab: vi.fn(async () => {}),
+    releaseTab: vi.fn(),
     sendCommand,
     subscribeToCdpEvents: vi.fn((_input, listener) => {
       const entry = { listener, unsubscribed: false };

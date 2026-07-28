@@ -17,6 +17,7 @@ import { useMessages } from "../../i18n/context";
 import type { Messages } from "../../i18n/locales/en";
 import { cn } from "~/lib/utils";
 import { ensureNativeApi } from "~/nativeApi";
+import { BrowserCdpProxySettingsSection } from "./BrowserCdpProxySettingsSection";
 import {
   buildExternalMcpClientConfiguration,
   buildExternalMcpExamplePrompt,
@@ -642,6 +643,8 @@ export function ExternalMcpSettingsPanel(props: { active: boolean }) {
           />
         )}
       </SettingsSection>
+
+      <BrowserCdpProxySettingsSection />
     </div>
   );
 }

@@ -42,6 +42,10 @@ import {
   normalizeBrowserUrlInput as normalizeUrlInput,
   resolveCopyableBrowserTabUrl,
 } from "@synara/shared/browserSession";
+import {
+  BrowserAutomationLease,
+  type BrowserAutomationLeaseHandle,
+} from "./browserAutomationLease";
 import { BrowserElementPicker } from "./browserElementPicker";
 import { BROWSER_SESSION_PARTITION, BrowserSessionPolicy } from "./browserSessionPolicy";
 
@@ -116,6 +120,15 @@ export interface BrowserUseSnapshot {
 export interface BrowserUseCdpEvent {
   method: string;
   params?: unknown;
+  /** Chromium's nested-session id; absent for events on the top-level page session. */
+  sessionId?: string;
+}
+
+export interface BrowserSendCdpCommandInput extends BrowserTabInput {
+  method: string;
+  params?: Record<string, unknown>;
+  /** Chromium nested-session id; omit to address the tab's top-level page session. */
+  sessionId?: string;
 }
 
 export interface DesktopBrowserManagerOptions {
@@ -260,13 +273,55 @@ export class DesktopBrowserManager {
   private readonly runtimeLastActiveAtByKey = new Map<string, number>();
   private readonly pendingRuntimeSyncs = new Map<string, PendingRuntimeSync>();
   private readonly listeners = new Set<BrowserStateListener>();
+  // Notified whenever the set of CDP-exposable targets may have changed (state emits and
+  // active-thread transitions); the CDP proxy re-snapshots and diffs on each signal.
+  private readonly browserTargetListeners = new Set<() => void>();
   private readonly copyLinkListeners = new Set<BrowserCopyLinkListener>();
   private readonly elementPickedListeners = new Set<BrowserElementPickedListener>();
   private readonly elementPickCancelledListeners = new Set<BrowserElementPickCancelledListener>();
+  // Shared debugger lease: the element picker, the Codex browser-use pipe, and the CDP
+  // proxy all attach to the same webContents.debugger, which Electron only allows once.
+  // Every consumer goes through this lease so the real detach happens exactly when the
+  // last holder releases (plan 013 §7.1).
+  private readonly automationLease = new BrowserAutomationLease({
+    wakeTab: (input) => this.wakeTabForAutomation(input),
+    isDebuggerAttached: (input) => {
+      const runtime = this.runtimes.get(buildRuntimeKey(input.threadId, input.tabId));
+      return runtime !== undefined && !runtime.webContents.isDestroyed()
+        ? runtime.webContents.debugger.isAttached()
+        : false;
+    },
+    attachDebugger: (input) => {
+      const runtime = this.runtimes.get(buildRuntimeKey(input.threadId, input.tabId));
+      if (!runtime || runtime.webContents.isDestroyed()) {
+        throw new Error("The browser tab runtime is not available.");
+      }
+      runtime.webContents.debugger.attach("1.3");
+    },
+    detachDebugger: (input) => {
+      const runtime = this.runtimes.get(buildRuntimeKey(input.threadId, input.tabId));
+      if (runtime && !runtime.webContents.isDestroyed()) {
+        runtime.webContents.debugger.detach();
+      }
+    },
+    setAgentControlMarker: (threadId, active) => this.setAgentControlMarker(threadId, active),
+    onAllReleased: (input) => {
+      // Resume the normal suspend policy for a thread the lease was keeping warm.
+      if (this.activeThreadId !== input.threadId) {
+        this.scheduleThreadSuspend(input.threadId);
+      }
+    },
+  });
+  // Codex browser-use holds: one persistent lease per tab it attached, kept until the
+  // runtime dies (the pipe protocol has no paired debugger detach today).
+  private readonly pipeLeaseHandles = new Map<string, BrowserAutomationLeaseHandle>();
+  // Element-pick holds: one lease per active pick session, released when the pick ends.
+  private readonly pickerLeaseHandles = new Map<string, BrowserAutomationLeaseHandle>();
   // Element picking is its own state machine (CDP inspect mode + one-shot extraction);
   // this manager only forwards commands and lifecycle signals to it.
   private readonly elementPicker = new BrowserElementPicker({
-    attachTab: (input) => this.attachBrowserUseTab(input),
+    attachTab: (input) => this.attachElementPickTab(input),
+    releaseTab: (input) => this.releaseElementPickTab(input),
     sendCommand: (input, method, params) =>
       this.executeCdp({ ...input, method, ...(params ? { params } : {}) }),
     subscribeToCdpEvents: (input, listener) => this.subscribeToCdpEvents(input, listener),
@@ -534,6 +589,9 @@ export class DesktopBrowserManager {
 
   dispose(): void {
     this.elementPicker.disposeAll();
+    this.automationLease.disposeAll();
+    this.pipeLeaseHandles.clear();
+    this.pickerLeaseHandles.clear();
     for (const timer of this.suspendTimers.values()) {
       clearTimeout(timer);
     }
@@ -548,6 +606,7 @@ export class DesktopBrowserManager {
     this.pendingRuntimeSyncs.clear();
     this.runtimeLastActiveAtByKey.clear();
     this.listeners.clear();
+    this.browserTargetListeners.clear();
     this.copyLinkListeners.clear();
     this.elementPickedListeners.clear();
     this.elementPickCancelledListeners.clear();
@@ -658,10 +717,12 @@ export class DesktopBrowserManager {
     }
 
     if (!state?.open) {
+      this.notifyBrowserTargetListeners();
       return;
     }
 
     this.scheduleThreadSuspend(input.threadId);
+    this.notifyBrowserTargetListeners();
   }
 
   getState(input: BrowserThreadInput): ThreadBrowserState {
@@ -966,6 +1027,9 @@ export class DesktopBrowserManager {
     if (bounds) {
       this.attachActiveTab(input.threadId, bounds);
     }
+    // DevTools and the debugger attachment are mutually exclusive: automation holders
+    // yield to the user (plan 013 §7.2), signalling their own detach downstream.
+    this.automationLease.handleDevToolsOpened({ threadId: input.threadId, tabId: tab.id });
     runtime.webContents.openDevTools({ mode: "detach" });
   }
 
@@ -1093,8 +1157,20 @@ export class DesktopBrowserManager {
       this.queueRuntimeStateSync(input.threadId, tab.id);
     }
 
-    if (!runtime.webContents.debugger.isAttached()) {
-      runtime.webContents.debugger.attach("1.3");
+    // The Codex pipe never detaches the debugger itself, so its hold is persistent:
+    // acquired once per tab and released only when the runtime is torn down.
+    const key = buildRuntimeKey(input.threadId, tab.id);
+    if (!this.pipeLeaseHandles.has(key)) {
+      const handle = await this.automationLease.acquire(
+        { threadId: input.threadId, tabId: tab.id },
+        {
+          markAgentControl: true,
+          onForcedDetach: () => {
+            this.pipeLeaseHandles.delete(key);
+          },
+        },
+      );
+      this.pipeLeaseHandles.set(key, handle);
     }
   }
 
@@ -1107,10 +1183,17 @@ export class DesktopBrowserManager {
       return () => {};
     }
 
-    const handleMessage = (_event: Electron.Event, method: string, params?: unknown) => {
+    const handleMessage = (
+      _event: Electron.Event,
+      method: string,
+      params?: unknown,
+      sessionId?: string,
+    ) => {
       listener({
         method,
         ...(params !== undefined ? { params } : {}),
+        // Empty string means the top-level page session; only nested sessions carry ids.
+        ...(sessionId ? { sessionId } : {}),
       });
     };
 
@@ -1118,6 +1201,109 @@ export class DesktopBrowserManager {
     return () => {
       runtime.webContents.debugger.removeListener("message", handleMessage);
     };
+  }
+
+  /**
+   * Runs a CDP command against an already-live tab runtime without activating the tab,
+   * waking the thread, or touching panel focus. The CDP proxy issues dozens of commands
+   * per tool call; the one-time wake happens when its lease is acquired instead.
+   */
+  async sendCdpCommand(input: BrowserSendCdpCommandInput): Promise<unknown> {
+    const runtime = this.runtimes.get(buildRuntimeKey(input.threadId, input.tabId));
+    if (!runtime || runtime.webContents.isDestroyed()) {
+      throw new Error("The browser tab runtime is not available.");
+    }
+    if (!runtime.webContents.debugger.isAttached()) {
+      runtime.webContents.debugger.attach("1.3");
+    }
+    return runtime.webContents.debugger.sendCommand(
+      input.method,
+      input.params ?? {},
+      input.sessionId,
+    );
+  }
+
+  /** The shared automation lease; external consumers (CDP proxy) acquire through this. */
+  getAutomationLease(): BrowserAutomationLease {
+    return this.automationLease;
+  }
+
+  subscribeBrowserTargets(listener: () => void): () => void {
+    this.browserTargetListeners.add(listener);
+    return () => {
+      this.browserTargetListeners.delete(listener);
+    };
+  }
+
+  private notifyBrowserTargetListeners(): void {
+    for (const listener of this.browserTargetListeners) {
+      listener();
+    }
+  }
+
+  // Lease wake path: ensure the exact tab is live and loaded, nothing more. Unlike
+  // attachBrowserUseTab this never activates the tab or switches the visible thread.
+  private async wakeTabForAutomation(input: BrowserTabInput): Promise<void> {
+    const state = this.ensureWorkspace(input.threadId);
+    const tab = this.getTab(state, input.tabId);
+    if (!tab) {
+      throw new Error("The browser tab is not available.");
+    }
+
+    this.clearSuspendTimer(input.threadId);
+    const wasSuspended = tab.status === SUSPENDED_TAB_STATUS;
+    const runtime = this.ensureLiveRuntime(input.threadId, tab.id);
+    if (wasSuspended) {
+      await this.loadTab(input.threadId, tab.id, { force: true, runtime });
+    } else {
+      this.queueRuntimeStateSync(input.threadId, tab.id);
+    }
+  }
+
+  // Element picking keeps its historical activation behavior (the user picks on the tab
+  // they are looking at), but the debugger attach itself now goes through the lease.
+  private async attachElementPickTab(input: BrowserTabInput): Promise<void> {
+    const state = this.ensureWorkspace(input.threadId);
+    const tab = this.resolveTab(state, input.tabId);
+    this.activateTab(input.threadId, state, tab);
+    if (this.activeBounds && this.activeBoundsThreadId === input.threadId) {
+      this.activateThread(input.threadId, this.activeBounds);
+    }
+
+    const key = buildRuntimeKey(input.threadId, tab.id);
+    if (this.pickerLeaseHandles.has(key)) {
+      return;
+    }
+    const handle = await this.automationLease.acquire(
+      { threadId: input.threadId, tabId: tab.id },
+      {
+        markAgentControl: false,
+        onForcedDetach: () => {
+          this.pickerLeaseHandles.delete(key);
+        },
+      },
+    );
+    this.pickerLeaseHandles.set(key, handle);
+  }
+
+  private releaseElementPickTab(input: BrowserTabInput): void {
+    const key = buildRuntimeKey(input.threadId, input.tabId);
+    const handle = this.pickerLeaseHandles.get(key);
+    if (!handle) {
+      return;
+    }
+    this.pickerLeaseHandles.delete(key);
+    handle.release();
+  }
+
+  private setAgentControlMarker(threadId: ThreadId, active: boolean): void {
+    const state = this.getOrCreateState(threadId);
+    if ((state.agentControlActive ?? false) === active) {
+      return;
+    }
+    state.agentControlActive = active;
+    this.markThreadStateChanged(threadId);
+    this.emitState(threadId);
   }
 
   private activateThread(threadId: ThreadId, bounds: BrowserPanelBounds): void {
@@ -1135,6 +1321,8 @@ export class DesktopBrowserManager {
     this.resumeThread(threadId);
     this.attachActiveTab(threadId, bounds);
     this.updatePopupWindowsForThread(threadId);
+    // Active-thread transitions change the CDP-exposable target set without a state emit.
+    this.notifyBrowserTargetListeners();
   }
 
   // Renderer panels create their own <webview>; keep active-thread bookkeeping current while
@@ -1150,6 +1338,7 @@ export class DesktopBrowserManager {
     this.activeBoundsThreadId = threadId;
     this.clearSuspendTimer(threadId);
     this.updatePopupWindowsForThread(threadId);
+    this.notifyBrowserTargetListeners();
   }
 
   private setActiveBounds(threadId: ThreadId, bounds: BrowserPanelBounds | null): void {
@@ -1237,6 +1426,10 @@ export class DesktopBrowserManager {
 
       const runtime = this.runtimes.get(buildRuntimeKey(threadId, tab.id));
       if (runtime) {
+        // A leased tab is being driven by automation; keep it warm until released.
+        if (this.automationLease.isHeld({ threadId, tabId: tab.id })) {
+          continue;
+        }
         if (warmRuntimeTabIds.has(tab.id)) {
           this.scheduleInactiveTabSuspend(threadId, tab.id);
           continue;
@@ -1277,6 +1470,11 @@ export class DesktopBrowserManager {
 
     let didChange = false;
     for (const tab of state.tabs) {
+      // A leased tab stays warm even while its thread is hidden; the lease's release
+      // path reschedules the thread suspend so normal policy resumes afterwards.
+      if (this.automationLease.isHeld({ threadId, tabId: tab.id })) {
+        continue;
+      }
       this.destroyRuntime(threadId, tab.id);
       didChange = suspendTabState(tab) || didChange;
     }
@@ -1763,6 +1961,9 @@ export class DesktopBrowserManager {
     // Tear the pick session down before the debugger detaches: afterwards there is no
     // channel left to clear inspect mode on, and the renderer would stay stuck in the mode.
     this.elementPicker.handleTabClosed(threadId, tabId);
+    // Automation holders (Codex pipe, CDP proxy) are told the runtime is going away so
+    // they can signal their own detach; the debugger detach below stays with the runtime.
+    this.automationLease.handleRuntimeDestroyed({ threadId, tabId });
     this.clearTabSuspendTimer(threadId, tabId);
     this.pendingRuntimeSyncs.delete(key);
     this.runtimeLastActiveAtByKey.delete(key);
@@ -1988,6 +2189,7 @@ export class DesktopBrowserManager {
     for (const listener of this.listeners) {
       listener(snapshot);
     }
+    this.notifyBrowserTargetListeners();
   }
 }
 

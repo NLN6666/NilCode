@@ -214,5 +214,19 @@ contextBridge.exposeInMainWorld("desktopBridge", {
         ipcRenderer.removeListener(IPC.browser.elementPickCancelled, wrappedListener);
       };
     },
+    cdpProxy: {
+      getState: () => ipcRenderer.invoke(IPC.browser.cdpProxyGetState),
+      setSettings: (input) => ipcRenderer.invoke(IPC.browser.cdpProxySetSettings, input),
+      onState: (listener) => {
+        const wrappedListener = (_event: Electron.IpcRendererEvent, state: unknown) => {
+          if (typeof state !== "object" || state === null) return;
+          listener(state as Parameters<typeof listener>[0]);
+        };
+        ipcRenderer.on(IPC.browser.cdpProxyState, wrappedListener);
+        return () => {
+          ipcRenderer.removeListener(IPC.browser.cdpProxyState, wrappedListener);
+        };
+      },
+    },
   },
 } satisfies DesktopBridge);

@@ -296,6 +296,11 @@ export interface ThreadBrowserState {
   activeTabId: string | null;
   tabs: BrowserTabState[];
   lastError: string | null;
+  /**
+   * True while an automation consumer (Codex browser-use pipe or the CDP proxy) holds a
+   * debugger lease on one of this thread's tabs. Optional so existing snapshots stay valid.
+   */
+  agentControlActive?: boolean;
 }
 
 export interface BrowserOpenInput {
@@ -421,6 +426,25 @@ export interface DesktopAppSnapErrorEvent {
 export interface BrowserExecuteCdpInput extends BrowserTabInput {
   method: string;
   params?: Record<string, unknown>;
+}
+
+// Settings for the desktop-local CDP proxy exposing the in-app browser to
+// chrome-devtools-mcp. Persisted by the Electron main process; disabled by default.
+export interface DesktopBrowserCdpProxySettingsInput {
+  enabled: boolean;
+  port: number;
+}
+
+export interface DesktopBrowserCdpProxyState {
+  enabled: boolean;
+  port: number;
+  running: boolean;
+  /** ws:// endpoint while running, null otherwise. */
+  endpoint: string | null;
+  /** Bearer token for the MCP configuration; null until the proxy has been enabled once. */
+  token: string | null;
+  /** Populated when the proxy could not start (e.g. the port is already taken). */
+  lastError: string | null;
 }
 
 // Pushed from the desktop main process when the in-app browser copy-link chord fires
@@ -592,6 +616,13 @@ export interface DesktopBridge {
   browser: BrowserControlMethods & {
     onBrowserUseOpenPanelRequest: (listener: () => void) => () => void;
     onBrowserCopyLink: (listener: (event: BrowserCopyLinkEvent) => void) => () => void;
+    cdpProxy: {
+      getState: () => Promise<DesktopBrowserCdpProxyState>;
+      setSettings: (
+        input: DesktopBrowserCdpProxySettingsInput,
+      ) => Promise<DesktopBrowserCdpProxyState>;
+      onState: (listener: (state: DesktopBrowserCdpProxyState) => void) => () => void;
+    };
   };
 }
 

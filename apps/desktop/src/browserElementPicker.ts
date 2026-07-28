@@ -161,8 +161,10 @@ const SCREENSHOT_MIME_TYPE = "image/png";
 // A narrow slice of DesktopBrowserManager so tests can drive the session with fakes and
 // the manager keeps only thin delegation methods.
 export interface BrowserElementPickHost {
-  /** Ensures the tab is live and the debugger is attached (attachBrowserUseTab). */
+  /** Ensures the tab is live and holds an automation lease on its debugger. */
   attachTab: (input: BrowserTabInput) => Promise<void>;
+  /** Releases the automation lease taken by attachTab once the pick session ends. */
+  releaseTab: (input: BrowserTabInput) => void;
   sendCommand: (
     input: BrowserTabInput,
     method: string,
@@ -427,6 +429,13 @@ export class BrowserElementPicker {
       session.unsubscribe?.();
     } catch {
       // The runtime may already be torn down; the listener dies with it.
+    }
+    try {
+      // Hand the debugger lease back so the shared attachment can really detach once the
+      // last automation consumer is gone.
+      this.host.releaseTab({ threadId, tabId: session.tabId });
+    } catch {
+      // Releasing against a torn-down runtime is a no-op.
     }
     return true;
   }

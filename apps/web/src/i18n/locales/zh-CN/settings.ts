@@ -549,6 +549,41 @@ export const settings: Settings = {
       copyFailedDescription: "剪贴板访问失败。",
     },
   },
+  browserCdpProxy: {
+    title: "内置浏览器访问",
+    enable: {
+      title: "开放内置浏览器",
+      description:
+        "让 chrome-devtools-mcp 控制你当前查看的会话浏览器面板。该端点只监听 127.0.0.1，并需要下方配置中的令牌。",
+      ariaLabel: "通过 CDP 开放内置浏览器",
+    },
+    port: {
+      title: "端口",
+      description: "端点使用的本地端口。修改后端点会重启，请重新复制一次配置。",
+      ariaLabel: "内置浏览器 CDP 端口",
+    },
+    configuration: {
+      title: "MCP 配置",
+      description: "把这个服务器加入代理的 MCP 配置，即可让它使用浏览器工具。",
+      copy: "复制",
+      copied: "MCP 配置已复制",
+      unavailable: "开启端点后才能获取配置。",
+    },
+    status: {
+      disabled: "已关闭",
+      starting: "正在启动…",
+      running: (endpoint) => `正在监听 ${endpoint}`,
+      failed: (message) => `无法启动：${message}`,
+    },
+    toasts: {
+      updateFailedTitle: "无法更新端点",
+      updateFailedDescription: "桌面应用拒绝了此次修改。",
+      invalidPortTitle: "端口未生效",
+      invalidPortDescription: (minimum, maximum) => `请输入 ${minimum} 到 ${maximum} 之间的端口。`,
+      copyFailedTitle: "无法复制",
+      copyFailedDescription: "剪贴板访问失败。",
+    },
+  },
   providers: {
     updates: {
       title: "更新",

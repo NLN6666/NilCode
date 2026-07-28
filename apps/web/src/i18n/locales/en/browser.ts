@@ -9,6 +9,8 @@ export const browser = {
   sleeping: "Browser is sleeping",
   restoringCached: "Restoring cached browser",
   untitledTab: "Untitled",
+  /** Pill shown while an agent drives this thread's browser through the CDP endpoint. */
+  agentControl: "Agent controlled",
 
   nav: {
     goBack: "Go back",

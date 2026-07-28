@@ -8,6 +8,7 @@ export const browser: Messages["browser"] = {
   sleeping: "浏览器已休眠",
   restoringCached: "正在恢复缓存的浏览器",
   untitledTab: "无标题",
+  agentControl: "代理控制中",
 
   nav: {
     goBack: "后退",

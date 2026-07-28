@@ -447,6 +447,30 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     target: null,
   },
   {
+    id: "integrations:cdp-proxy-enable",
+    section: "integrations",
+    title: (m) => m.settings.browserCdpProxy.enable.title,
+    keywords:
+      "Let chrome-devtools-mcp drive the in-app browser over a local CDP endpoint. puppeteer devtools protocol websocket automation 内置浏览器 调试协议 自动化",
+    // The section only renders in the desktop app, so it has no stable anchor elsewhere.
+    target: null,
+  },
+  {
+    id: "integrations:cdp-proxy-port",
+    section: "integrations",
+    title: (m) => m.settings.browserCdpProxy.port.title,
+    keywords: "Local port for the in-app browser CDP endpoint. 9333 listen address 端口 监听",
+    target: null,
+  },
+  {
+    id: "integrations:cdp-proxy-configuration",
+    section: "integrations",
+    title: (m) => m.settings.browserCdpProxy.configuration.title,
+    keywords:
+      "Copy the chrome-devtools-mcp server entry with the current endpoint and token. ws-endpoint ws-headers bearer 配置 复制 令牌",
+    target: null,
+  },
+  {
     id: "advanced:version",
     section: "advanced",
     title: (m) => m.settings.advanced.about.version.title,
