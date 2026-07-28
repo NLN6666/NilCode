@@ -647,13 +647,25 @@ export function createProviderVersionAdvisory(input: {
   };
 }
 
+/**
+ * Binds the request to the caller's interruption as well as its own deadline.
+ *
+ * The timeout alone is not enough on the shutdown path: interrupting the fiber
+ * abandons the promise but leaves the socket open for the full timeout, and a
+ * live handle keeps Node's event loop from draining. The process then sits
+ * there long after its finalizers have finished, which reads as a hung exit.
+ */
+function latestVersionRequestSignal(interrupt: AbortSignal): AbortSignal {
+  return AbortSignal.any([interrupt, AbortSignal.timeout(LATEST_VERSION_TIMEOUT_MS)]);
+}
+
 const fetchNpmLatestVersion = Effect.fn("fetchNpmLatestVersion")(function* (packageName: string) {
-  return yield* Effect.tryPromise(async () => {
+  return yield* Effect.tryPromise(async (signal) => {
     const response = await fetch(
       `https://registry.npmjs.org/${encodeURIComponent(packageName)}/latest`,
       {
         headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(LATEST_VERSION_TIMEOUT_MS),
+        signal: latestVersionRequestSignal(signal),
       },
     );
     if (!response.ok) {
@@ -670,12 +682,12 @@ const fetchHomebrewLatestVersion = Effect.fn("fetchHomebrewLatestVersion")(funct
   if (source.kind !== "homebrew" || !source.homebrewKind) {
     return null;
   }
-  return yield* Effect.tryPromise(async () => {
+  return yield* Effect.tryPromise(async (signal) => {
     const response = await fetch(
       `https://formulae.brew.sh/api/${source.homebrewKind}/${encodeURIComponent(source.name)}.json`,
       {
         headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(LATEST_VERSION_TIMEOUT_MS),
+        signal: latestVersionRequestSignal(signal),
       },
     );
     if (!response.ok) {

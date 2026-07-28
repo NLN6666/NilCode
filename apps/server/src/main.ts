@@ -454,8 +454,86 @@ const makeServerProgram = (input: CliInput) =>
       );
     }
 
-    return yield* stopSignal;
-  }).pipe(Effect.scoped, Effect.provide(LayerLive(input)));
+    yield* stopSignal;
+    // Marks the boundary between "waiting to be told to stop" and "running
+    // finalizers": everything after this line is scope teardown, which is
+    // otherwise silent and accounts for the whole observed exit latency.
+    yield* Effect.logInfo("shutdown: stop signal received, closing scope");
+  }).pipe(
+    Effect.scoped,
+    // Separates "a finalizer is still blocking" from "finalizers finished but
+    // the process cannot exit". Both look identical from outside, and they
+    // have opposite fixes.
+    //
+    // `ensuring`, not `tap`: Ctrl+C interrupts the fiber where it awaits the
+    // stop signal, so anything sequenced inside the scope is skipped entirely
+    // on that path — which is the only path a dev run can reproduce.
+    Effect.ensuring(
+      Effect.logInfo("shutdown: scope closed, all finalizers complete").pipe(
+        Effect.andThen(Effect.sync(reportLingeringHandlesIfStillAlive)),
+      ),
+    ),
+    Effect.provide(LayerLive(input)),
+  );
+
+/**
+ * Diagnostic for a shutdown that finishes its finalizers yet does not exit.
+ * Finalizers completing is not enough: any surviving handle (child process,
+ * socket, timer) keeps Node's event loop alive, which from the outside is
+ * indistinguishable from a hung teardown.
+ *
+ * Armed once finalizers have completed, so a sample can never be confused for
+ * teardown still being in progress. Sampled twice so a set that is slowly
+ * draining is distinguishable from one that is frozen. The probe timers are
+ * `unref`'d, so a clean exit races past them without firing and they never
+ * delay shutdown on their own.
+ */
+function reportLingeringHandlesIfStillAlive(): void {
+  for (const delayMs of [1_500, 6_000]) {
+    const probe = setTimeout(() => {
+      const internals = process as unknown as {
+        _getActiveHandles?: () => ReadonlyArray<unknown>;
+        _getActiveRequests?: () => ReadonlyArray<unknown>;
+      };
+      const handles = (internals._getActiveHandles?.() ?? []).map(describeLingeringHandle);
+      const requests = (internals._getActiveRequests?.() ?? []).map(describeLingeringHandle);
+      process.stderr.write(
+        `[shutdown] +${delayMs}ms handles=${JSON.stringify(handles)} requests=${JSON.stringify(requests)}\n`,
+      );
+    }, delayMs);
+    probe.unref();
+  }
+}
+
+/**
+ * Names a handle well enough to act on it: which child is still running, and
+ * whether a socket is a real peer connection or just a child's stdio pipe
+ * (both report as `Socket`, but only one of them implies a live subprocess).
+ */
+function describeLingeringHandle(value: unknown): string {
+  const handle = value as {
+    constructor?: { name?: string };
+    pid?: number;
+    spawnfile?: string;
+    killed?: boolean;
+    exitCode?: number | null;
+    remoteAddress?: string;
+    remotePort?: number;
+    localPort?: number;
+  };
+  const name = handle?.constructor?.name ?? "unknown";
+  if (typeof handle?.pid === "number") {
+    const command = handle.spawnfile ?? "?";
+    return `${name}(pid=${handle.pid} cmd=${command} killed=${handle.killed ?? "?"} exit=${handle.exitCode ?? "null"})`;
+  }
+  if (handle?.remotePort !== undefined) {
+    return `${name}(peer=${handle.remoteAddress}:${handle.remotePort})`;
+  }
+  if (handle?.localPort !== undefined) {
+    return `${name}(local=${handle.localPort})`;
+  }
+  return name;
+}
 
 /**
  * These flags mirrors the environment variables and the config shape.

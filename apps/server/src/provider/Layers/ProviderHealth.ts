@@ -110,6 +110,19 @@ export type { CommandResult } from "../providerCliOutput";
 const DEFAULT_TIMEOUT_MS = 4_000;
 const CLAUDE_HEALTH_TIMEOUT_MS = 20_000;
 const OPENCODE_HEALTH_TIMEOUT_MS = 20_000;
+/**
+ * How long shutdown waits for an in-flight status refresh to unwind.
+ *
+ * Tearing down the CLI probes cleanly measures ~1.3s for a full provider fan-out,
+ * so this budget lets the normal case finish and only abandons a probe that is
+ * genuinely stuck. Without a bound, closing the app moments after launch waits
+ * out whichever deadline the slowest probe is holding — up to the 20s health
+ * timeouts above — because those probes are still running.
+ *
+ * Abandoning is safe here: a refresh produces nothing durable beyond a status
+ * cache that the next launch recomputes.
+ */
+const REFRESH_TEARDOWN_BUDGET_MS = 2_000;
 const CODEX_PROVIDER = "codex" as const;
 const CLAUDE_AGENT_PROVIDER = "claudeAgent" as const;
 const CURSOR_PROVIDER = "cursor" as const;
@@ -2103,7 +2116,18 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
         PubSub.shutdown,
       );
       const refreshScope = yield* Scope.make("sequential");
-      yield* Effect.addFinalizer(() => Scope.close(refreshScope, Exit.void));
+      yield* Effect.addFinalizer(() =>
+        Effect.gen(function* () {
+          const closed = yield* Scope.close(refreshScope, Exit.void).pipe(
+            Effect.timeoutOption(REFRESH_TEARDOWN_BUDGET_MS),
+          );
+          if (Option.isNone(closed)) {
+            yield* Effect.logWarning("provider status refresh exceeded its shutdown budget", {
+              budgetMs: REFRESH_TEARDOWN_BUDGET_MS,
+            });
+          }
+        }),
+      );
 
       const cachePathByProvider = new Map(
         PROVIDERS.map(

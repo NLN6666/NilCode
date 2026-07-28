@@ -2370,6 +2370,10 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           runtimeIdleStopsInFlight.clear();
           stopIdleRuntimeSession = null;
         }).pipe(
+          // Shutdown latency is otherwise invisible: this whole chain runs as one
+          // uninterruptible finalizer with no output, so a stage that blocks looks
+          // identical to a server that simply never got the stop signal.
+          Effect.andThen(Effect.logInfo("shutdown.runtimeEvents: stopping provider sessions")),
           Effect.andThen(
             runStopAll().pipe(
               Effect.catchCause((cause) =>
@@ -2379,14 +2383,18 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
               ),
             ),
           ),
+          Effect.andThen(Effect.logInfo("shutdown.runtimeEvents: closing producer scope")),
           // Keep subscriptions alive until adapters have emitted terminal
           // events. Closing waits for an in-flight canonical event because its
           // persistence and publication section is uninterruptible.
           Effect.andThen(Scope.close(runtimeEventProducerScope, Exit.void)),
+          Effect.andThen(Effect.logInfo("shutdown.runtimeEvents: draining event fanout")),
           // Downstream subscribers transfer every published event into their
           // own drainable workers before the publication owner is shut down.
           Effect.andThen(awaitRuntimeEventFanoutDrained),
+          Effect.andThen(Effect.logInfo("shutdown.runtimeEvents: shutting down pubsub")),
           Effect.andThen(PubSub.shutdown(runtimeEventPubSub)),
+          Effect.andThen(Effect.logInfo("shutdown.runtimeEvents: done")),
         ),
       ),
     );
