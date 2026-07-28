@@ -57,6 +57,7 @@ export const composer: Messages["composer"] = {
       subagents: "我的智能体",
       builtInAgents: "Synara 智能体",
       models: "模型",
+      modes: "模式",
       local: "本地",
       builtIn: "内置",
       provider: "服务商",
@@ -76,6 +77,11 @@ export const composer: Messages["composer"] = {
       status: "会话状态",
       subagents: "子智能体",
       feedback: "反馈给 Synara",
+    },
+
+    colorPreview: {
+      description: "让本轮回复用可预览的色卡给出配色方案",
+      keywords: "配色 主题 预览 色卡 调色板 preview",
     },
 
     meta: {

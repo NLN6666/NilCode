@@ -155,6 +155,17 @@ export type MentionChipKind = "path" | "plugin" | "thread" | "preview";
  */
 export const COLOR_PREVIEW_MENTION_TOKEN = "Preview";
 
+/**
+ * Exact text the `@Preview` suggestion inserts. Kept next to the matcher so the
+ * inserted token can never drift out of `promptIncludesColorPreviewMention`.
+ */
+export const COLOR_PREVIEW_MENTION_INSERT_TEXT = formatComposerMentionToken(
+  COLOR_PREVIEW_MENTION_TOKEN,
+);
+
+/** Central icon shared by the `@Preview` chip and its command-menu row. */
+export const COLOR_PREVIEW_MENTION_ICON_NAME = "color-swatch";
+
 const COLOR_PREVIEW_MENTION_KEY = normalizeMentionNameKey(COLOR_PREVIEW_MENTION_TOKEN);
 
 export function isColorPreviewMentionToken(token: string): boolean {

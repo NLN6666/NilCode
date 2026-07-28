@@ -105,6 +105,7 @@ import { serverConfigQueryOptions, serverQueryKeys } from "~/lib/serverReactQuer
 import { useRefreshProviderStatusesNow } from "~/hooks/useProviderStatusRefresh";
 import { SINGLE_CHAT_PANE_SCOPE_ID } from "~/lib/chatPaneScope";
 import {
+  COLOR_PREVIEW_MENTION_INSERT_TEXT,
   composerMentionPathNeedsQuoting,
   formatComposerMentionToken,
   filterPromptProviderMentionReferences,
@@ -9906,6 +9907,14 @@ export default function ChatView({
       }
       if (item.type === "local-root") {
         handleNavigateLocalFolder(localFolderBrowseRootPath ?? "/");
+        return;
+      }
+      if (item.type === "color-preview") {
+        applyComposerTriggerReplacement({
+          snapshot,
+          trigger,
+          base: `${COLOR_PREVIEW_MENTION_INSERT_TEXT} `,
+        });
         return;
       }
       if (item.type === "slash-command") {

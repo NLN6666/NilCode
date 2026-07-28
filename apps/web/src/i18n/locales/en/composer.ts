@@ -66,6 +66,7 @@ export const composer = {
       subagents: "Your agents",
       builtInAgents: "Synara agents",
       models: "Models",
+      modes: "Modes",
       local: "Local",
       builtIn: "Built-in",
       provider: "Provider",
@@ -89,6 +90,16 @@ export const composer = {
       status: "Status",
       subagents: "Subagents",
       feedback: "Feedback Synara",
+    },
+
+    /**
+     * The `@Preview` row. It is a mode switch for the turn being sent, not an object that can
+     * be referenced, so the copy describes what the reply will look like. `keywords` never
+     * renders — it only feeds ranking, so the row stays reachable in the active language.
+     */
+    colorPreview: {
+      description: "Answer this turn with color themes as previewable swatch cards",
+      keywords: "color theme palette swatch preview",
     },
 
     /** Right-aligned kind label on each row. */

@@ -123,6 +123,41 @@ describe("groupCommandItems", () => {
     ]);
   });
 
+  it("puts turn modes below the mention targets and above local files", () => {
+    const items: ComposerCommandItem[] = [
+      {
+        id: "agent:codex:coder",
+        type: "agent",
+        provider: "codex",
+        alias: "coder",
+        color: "violet",
+        group: "agent",
+        label: "@coder",
+        description: "Implements scoped changes",
+      },
+      {
+        id: "color-preview",
+        type: "color-preview",
+        label: "@Preview",
+        description: en.composer.commandMenu.colorPreview.description,
+      },
+      {
+        id: "path:file:/workspace/AGENTS.md",
+        type: "path",
+        path: "/workspace/AGENTS.md",
+        pathKind: "file",
+        label: "AGENTS.md",
+        description: "/workspace",
+      },
+    ];
+
+    expect(groupCommandItems(items, "mention", true, GROUP_LABELS)).toEqual([
+      { id: "subagents", label: "Your agents", items: [items[0]] },
+      { id: "modes", label: "Modes", items: [items[1]] },
+      { id: "local", label: "Local", items: [items[2]] },
+    ]);
+  });
+
   it("groups slash-menu skills separately from app and provider commands", () => {
     const items: ComposerCommandItem[] = [
       {

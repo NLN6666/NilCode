@@ -7,6 +7,7 @@
 
 import { getFileIconName, inferEntryKindFromPath } from "~/file-icons";
 import {
+  COLOR_PREVIEW_MENTION_ICON_NAME,
   findThreadProviderMentionReferenceForToken,
   resolveMentionChipKind,
   threadIdFromProviderMentionReference,
@@ -23,8 +24,6 @@ import { resolveThreadDisplayProvider } from "~/lib/threadDisplayProvider";
 import { ProviderIcon } from "../ProviderIcon";
 
 export type { MentionChipKind };
-
-const COLOR_PREVIEW_MENTION_ICON_NAME = "color-swatch";
 
 function composerMentionChipCentralIconName(path: string, kind: MentionChipKind = "path"): string {
   if (kind === "plugin" || path.startsWith("plugin://")) {
