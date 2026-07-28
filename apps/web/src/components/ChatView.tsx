@@ -127,8 +127,11 @@ import {
 } from "../confirmedCustomBinaryPathStore";
 import { isElectron } from "../env";
 import {
+  ANIMATED_AUTO_FOLLOW_MEASURE_WAIT_MS,
   USER_SCROLL_INTENT_WINDOW_MS,
+  getScrollContainerDistanceFromBottom,
   isScrollContainerNearBottom,
+  shouldDelayAnimatedAutoFollowScroll,
   shouldIgnoreListAtEndReport,
 } from "../chat-scroll";
 import { stripDiffSearchParams } from "../diffRouteSearch";
@@ -5155,6 +5158,16 @@ export default function ChatView({
   const onMessagesWheelBase = useCallback(() => {
     noteUserScrollIntent();
   }, [noteUserScrollIntent]);
+  // The animated glide may only launch once the appended tail rows have real
+  // measured sizes; on estimated geometry its target clamps to the stale bottom
+  // and a later unanimated snap does the travel — the visible send flick.
+  const isTranscriptTailMeasured = useCallback(() => {
+    const listState = legendListRef.current?.getState?.();
+    if (!listState) return true;
+    const lastIndex = listState.data.length - 1;
+    if (lastIndex < 0) return true;
+    return Number.isFinite(listState.sizeAtIndex(lastIndex));
+  }, []);
   useLayoutEffect(() => {
     const shouldFollowPendingTurn =
       activeThread?.id !== undefined && autoFollowThreadIdRef.current === activeThread.id;
@@ -5163,15 +5176,52 @@ export default function ChatView({
     }
     // Re-apply the bottom stick only for real transcript messages; tool/work
     // rows can arrive quickly and should not churn scroll/layout work.
-    const frameId = window.requestAnimationFrame(() => {
+    const readDistanceFromBottom = (): number | null => {
+      const scrollContainer = legendListRef.current?.getScrollableNode?.();
+      if (!(scrollContainer instanceof HTMLElement)) return null;
+      return getScrollContainerDistanceFromBottom(scrollContainer);
+    };
+    // Reading the baseline here (inside the layout effect) captures the commit's
+    // own layout — composer resizes included — but not the list's still-pending
+    // content growth, which is exactly the part the glide has to wait for.
+    const baselineDistancePx = readDistanceFromBottom();
+    const waitDeadline = performance.now() + ANIMATED_AUTO_FOLLOW_MEASURE_WAIT_MS;
+    const wasAnimatedAtStart = animateNextAutoFollowScrollRef.current;
+    let frameId: number | null = null;
+    const runAutoFollowScroll = () => {
+      frameId = null;
       const shouldAnimate = animateNextAutoFollowScrollRef.current;
+      // A scroll gesture can revoke the pending follow while the glide waits
+      // for layout; snapping afterwards would yank the viewport back out of
+      // the user's hands.
+      if (wasAnimatedAtStart && !shouldAnimate) {
+        return;
+      }
+      const distancePx = readDistanceFromBottom();
+      const tailLaidOut =
+        baselineDistancePx === null || distancePx === null || distancePx > baselineDistancePx + 1;
+      if (
+        shouldDelayAnimatedAutoFollowScroll({
+          animated: shouldAnimate,
+          tailSizeKnown: isTranscriptTailMeasured(),
+          tailLaidOut,
+          now: performance.now(),
+          waitDeadline,
+        })
+      ) {
+        frameId = window.requestAnimationFrame(runAutoFollowScroll);
+        return;
+      }
       animateNextAutoFollowScrollRef.current = false;
       scrollToEnd(shouldAnimate);
-    });
-    return () => {
-      window.cancelAnimationFrame(frameId);
     };
-  }, [activeThread?.id, scrollToEnd, transcriptAutoFollowSignal]);
+    frameId = window.requestAnimationFrame(runAutoFollowScroll);
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [activeThread?.id, isTranscriptTailMeasured, scrollToEnd, transcriptAutoFollowSignal]);
   const {
     pendingTranscriptSelectionAction,
     commitTranscriptAssistantSelection,

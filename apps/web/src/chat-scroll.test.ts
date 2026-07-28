@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ANIMATED_AUTO_FOLLOW_MEASURE_WAIT_MS,
   AUTO_SCROLL_BOTTOM_THRESHOLD_PX,
   USER_SCROLL_INTENT_WINDOW_MS,
   getScrollContainerDistanceFromBottom,
   isScrollContainerNearBottom,
+  shouldDelayAnimatedAutoFollowScroll,
   shouldIgnoreListAtEndReport,
 } from "./chat-scroll";
 
@@ -154,5 +156,67 @@ describe("shouldIgnoreListAtEndReport", () => {
 
   it("outlasts the programmatic guard so streaming cannot starve it", () => {
     expect(USER_SCROLL_INTENT_WINDOW_MS).toBeGreaterThan(200);
+  });
+});
+
+describe("shouldDelayAnimatedAutoFollowScroll", () => {
+  it("never delays unanimated re-sticks", () => {
+    expect(
+      shouldDelayAnimatedAutoFollowScroll({
+        animated: false,
+        tailSizeKnown: false,
+        tailLaidOut: false,
+        now: 1_000,
+        waitDeadline: 1_500,
+      }),
+    ).toBe(false);
+  });
+
+  it("launches the glide once the tail is measured and in the DOM", () => {
+    expect(
+      shouldDelayAnimatedAutoFollowScroll({
+        animated: true,
+        tailSizeKnown: true,
+        tailLaidOut: true,
+        now: 1_000,
+        waitDeadline: 1_500,
+      }),
+    ).toBe(false);
+  });
+
+  it("waits while the appended tail row is still an estimate", () => {
+    expect(
+      shouldDelayAnimatedAutoFollowScroll({
+        animated: true,
+        tailSizeKnown: false,
+        tailLaidOut: true,
+        now: 1_000,
+        waitDeadline: 1_500,
+      }),
+    ).toBe(true);
+  });
+
+  it("waits while the grown content has not reached the DOM", () => {
+    expect(
+      shouldDelayAnimatedAutoFollowScroll({
+        animated: true,
+        tailSizeKnown: true,
+        tailLaidOut: false,
+        now: 1_000,
+        waitDeadline: 1_500,
+      }),
+    ).toBe(true);
+  });
+
+  it("gives up once the wait deadline passes", () => {
+    expect(
+      shouldDelayAnimatedAutoFollowScroll({
+        animated: true,
+        tailSizeKnown: false,
+        tailLaidOut: false,
+        now: 1_000 + ANIMATED_AUTO_FOLLOW_MEASURE_WAIT_MS,
+        waitDeadline: 1_000 + ANIMATED_AUTO_FOLLOW_MEASURE_WAIT_MS,
+      }),
+    ).toBe(false);
   });
 });

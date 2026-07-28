@@ -31,6 +31,31 @@ export function isScrollContainerNearBottom(
   return getScrollContainerDistanceFromBottom(position) <= threshold;
 }
 
+// How long the animated post-send auto-follow may wait for the freshly
+// appended tail rows to reach the DOM. The list measures new rows in its own
+// state before it flushes the grown content height, so a glide issued in that
+// gap gets clamped to the stale bottom: it no-ops and a later unanimated snap
+// does the real travel — the visible send flick. The deadline bounds
+// degenerate cases (e.g. a transcript change that never grows the scrollable
+// area), where gliding immediately is still the best behavior left.
+export const ANIMATED_AUTO_FOLLOW_MEASURE_WAIT_MS = 500;
+
+interface AnimatedAutoFollowDelayInput {
+  animated: boolean;
+  /** The list has a real measured size for the tail row (not an estimate). */
+  tailSizeKnown: boolean;
+  /** The DOM gained downward travel since the auto-follow was scheduled. */
+  tailLaidOut: boolean;
+  now: number;
+  waitDeadline: number;
+}
+
+export function shouldDelayAnimatedAutoFollowScroll(input: AnimatedAutoFollowDelayInput): boolean {
+  if (!input.animated) return false;
+  if (input.now >= input.waitDeadline) return false;
+  return !(input.tailSizeKnown && input.tailLaidOut);
+}
+
 interface AtEndReportGuardInput {
   isAtEnd: boolean;
   now: number;

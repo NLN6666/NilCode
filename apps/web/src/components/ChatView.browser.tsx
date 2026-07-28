@@ -2286,6 +2286,178 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
+  it("aims the post-send smooth scroll at the freshly laid-out tail", async () => {
+    const restoreNativeApi = installDeterministicSendNativeApi();
+    let currentSnapshot = createSnapshotForTargetUser({
+      targetMessageId: "msg-user-send-flick" as MessageId,
+      targetText: "send flick target",
+    });
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: currentSnapshot,
+    });
+    let patchedScrollContainer: HTMLElement | null = null;
+    let originalScrollTo: HTMLElement["scrollTo"] | null = null;
+
+    const syncActiveThread = (
+      update: (
+        thread: OrchestrationReadModel["threads"][number],
+      ) => OrchestrationReadModel["threads"][number],
+    ) => {
+      currentSnapshot = {
+        ...currentSnapshot,
+        snapshotSequence: currentSnapshot.snapshotSequence + 1,
+        threads: currentSnapshot.threads.map((thread) =>
+          thread.id === THREAD_ID ? update(thread) : thread,
+        ),
+        updatedAt: isoAt(currentSnapshot.snapshotSequence + 1_200),
+      };
+      fixture = { ...fixture, snapshot: currentSnapshot };
+      useStore.getState().syncServerReadModel(currentSnapshot);
+    };
+
+    try {
+      const scrollContainer = await waitForElement(
+        () => document.querySelector<HTMLElement>("[data-chat-scroll-container='true']"),
+        "Unable to find message scroll container.",
+      );
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      scrollContainer.dispatchEvent(new Event("scroll"));
+      await waitForLayout();
+      expect(getScrollContainerDistanceFromBottom(scrollContainer)).toBeLessThanOrEqual(
+        AUTO_SCROLL_BOTTOM_THRESHOLD_PX,
+      );
+
+      // Capture every programmatic scroll so the post-send glide's target is
+      // observable. Calls pass through, so the transcript still moves normally.
+      const scrollToLog: Array<{ t: number; top: number; behavior: string; max: number }> = [];
+      patchedScrollContainer = scrollContainer;
+      originalScrollTo = scrollContainer.scrollTo;
+      const passthroughScrollTo = scrollContainer.scrollTo.bind(scrollContainer);
+      scrollContainer.scrollTo = ((options?: ScrollToOptions | number, y?: number) => {
+        const normalized: ScrollToOptions =
+          typeof options === "object" && options !== null
+            ? options
+            : {
+                ...(typeof options === "number" ? { left: options } : {}),
+                ...(typeof y === "number" ? { top: y } : {}),
+              };
+        scrollToLog.push({
+          t: Math.round(performance.now()),
+          top: Math.round(Number(normalized.top ?? -1)),
+          behavior: String(normalized.behavior ?? "auto"),
+          max: Math.round(scrollContainer.scrollHeight - scrollContainer.clientHeight),
+        });
+        passthroughScrollTo(normalized);
+      }) as typeof scrollContainer.scrollTo;
+      const preSendScrollTop = scrollContainer.scrollTop;
+
+      // A taller draft makes the composer shrink at send, resizing the viewport
+      // exactly like a real multi-line prompt does.
+      const prompt = "flick detector message\nsecond line\nthird line\nfourth line";
+      useComposerDraftStore.getState().setPrompt(THREAD_ID, prompt);
+      const sendButton = await waitForSendButton();
+      expect(sendButton.disabled).toBe(false);
+      sendButton.click();
+
+      // The glide must launch before the server echo lands: once it does, the
+      // list geometry it aimed at is the freshly laid-out optimistic tail.
+      await vi.waitFor(
+        () => {
+          expect(scrollToLog.some((call) => call.behavior === "smooth")).toBe(true);
+        },
+        { timeout: 6_000, interval: 16 },
+      );
+
+      // Then the server echoes the message and the turn spins up — the
+      // sequence a live provider produces.
+      const turnStartCommand = wsRequests
+        .map(readDispatchedCommand)
+        .find((command) => command?.type === "thread.turn.start");
+      const sentMessage = (turnStartCommand?.message ?? null) as {
+        messageId?: string;
+        id?: string;
+        text?: string;
+      } | null;
+      const echoedMessageId = MessageId.makeUnsafe(
+        String(sentMessage?.messageId ?? sentMessage?.id ?? "msg-user-send-flick-echo"),
+      );
+      const activeTurnId = TurnId.makeUnsafe("turn-send-flick");
+      syncActiveThread((thread) => ({
+        ...thread,
+        messages: [
+          ...thread.messages,
+          createUserMessage({
+            id: echoedMessageId,
+            text: "flick detector message\nsecond line\nthird line\nfourth line",
+            offsetSeconds: 600,
+          }),
+        ],
+        latestTurn: {
+          turnId: activeTurnId,
+          state: "running",
+          requestedAt: isoAt(1_210),
+          startedAt: isoAt(1_211),
+          completedAt: null,
+          assistantMessageId: null,
+        },
+        session: thread.session
+          ? {
+              ...thread.session,
+              status: "running",
+              activeTurnId,
+              updatedAt: isoAt(1_211),
+            }
+          : null,
+        updatedAt: isoAt(1_211),
+      }));
+
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      syncActiveThread((thread) => ({
+        ...thread,
+        activities: [
+          ...thread.activities,
+          {
+            id: EventId.makeUnsafe("activity-send-flick-tool"),
+            createdAt: isoAt(1_212),
+            kind: "tool.completed",
+            summary: "send flick tool activity",
+            tone: "tool",
+            turnId: activeTurnId,
+            payload: {
+              itemType: "dynamic_tool_call",
+              toolName: "send-flick-tool",
+            },
+          },
+        ],
+        updatedAt: isoAt(1_212),
+      }));
+
+      await vi.waitFor(
+        async () => {
+          expect(document.body.textContent).toContain("flick detector message");
+          const layout = await mounted.measureLayout();
+          expect(layout.distanceFromBottomPx).toBeLessThanOrEqual(AUTO_SCROLL_BOTTOM_THRESHOLD_PX);
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      // The one animated glide after send must aim at the new tail. When it is
+      // issued before the appended rows are laid out, its target clamps to the
+      // stale bottom, the glide goes nowhere, and a later unanimated snap does
+      // the real travel — the visible send flick.
+      const smoothScroll = scrollToLog.find((call) => call.behavior === "smooth");
+      const scrollDebug = JSON.stringify(scrollToLog);
+      expect(smoothScroll, scrollDebug).toBeDefined();
+      expect(smoothScroll!.top, scrollDebug).toBeGreaterThan(preSendScrollTop + 20);
+    } finally {
+      if (patchedScrollContainer && originalScrollTo) {
+        patchedScrollContainer.scrollTo = originalScrollTo;
+      }
+      await mounted.cleanup();
+      restoreNativeApi();
+    }
+  });
+
   it("auto-follows real transcript changes without re-sticking for non-message activity", async () => {
     let currentSnapshot = createSnapshotForTargetUser({
       targetMessageId: "msg-user-auto-follow-wiring" as MessageId,
