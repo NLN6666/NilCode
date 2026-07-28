@@ -111,7 +111,11 @@ import {
   saveConfirmedCustomBinaryPaths,
 } from "../confirmedCustomBinaryPathStore";
 import { isElectron } from "../env";
-import { isScrollContainerNearBottom } from "../chat-scroll";
+import {
+  USER_SCROLL_INTENT_WINDOW_MS,
+  isScrollContainerNearBottom,
+  shouldIgnoreListAtEndReport,
+} from "../chat-scroll";
 import { stripDiffSearchParams } from "../diffRouteSearch";
 import { resolveSubagentPresentationForThread } from "../lib/subagentPresentation";
 import { ensureHomeChatProject, isHomeChatContainerProject } from "../lib/chatProjects";
@@ -1419,6 +1423,10 @@ export default function ChatView({
   const legendListRef = useRef<LegendListRef | null>(null);
   const timelineControllerRef = useRef<MessagesTimelineController | null>(null);
   const isAtEndRef = useRef(true);
+  // Mirrors isAtEndRef as render state so the list's own tail-stick can be switched off
+  // the moment someone scrolls away. Flips only when the viewport crosses the threshold,
+  // so it costs one render per crossing rather than one per streamed chunk.
+  const [transcriptFollowsTail, setTranscriptFollowsTail] = useState(true);
   const autoFollowThreadIdRef = useRef<ThreadId | null>(null);
   const pendingInteractionAnchorRef = useRef<{
     element: HTMLElement;
@@ -4634,19 +4642,33 @@ export default function ChatView({
   // Guards isAtEndRef from flipping during reflow-induced scroll events that
   // fire immediately after an explicit scrollToEnd.
   const programmaticScrollUntilRef = useRef(0);
+  // Set by real scroll gestures so they outrank the programmatic guard above.
+  const userScrollIntentUntilRef = useRef(0);
   // Smooth only the first auto-follow after a send; live stream re-sticks stay cheap.
   const animateNextAutoFollowScrollRef = useRef(false);
+  // Single writer for the at-end state so the ref and the render state that drives the
+  // list's tail-stick can never disagree.
+  const setTranscriptAtEnd = useCallback((isAtEnd: boolean) => {
+    isAtEndRef.current = isAtEnd;
+    setTranscriptFollowsTail(isAtEnd);
+  }, []);
   const scrollToEnd = useCallback((animated = false) => {
     programmaticScrollUntilRef.current = performance.now() + 200;
     legendListRef.current?.scrollToEnd?.({ animated });
   }, []);
-  const armTranscriptAutoFollow = useCallback((targetThreadId: ThreadId, animated = false) => {
-    autoFollowThreadIdRef.current = targetThreadId;
-    animateNextAutoFollowScrollRef.current = animated;
-    isAtEndRef.current = true;
-    showScrollDebouncer.current.cancel();
-    setShowScrollToBottom(false);
-  }, []);
+  const armTranscriptAutoFollow = useCallback(
+    (targetThreadId: ThreadId, animated = false) => {
+      autoFollowThreadIdRef.current = targetThreadId;
+      animateNextAutoFollowScrollRef.current = animated;
+      // Sending is an explicit request to watch the reply, so it revokes any earlier
+      // gesture that had parked the viewport away from the tail.
+      userScrollIntentUntilRef.current = 0;
+      setTranscriptAtEnd(true);
+      showScrollDebouncer.current.cancel();
+      setShowScrollToBottom(false);
+    },
+    [setTranscriptAtEnd],
+  );
   const clearTranscriptAutoFollow = useCallback(() => {
     autoFollowThreadIdRef.current = null;
     animateNextAutoFollowScrollRef.current = false;
@@ -4677,17 +4699,29 @@ export default function ChatView({
     messageCount: transcriptMessageCount,
     tailKey: transcriptTailKey,
   });
-  const onIsAtEndChange = useCallback((isAtEnd: boolean) => {
-    if (isAtEndRef.current === isAtEnd) return;
-    if (!isAtEnd && performance.now() < programmaticScrollUntilRef.current) return;
-    isAtEndRef.current = isAtEnd;
-    if (isAtEnd) {
-      showScrollDebouncer.current.cancel();
-      setShowScrollToBottom(false);
-    } else {
-      showScrollDebouncer.current.maybeExecute();
-    }
-  }, []);
+  const onIsAtEndChange = useCallback(
+    (isAtEnd: boolean) => {
+      if (isAtEndRef.current === isAtEnd) return;
+      if (
+        shouldIgnoreListAtEndReport({
+          isAtEnd,
+          now: performance.now(),
+          programmaticScrollUntil: programmaticScrollUntilRef.current,
+          userScrollIntentUntil: userScrollIntentUntilRef.current,
+        })
+      ) {
+        return;
+      }
+      setTranscriptAtEnd(isAtEnd);
+      if (isAtEnd) {
+        showScrollDebouncer.current.cancel();
+        setShowScrollToBottom(false);
+      } else {
+        showScrollDebouncer.current.maybeExecute();
+      }
+    },
+    [setTranscriptAtEnd],
+  );
   const cancelPendingInteractionAnchorAdjustment = useCallback(() => {
     const pendingFrame = pendingInteractionAnchorFrameRef.current;
     if (pendingFrame === null) return;
@@ -4728,24 +4762,31 @@ export default function ChatView({
     },
     [cancelPendingInteractionAnchorAdjustment],
   );
+  // A real scroll gesture hands the viewport to the user: it drops the pending
+  // auto-follow and opens a window during which the list's `isAtEnd: false` reports are
+  // trusted, even though streaming keeps re-arming the programmatic guard.
+  const noteUserScrollIntent = useCallback(() => {
+    clearTranscriptAutoFollow();
+    userScrollIntentUntilRef.current = performance.now() + USER_SCROLL_INTENT_WINDOW_MS;
+  }, [clearTranscriptAutoFollow]);
   const onMessagesPointerCancelBase = useCallback(() => {
     clearTranscriptAutoFollow();
   }, [clearTranscriptAutoFollow]);
   const onMessagesPointerDownBase = useCallback(() => {
-    clearTranscriptAutoFollow();
-  }, [clearTranscriptAutoFollow]);
+    noteUserScrollIntent();
+  }, [noteUserScrollIntent]);
   const onMessagesPointerUpBase = useCallback(() => {}, []);
   const onMessagesScrollBase = useCallback(() => {}, []);
   const onMessagesTouchEndBase = useCallback(() => {}, []);
   const onMessagesTouchMoveBase = useCallback(() => {
-    clearTranscriptAutoFollow();
-  }, [clearTranscriptAutoFollow]);
+    noteUserScrollIntent();
+  }, [noteUserScrollIntent]);
   const onMessagesTouchStartBase = useCallback(() => {
-    clearTranscriptAutoFollow();
-  }, [clearTranscriptAutoFollow]);
+    noteUserScrollIntent();
+  }, [noteUserScrollIntent]);
   const onMessagesWheelBase = useCallback(() => {
-    clearTranscriptAutoFollow();
-  }, [clearTranscriptAutoFollow]);
+    noteUserScrollIntent();
+  }, [noteUserScrollIntent]);
   useLayoutEffect(() => {
     const shouldFollowPendingTurn =
       activeThread?.id !== undefined && autoFollowThreadIdRef.current === activeThread.id;
@@ -5015,6 +5056,9 @@ export default function ChatView({
 
   useEffect(() => {
     isAtEndRef.current = true;
+    // A different thread is a fresh viewport, so the previous thread's gesture must not
+    // keep suppressing tail-follow here.
+    userScrollIntentUntilRef.current = 0;
     showScrollDebouncer.current.cancel();
     // Capture the carried sidebar-open intent synchronously (ref reads/writes stay
     // in render->commit order); defer only the setState so this thread-change reset
@@ -5026,6 +5070,7 @@ export default function ChatView({
       setPullRequestDialogState(null);
       setRenameDialogOpen(false);
       setShowScrollToBottom(false);
+      setTranscriptFollowsTail(true);
       setPlanSidebarOpen(openPlanSidebar);
     }, 0);
     return () => window.clearTimeout(settle);
@@ -9727,11 +9772,12 @@ export default function ChatView({
     setExpandedImage(preview);
   }, []);
   const onScrollToBottom = useCallback(() => {
-    isAtEndRef.current = true;
+    userScrollIntentUntilRef.current = 0;
+    setTranscriptAtEnd(true);
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
     scrollToEnd(true);
-  }, [scrollToEnd]);
+  }, [scrollToEnd, setTranscriptAtEnd]);
   const onOpenTurnDiff = useCallback(
     (turnId: TurnId, filePath?: string) => {
       if (diffEnvironmentPending) {
@@ -11038,7 +11084,7 @@ export default function ChatView({
                     onEditUserMessage={onEditUserMessage}
                     isRevertingCheckpoint={isRevertingCheckpoint}
                     onExpandTimelineImage={onExpandTimelineImage}
-                    followLiveOutput={hasStreamingAssistantText}
+                    followLiveOutput={hasStreamingAssistantText && transcriptFollowsTail}
                     onIsAtEndChange={onIsAtEndChange}
                     markdownCwd={threadWorkspaceCwd ?? undefined}
                     resolvedTheme={resolvedTheme}
