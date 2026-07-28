@@ -18,6 +18,7 @@ Plans 001–005 are read-only handoff plans for implementing a Codex-like automa
 | 008  | 在 Composer 中 @ 提及真实的 Claude / Codex 子代理    | P1       | M      | —                  | TODO        |
 | 011  | 浏览器元素拾取与画布标注上下文                       | P2       | M      | —                  | TODO        |
 | 012  | 中文语言支持（原生 i18n）                            | P2       | XL     | —                  | IN PROGRESS |
+| 013  | 内置浏览器 CDP 代理（让 agent 控制内置浏览器）       | P2       | L      | —                  | TODO        |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale).
 
@@ -33,6 +34,7 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 - 011 是独立于自动化序列的浏览器面板功能计划（中文撰写），不依赖 001–007。其内部顺序有意为之：先定契约与 IPC 通道，再让主进程能产出数据，然后草稿层接住，最后接 UI；标注画布（W5）与 W2–W4 无依赖，可并行。
 - Plans from 008 onward are written in Chinese per operator preference; 001–007 stay as-is in English.
 - 007 builds on the completed 001–005 foundation and closes the remaining gaps versus Codex Desktop automations: full agent-facing MCP tool parity (view/update/suggested-create), run envelope + persistent memory, heartbeat notify/silent decisions with eligibility gates, notification policy, deterministic jitter, and bounded parallel dispatch. Workstream order inside 007 matters: tool surface first, then run protocol, then scheduler refinements.
+- 013 是独立的桌面端计划（中文撰写），与 011 共用 `browserManager` 的 CDP 通路但不互为前置。其核心是在 Electron 主进程内自建**浏览器级** CDP 端点，让官方 chrome-devtools-mcp 直接连内置浏览器，而非另起 Chrome；刻意不开 `--remote-debugging-port`，以免把 Synara 自身渲染进程一并暴露。内部有一处顺序不可颠倒：`browserAutomationLease` 的引用计数 attach 必须先落地，否则元素拾取、Codex pipe、CDP 代理三方会互相打断 debugger。Codex 管道的 Windows 支持明确不在范围，另开计划并以调研 spike 开头。
 - 012 与自动化序列完全独立，可随时开工。其内部 8 期顺序不可打乱：骨架与类型安全机制必须先落地，后续每期才有编译期安全网可依赖。改动面覆盖几乎全部 UI 组件，建议每期独立合并以控制与上游 rebase 的冲突。
 
 ## Quality and performance guardrails
