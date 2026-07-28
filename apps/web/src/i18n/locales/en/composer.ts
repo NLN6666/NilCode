@@ -176,7 +176,10 @@ export const composer = {
       command: "Approve this command?",
       "file-read": "Approve reading this file?",
       "file-change": "Approve this file change?",
+      permissions: "Grant these permissions?",
     },
+
+    permissionProfileTitle: "Requested permission profile",
 
     actions: {
       acceptOnce: { label: "Approve once", description: "Allow just this request" },

@@ -173,6 +173,7 @@ export const automations = {
 
   runtimeMode: {
     approvalRequired: "Approval required",
+    auto: "Auto",
     fullAccess: "Full access",
   },
 

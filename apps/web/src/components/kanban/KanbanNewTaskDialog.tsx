@@ -38,6 +38,7 @@ import { ComposerReferenceAttachments } from "~/components/chat/ComposerReferenc
 import { ComposerVoiceButton } from "~/components/chat/ComposerVoiceButton";
 import { ComposerVoiceRecorderBar } from "~/components/chat/ComposerVoiceRecorderBar";
 import { useComposerVoiceController } from "~/components/chat/useComposerVoiceController";
+import { resolveRuntimeModelDescriptor } from "~/components/chat/runtimeModelCapabilities";
 import {
   COMPOSER_COMMAND_MENU_INLINE_WRAPPER_CLASS_NAME,
   COMPOSER_EDITOR_MIN_HEIGHT_CLASS_NAME,
@@ -63,6 +64,10 @@ import { ChevronRightIcon, PaperclipIcon } from "~/lib/icons";
 import { formatComposerMentionToken } from "~/lib/composerMentions";
 import { findProviderStatus } from "~/lib/providerAvailability";
 import { resolveProviderDiscoveryCwd } from "~/lib/providerDiscovery";
+import {
+  normalizeRuntimeModeForProvider,
+  providerModelSupportsAutoRuntimeMode,
+} from "~/lib/runtimeMode";
 import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { cn } from "~/lib/utils";
 import {
@@ -141,9 +146,10 @@ export function KanbanNewTaskDialog({
     nonPersistedComposerImageIdSet,
     selectedProvider,
     selectedModel,
+    selectedModelSupportsAutoMode,
     selectedProviderModelOptions,
     setPrompt,
-    handleProviderModelChange,
+    handleProviderModelChange: setScratchProviderModel,
     addComposerImages,
     removeComposerImage,
     clearComposerAssistantSelections,
@@ -164,7 +170,6 @@ export function KanbanNewTaskDialog({
   const [isTraitsPickerOpen, setIsTraitsPickerOpen] = useState(false);
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
-
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
     [projects, selectedProjectId],
@@ -180,6 +185,10 @@ export function KanbanNewTaskDialog({
   const voiceProviderStatus = useMemo(
     () => findProviderStatus(providerStatuses, "codex"),
     [providerStatuses],
+  );
+  const selectedProviderStatus = useMemo(
+    () => findProviderStatus(providerStatuses, selectedProvider),
+    [providerStatuses, selectedProvider],
   );
 
   const modelHintByProvider = useMemo<Partial<Record<ProviderKind, string | null>>>(
@@ -200,6 +209,42 @@ export function KanbanNewTaskDialog({
     cwd: providerModelDiscoveryCwd,
     modelHintByProvider,
   });
+  const selectedRuntimeModelForCapabilities = useMemo(
+    () =>
+      selectedRuntimeModel ??
+      (selectedProvider === "claudeAgent" && typeof selectedModelSupportsAutoMode === "boolean"
+        ? {
+            slug: selectedModel ?? "default",
+            name: selectedModel ?? "default",
+            supportsAutoMode: selectedModelSupportsAutoMode,
+          }
+        : undefined),
+    [selectedModel, selectedModelSupportsAutoMode, selectedProvider, selectedRuntimeModel],
+  );
+  const handleProviderModelChange = useCallback(
+    (provider: ProviderKind, model: Parameters<typeof setScratchProviderModel>[1]) => {
+      const runtimeModel = resolveRuntimeModelDescriptor({
+        provider,
+        model,
+        runtimeModels: runtimeModelsByProvider[provider],
+      });
+      setRuntimeMode((current) => normalizeRuntimeModeForProvider(current, provider));
+      setScratchProviderModel(provider, model, runtimeModel?.supportsAutoMode);
+    },
+    [runtimeModelsByProvider, setScratchProviderModel],
+  );
+  useEffect(() => {
+    if (
+      runtimeMode === "auto" &&
+      !providerModelSupportsAutoRuntimeMode(
+        selectedProvider,
+        selectedRuntimeModelForCapabilities,
+        selectedProviderStatus,
+      )
+    ) {
+      setRuntimeMode("approval-required");
+    }
+  }, [runtimeMode, selectedProvider, selectedProviderStatus, selectedRuntimeModelForCapabilities]);
   const trimmedPrompt = prompt.trim();
   const hasSendableContent =
     trimmedPrompt.length > 0 ||
@@ -217,6 +262,7 @@ export function KanbanNewTaskDialog({
     hasSendableContent,
     selectedProvider,
     selectedModel,
+    selectedModelSupportsAutoMode: selectedRuntimeModelForCapabilities?.supportsAutoMode,
     taskPreview,
     trimmedPrompt,
     scratchThreadId,
@@ -284,14 +330,27 @@ export function KanbanNewTaskDialog({
     }
     const firstOption = modelOptionsByProvider[selectedProvider][0];
     if (firstOption) {
-      useComposerDraftStore
-        .getState()
-        .setModelSelection(
-          scratchThreadId,
-          buildModelSelection(selectedProvider, firstOption.slug),
-        );
+      useComposerDraftStore.getState().setModelSelection(
+        scratchThreadId,
+        buildModelSelection(
+          selectedProvider,
+          firstOption.slug,
+          undefined,
+          resolveRuntimeModelDescriptor({
+            provider: selectedProvider,
+            model: firstOption.slug,
+            runtimeModels: runtimeModelsByProvider[selectedProvider],
+          })?.supportsAutoMode,
+        ),
+      );
     }
-  }, [modelOptionsByProvider, scratchThreadId, selectedModel, selectedProvider]);
+  }, [
+    modelOptionsByProvider,
+    runtimeModelsByProvider,
+    scratchThreadId,
+    selectedModel,
+    selectedProvider,
+  ]);
 
   const handleTranscriptReady = useCallback(
     (transcript: string) => {
@@ -502,6 +561,9 @@ export function KanbanNewTaskDialog({
                     onEnvModeChange={setEnvMode}
                   />
                   <RuntimeUsageControls
+                    provider={selectedProvider}
+                    runtimeModel={selectedRuntimeModelForCapabilities}
+                    providerStatus={selectedProviderStatus}
                     runtimeMode={runtimeMode}
                     onRuntimeModeChange={setRuntimeMode}
                   />

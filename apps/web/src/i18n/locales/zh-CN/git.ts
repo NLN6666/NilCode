@@ -20,6 +20,7 @@ export const git: Messages["git"] = {
     commitAndPush: "提交并推送",
     menu: "Git 操作",
     menuOptions: "Git 操作选项",
+    moreGitActions: "更多 Git 操作",
     commitOnNewBranch: "在新分支上提交",
     checkoutFeatureBranch: "检出特性分支并继续",
     abort: "中止",
@@ -67,6 +68,7 @@ export const git: Messages["git"] = {
   progress: {
     preparingFeatureBranch: "正在准备特性分支…",
     pushing: "正在推送…",
+    pulling: "正在拉取…",
     pushingTo: (target) => `正在推送到 ${target}…`,
     creatingPr: "正在创建 PR…",
     committing: "正在提交…",
@@ -218,10 +220,22 @@ export const git: Messages["git"] = {
     handOffToNewWorktree: "移交到新工作树",
     handOffToLocal: "移交到本地",
     rateLimitsRemaining: "剩余额度",
-    fullAccess: "完全访问",
-    defaultPermissions: "默认权限",
-    fullAccessHint: "完全访问 —— 点击可修改权限",
-    defaultPermissionsHint: "默认权限 —— 点击可修改权限",
+
+    runtimeModes: {
+      "approval-required": {
+        label: "需要确认",
+        description: "执行命令和修改文件前先征求你的同意。",
+      },
+      auto: {
+        label: "自动",
+        description: "由 AI 审阅者处理常规审批；风险较高的操作可能被拦截或转由你决定。",
+      },
+      "full-access": {
+        label: "完全访问",
+        description: "执行命令和编辑文件都不再询问。",
+      },
+    },
+    runtimeModeHintSuffix: "点击可修改权限。",
   },
 
   panel: {

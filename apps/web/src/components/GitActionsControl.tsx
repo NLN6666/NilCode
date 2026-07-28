@@ -39,6 +39,7 @@ import {
   resolveCreatePrActionAvailability,
   resolveQuickAction,
   resolvePullActionAvailability,
+  shouldShowEnvironmentPanelPullRow,
   shouldOfferCreateBranchPrompt,
   summarizeGitResult,
   type GitCopy,
@@ -106,8 +107,8 @@ interface GitActionsControlProps {
   gitCwd: string | null;
   activeThreadId: ThreadId | null;
   hideQuickActionLabel?: boolean;
-  // `header` renders the split quick-action button; `panel` collapses every git
-  // action into a single "Commit and Push" Environment panel row + dropdown.
+  // `header` renders the split quick-action button; `panel` collapses git actions into
+  // an Environment row + dropdown, promoting Pull as the primary row when behind upstream.
   variant?: "header" | "panel";
   // Lets a parent capture "run commit & push for this instance's repo" so a global
   // keyboard shortcut can trigger it without duplicating the action logic. Called with
@@ -1696,6 +1697,59 @@ export default function GitActionsControl({
   );
 
   if (isPanel) {
+    const showPanelPullRow = shouldShowEnvironmentPanelPullRow({
+      quickAction,
+      isPullRunning,
+    });
+    const panelGitActionsMenu = (
+      <Menu
+        onOpenChange={(open) => {
+          if (open) void invalidateGitQueries(queryClient);
+        }}
+      >
+        <MenuTrigger
+          render={
+            <button
+              type="button"
+              className={cn(
+                ENVIRONMENT_ROW_CLASS_NAME,
+                showPanelPullRow
+                  ? "w-auto shrink-0 px-1.5"
+                  : shouldDimPanelCommitPushRow && "opacity-55",
+              )}
+              aria-label={
+                showPanelPullRow
+                  ? gitCopy.actions.menuOptions
+                  : shouldDimPanelCommitPushRow
+                    ? gitCopy.hints.commitAndPushBlocked
+                    : gitCopy.actions.commitAndPush
+              }
+              title={
+                showPanelPullRow
+                  ? gitCopy.actions.moreGitActions
+                  : shouldDimPanelCommitPushRow
+                    ? gitCopy.hints.commitAndPushBlockedLong
+                    : gitCopy.actions.commitAndPush
+              }
+            />
+          }
+        >
+          {showPanelPullRow ? (
+            <EnvironmentRowChevron />
+          ) : (
+            <EnvironmentRowBody
+              icon={<GitActionGlyph name="push" className={ENVIRONMENT_ROW_ICON_CLASS_NAME} />}
+              label={gitCopy.actions.commitAndPush}
+              trailing={<EnvironmentRowChevron />}
+            />
+          )}
+        </MenuTrigger>
+        <ComposerPickerMenuPopup align="start" side="bottom" className="w-60 min-w-60">
+          {gitMenuContent}
+        </ComposerPickerMenuPopup>
+      </Menu>
+    );
+
     return (
       <>
         {!isRepo ? (
@@ -1707,43 +1761,25 @@ export default function GitActionsControl({
             disabled={initMutation.isPending}
             onClick={() => initMutation.mutate()}
           />
-        ) : (
-          <Menu
-            onOpenChange={(open) => {
-              if (open) void invalidateGitQueries(queryClient);
-            }}
-          >
-            <MenuTrigger
-              render={
-                <button
-                  type="button"
-                  className={cn(
-                    ENVIRONMENT_ROW_CLASS_NAME,
-                    shouldDimPanelCommitPushRow && "opacity-55",
-                  )}
-                  aria-label={
-                    shouldDimPanelCommitPushRow
-                      ? gitCopy.hints.commitAndPushBlocked
-                      : gitCopy.actions.commitAndPush
-                  }
-                  title={
-                    shouldDimPanelCommitPushRow
-                      ? gitCopy.hints.commitAndPushBlockedLong
-                      : gitCopy.actions.commitAndPush
-                  }
-                />
-              }
+        ) : showPanelPullRow ? (
+          <div className="flex w-full items-center">
+            <button
+              type="button"
+              className={cn(ENVIRONMENT_ROW_CLASS_NAME, "min-w-0 flex-1")}
+              aria-label={gitCopy.actions.pull}
+              title={gitCopy.actions.pull}
+              disabled={isGitActionRunning}
+              onClick={runQuickAction}
             >
               <EnvironmentRowBody
-                icon={<GitActionGlyph name="push" className={ENVIRONMENT_ROW_ICON_CLASS_NAME} />}
-                label={gitCopy.actions.commitAndPush}
-                trailing={<EnvironmentRowChevron />}
+                icon={<GitActionGlyph name="sync" className={ENVIRONMENT_ROW_ICON_CLASS_NAME} />}
+                label={isPullRunning ? gitCopy.progress.pulling : gitCopy.actions.pull}
               />
-            </MenuTrigger>
-            <ComposerPickerMenuPopup align="start" side="bottom" className="w-60 min-w-60">
-              {gitMenuContent}
-            </ComposerPickerMenuPopup>
-          </Menu>
+            </button>
+            {panelGitActionsMenu}
+          </div>
+        ) : (
+          panelGitActionsMenu
         )}
         {gitActionDialogs}
       </>

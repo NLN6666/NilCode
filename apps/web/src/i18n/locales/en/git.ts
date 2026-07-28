@@ -26,6 +26,7 @@ export const git = {
     commitAndPush: "Commit and Push",
     menu: "Git actions",
     menuOptions: "Git action options",
+    moreGitActions: "More Git actions",
     commitOnNewBranch: "Commit on new branch",
     checkoutFeatureBranch: "Checkout feature branch & continue",
     abort: "Abort",
@@ -75,6 +76,7 @@ export const git = {
   progress: {
     preparingFeatureBranch: "Preparing feature branch...",
     pushing: "Pushing...",
+    pulling: "Pulling...",
     pushingTo: (target: string) => `Pushing to ${target}...`,
     creatingPr: "Creating PR...",
     committing: "Committing...",
@@ -234,10 +236,24 @@ export const git = {
     handOffToNewWorktree: "Hand off to new worktree",
     handOffToLocal: "Hand off to local",
     rateLimitsRemaining: "Rate limits remaining",
-    fullAccess: "Full access",
-    defaultPermissions: "Default permissions",
-    fullAccessHint: "Full access — click to change permissions",
-    defaultPermissionsHint: "Default permissions — click to change permissions",
+
+    /** Keyed by RuntimeMode; mirrors RUNTIME_MODE_PRESENTATION in ~/lib/runtimeMode. */
+    runtimeModes: {
+      "approval-required": {
+        label: "Supervised",
+        description: "Ask before commands and file changes.",
+      },
+      auto: {
+        label: "Auto",
+        description:
+          "An AI reviewer handles routine approvals; higher-risk actions may be blocked or ask you.",
+      },
+      "full-access": {
+        label: "Full access",
+        description: "Allow commands and edits without prompts.",
+      },
+    },
+    runtimeModeHintSuffix: "Click to change permissions.",
   },
 
   /** Source-control side panel in the chat dock. */

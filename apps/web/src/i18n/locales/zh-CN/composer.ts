@@ -158,7 +158,10 @@ export const composer: Messages["composer"] = {
       command: "允许执行这条命令吗？",
       "file-read": "允许读取这个文件吗？",
       "file-change": "允许这次文件修改吗？",
+      permissions: "授予这些权限吗？",
     },
+
+    permissionProfileTitle: "请求的权限配置",
 
     actions: {
       acceptOnce: { label: "仅允许这一次", description: "只放行本次请求" },

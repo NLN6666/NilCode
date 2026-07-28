@@ -24,6 +24,7 @@ interface ComposerPendingApprovalPanelProps {
     requestId: ApprovalRequestId,
     decision: ProviderApprovalDecision,
     lifecycleGeneration?: string,
+    requestKind?: PendingApproval["requestKind"],
   ) => Promise<void>;
 }
 
@@ -61,6 +62,10 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
   const copy = useMessages().composer.pendingApproval;
   const parsed = parseApprovalDetail(approval.detail);
   const requestId = approval.requestId;
+  const actions =
+    approval.sessionApprovalAvailable === false
+      ? APPROVAL_ACTIONS.filter((action) => action.decision !== "acceptForSession")
+      : APPROVAL_ACTIONS;
 
   // Digit shortcuts bubble from focused controls inside this card only; a bare
   // number key elsewhere in the app must never approve a tool request.
@@ -75,11 +80,11 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
       return;
     }
     const digit = Number.parseInt(event.key, 10);
-    if (Number.isNaN(digit) || digit < 1 || digit > APPROVAL_ACTIONS.length) return;
-    const action = APPROVAL_ACTIONS[digit - 1];
+    if (Number.isNaN(digit) || digit < 1 || digit > actions.length) return;
+    const action = actions[digit - 1];
     if (!action) return;
     event.preventDefault();
-    void onRespond(requestId, action.decision, approval.lifecycleGeneration);
+    void onRespond(requestId, action.decision, approval.lifecycleGeneration, approval.requestKind);
   };
 
   return (
@@ -102,9 +107,12 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
           </span>
         ) : null}
       </div>
-      <ApprovalDetail parsed={parsed} />
+      <ApprovalDetail
+        parsed={parsed}
+        {...(approval.permissionProfile ? { permissionProfile: approval.permissionProfile } : {})}
+      />
       <div className="mt-2.5 space-y-0.5">
-        {APPROVAL_ACTIONS.map((action, index) => (
+        {actions.map((action, index) => (
           <ComposerChoiceRow
             key={action.decision}
             shortcut={index + 1}
@@ -113,7 +121,12 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
             tone={action.tone}
             disabled={isResponding}
             onSelect={() =>
-              void onRespond(requestId, action.decision, approval.lifecycleGeneration)
+              void onRespond(
+                requestId,
+                action.decision,
+                approval.lifecycleGeneration,
+                approval.requestKind,
+              )
             }
           />
         ))}
@@ -122,8 +135,33 @@ export const ComposerPendingApprovalPanel = function ComposerPendingApprovalPane
   );
 };
 
-function ApprovalDetail({ parsed }: { parsed: ParsedApproval }) {
+function ApprovalDetail({
+  parsed,
+  permissionProfile,
+}: {
+  parsed: ParsedApproval;
+  permissionProfile?: Record<string, unknown>;
+}) {
   const copy = useMessages().composer.pendingApproval;
+
+  if (permissionProfile) {
+    return (
+      <div className="mt-2">
+        {parsed.fallback ? (
+          <p className="mb-1.5 text-[11.5px] leading-snug text-muted-foreground/70">
+            {parsed.fallback}
+          </p>
+        ) : null}
+        <pre
+          className="max-h-36 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--color-background-elevated-secondary)] px-2.5 py-2 font-mono text-[11px] leading-relaxed text-foreground/85"
+          title={copy.permissionProfileTitle}
+        >
+          <code>{JSON.stringify(permissionProfile, null, 2)}</code>
+        </pre>
+      </div>
+    );
+  }
+
   if (parsed.fileName) {
     return (
       <div className="mt-2">

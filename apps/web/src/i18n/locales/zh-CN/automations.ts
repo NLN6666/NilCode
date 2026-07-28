@@ -170,6 +170,7 @@ export const automations: Automations = {
 
   runtimeMode: {
     approvalRequired: "需要批准",
+    auto: "自动",
     fullAccess: "完全访问",
   },
 
