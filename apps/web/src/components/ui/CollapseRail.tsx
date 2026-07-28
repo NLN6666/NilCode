@@ -3,10 +3,14 @@
 // Layer: UI primitive
 // Exports: CollapseRail, COLLAPSE_RAIL_WIDTH_CLASS
 // Why: A long expansion pushes its disclosure trigger off-screen, leaving no way to
-//      collapse from further down. The rail hangs the full height of the expansion so
-//      the affordance is always in reach, and reads as an indent tying the content to
-//      the row above it.
+//      collapse from further down. The rail hangs the full height of the expansion and
+//      carries a sticky glyph that stays in view while scrolling through it, so the
+//      affordance is always in reach. It doubles as an indent tying the content to the
+//      row above it.
+// Note: The sticky glyph needs an unclipped scroll ancestor — pair with
+//       <DisclosureRegion allowOverflowWhenOpen>.
 
+import { ChevronUpIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { useMessages } from "~/i18n/context";
 
@@ -40,7 +44,9 @@ export function CollapseRail(props: {
       // leave the viewport exactly where it is.
       data-scroll-anchor-ignore="true"
       className={cn(
-        "group/collapse-rail relative flex-none cursor-pointer self-stretch focus-visible:outline-none",
+        "group/collapse-rail relative flex-none cursor-pointer focus-visible:outline-none",
+        // Stretch to the expansion's height so the rail is clickable all the way down.
+        "self-stretch",
         COLLAPSE_RAIL_WIDTH_CLASS[width],
       )}
       onClick={props.onCollapse}
@@ -48,13 +54,26 @@ export function CollapseRail(props: {
       <span
         aria-hidden="true"
         className={cn(
-          "absolute inset-y-0 rounded-full transition-colors",
-          // Wide enough to read as a deliberate rail rather than a hairline artifact,
-          // and it thickens on hover so the whole strip announces itself as a control.
-          "left-2 w-0.5 bg-border group-hover/collapse-rail:bg-foreground/45",
-          "group-focus-visible/collapse-rail:bg-foreground/45",
+          "absolute inset-y-0 left-2 w-0.5 rounded-full bg-border transition-colors",
+          "group-hover/collapse-rail:bg-foreground/45 group-focus-visible/collapse-rail:bg-foreground/45",
         )}
       />
+      {/* Rides along the rail as the expansion scrolls past, so the collapse action stays
+          on screen long after the disclosure trigger above has scrolled away. */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "sticky top-2 z-10 flex size-4 items-center justify-center rounded-full",
+          // Sits on the rail like a node on the line. Always visible — the whole point is
+          // to be findable after the trigger has scrolled away — and brightens on hover.
+          "border border-border bg-background text-muted-foreground/70 shadow-xs transition-colors",
+          "group-hover/collapse-rail:border-foreground/45 group-hover/collapse-rail:text-foreground",
+          "group-focus-visible/collapse-rail:border-foreground/45",
+        )}
+        data-collapse-rail-glyph="true"
+      >
+        <ChevronUpIcon className="size-3" />
+      </span>
     </button>
   );
 }

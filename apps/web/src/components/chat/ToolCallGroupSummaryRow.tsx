@@ -64,7 +64,7 @@ export function ToolCallGroupSummaryRow(props: {
         <span>{summary.label}</span>
         <DisclosureChevron open={open} className="text-muted-foreground/55" />
       </button>
-      <DisclosureRegion open={open} contentClassName="flex min-w-0">
+      <DisclosureRegion open={open} contentClassName="flex min-w-0" allowOverflowWhenOpen>
         {shouldRenderChildren ? (
           <>
             <CollapseRail onCollapse={() => onToggle(false)} />

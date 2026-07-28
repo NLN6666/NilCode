@@ -220,6 +220,53 @@ describe("MessagesTimeline tool group collapse", () => {
     }
   });
 
+  it("keeps the rail's collapse glyph on screen after the trigger scrolls away", async () => {
+    const host = createTimelineHost();
+    const screen = await render(
+      <ToolGroupCollapseTimeline
+        timelineEntries={[
+          assistantEntry("narration-1", "Looking at the failing checks first.", false),
+          ...SETTLED_COMMANDS.map((command, index) => commandEntry(`settled-${index}`, command)),
+          assistantEntry("narration-2", "Now inspecting the working tree.", true),
+          ...LIVE_COMMANDS.map((command, index) => commandEntry(`live-${index}`, command)),
+        ]}
+      />,
+      { container: host },
+    );
+
+    try {
+      await expect.poll(() => findSummaryTrigger("Ran 4 commands") !== null).toBe(true);
+      const trigger = findSummaryTrigger("Ran 4 commands")!;
+      trigger.click();
+      await expect.poll(() => trigger.getAttribute("aria-expanded")).toBe("true");
+      // Let the open animation settle so the region releases its clip.
+      await new Promise<void>((resolve) => window.setTimeout(() => resolve(), 320));
+
+      const glyph = document.querySelector<HTMLElement>('[data-collapse-rail-glyph="true"]');
+      expect(glyph, "the rail must carry a collapse glyph").not.toBeNull();
+
+      // A clipped ancestor would make the glyph a scroll container's child and silently
+      // kill the sticky behaviour, so assert the clip really was released.
+      const rail = document.querySelector<HTMLElement>('[data-collapse-rail="true"]')!;
+      const clippedAncestors: string[] = [];
+      // Stop at the test host — its overflow:hidden is scaffolding, not app markup.
+      for (let node = rail.parentElement; node && node !== host; node = node.parentElement) {
+        if (window.getComputedStyle(node).overflowY === "hidden") {
+          clippedAncestors.push(`${node.tagName}.${node.className}`);
+        }
+      }
+      expect(
+        clippedAncestors,
+        "a clipped ancestor would make the glyph stick to it instead of the viewport",
+      ).toEqual([]);
+
+      expect(window.getComputedStyle(glyph!).position).toBe("sticky");
+    } finally {
+      await screen.unmount();
+      host.remove();
+    }
+  });
+
   it("collapses mid-turn as soon as a thinking block splits the live group", async () => {
     const host = createTimelineHost();
     // One live inline group: settled commands, then a thinking boundary, then

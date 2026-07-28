@@ -935,7 +935,11 @@ function ToolDetailsDisclosure(props: {
     <div className="group/tool-details min-w-0">
       <ToolRowTooltip content={props.tooltip}>{summaryButton}</ToolRowTooltip>
       {renderDetails ? (
-        <DisclosureRegion open={motionOpen} contentClassName="flex min-w-0 pt-2">
+        <DisclosureRegion
+          open={motionOpen}
+          contentClassName="flex min-w-0 pt-2"
+          allowOverflowWhenOpen
+        >
           {/* Takes exactly the indent the details used to carry as a margin, so content
               alignment is unchanged and the reclaimed strip becomes the collapse target. */}
           <CollapseRail
