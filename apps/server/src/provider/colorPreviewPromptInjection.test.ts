@@ -32,6 +32,16 @@ describe("buildColorPreviewInstructions", () => {
     expect(buildColorPreviewInstructions({ maxChars: -5 })).toBe("");
   });
 
+  it("forbids the side effects a tool-equipped agent defaults to", () => {
+    // Without explicit prohibitions a coding agent writes theme files to disk
+    // and opens a browser to verify them, never emitting the fence at all —
+    // which is exactly what happened before these lines existed.
+    expect(COLOR_PREVIEW_INSTRUCTIONS).toContain("MUST NOT");
+    expect(COLOR_PREVIEW_INSTRUCTIONS).toContain("to disk");
+    expect(COLOR_PREVIEW_INSTRUCTIONS).toContain("Open a browser");
+    expect(COLOR_PREVIEW_INSTRUCTIONS).toContain("proposal, not an implementation");
+  });
+
   it("teaches exactly the fence format the renderer accepts", () => {
     // The example embedded in the prompt must decode against the contracts
     // schema — the single source of truth shared with the web renderer.

@@ -34,6 +34,8 @@ import {
   TerminalIcon,
   WorktreeIcon,
 } from "~/lib/icons";
+import { CentralIcon } from "~/lib/central-icons";
+import { COLOR_PREVIEW_MENTION_ICON_NAME } from "~/lib/composerMentions";
 import { formatSkillScope } from "~/lib/providerDiscovery";
 import { cn } from "~/lib/utils";
 import { resolveAgentChipColor } from "../composerInlineChip";
@@ -159,6 +161,7 @@ function commandMenuSecondaryText(item: ComposerCommandItem): string | null {
     item.type === "plugin" ||
     item.type === "skill" ||
     item.type === "local-root" ||
+    item.type === "color-preview" ||
     item.type === "thread" ||
     item.type === "mcp-tool"
   ) {
@@ -180,6 +183,13 @@ export type ComposerCommandItem =
   | {
       id: string;
       type: "local-root";
+      label: string;
+      description: string;
+    }
+  | {
+      /** `@Preview`: a mode for the turn being sent, not a reference to anything. */
+      id: string;
+      type: "color-preview";
       label: string;
       description: string;
     }
@@ -293,12 +303,14 @@ export function groupCommandItems(
       (item) => item.type === "agent" && item.group === "builtin",
     );
     const modelAliasItems = items.filter((item) => item.type === "agent" && item.group === "model");
+    const modeItems = items.filter((item) => item.type === "color-preview");
     const otherItems = items.filter(
       (item) =>
         item.type !== "plugin" &&
         item.type !== "thread" &&
         item.type !== "local-root" &&
         item.type !== "path" &&
+        item.type !== "color-preview" &&
         item.type !== "agent",
     );
 
@@ -317,6 +329,9 @@ export function groupCommandItems(
     }
     if (modelAliasItems.length > 0) {
       groups.push({ id: "model-aliases", label: labels.models, items: modelAliasItems });
+    }
+    if (modeItems.length > 0) {
+      groups.push({ id: "modes", label: labels.modes, items: modeItems });
     }
     if (localItems.length > 0) {
       groups.push({ id: "local", label: labels.local, items: localItems });
@@ -534,6 +549,9 @@ function commandMenuItemGlyph(item: ComposerCommandItem, theme: "light" | "dark"
       );
     case "local-root":
       return <DeviceLaptopIcon className={cls} />;
+    case "color-preview":
+      // Same glyph the inserted `@Preview` chip uses, so the row previews the token.
+      return <CentralIcon name={COLOR_PREVIEW_MENTION_ICON_NAME} className={cls} />;
     case "fork-target":
       return item.target === "local" ? (
         <DeviceLaptopIcon className={cls} />

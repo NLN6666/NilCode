@@ -2,8 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import type { ProviderAgentDescriptor } from "@synara/contracts";
 
+import { en } from "~/i18n/locales/en";
+import { zhCN } from "~/i18n/locales/zh-CN";
+import {
+  COLOR_PREVIEW_MENTION_INSERT_TEXT,
+  promptIncludesColorPreviewMention,
+} from "~/lib/composerMentions";
+
 import type { ComposerThreadMentionSource, Project } from "../types";
 import {
+  buildColorPreviewMentionComposerItems,
   buildThreadMentionComposerItems,
   useComposerCommandMenuItems,
 } from "./useComposerCommandMenuItems";
@@ -193,6 +201,45 @@ describe("buildThreadMentionComposerItems", () => {
 
     const names = items.map((item) => (item.type === "thread" ? item.mention.name : ""));
     expect(names).toEqual(["Release (aaaaaa)", "release (bbbbbb)"]);
+  });
+});
+
+describe("buildColorPreviewMentionComposerItems", () => {
+  function previewItems(query: string, copy = en.composer.commandMenu.colorPreview) {
+    return buildColorPreviewMentionComposerItems({
+      query,
+      description: copy.description,
+      keywords: copy.keywords,
+    });
+  }
+
+  it("offers the row for a bare @ and for prefixes of the token", () => {
+    for (const query of ["", "p", "pre", "preview", "Preview"]) {
+      expect(previewItems(query)).toHaveLength(1);
+    }
+  });
+
+  it("stays reachable through the active catalog's wording", () => {
+    expect(previewItems("theme")).toHaveLength(1);
+    expect(previewItems("预览", zhCN.composer.commandMenu.colorPreview)).toHaveLength(1);
+    expect(previewItems("配色", zhCN.composer.commandMenu.colorPreview)).toHaveLength(1);
+  });
+
+  it("drops the row for unrelated mention queries", () => {
+    expect(previewItems("src/theme.css")).toEqual([]);
+    expect(previewItems("coder")).toEqual([]);
+  });
+
+  it("inserts a token the send path reads back as color-preview mode", () => {
+    const [item] = previewItems("pre");
+
+    expect(item).toMatchObject({ type: "color-preview", label: COLOR_PREVIEW_MENTION_INSERT_TEXT });
+    expect(
+      promptIncludesColorPreviewMention(`${COLOR_PREVIEW_MENTION_INSERT_TEXT} pick a palette`),
+    ).toBe(true);
+    expect(
+      promptIncludesColorPreviewMention(`pick a palette ${COLOR_PREVIEW_MENTION_INSERT_TEXT} `),
+    ).toBe(true);
   });
 });
 

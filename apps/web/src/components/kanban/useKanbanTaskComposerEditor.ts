@@ -28,6 +28,7 @@ import {
   extendReplacementRangeForTrailingSpace,
 } from "~/composerTriggerInsertion";
 import {
+  COLOR_PREVIEW_MENTION_INSERT_TEXT,
   composerMentionPathNeedsQuoting,
   formatComposerMentionToken,
   skillMentionPrefix,
@@ -234,6 +235,14 @@ export function useKanbanTaskComposerEditor(input: UseKanbanTaskComposerEditorIn
     }
     if (item.type === "local-root") {
       handleNavigateLocalFolder(localFolderBrowseRootPath ?? "/");
+      return;
+    }
+    if (item.type === "color-preview") {
+      applyComposerTriggerReplacement({
+        snapshot,
+        trigger,
+        base: `${COLOR_PREVIEW_MENTION_INSERT_TEXT} `,
+      });
       return;
     }
     if (item.type === "provider-native-command") {

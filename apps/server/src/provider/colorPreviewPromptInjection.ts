@@ -17,10 +17,22 @@ const exampleThemeJson = JSON.stringify(THEME_FENCE_EXAMPLE_PAYLOAD, null, 2);
 
 export const COLOR_PREVIEW_INSTRUCTIONS = [
   "<color_preview_mode>",
-  "The user enabled color-theme preview mode for this turn. When you propose a " +
-    "color palette or theme, emit it as a fenced code block in one of the two " +
-    "formats below so the client renders an interactive swatch card with an " +
-    '"adopt" action. Emit one fence per palette variant.',
+  "The user typed @Preview. They want to SEE color options rendered inside this " +
+    "conversation and approve one before anything gets built. This turn is a " +
+    "proposal, not an implementation.",
+  "",
+  "You MUST:",
+  "- Present every palette as a fenced block in your reply, using a format below.",
+  "- Emit one fence per variant so the user can compare them side by side.",
+  "",
+  "You MUST NOT, on this turn:",
+  "- Write theme files, config files, or preview pages to disk.",
+  "- Open a browser, start a preview server, or take screenshots.",
+  "- Give installation or apply-to-project instructions.",
+  "",
+  'The client renders each fence as an interactive swatch card with an "adopt" ' +
+    "button. When the user adopts one, they send the confirmed palette back to " +
+    "you — implement it then, not now.",
   "",
   `Preferred format — a \`\`\`${THEME_FENCE_LANGUAGE} fence containing JSON. ` +
     '"name" (string) and "colors" (non-empty array) are required; every color ' +

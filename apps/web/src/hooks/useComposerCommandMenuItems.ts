@@ -23,6 +23,10 @@ import {
   LOCAL_FOLDER_MENTION_NAME,
   matchesLocalFolderMentionShortcut,
 } from "~/lib/localFolderMentions";
+import {
+  COLOR_PREVIEW_MENTION_INSERT_TEXT,
+  COLOR_PREVIEW_MENTION_TOKEN,
+} from "~/lib/composerMentions";
 import { basenameOfPath } from "../file-icons";
 import type { ComposerTrigger } from "../composer-logic";
 import {
@@ -143,6 +147,35 @@ export function buildMcpToolComposerItems(input: {
   }));
 
   return [...serverItems, ...toolItems, ...errorItems];
+}
+
+export const COLOR_PREVIEW_MENTION_ITEM_ID = "color-preview";
+
+// Localized keywords are a synonym bag, not a name: weighting them keeps `@pre` scoring against
+// the literal token first, and (weight > 0) disables fuzzy matching so unrelated queries cannot
+// subsequence their way into a hit.
+const COLOR_PREVIEW_MENTION_KEYWORD_FIELD_WEIGHT = 200;
+
+/**
+ * The single `@Preview` row. It is a constant rather than a discovery result — nothing is probed
+ * — but it still goes through the shared ranker so `@`, `@pre`, and the localized wording filter
+ * it exactly like every other mention suggestion.
+ */
+export function buildColorPreviewMentionComposerItems(input: {
+  readonly query: string;
+  readonly description: string;
+  readonly keywords: string;
+}): ComposerCommandItem[] {
+  const item: ComposerCommandItem = {
+    id: COLOR_PREVIEW_MENTION_ITEM_ID,
+    type: "color-preview",
+    label: COLOR_PREVIEW_MENTION_INSERT_TEXT,
+    description: input.description,
+  };
+  return rankProviderDiscoveryItems([item], input.query, () => [
+    { value: COLOR_PREVIEW_MENTION_TOKEN },
+    { value: input.keywords, weight: COLOR_PREVIEW_MENTION_KEYWORD_FIELD_WEIGHT },
+  ]);
 }
 
 function threadSuggestionTitle(title: string): string {
@@ -354,7 +387,8 @@ export function useComposerCommandMenuItems(input: {
     readonly currentThreadId: string | null;
   };
 }): ComposerCommandItem[] {
-  const slashCommandDescriptions = useMessages().composer.slashCommands;
+  const composerCopy = useMessages().composer;
+  const slashCommandDescriptions = composerCopy.slashCommands;
   const {
     composerTrigger,
     provider,
@@ -458,10 +492,24 @@ export function useComposerCommandMenuItems(input: {
           query: composerTrigger.query,
         })
       : [];
+    const colorPreviewItems = buildColorPreviewMentionComposerItems({
+      query: composerTrigger.query,
+      description: composerCopy.commandMenu.colorPreview.description,
+      keywords: composerCopy.commandMenu.colorPreview.keywords,
+    });
     // Keep mention suggestions ordered by primary intent. Delegation targets sit
     // right after plugins/chats — ahead of file paths, which the trailing "Files"
-    // hint already tells users to reach by typing.
-    return [...pluginItems, ...threadItems, ...agentItems, ...localRootItems, ...pathItems];
+    // hint already tells users to reach by typing. Turn modes follow the targets:
+    // a bare `@` should still default to the thing the user meant to reference,
+    // and a query that names the mode ranks it to the top on its own.
+    return [
+      ...pluginItems,
+      ...threadItems,
+      ...agentItems,
+      ...colorPreviewItems,
+      ...localRootItems,
+      ...pathItems,
+    ];
   }
 
   if (composerTrigger.kind === "slash-command") {
