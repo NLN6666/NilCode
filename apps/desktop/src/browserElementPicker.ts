@@ -431,9 +431,16 @@ export class BrowserElementPicker {
     return true;
   }
 
+  // `highlightConfig` is required even to disarm: Blink runs the config through
+  // HighlightConfigFromInspectorObject *before* it stores the new mode, and that helper
+  // rejects a missing config outright. A bare `{mode:"none"}` therefore fails silently and
+  // leaves the page in inspect mode with the toolbar already back in browse.
   private async clearInspectMode(target: BrowserTabInput): Promise<void> {
     try {
-      await this.host.sendCommand(target, "Overlay.setInspectMode", { mode: "none" });
+      await this.host.sendCommand(target, "Overlay.setInspectMode", {
+        mode: "none",
+        highlightConfig: INSPECT_HIGHLIGHT_CONFIG,
+      });
     } catch {
       // Best effort: the page may already be gone, in which case there is no mode to clear.
     }

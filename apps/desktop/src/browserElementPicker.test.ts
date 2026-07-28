@@ -52,6 +52,12 @@ function createHost(options: { gateOn?: string } = {}) {
       params?: Record<string, unknown>,
     ): Promise<unknown> => {
       calls.push({ tabId: input.tabId, method, params });
+      // Blink runs HighlightConfigFromInspectorObject before it stores the mode, and that
+      // helper rejects a missing highlightConfig — even for mode "none". A disarm sent
+      // without one therefore never takes effect and leaves the page swallowing clicks.
+      if (method === "Overlay.setInspectMode" && params?.highlightConfig === undefined) {
+        throw new Error("Internal error: highlight configuration parameter is missing");
+      }
       if (options.gateOn === method) {
         // Lets a test hold this command open and drive a concurrent call into the window.
         await new Promise<void>((resolve) => {
@@ -99,6 +105,8 @@ function createHost(options: { gateOn?: string } = {}) {
       calls
         .filter((call) => call.method === "Overlay.setInspectMode")
         .map((call) => call.params?.mode),
+    inspectModeParams: () =>
+      calls.filter((call) => call.method === "Overlay.setInspectMode").map((call) => call.params),
     inspectModeCallsFor: (tabId: string) =>
       calls
         .filter((call) => call.tabId === tabId && call.method === "Overlay.setInspectMode")
@@ -197,6 +205,20 @@ describe("BrowserElementPicker.cancel", () => {
     expect(fake.inspectModeCalls()).toEqual(["searchForNode", "none"]);
     expect(fake.cancelled).toEqual([{ threadId: THREAD_ID, reason: "user", message: null }]);
     expect(fake.listeners[0]?.unsubscribed).toBe(true);
+  });
+
+  // Toggling the toolbar button off flips the UI back to browse immediately, so a disarm that
+  // Blink rejects is invisible: the icon goes grey while the page stays in inspect mode.
+  it("sends a highlightConfig with the disarm so Blink accepts it", async () => {
+    const fake = createHost();
+    const picker = new BrowserElementPicker(fake.host);
+
+    await picker.start({ threadId: THREAD_ID, tabId: TAB_ID });
+    await picker.cancel({ threadId: THREAD_ID });
+
+    for (const params of fake.inspectModeParams()) {
+      expect(params?.highlightConfig).toBeDefined();
+    }
   });
 
   // The regression this file exists for: cancelling inside the CDP setup window used to find
