@@ -12,8 +12,8 @@ import {
 import type { ComposerThreadMentionSource, Project } from "../types";
 import {
   buildColorPreviewMentionComposerItems,
+  buildComposerCommandMenuItems,
   buildThreadMentionComposerItems,
-  useComposerCommandMenuItems,
 } from "./useComposerCommandMenuItems";
 
 function project(id: string, kind: Project["kind"], name: string): Project {
@@ -243,13 +243,14 @@ describe("buildColorPreviewMentionComposerItems", () => {
   });
 });
 
-describe("useComposerCommandMenuItems mention agents", () => {
+describe("buildComposerCommandMenuItems mention agents", () => {
   function mentionItems(input: {
     provider: "codex" | "claudeAgent";
     query: string;
     dynamicAgents: readonly ProviderAgentDescriptor[];
   }) {
-    return useComposerCommandMenuItems({
+    return buildComposerCommandMenuItems({
+      composerCopy: en.composer,
       composerTrigger: { kind: "mention", query: input.query } as never,
       provider: input.provider,
       providerPlugins: [],

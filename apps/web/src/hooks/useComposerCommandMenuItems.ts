@@ -37,6 +37,7 @@ import {
 } from "../composerSlashCommands";
 import { threadMentionPathForThreadId } from "@synara/shared/threadMentions";
 import { useMessages } from "~/i18n/context";
+import type { Messages } from "~/i18n/locales/en";
 
 import type { ComposerCommandItem } from "../components/chat/ComposerCommandMenu";
 import type { ProviderModelOption } from "../providerModelOptions";
@@ -362,7 +363,7 @@ export function buildSearchableModelOptions(input: {
     );
 }
 
-export function useComposerCommandMenuItems(input: {
+export interface ComposerCommandMenuInput {
   composerTrigger: ComposerTrigger | null;
   provider: ProviderKind;
   providerPlugins: readonly ComposerPluginSuggestion[];
@@ -386,8 +387,18 @@ export function useComposerCommandMenuItems(input: {
     readonly projects: readonly Project[];
     readonly currentThreadId: string | null;
   };
-}): ComposerCommandItem[] {
-  const composerCopy = useMessages().composer;
+}
+
+/**
+ * Assembles the menu rows for the active trigger. Kept as a pure function taking
+ * the copy catalog explicitly: every rule here (which sources contribute, how
+ * they rank, what order the groups appear in) is decided by the inputs alone, so
+ * it is testable without mounting React just to reach the i18n context.
+ */
+export function buildComposerCommandMenuItems(
+  input: ComposerCommandMenuInput & { composerCopy: Messages["composer"] },
+): ComposerCommandItem[] {
+  const composerCopy = input.composerCopy;
   const slashCommandDescriptions = composerCopy.slashCommands;
   const {
     composerTrigger,
@@ -620,4 +631,12 @@ export function useComposerCommandMenuItems(input: {
     label: name,
     description: `${providerLabel} · ${slug}`,
   }));
+}
+
+/** Binds the active copy catalog to {@link buildComposerCommandMenuItems}. */
+export function useComposerCommandMenuItems(
+  input: ComposerCommandMenuInput,
+): ComposerCommandItem[] {
+  const composerCopy = useMessages().composer;
+  return buildComposerCommandMenuItems({ ...input, composerCopy });
 }
