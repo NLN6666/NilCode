@@ -3478,12 +3478,28 @@ async function shutdownDesktopRuntime(reason: string): Promise<void> {
   }
 }
 
+/** Bounds saved on close survive hiding: Electron keeps them for hidden windows. */
+function hideMainWindowForCommittedQuit(): void {
+  const window = mainWindow;
+  if (!window || window.isDestroyed()) return;
+  try {
+    window.hide();
+  } catch (error) {
+    // Purely cosmetic: the quit proceeds identically with the window visible.
+    console.warn(`[desktop] Failed to hide window for quit: ${formatErrorMessage(error)}`);
+  }
+}
+
 function requestGracefulAppQuit(reason: string): void {
   if (isUpdaterInstallPreparing) {
     writeDesktopLogHeader(`${reason} waiting for updater quit-and-install`);
     return;
   }
 
+  // Past the guard the quit is committed, so drop the window now: the backend
+  // teardown behind it takes seconds, and a window that sits inert for that
+  // long reads as a hang. Hidden, the same teardown is imperceptible.
+  hideMainWindowForCommittedQuit();
   void runAfterDesktopShutdown(shutdownDesktopRuntime(reason), () => app.quit()).catch(
     (error: unknown) => {
       const message = formatErrorMessage(error);
