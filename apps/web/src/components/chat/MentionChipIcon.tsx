@@ -24,9 +24,14 @@ import { ProviderIcon } from "../ProviderIcon";
 
 export type { MentionChipKind };
 
+const COLOR_PREVIEW_MENTION_ICON_NAME = "color-swatch";
+
 function composerMentionChipCentralIconName(path: string, kind: MentionChipKind = "path"): string {
   if (kind === "plugin" || path.startsWith("plugin://")) {
     return "puzzle";
+  }
+  if (kind === "preview") {
+    return COLOR_PREVIEW_MENTION_ICON_NAME;
   }
   if (inferEntryKindFromPath(path) === "directory") {
     return "folder-2";
@@ -73,6 +78,9 @@ export const MentionChipIcon = function MentionChipIcon(props: {
   }
   if (resolvedKind === "plugin") {
     return <PluginIcon className={className} />;
+  }
+  if (resolvedKind === "preview") {
+    return <CentralIcon name={COLOR_PREVIEW_MENTION_ICON_NAME} className={className} />;
   }
   const kind = inferEntryKindFromPath(props.path);
   if (kind === "directory") {

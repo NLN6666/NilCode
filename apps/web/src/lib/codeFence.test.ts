@@ -84,6 +84,48 @@ describe("parseCodeFenceInfo", () => {
   it("falls back to text for unknown extensions", () => {
     expect(parseCodeFenceInfo("1:2:notes.unknownext").language).toBe("text");
   });
+
+  it("marks ordinary fences as non-theme", () => {
+    expect(parseCodeFenceInfo("ts").themePreview).toBeNull();
+    expect(parseCodeFenceInfo("src/index.py").themePreview).toBeNull();
+    expect(parseCodeFenceInfo("").themePreview).toBeNull();
+  });
+
+  it("recognizes the structured theme fence and degrades it to json highlighting", () => {
+    expect(parseCodeFenceInfo("theme")).toMatchObject({
+      themePreview: "structured",
+      language: "json",
+      isFileReference: false,
+    });
+  });
+
+  it("recognizes the trailing theme modifier on html fences", () => {
+    expect(parseCodeFenceInfo("html theme")).toMatchObject({
+      themePreview: "html",
+      language: "html",
+      isFileReference: false,
+    });
+  });
+
+  it("keeps a bare html fence completely unchanged (the keyword is the switch)", () => {
+    expect(parseCodeFenceInfo("html")).toMatchObject({
+      themePreview: null,
+      language: "html",
+      isFileReference: false,
+    });
+  });
+
+  it("does not treat the theme keyword on other languages as a preview", () => {
+    expect(parseCodeFenceInfo("css theme")).toMatchObject({
+      themePreview: null,
+      language: "css",
+    });
+  });
+
+  it("ignores unrelated meta words on html fences", () => {
+    expect(parseCodeFenceInfo("html title=demo").themePreview).toBeNull();
+    expect(parseCodeFenceInfo("html title=demo theme").themePreview).toBe("html");
+  });
 });
 
 describe("dedentCode", () => {

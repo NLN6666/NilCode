@@ -301,6 +301,24 @@ export const chat = {
     exportMarkdown: "Export markdown file",
   },
 
+  /** Color-theme preview cards rendered from ```theme / ```html theme fences. */
+  themePreview: {
+    label: "Color theme",
+    htmlTitle: "Theme preview",
+    adopt: "Adopt",
+    adoptSent: "Sent",
+    adoptFailed: "Could not send. Try again.",
+    copyAll: "Copy all",
+    copied: "Copied",
+    copyHex: (hex: string) => `Copy ${hex}`,
+    expand: "Expand preview",
+    collapse: "Collapse preview",
+    /** Sentences of the message sent to the agent when a palette is adopted. */
+    adoptionNamedHeading: (name: string) => `Confirmed color theme "${name}":`,
+    adoptionHeading: "Confirmed color theme:",
+    adoptionRequest: "Please apply it to the project.",
+  },
+
   header: {
     chatHistory: "Chat history",
     noChatsInProject: "No chats in this project yet",

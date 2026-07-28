@@ -10,7 +10,9 @@ import {
   filterPromptProviderMentionReferences,
   filterPromptSkillReferences,
   formatComposerMentionToken,
+  isColorPreviewMentionToken,
   isThreadProviderMentionReference,
+  promptIncludesColorPreviewMention,
   resolveMentionChipKind,
 } from "./composerMentions";
 
@@ -149,5 +151,38 @@ describe("formatComposerMentionToken", () => {
     expect(matches.map((match) => extractComposerMentionPath(match))).toEqual([
       `"${"\\".repeat(512)}x`,
     ]);
+  });
+});
+
+describe("@Preview color-preview mention", () => {
+  it("matches the token case-insensitively", () => {
+    for (const token of ["Preview", "preview", "PREVIEW", " Preview "]) {
+      expect(isColorPreviewMentionToken(token)).toBe(true);
+    }
+  });
+
+  it("rejects tokens that merely contain the word", () => {
+    for (const token of ["Previews", "preview-mode", "src/preview.ts", ""]) {
+      expect(isColorPreviewMentionToken(token)).toBe(false);
+    }
+  });
+
+  it("renders as its own chip kind", () => {
+    expect(resolveMentionChipKind("Preview")).toBe("preview");
+    expect(resolveMentionChipKind("src/preview.ts")).toBe("path");
+  });
+
+  it("detects the mention in an outgoing prompt", () => {
+    expect(promptIncludesColorPreviewMention("@Preview pick a palette")).toBe(true);
+    expect(promptIncludesColorPreviewMention("pick a palette @preview")).toBe(true);
+    expect(promptIncludesColorPreviewMention("see @src/theme.css @Preview now")).toBe(true);
+  });
+
+  it("does not fire without a real mention token", () => {
+    // Bare words, sub-tokens, and mid-word `@` must not enable the injection.
+    expect(promptIncludesColorPreviewMention("preview the palette")).toBe(false);
+    expect(promptIncludesColorPreviewMention("@Previews")).toBe(false);
+    expect(promptIncludesColorPreviewMention("mail@Preview")).toBe(false);
+    expect(promptIncludesColorPreviewMention("")).toBe(false);
   });
 });

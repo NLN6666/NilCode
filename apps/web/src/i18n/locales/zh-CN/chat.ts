@@ -277,6 +277,22 @@ export const chat: Chat = {
     exportMarkdown: "导出 Markdown 文件",
   },
 
+  themePreview: {
+    label: "配色主题",
+    htmlTitle: "主题预览",
+    adopt: "采用",
+    adoptSent: "已发送",
+    adoptFailed: "发送失败，请重试。",
+    copyAll: "复制全部",
+    copied: "已复制",
+    copyHex: (hex) => `复制 ${hex}`,
+    expand: "展开预览",
+    collapse: "收起预览",
+    adoptionNamedHeading: (name) => `已确认配色方案「${name}」：`,
+    adoptionHeading: "已确认配色方案：",
+    adoptionRequest: "请应用到项目。",
+  },
+
   header: {
     chatHistory: "对话历史",
     noChatsInProject: "此项目还没有对话",

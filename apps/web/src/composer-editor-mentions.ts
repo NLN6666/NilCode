@@ -7,8 +7,10 @@ import {
   createComposerMentionTokenRegex,
   extractComposerMentionPath,
   findThreadProviderMentionReferenceForToken,
+  isColorPreviewMentionToken,
   isPluginProviderMentionReference,
   providerMentionMatchesToken,
+  type MentionChipKind,
 } from "./lib/composerMentions";
 import {
   LINK_TOKEN_SOURCE,
@@ -28,7 +30,7 @@ export type ComposerPromptSegment =
   | {
       type: "mention";
       path: string;
-      kind?: "path" | "plugin" | "thread";
+      kind?: MentionChipKind;
       threadId?: string;
       /**
        * Raw token length in the source text (`@name` vs `@"name with spaces"`).
@@ -385,7 +387,9 @@ function splitTextIntoPromptSegments(
             }
           : isPluginMention
             ? { type: "mention", path: match.value, kind: "plugin", tokenLength }
-            : { type: "mention", path: match.value, tokenLength },
+            : isColorPreviewMentionToken(match.value)
+              ? { type: "mention", path: match.value, kind: "preview", tokenLength }
+              : { type: "mention", path: match.value, tokenLength },
       );
     } else if (match.kind === "slash-command") {
       segments.push({ type: "slash-command", command: match.command });
