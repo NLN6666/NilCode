@@ -134,6 +134,7 @@ import {
   USER_MESSAGE_BUBBLE_SHELL_CHROME_CLASS_NAME,
 } from "./chatTypography";
 import { DisclosureChevron } from "../ui/DisclosureChevron";
+import { CollapseRail } from "../ui/CollapseRail";
 import { DisclosureRegion } from "../ui/DisclosureRegion";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import {
@@ -1699,12 +1700,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       <div
                         className={disclosureContentClassName(
                           isCollapsedWorkExpanded,
-                          "mb-2.5 space-y-1.5",
+                          "mb-2.5 flex min-w-0",
                         )}
                       >
-                        {chunkCollapsedTurnItems(collapsedTurnItems!).map((chunk) =>
-                          renderCollapsedTurnChunk(chunk, "collapsed-panel"),
-                        )}
+                        <CollapseRail
+                          onCollapse={() => {
+                            setCollapsedWorkExpanded(row.message.id, false);
+                          }}
+                        />
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          {chunkCollapsedTurnItems(collapsedTurnItems!).map((chunk) =>
+                            renderCollapsedTurnChunk(chunk, "collapsed-panel"),
+                          )}
+                        </div>
                       </div>
                     </CollapsiblePanel>
                   </Collapsible>
