@@ -63,10 +63,16 @@ export async function fetchJson(input: {
  * when the actual fix is to start their proxy or correct its address.
  */
 export function usageFetchFailureDetail(error: unknown, fallback: string): string {
-  if (error instanceof OutboundHttpError && error.code === "proxy") {
-    return `${error.message} Check the proxy settings under Advanced → Network.`;
+  if (error instanceof OutboundHttpError) {
+    if (error.code === "proxy") {
+      return `${error.message} Check the proxy settings under Advanced → Network.`;
+    }
+    // Name the failure mode. Collapsing timeout, TLS, redirect and size errors
+    // into one sentence leaves the panel useless for diagnosis — a dead network
+    // reads exactly like an expired token.
+    return `${fallback} (${error.code}: ${error.message})`;
   }
-  return fallback;
+  return error instanceof Error ? `${fallback} (${error.message})` : fallback;
 }
 
 /** Provider backends reject the access token once it is stale; treat that as "needs re-auth". */
