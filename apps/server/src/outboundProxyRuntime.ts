@@ -57,6 +57,20 @@ export const startOutboundProxySync = Effect.fn("startOutboundProxySync")(functi
   // Register up front so no request can be issued before a resolver exists.
   yield* Effect.sync(() => setOutboundProxyResolver(() => current));
 
+  const apply = (network: NetworkServerSettings, reason: string) =>
+    Effect.gen(function* () {
+      current = resolveOutboundProxy({ network, env });
+      // Logged unconditionally: "is my proxy actually in effect?" is otherwise
+      // unanswerable from outside the process, and a silently unproxied request
+      // is exactly the failure this feature exists to prevent.
+      yield* Effect.logInfo("outboundProxy.resolved", {
+        reason,
+        mode: network.proxy.mode,
+        proxy: current ? current.url.href : "none",
+        noProxy: current?.noProxy ?? [],
+      });
+    });
+
   yield* Effect.gen(function* () {
     // Settings reach memory via `serverSettings.start`, which runs inside the
     // HTTP server's start effect — after this registration. Reading eagerly
@@ -64,14 +78,15 @@ export const startOutboundProxySync = Effect.fn("startOutboundProxySync")(functi
     // silently ignoring a manually configured proxy.
     yield* serverSettings.ready;
     const settings = yield* serverSettings.getSettings;
-    current = resolveOutboundProxy({ network: settings.network, env });
+    yield* apply(settings.network, "startup");
 
     yield* serverSettings.streamChanges.pipe(
-      Stream.runForEach((next) =>
-        Effect.sync(() => {
-          current = resolveOutboundProxy({ network: next.network, env });
-        }),
-      ),
+      Stream.runForEach((next) => apply(next.network, "settings-changed")),
     );
-  }).pipe(Effect.forkScoped);
+  }).pipe(
+    // Without this the fiber could die silently and leave every request
+    // unproxied with no trace of why.
+    Effect.tapCause((cause) => Effect.logError("outboundProxy.syncFailed", { cause })),
+    Effect.forkScoped,
+  );
 });
