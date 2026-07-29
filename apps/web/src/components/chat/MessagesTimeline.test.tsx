@@ -1732,6 +1732,105 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("Reasoning trace Inspecting");
   });
 
+  it("renders an in-progress reasoning trace as a fixed-height streaming region", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const activeTurnId = TurnId.makeUnsafe("turn-reasoning-streaming");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        hasMessages
+        isWorking
+        activeTurnInProgress
+        activeTurnId={activeTurnId}
+        activeTurnStartedAt="2026-07-29T00:00:00.000Z"
+        timelineEntries={[
+          {
+            id: "entry-reasoning-streaming",
+            kind: "work",
+            createdAt: "2026-07-29T00:00:01.000Z",
+            entry: {
+              id: "provider-reasoning:thread-1:reasoning-streaming",
+              createdAt: "2026-07-29T00:00:01.000Z",
+              turnId: activeTurnId,
+              label: "Reasoning trace",
+              toolTitle: "Reasoning trace",
+              toolCallId: "reasoning-streaming",
+              reasoningStatus: "inProgress",
+              detail: "First streamed line\n\nSecond streamed line",
+              tone: "tool",
+            },
+          },
+        ]}
+        turnDiffSummaryByAssistantMessageId={new Map()}
+        expandedWorkGroups={{}}
+        onToggleWorkGroup={() => {}}
+        onOpenTurnDiff={() => {}}
+        revertTurnCountByUserMessageId={new Map()}
+        onRevertUserMessage={() => {}}
+        isRevertingCheckpoint={false}
+        onImageExpand={() => {}}
+        markdownCwd={undefined}
+        resolvedTheme="light"
+        timestampFormat="locale"
+        workspaceRoot={undefined}
+      />,
+    );
+
+    expect(markup).toContain('data-reasoning-stream-region="true"');
+    // The whole trace stays visible inside the scroller, not just the last line.
+    expect(markup).toContain("First streamed line");
+    expect(markup).toContain("Second streamed line");
+  });
+
+  it("collapses a completed reasoning trace back to its summary row", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const activeTurnId = TurnId.makeUnsafe("turn-reasoning-settled");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        hasMessages
+        isWorking={false}
+        activeTurnInProgress={false}
+        activeTurnId={activeTurnId}
+        activeTurnStartedAt="2026-07-29T00:00:00.000Z"
+        timelineEntries={[
+          {
+            id: "entry-reasoning-settled",
+            kind: "work",
+            createdAt: "2026-07-29T00:00:02.000Z",
+            entry: {
+              id: "provider-reasoning:thread-1:reasoning-settled",
+              createdAt: "2026-07-29T00:00:02.000Z",
+              turnId: activeTurnId,
+              label: "Reasoning trace",
+              toolTitle: "Reasoning trace",
+              toolCallId: "reasoning-settled",
+              reasoningStatus: "completed",
+              detail: "First streamed line\n\nSecond streamed line",
+              tone: "tool",
+            },
+          },
+        ]}
+        turnDiffSummaryByAssistantMessageId={new Map()}
+        expandedWorkGroups={{}}
+        onToggleWorkGroup={() => {}}
+        onOpenTurnDiff={() => {}}
+        revertTurnCountByUserMessageId={new Map()}
+        onRevertUserMessage={() => {}}
+        isRevertingCheckpoint={false}
+        onImageExpand={() => {}}
+        markdownCwd={undefined}
+        resolvedTheme="light"
+        timestampFormat="locale"
+        workspaceRoot={undefined}
+      />,
+    );
+
+    expect(markup).not.toContain('data-reasoning-stream-region="true"');
+    expect(markup).toContain('data-codex-status-row="true"');
+    // Settled traces collapse to the last readable line.
+    expect(markup).toContain("Second streamed line");
+    expect(markup).not.toContain("First streamed line");
+  });
+
   it("keeps Thinking when a new local send has no server turn id yet", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const previousTurnId = TurnId.makeUnsafe("turn-previous");

@@ -20,7 +20,19 @@ import {
   ThreadId,
   TurnId,
 } from "@synara/contracts";
-import { Effect, Exit, Layer, ManagedRuntime, PubSub, Scope, Stream } from "effect";
+import {
+  Cache,
+  Clock,
+  Duration,
+  Effect,
+  Exit,
+  Layer,
+  ManagedRuntime,
+  PubSub,
+  Scope,
+  Stream,
+} from "effect";
+import { TestClock } from "effect/testing";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
@@ -40,6 +52,7 @@ import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
 import {
   collectPersistedGeneratedImagePaths,
+  makeReasoningStreamThrottleCache,
   ProviderRuntimeIngestionLive,
 } from "./ProviderRuntimeIngestion.ts";
 import {
@@ -47,6 +60,11 @@ import {
   type OrchestrationEngineShape,
 } from "../Services/OrchestrationEngine.ts";
 import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeIngestion.ts";
+import {
+  advanceReasoningStreamThrottle,
+  REASONING_STREAM_MIN_CHARS,
+  shouldDispatchReasoningStream,
+} from "../reasoningStreamThrottle.ts";
 import { ServerConfig } from "../../config.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
@@ -1821,6 +1839,252 @@ describe("ProviderRuntimeIngestion", () => {
         status: "failed",
         detail: "**Preserve this failed summary**\n\n<!-- -->",
       },
+    });
+  });
+
+  it("streams Claude reasoning deltas as an in-progress activity before the turn settles", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+    const baseEvent = {
+      provider: "claudeAgent" as const,
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-claude-reasoning"),
+      itemId: asItemId("claude-reasoning-1"),
+    };
+    const firstChunk = `${"Weighing the protocol change. ".repeat(9)}`;
+
+    harness.emit({
+      ...baseEvent,
+      type: "content.delta",
+      eventId: asEventId("evt-claude-reasoning-delta-1"),
+      payload: { streamKind: "reasoning_text", delta: firstChunk },
+    });
+
+    const stableActivityId = "provider-reasoning:thread-1:claude-reasoning-1";
+    const streamingThread = await waitForThread(harness.engine, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) => activity.id === stableActivityId,
+      ),
+    );
+    expect(
+      streamingThread.activities.find(
+        (activity: ProviderRuntimeTestActivity) => activity.id === stableActivityId,
+      ),
+    ).toMatchObject({
+      kind: "task.progress",
+      tone: "tool",
+      summary: "Reasoning trace",
+      payload: {
+        status: "inProgress",
+        detail: firstChunk.trim(),
+        data: { toolCallId: "claude-reasoning-1" },
+      },
+    });
+
+    harness.emit({
+      ...baseEvent,
+      type: "content.delta",
+      eventId: asEventId("evt-claude-reasoning-delta-2"),
+      payload: { streamKind: "reasoning_text", delta: " Settling on the buffered path." },
+    });
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-claude-reasoning-turn-completed"),
+      provider: "claudeAgent",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-claude-reasoning"),
+      payload: { state: "completed" },
+    });
+
+    // The authoritative completion overwrites the streamed intermediate state
+    // under the same activity id.
+    const settledThread = await waitForThread(harness.engine, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === stableActivityId &&
+          (activity.payload as { status?: string } | null)?.status === "completed",
+      ),
+    );
+    const settledActivities = settledThread.activities.filter(
+      (activity: ProviderRuntimeTestActivity) => activity.id === stableActivityId,
+    );
+    expect(settledActivities).toHaveLength(1);
+    expect(settledActivities[0]).toMatchObject({
+      summary: "Reasoning trace",
+      payload: {
+        status: "completed",
+        detail: `${firstChunk} Settling on the buffered path.`.trim(),
+      },
+    });
+  });
+
+  it("throttles streamed reasoning writes instead of persisting every delta", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+    const baseEvent = {
+      provider: "codex" as const,
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-throttled-reasoning"),
+      itemId: asItemId("reasoning-throttled-1"),
+    };
+    // 120 per-token deltas of 20 characters = 2400 characters of reasoning.
+    const deltaCount = 120;
+    for (let index = 0; index < deltaCount; index += 1) {
+      harness.emit({
+        ...baseEvent,
+        type: "content.delta",
+        eventId: asEventId(`evt-throttled-reasoning-delta-${index}`),
+        payload: {
+          streamKind: "reasoning_summary_text",
+          summaryIndex: 0,
+          delta: "reasoning token chunk ",
+        },
+      });
+    }
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-throttled-reasoning-turn-completed"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-throttled-reasoning"),
+      payload: { state: "completed" },
+    });
+
+    const stableActivityId = "provider-reasoning:thread-1:reasoning-throttled-1";
+    await waitForThread(harness.engine, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === stableActivityId &&
+          (activity.payload as { status?: string } | null)?.status === "completed",
+      ),
+    );
+
+    const events = await Effect.runPromise(
+      Stream.runCollect(harness.engine.readEvents(0)).pipe(
+        Effect.map((chunk) => Array.from(chunk)),
+      ),
+    );
+    const reasoningWrites = events.filter(
+      (event) =>
+        event.type === "thread.activity-appended" && event.payload.activity.id === stableActivityId,
+    );
+    // Streamed updates plus the one authoritative completion. The naive path
+    // would have written once per delta.
+    expect(reasoningWrites.length).toBeGreaterThan(1);
+    expect(reasoningWrites.length).toBeLessThanOrEqual(11);
+    expect(reasoningWrites.length).toBeLessThan(deltaCount);
+  });
+
+  // Regression: the throttle cache must not expire on a timer. `Cache.get` does
+  // not refresh `expiresAt` on a hit and the throttle only writes on an actual
+  // dispatch, so a TTL would silently reset the character watermark between two
+  // dispatches spaced further apart than the TTL - handing back a free dispatch
+  // and making the write-amplification bound scale with turn duration. Real-time
+  // tests cannot reach that window, so this one drives a virtual clock.
+  it("keeps reasoning throttle state across an hour of virtual time", async () => {
+    const program = Effect.gen(function* () {
+      const throttleCache = yield* makeReasoningStreamThrottleCache;
+      const key = "thread-1:turn-long-running:reasoning-long-running";
+
+      // Mirrors dispatchStreamedReasoningSummary's throttle gate.
+      const offer = (chars: number) =>
+        Effect.gen(function* () {
+          const nowMs = yield* Clock.currentTimeMillis;
+          const state = yield* Cache.get(throttleCache, key);
+          if (!shouldDispatchReasoningStream({ state, nowMs, chars })) {
+            return false;
+          }
+          yield* Cache.set(throttleCache, key, advanceReasoningStreamThrottle({ nowMs, chars }));
+          return true;
+        });
+
+      // Move off zero so the very first offer clears the interval gate, then
+      // establish the watermark at 400 characters.
+      yield* TestClock.adjust(Duration.seconds(1));
+      const firstDispatched = yield* offer(400);
+      expect(firstDispatched).toBe(true);
+
+      // An hour passes - longer than any cache TTL in this module - while the
+      // trace grows by less than the character minimum. An expiring entry would
+      // reset the watermark to 0, making the accumulated 600 characters look
+      // like fresh growth and leaking an extra write.
+      yield* TestClock.adjust(Duration.minutes(61));
+      const dispatchedAfterExpiryWindow = yield* offer(600);
+      expect(dispatchedAfterExpiryWindow).toBe(false);
+
+      // Genuine growth past the minimum still streams, so the state survived
+      // intact rather than being wedged.
+      const dispatchedOnRealGrowth = yield* offer(400 + REASONING_STREAM_MIN_CHARS);
+      expect(dispatchedOnRealGrowth).toBe(true);
+    });
+
+    await Effect.runPromise(program.pipe(Effect.provide(TestClock.layer()), Effect.scoped));
+  });
+
+  it("clears reasoning stream throttle state when a turn settles", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+    const baseEvent = {
+      provider: "codex" as const,
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-throttle-reset"),
+      itemId: asItemId("reasoning-throttle-reset-1"),
+    };
+    const longChunk = "Reasoning about the first turn at length. ".repeat(12);
+
+    harness.emit({
+      ...baseEvent,
+      type: "content.delta",
+      eventId: asEventId("evt-throttle-reset-delta-1"),
+      payload: { streamKind: "reasoning_summary_text", summaryIndex: 0, delta: longChunk },
+    });
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-throttle-reset-turn-completed"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-throttle-reset"),
+      payload: { state: "completed" },
+    });
+
+    const stableActivityId = "provider-reasoning:thread-1:reasoning-throttle-reset-1";
+    await waitForThread(harness.engine, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === stableActivityId &&
+          (activity.payload as { status?: string } | null)?.status === "completed",
+      ),
+    );
+
+    // Same buffer key, fresh trace. A leaked character watermark from the settled
+    // turn would keep this shorter trace from ever streaming again.
+    const secondChunk = "Reasoning about the follow-up. ".repeat(9);
+    harness.emit({
+      ...baseEvent,
+      type: "content.delta",
+      eventId: asEventId("evt-throttle-reset-delta-2"),
+      payload: { streamKind: "reasoning_summary_text", summaryIndex: 0, delta: secondChunk },
+    });
+
+    const restreamedThread = await waitForThread(harness.engine, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === stableActivityId &&
+          (activity.payload as { status?: string } | null)?.status === "inProgress",
+      ),
+    );
+    expect(
+      restreamedThread.activities.find(
+        (activity: ProviderRuntimeTestActivity) => activity.id === stableActivityId,
+      ),
+    ).toMatchObject({
+      payload: { status: "inProgress", detail: secondChunk.trim() },
     });
   });
 
