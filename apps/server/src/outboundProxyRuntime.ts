@@ -47,21 +47,31 @@ export function resolveOutboundProxy(input: {
  * The resolver reads a mirrored value because `outboundHttp` needs a synchronous
  * answer per request while settings live behind an Effect service.
  */
-export const startOutboundProxySync = Effect.fn("startOutboundProxySync")(function* () {
+export const startOutboundProxySync = Effect.fn("startOutboundProxySync")(function* (
+  options: { readonly env?: NodeJS.ProcessEnv } = {},
+) {
   const serverSettings = yield* ServerSettingsService;
-  const env = process.env;
+  const env = options.env ?? process.env;
   let current: OutboundProxyConfig | undefined;
 
-  const settings = yield* serverSettings.getSettings;
-  current = resolveOutboundProxy({ network: settings.network, env });
+  // Register up front so no request can be issued before a resolver exists.
   yield* Effect.sync(() => setOutboundProxyResolver(() => current));
 
-  yield* serverSettings.streamChanges.pipe(
-    Stream.runForEach((next) =>
-      Effect.sync(() => {
-        current = resolveOutboundProxy({ network: next.network, env });
-      }),
-    ),
-    Effect.forkScoped,
-  );
+  yield* Effect.gen(function* () {
+    // Settings reach memory via `serverSettings.start`, which runs inside the
+    // HTTP server's start effect — after this registration. Reading eagerly
+    // would pin the compiled-in defaults (mode "env") for the whole process,
+    // silently ignoring a manually configured proxy.
+    yield* serverSettings.ready;
+    const settings = yield* serverSettings.getSettings;
+    current = resolveOutboundProxy({ network: settings.network, env });
+
+    yield* serverSettings.streamChanges.pipe(
+      Stream.runForEach((next) =>
+        Effect.sync(() => {
+          current = resolveOutboundProxy({ network: next.network, env });
+        }),
+      ),
+    );
+  }).pipe(Effect.forkScoped);
 });

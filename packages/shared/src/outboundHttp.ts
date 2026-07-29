@@ -410,41 +410,78 @@ async function connectThroughProxy(input: {
 
   return await new Promise<Net.Socket>((resolve, reject) => {
     let settled = false;
-    const request = Http.request({
-      host: input.proxyUrl.hostname,
+    // The handshake is written by hand rather than via `http.request`'s CONNECT
+    // support: Bun's http compatibility layer rejects the authority-form path
+    // ("host:port", no leading slash) with "fetch() URL is invalid", which would
+    // break every proxied request under `bun run`. Dialing the already-pinned
+    // address also makes the DNS-rebinding guard exact without a lookup hook.
+    const socket = Net.connect({
+      host: pinnedProxy.address,
       port: Number(input.proxyUrl.port || "80"),
-      method: "CONNECT",
-      path: authority,
-      headers: { host: authority },
-      signal: input.signal,
-      lookup: createPinnedLookup(pinnedProxy),
-      agent: false,
     });
-    request.once("connect", (response: Http.IncomingMessage, socket: Net.Socket) => {
-      if (settled) return;
+
+    const settle = (error?: OutboundHttpError) => {
+      if (settled) return false;
       settled = true;
-      if (response.statusCode !== 200) {
+      socket.removeListener("data", onData);
+      if (error) {
         socket.destroy();
-        reject(
-          new OutboundHttpError(
-            "proxy",
-            `Proxy refused the CONNECT tunnel (${response.statusCode ?? 0}).`,
-          ),
+        reject(error);
+        return false;
+      }
+      return true;
+    };
+
+    let header = "";
+    const onData = (chunk: Buffer) => {
+      // latin1 keeps byte boundaries intact so any body bytes that arrive in
+      // the same packet can be pushed back unchanged.
+      header += chunk.toString("latin1");
+      const end = header.indexOf("\r\n\r\n");
+      if (end === -1) {
+        if (header.length > 16_384) {
+          settle(new OutboundHttpError("proxy", "Proxy sent an oversized CONNECT response."));
+        }
+        return;
+      }
+      const status = Number(header.slice(0, header.indexOf("\r\n")).split(" ")[1]);
+      if (status !== 200) {
+        settle(
+          new OutboundHttpError("proxy", `Proxy refused the CONNECT tunnel (${status || 0}).`),
         );
         return;
       }
+      const trailing = header.slice(end + 4);
+      if (!settle()) return;
+      if (trailing.length > 0) socket.unshift(Buffer.from(trailing, "latin1"));
       resolve(socket);
+    };
+
+    socket.once("connect", () => {
+      socket.write(`CONNECT ${authority} HTTP/1.1\r\nHost: ${authority}\r\n\r\n`);
     });
-    request.once("error", (cause) => {
-      if (settled) return;
-      settled = true;
+    socket.on("data", onData);
+    socket.once("error", (cause) => {
       if (input.signal.aborted) {
-        reject(abortedError(input.signal.reason));
+        settle(abortedError(input.signal.reason) as OutboundHttpError);
         return;
       }
-      reject(new OutboundHttpError("proxy", "Could not reach the configured HTTP proxy.", cause));
+      settle(new OutboundHttpError("proxy", "Could not reach the configured HTTP proxy.", cause));
     });
-    request.end();
+    socket.once("close", () => {
+      settle(
+        new OutboundHttpError("proxy", "Proxy closed the connection before the tunnel opened."),
+      );
+    });
+    if (input.signal.aborted) {
+      settle(abortedError(input.signal.reason) as OutboundHttpError);
+      return;
+    }
+    input.signal.addEventListener(
+      "abort",
+      () => settle(abortedError(input.signal.reason) as OutboundHttpError),
+      { once: true },
+    );
   });
 }
 
