@@ -640,7 +640,12 @@ export class OutboundHttpClient {
         controller.abort(
           new OutboundHttpError(
             "timeout",
-            `Outbound request exceeded its ${policy.timeoutMs}ms deadline.`,
+            // Name the proxy in effect at the deadline. A timeout looks identical
+            // whether the request went direct or through a stalled proxy, and
+            // that distinction is the whole diagnosis.
+            `Outbound request exceeded its ${policy.timeoutMs}ms deadline (proxy: ${
+              resolveProxyForTarget(url)?.url.href ?? "none"
+            }).`,
           ),
         ),
       policy.timeoutMs,
