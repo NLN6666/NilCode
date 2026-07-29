@@ -485,6 +485,25 @@ async function connectThroughProxy(input: {
   });
 }
 
+/**
+ * Bind an already-open tunnel to a request via a single-use agent.
+ *
+ * The obvious form — `{ agent: false, createConnection }` — silently does the
+ * wrong thing. Node treats `agent: false` as "build a fresh default agent",
+ * not "use no agent", and an agent dials through its *own* `createConnection`,
+ * ignoring the one passed in the request options. The tunnel was therefore
+ * dropped and the request dialed the destination directly: fail-closed
+ * proxying turned into a silent direct connection. Overriding the agent's hook
+ * is the form Node actually honors.
+ */
+function createTunnelAgent(tunnel: Net.Socket, url: URL): Https.Agent {
+  // `normalizeOutboundOrigin` admits https origins only, so the destination is
+  // always TLS. One socket, no reuse: the tunnel serves exactly this request.
+  return Object.assign(new Https.Agent({ keepAlive: false, maxSockets: 1 }), {
+    createConnection: () => Tls.connect({ socket: tunnel, servername: url.hostname }),
+  });
+}
+
 async function requestHop(input: {
   readonly url: URL;
   readonly method: string;
@@ -506,13 +525,7 @@ async function requestHop(input: {
       })
     : undefined;
   const connectionOptions = tunnel
-    ? {
-        agent: false as const,
-        // The tunnel already reaches the destination, so wrap it in TLS and
-        // hand the stream to the request instead of dialing. `normalizeOutboundOrigin`
-        // admits https origins only, so the destination is always TLS.
-        createConnection: () => Tls.connect({ socket: tunnel, servername: input.url.hostname }),
-      }
+    ? { agent: createTunnelAgent(tunnel, input.url) }
     : {
         lookup: createPinnedLookup(
           await resolvePinnedAddress(input.url, input.requirePublicAddress, input.signal),

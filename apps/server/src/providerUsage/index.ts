@@ -13,11 +13,14 @@ import type {
 import { Effect } from "effect";
 
 import { ServerConfig } from "../config";
+import { createLogger } from "../logger";
 import { buildProviderChildEnvironment, type ProviderChildKind } from "../providerChildEnvironment";
 import { loadLocalProviderUsageLines } from "../providerUsageSnapshot";
 import { errorSnapshot } from "./parse";
 import { PROVIDER_USAGE_FETCHERS } from "./registry";
 import type { ProviderUsageContext } from "./types";
+
+const log = createLogger("providerUsage");
 
 // Providers whose live snapshot is enriched with on-disk token-total lines (24h/7d/30d).
 const LOCAL_ARCHIVE_PROVIDERS: ReadonlySet<ProviderKind> = new Set(["codex", "claudeAgent"]);
@@ -50,11 +53,13 @@ async function fetchProviderUsage(
       baseEnv: ctx.env,
     }),
   };
-  return fetcher
-    .fetch(providerContext)
-    .catch(() =>
-      errorSnapshot(provider, ctx.nowMs, "live-usage", "Usage fetch failed unexpectedly."),
-    );
+  return fetcher.fetch(providerContext).catch((error: unknown) => {
+    // The snapshot shown in the panel is deliberately generic, but discarding the
+    // cause outright leaves a broken fetcher indistinguishable from a signed-out
+    // provider — with nothing anywhere to tell them apart.
+    log.error("provider fetch threw", { provider, error: String(error) });
+    return errorSnapshot(provider, ctx.nowMs, "live-usage", "Usage fetch failed unexpectedly.");
+  });
 }
 
 async function enrichWithLocalUsage(
@@ -90,7 +95,17 @@ export async function collectProviderUsageSnapshots(
   );
 
   return settled
-    .map((result) => (result.status === "fulfilled" ? result.value : null))
+    .map((result, index) => {
+      if (result.status === "fulfilled") return result.value;
+      // Dropping a rejected provider silently makes the panel render a bare
+      // "unavailable" placeholder, which reads as "nothing to report" rather
+      // than "this failed" — the distinction the user needs.
+      log.error("provider fetch rejected", {
+        provider: providers[index],
+        reason: String(result.reason),
+      });
+      return null;
+    })
     .filter((snapshot): snapshot is ServerProviderUsageSnapshot => snapshot !== null);
 }
 
@@ -108,6 +123,12 @@ export const listProviderUsage = Effect.fn(function* (input: ServerListProviderU
           ...(input.provider ? { provider: input.provider } : {}),
         },
       ),
-    catch: () => [] as unknown as ServerListProviderUsageResult,
+    catch: (cause) => {
+      // `collectProviderUsageSnapshots` is written not to throw, so reaching here
+      // means something upstream of the per-provider guards broke. Returning an
+      // empty batch keeps the panel alive; logging is what keeps it diagnosable.
+      log.error("batch collection failed", { cause: String(cause) });
+      return [] as unknown as ServerListProviderUsageResult;
+    },
   });
 });

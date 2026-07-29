@@ -103,8 +103,21 @@ describe("outbound proxy tunnelling", () => {
     return { port: await listen(origin), reached: () => sawBytes };
   }
 
-  /** Minimal CONNECT proxy that pipes the tunnel to the requested authority. */
-  async function startProxy(options: { readonly refuse?: boolean } = {}): Promise<{
+  /** A port nothing listens on, so only a tunnel can reach the authority naming it. */
+  async function deadPort(): Promise<number> {
+    const probe = Net.createServer();
+    const port = await listen(probe);
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+    return port;
+  }
+
+  /**
+   * Minimal CONNECT proxy that pipes the tunnel to the requested authority, or
+   * to `forwardTo` when the test needs the tunnel to be the only route there.
+   */
+  async function startProxy(
+    options: { readonly refuse?: boolean; readonly forwardTo?: number } = {},
+  ): Promise<{
     readonly port: number;
     readonly seen: string[];
   }> {
@@ -121,7 +134,7 @@ describe("outbound proxy tunnelling", () => {
         return;
       }
       const [host, port] = (request.url ?? "").split(":");
-      const upstream: Net.Socket = Net.connect(Number(port), host, () => {
+      const upstream: Net.Socket = Net.connect(options.forwardTo ?? Number(port), host, () => {
         clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
         if (head.length > 0) upstream.write(head);
         upstream.pipe(clientSocket);
@@ -165,6 +178,30 @@ describe("outbound proxy tunnelling", () => {
     ).rejects.toMatchObject({ code: "request" });
 
     expect(seen).toEqual([`127.0.0.1:${originPort}`]);
+    expect(reached()).toBe(true);
+  });
+
+  it("sends the request over the tunnel instead of dialing the destination directly", async () => {
+    // Regression: opening the tunnel is not the same as using it. Node reads
+    // `agent: false` as "make a fresh default agent", and an agent dials through
+    // its own `createConnection`, so the tunnel was opened and then abandoned
+    // while the request went direct — fail-closed proxying became a silent
+    // direct connection. A destination nobody listens on, reachable only because
+    // the proxy forwards elsewhere, is what tells the two paths apart.
+    const { port: originPort, reached } = await startOrigin();
+    const unreachablePort = await deadPort();
+    const { port: proxyPort, seen } = await startProxy({ forwardTo: originPort });
+    useProxy(proxyPort);
+
+    await expect(
+      outboundHttp.request({
+        policy: policy(unreachablePort),
+        url: `https://127.0.0.1:${unreachablePort}/usage`,
+      }),
+    ).rejects.toMatchObject({ code: "request" });
+
+    expect(seen).toEqual([`127.0.0.1:${unreachablePort}`]);
+    // Direct dialing would have been refused outright and never landed here.
     expect(reached()).toBe(true);
   });
 
