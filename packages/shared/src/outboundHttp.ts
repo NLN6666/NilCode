@@ -396,7 +396,11 @@ async function connectThroughProxy(input: {
   const pinnedProxy = await resolvePinnedAddress(input.proxyUrl, false, input.signal).catch(
     (cause: unknown) => {
       if (cause instanceof OutboundHttpError && cause.code === "aborted") throw cause;
-      throw new OutboundHttpError("proxy", "Could not resolve the configured proxy address.", cause);
+      throw new OutboundHttpError(
+        "proxy",
+        "Could not resolve the configured proxy address.",
+        cause,
+      );
     },
   );
   assertProxyAddressAllowed(pinnedProxy.address);

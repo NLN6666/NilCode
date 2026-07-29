@@ -19,7 +19,13 @@ import {
   readKeychainPassword,
   refreshOAuthAccessToken,
 } from "../credentials";
-import { fetchJson, isAuthFailureStatus, isRateLimitStatus, parseRetryAfterMs } from "../http";
+import {
+  fetchJson,
+  isAuthFailureStatus,
+  isRateLimitStatus,
+  parseRetryAfterMs,
+  usageFetchFailureDetail,
+} from "../http";
 import {
   asFiniteNumber,
   asRecord,
@@ -322,12 +328,12 @@ export const claudeUsageFetcher: ProviderUsageFetcher = {
         });
         claudeRateLimit.rememberLastGood(rateLimitKey, snapshot);
         return snapshot;
-      } catch {
+      } catch (error: unknown) {
         lastErrorSnapshot = errorSnapshot(
           "claudeAgent",
           ctx.nowMs,
           SOURCE,
-          "Could not reach the Claude usage endpoint.",
+          usageFetchFailureDetail(error, "Could not reach the Claude usage endpoint."),
         );
         continue;
       }

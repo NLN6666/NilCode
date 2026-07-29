@@ -90,6 +90,26 @@ export const SkillsServerSettings = Schema.Struct({
 });
 export type SkillsServerSettings = typeof SkillsServerSettings.Type;
 
+// Three states rather than "empty string means off": without an explicit `off`,
+// a user with HTTPS_PROXY exported in their shell has no way to make Synara
+// connect directly.
+export const OutboundProxyMode = Schema.Literals(["off", "env", "manual"]);
+export type OutboundProxyMode = typeof OutboundProxyMode.Type;
+
+export const OutboundProxyServerSettings = Schema.Struct({
+  mode: OutboundProxyMode.pipe(Schema.withDecodingDefault(() => "env" as const)),
+  /** Used only when mode is "manual"; an http:// address, e.g. http://127.0.0.1:7890. */
+  url: StringSetting.pipe(Schema.withDecodingDefault(() => "")),
+  /** Comma-separated hosts that bypass the proxy. */
+  noProxy: StringSetting.pipe(Schema.withDecodingDefault(() => "")),
+});
+export type OutboundProxyServerSettings = typeof OutboundProxyServerSettings.Type;
+
+export const NetworkServerSettings = Schema.Struct({
+  proxy: OutboundProxyServerSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+});
+export type NetworkServerSettings = typeof NetworkServerSettings.Type;
+
 export const ServerSettings = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
@@ -113,6 +133,7 @@ export const ServerSettings = Schema.Struct({
     pi: PiServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   }).pipe(Schema.withDecodingDefault(() => ({}))),
   skills: SkillsServerSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+  network: NetworkServerSettings.pipe(Schema.withDecodingDefault(() => ({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -195,6 +216,17 @@ export const ServerSettingsPatch = Schema.Struct({
   skills: Schema.optionalKey(
     Schema.Struct({
       disabled: Schema.optionalKey(Schema.Array(Schema.String.check(Schema.isMaxLength(256)))),
+    }),
+  ),
+  network: Schema.optionalKey(
+    Schema.Struct({
+      proxy: Schema.optionalKey(
+        Schema.Struct({
+          mode: Schema.optionalKey(OutboundProxyMode),
+          url: Schema.optionalKey(StringSetting),
+          noProxy: Schema.optionalKey(StringSetting),
+        }),
+      ),
     }),
   ),
 });

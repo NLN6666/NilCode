@@ -47,7 +47,9 @@ export function parseProxyUrl(raw: string): URL {
     throw new OutboundProxyConfigError("Proxy authentication is not supported.");
   }
   if ((url.pathname && url.pathname !== "/") || url.search || url.hash) {
-    throw new OutboundProxyConfigError("Proxy address must not include a path, query, or fragment.");
+    throw new OutboundProxyConfigError(
+      "Proxy address must not include a path, query, or fragment.",
+    );
   }
   if (!url.hostname) {
     throw new OutboundProxyConfigError(`Proxy address '${raw}' has no host.`);

@@ -328,6 +328,7 @@ describe("wsNativeApi", () => {
           pi: { enabled: true, binaryPath: "pi", agentDir: "", customModels: [] },
         },
         skills: { disabled: [] },
+        network: { proxy: { mode: "env", url: "", noProxy: "" } },
       },
     } as const;
     emitPush(WS_CHANNELS.serverSettingsUpdated, payload);

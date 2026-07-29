@@ -9,7 +9,7 @@ import nodePath from "node:path";
 import type { ServerProviderUsageLimit, ServerProviderUsageLine } from "@synara/contracts";
 
 import { decodeKeychainJson, readJsonFile, readKeychainPassword } from "../credentials";
-import { fetchJson, isAuthFailureStatus } from "../http";
+import { fetchJson, isAuthFailureStatus, usageFetchFailureDetail } from "../http";
 import {
   asFiniteNumber,
   asRecord,
@@ -202,8 +202,13 @@ export const codexUsageFetcher: ProviderUsageFetcher = {
         headers: Object.fromEntries(result.headers),
         nowMs: ctx.nowMs,
       });
-    } catch {
-      return errorSnapshot("codex", ctx.nowMs, SOURCE, "Could not reach the Codex usage endpoint.");
+    } catch (error: unknown) {
+      return errorSnapshot(
+        "codex",
+        ctx.nowMs,
+        SOURCE,
+        usageFetchFailureDetail(error, "Could not reach the Codex usage endpoint."),
+      );
     }
   },
 };

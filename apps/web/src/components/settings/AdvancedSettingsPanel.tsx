@@ -21,6 +21,7 @@ import { SETTINGS_INSET_LIST_CLASS_NAME } from "~/settingsPanelStyles";
 import { useStore } from "~/store";
 import { createAllThreadsMessagelessSelector, createThreadShellsSelector } from "~/storeSelectors";
 import { useSettingsRestoreSignal } from "./SettingControls";
+import { NetworkSettingsSection } from "./NetworkSettingsSection";
 import { SettingsRow, SettingsSection } from "./SettingsPanelPrimitives";
 
 export function AdvancedSettingsPanel(props: {
@@ -159,6 +160,8 @@ export function AdvancedSettingsPanel(props: {
           />
         </SettingsSection>
       ) : null}
+
+      <NetworkSettingsSection />
 
       <SettingsSection title={m.settings.advanced.developerTools.title}>
         <SettingsRow

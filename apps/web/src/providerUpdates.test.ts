@@ -75,6 +75,7 @@ function serverSettings(overrides: Partial<ServerSettings["providers"]> = {}): S
       ...overrides,
     },
     skills: { disabled: [] },
+    network: { proxy: { mode: "env", url: "", noProxy: "" } },
   };
 }
 

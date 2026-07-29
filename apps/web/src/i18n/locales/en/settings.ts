@@ -273,6 +273,42 @@ export const settings = {
     },
   },
   advanced: {
+    network: {
+      title: "Network",
+      proxy: {
+        title: "HTTP proxy",
+        description:
+          "Route Synara's own requests (provider usage and limits, model catalog, voice transcription) through a proxy. Provider CLIs are launched as separate processes and are not covered by this setting.",
+        ariaLabel: "Proxy mode",
+        modes: {
+          off: "Off",
+          env: "Environment",
+          manual: "Manual",
+        },
+        modeHints: {
+          off: "Always connect directly, even if HTTPS_PROXY is set.",
+          env: "Follow HTTPS_PROXY, HTTP_PROXY, ALL_PROXY and NO_PROXY.",
+          manual: "Use the address below and ignore environment variables.",
+        },
+        url: {
+          title: "Proxy address",
+          description:
+            "An http:// address, for example http://127.0.0.1:7890. SOCKS is not supported.",
+          ariaLabel: "Proxy address",
+          placeholder: "http://127.0.0.1:7890",
+          invalid: "Enter an http:// address such as http://127.0.0.1:7890.",
+        },
+        noProxy: {
+          title: "Bypass list",
+          description:
+            "Comma-separated hosts that skip the proxy. A leading dot covers subdomains; * bypasses everything.",
+          ariaLabel: "Proxy bypass list",
+          placeholder: "localhost, .internal",
+        },
+        failClosedNote:
+          "If the proxy is unreachable, requests fail rather than falling back to a direct connection.",
+      },
+    },
     session: {
       title: "Session",
       thisBrowser: {

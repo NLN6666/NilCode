@@ -40,6 +40,7 @@ import { ProviderSessionReaperLive } from "./provider/Layers/ProviderSessionReap
 import { ProviderRuntimeReconcilerLive } from "./provider/Layers/ProviderRuntimeReconciler";
 import { Server } from "./effectServer";
 import { ServerLoggerLive } from "./serverLogger";
+import { startOutboundProxySync } from "./outboundProxyRuntime";
 import { ServerSettingsService } from "./serverSettings";
 import { formatHostForUrl, isLoopbackHost, isWildcardHost } from "./startupAccess";
 import { AnalyticsServiceLayerLive } from "./telemetry/Layers/AnalyticsService";
@@ -362,6 +363,9 @@ const makeServerProgram = (input: CliInput) =>
 
     const config = yield* ServerConfig;
     yield* Effect.sync(() => startServerMemoryDiagnostics({ mode: config.mode }));
+    // Register before anything can make an outbound request, so provider usage
+    // polling never races the proxy configuration on a cold start.
+    yield* startOutboundProxySync();
 
     if (!config.devUrl && !config.staticDir) {
       yield* Effect.logWarning(

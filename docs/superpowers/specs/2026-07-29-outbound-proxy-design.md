@@ -13,13 +13,13 @@ updated: 2026-07-29T09:00:43Z
 
 代理的**网络实现**收口在 `packages/shared/src/outboundHttp.ts` 一个模块（配置 schema 与设置界面另有改动，见第 5、8 节）。它是全仓唯一的出站 HTTP 权威层，现有消费者：
 
-| 消费者 | 文件 |
-| --- | --- |
-| 用量与限额（Claude / Codex / Cursor） | `apps/server/src/providerUsage/http.ts` |
-| 云端模型目录 | `apps/server/src/provider/cloudModelCatalog.ts` |
-| Grok adapter | `apps/server/src/provider/Layers/GrokAdapter.ts` |
-| 站点 favicon 缓存 | `apps/server/src/siteFaviconCache.ts` |
-| 语音转写 | `apps/server/src/voiceTranscription.ts`、`apps/desktop/src/voiceTranscription.ts` |
+| 消费者                                | 文件                                                                              |
+| ------------------------------------- | --------------------------------------------------------------------------------- |
+| 用量与限额（Claude / Codex / Cursor） | `apps/server/src/providerUsage/http.ts`                                           |
+| 云端模型目录                          | `apps/server/src/provider/cloudModelCatalog.ts`                                   |
+| Grok adapter                          | `apps/server/src/provider/Layers/GrokAdapter.ts`                                  |
+| 站点 favicon 缓存                     | `apps/server/src/siteFaviconCache.ts`                                             |
+| 语音转写                              | `apps/server/src/voiceTranscription.ts`、`apps/desktop/src/voiceTranscription.ts` |
 
 在该层加代理，上述全部功能一次性获得代理能力。
 

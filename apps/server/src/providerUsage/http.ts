@@ -1,7 +1,7 @@
 // FILE: providerUsage/http.ts
 // Purpose: Bounded JSON helper for provider usage, backed by the pinned outbound authority.
 
-import { decodeOutboundJson, outboundHttp } from "@synara/shared/outboundHttp";
+import { decodeOutboundJson, OutboundHttpError, outboundHttp } from "@synara/shared/outboundHttp";
 
 export interface FetchJsonResult {
   readonly status: number;
@@ -53,6 +53,20 @@ export async function fetchJson(input: {
     json,
     headers: response.headers,
   };
+}
+
+/**
+ * Describe a failed usage fetch for the usage panel.
+ *
+ * Proxy failures get their own wording: with fail-closed proxying, "could not
+ * reach the endpoint" would send users hunting for an auth or network problem
+ * when the actual fix is to start their proxy or correct its address.
+ */
+export function usageFetchFailureDetail(error: unknown, fallback: string): string {
+  if (error instanceof OutboundHttpError && error.code === "proxy") {
+    return `${error.message} Check the proxy settings under Advanced → Network.`;
+  }
+  return fallback;
 }
 
 /** Provider backends reject the access token once it is stale; treat that as "needs re-auth". */

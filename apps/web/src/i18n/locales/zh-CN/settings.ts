@@ -257,6 +257,39 @@ export const settings: Settings = {
     },
   },
   advanced: {
+    network: {
+      title: "网络",
+      proxy: {
+        title: "HTTP 代理",
+        description:
+          "让 Synara 自身的请求（用量与限额、模型目录、语音转写）经代理发出。各 Provider CLI 以独立子进程运行，不受此设置影响。",
+        ariaLabel: "代理模式",
+        modes: {
+          off: "关闭",
+          env: "环境变量",
+          manual: "手动",
+        },
+        modeHints: {
+          off: "始终直连，即使已设置 HTTPS_PROXY。",
+          env: "跟随 HTTPS_PROXY、HTTP_PROXY、ALL_PROXY 与 NO_PROXY。",
+          manual: "使用下方填写的地址，忽略环境变量。",
+        },
+        url: {
+          title: "代理地址",
+          description: "需为 http:// 地址，例如 http://127.0.0.1:7890。不支持 SOCKS。",
+          ariaLabel: "代理地址",
+          placeholder: "http://127.0.0.1:7890",
+          invalid: "请填写 http:// 地址，例如 http://127.0.0.1:7890。",
+        },
+        noProxy: {
+          title: "绕过列表",
+          description: "以逗号分隔的主机，这些主机不走代理。以点开头可覆盖子域；* 表示全部绕过。",
+          ariaLabel: "代理绕过列表",
+          placeholder: "localhost, .internal",
+        },
+        failClosedNote: "代理不可用时请求直接失败，不会回退为直连。",
+      },
+    },
     session: {
       title: "会话",
       thisBrowser: {

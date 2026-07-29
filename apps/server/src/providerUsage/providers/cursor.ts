@@ -9,7 +9,7 @@ import nodePath from "node:path";
 import type { ServerProviderUsageLimit, ServerProviderUsageLine } from "@synara/contracts";
 
 import { decodeJwtExpMs, readKeychainPassword } from "../credentials";
-import { fetchJson, isAuthFailureStatus } from "../http";
+import { fetchJson, isAuthFailureStatus, usageFetchFailureDetail } from "../http";
 import {
   asFiniteNumber,
   asRecord,
@@ -194,8 +194,13 @@ export const cursorUsageFetcher: ProviderUsageFetcher = {
         nowMs: ctx.nowMs,
         ...(auth.plan ? { planName: titleCase(auth.plan) } : {}),
       });
-    } catch {
-      return errorSnapshot("cursor", ctx.nowMs, SOURCE, "Could not reach the Cursor dashboard.");
+    } catch (error: unknown) {
+      return errorSnapshot(
+        "cursor",
+        ctx.nowMs,
+        SOURCE,
+        usageFetchFailureDetail(error, "Could not reach the Cursor dashboard."),
+      );
     }
   },
 };

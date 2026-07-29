@@ -57,7 +57,8 @@ describe("createPinnedLookup", () => {
 describe("outbound proxy tunnelling", () => {
   let proxy: Http.Server | undefined;
   let origin: Net.Server | undefined;
-  let openSockets: Net.Socket[] = [];
+  // The CONNECT handler hands back a Duplex, not a Socket; all we need is destroy().
+  let openSockets: Array<{ destroy: () => void }> = [];
 
   afterEach(async () => {
     setOutboundProxyResolver(undefined);
@@ -86,7 +87,10 @@ describe("outbound proxy tunnelling", () => {
    * ClientHello reaches the destination proves the tunnel carries traffic
    * without dragging certificate plumbing into the suite.
    */
-  async function startOrigin(): Promise<{ readonly port: number; readonly reached: () => boolean }> {
+  async function startOrigin(): Promise<{
+    readonly port: number;
+    readonly reached: () => boolean;
+  }> {
     let sawBytes = false;
     origin = Net.createServer((socket) => {
       openSockets.push(socket);
