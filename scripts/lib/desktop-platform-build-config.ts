@@ -13,6 +13,10 @@ export const MAC_APPSNAP_HELPER_STAGE_PATH =
 export const MAC_APPSNAP_HELPER_ASAR_EXCLUSION = "!apps/desktop/native/appsnap/build/**";
 export const MAC_APPSNAP_HELPER_BUNDLE_PATH = "Contents/Helpers/synara-appsnap-helper";
 export const WINDOWS_INSTALLER_GUID = "368107a8-afe6-5db5-ab3b-d4f331684868";
+// Relative to `directories.buildResources` (apps/desktop/resources). Overrides electron-builder's
+// default "is the app still running?" check, which cannot close Synara's windowless backend and
+// Chromium helper processes and dead-ends the installer instead.
+export const WINDOWS_INSTALLER_INCLUDE = "nsis-check-app-running.nsh";
 const MAC_DMG_ICON_PATH = "icon.icns";
 export const NODE_PTY_ASAR_UNPACK_GLOBS = ["node_modules/node-pty/**"] as const;
 
@@ -128,6 +132,7 @@ export function createDesktopPlatformBuildConfig(
     // This lets NSIS updates replace the existing installation and own its uninstaller.
     nsis: {
       guid: WINDOWS_INSTALLER_GUID,
+      include: WINDOWS_INSTALLER_INCLUDE,
     },
     win: {
       target: [input.target],

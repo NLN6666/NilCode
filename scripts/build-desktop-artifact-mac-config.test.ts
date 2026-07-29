@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { assert, describe, it } from "@effect/vitest";
 
 import {
@@ -11,6 +14,7 @@ import {
   NODE_PTY_ASAR_UNPACK_GLOBS,
   validateDesktopNativeBuildHost,
   WINDOWS_INSTALLER_GUID,
+  WINDOWS_INSTALLER_INCLUDE,
 } from "./lib/desktop-platform-build-config.ts";
 import { BRAND_ASSET_PATHS } from "./lib/brand-assets.ts";
 
@@ -95,6 +99,7 @@ describe("createDesktopPlatformBuildConfig", () => {
     assert.equal(WINDOWS_INSTALLER_GUID, "368107a8-afe6-5db5-ab3b-d4f331684868");
     assert.deepStrictEqual(win.nsis, {
       guid: WINDOWS_INSTALLER_GUID,
+      include: WINDOWS_INSTALLER_INCLUDE,
     });
     assert.deepStrictEqual(win.win, {
       target: ["nsis"],
@@ -114,6 +119,36 @@ describe("createDesktopPlatformBuildConfig", () => {
       target: ["nsis"],
       icon: "icon.ico",
     });
+  });
+
+  it("overrides the NSIS app-running check with a script that can close Synara", () => {
+    const config = createDesktopPlatformBuildConfig({
+      platform: "win",
+      target: "nsis",
+    });
+    const nsis = config.nsis as Record<string, unknown>;
+    const script = readFileSync(
+      fileURLToPath(
+        new URL(`../apps/desktop/resources/${WINDOWS_INSTALLER_INCLUDE}`, import.meta.url),
+      ),
+      "utf8",
+    );
+
+    assert.equal(nsis.include, WINDOWS_INSTALLER_INCLUDE);
+    // app-builder-lib only honors the override when this exact macro name is defined, and silently
+    // falls back to its own check — which cannot close Synara — when it is missing or renamed.
+    assert.match(script, /!macro customCheckAppRunning\b/u);
+    // The forced pass must not be graceful-only: the supervised backend and the Chromium helpers
+    // are windowless and never answer WM_CLOSE.
+    assert.match(script, /taskkill \/F \/IM/u);
+    // `taskkill /F /T` with /FI filters wedges on Windows 11 26200, so the tree flag must stay out.
+    assert.notMatch(script, /taskkill [^\n]*\/T /u);
+    // Every process query and kill must be bounded: an unbounded nsExec call hangs silent updates
+    // with no UI to recover from.
+    assert.notMatch(script, /nsExec::Exec (?!\/TIMEOUT=)/u);
+    // Interactive installs must still ask before closing a running app, and unattended runs must
+    // default to OK so silent installs and auto-updates are never blocked by the prompt.
+    assert.match(script, /MessageBox MB_OKCANCEL[^\n]*\$\(appRunning\)[^\n]*\/SD IDOK/u);
   });
 
   it("keeps node-pty unpacked from ASAR in generated build config", () => {
