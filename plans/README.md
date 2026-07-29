@@ -20,6 +20,7 @@ Plans 001–005 are read-only handoff plans for implementing a Codex-like automa
 | 012  | 中文语言支持（原生 i18n）                            | P2       | XL     | —                  | IN PROGRESS |
 | 013  | 内置浏览器 CDP 代理（让 agent 控制内置浏览器）       | P2       | L      | —                  | TODO        |
 | 014  | Subagent 详情增强与每供应商默认模型                  | P2       | M      | —                  | TODO        |
+| 015  | 思考链实时流式显示（Claude + Codex）                 | P2       | M      | —                  | TODO        |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale).
 
@@ -37,6 +38,7 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 - 007 builds on the completed 001–005 foundation and closes the remaining gaps versus Codex Desktop automations: full agent-facing MCP tool parity (view/update/suggested-create), run envelope + persistent memory, heartbeat notify/silent decisions with eligibility gates, notification policy, deterministic jitter, and bounded parallel dispatch. Workstream order inside 007 matters: tool surface first, then run protocol, then scheduler refinements.
 - 013 是独立的桌面端计划（中文撰写），与 011 共用 `browserManager` 的 CDP 通路但不互为前置。其核心是在 Electron 主进程内自建**浏览器级** CDP 端点，让官方 chrome-devtools-mcp 直接连内置浏览器，而非另起 Chrome；刻意不开 `--remote-debugging-port`，以免把 Synara 自身渲染进程一并暴露。内部有一处顺序不可颠倒：`browserAutomationLease` 的引用计数 attach 必须先落地，否则元素拾取、Codex pipe、CDP 代理三方会互相打断 debugger。Codex 管道的 Windows 支持明确不在范围，另开计划并以调研 spike 开头。
 - 014 是独立的前端计划（中文撰写），改动全部在 `apps/web`，不触碰服务端与契约。它把三件落点重合的改进合并处理：subagent 详情增强、每供应商默认模型、subagent/活动详情链路的 i18n 补漏——拆开会反复触碰同一批文件。与 012 无冲突：012 负责全局 i18n 骨架与批量迁移，014 只补 012 未覆盖的这一小片。思考链的实时流式化**不在 014 范围内**，因为它要改 `ProviderRuntimeIngestion` 这条所有供应商共用的热路径（现状是 turn 结束才一次性下发，Claude 的 thinking 更是被整条丢弃），需单独立项并设计节流策略。
+- 015 是 014 拆出的独立计划（中文撰写），两者无前置关系但建议 014 先行：015 的前端定高思考区可复用 014 落地的 `DisclosureRegion` 用法。015 的特殊之处在于它**主动推翻一条既有性能护栏**——`providerRuntimeActivityProjection.ts:476-479` 明确写着「等权威完成事件可避免 per-token 写入与 transcript 高度抖动」。计划以节流（250ms 时间窗 + 字符下限）替代「不发数据」来守住写入量，以前端定高替代「不发数据」来守住高度稳定，并要求实施时同步改写那段已失效的注释。计划 §5 列了三条**未验证假设**（Claude reasoning 事件的 `itemId` 稳定性等），实施第一步必须逐条核实，不得当作依据。
 - 012 与自动化序列完全独立，可随时开工。其内部 8 期顺序不可打乱：骨架与类型安全机制必须先落地，后续每期才有编译期安全网可依赖。改动面覆盖几乎全部 UI 组件，建议每期独立合并以控制与上游 rebase 的冲突。
 
 ## Quality and performance guardrails
