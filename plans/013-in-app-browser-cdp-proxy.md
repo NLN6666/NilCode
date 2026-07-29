@@ -32,40 +32,40 @@
 
 以下均已核实，不依赖记忆：
 
-| 事实                                                                                              | 来源                                            |
-| ------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| chrome-devtools-mcp 支持 `--browser-url`、`--ws-endpoint`、`--ws-headers`（可带认证头）           | 官方 README                                     |
-| 官方 README 自陈：开 remote debugging port 后"机器上任何程序都能连上并控制该浏览器"               | 官方 README                                     |
-| Electron 40.10.6 的 `debugger.sendCommand(method, params, sessionId)` 支持 sessionId              | `apps/desktop/node_modules/electron/electron.d.ts:7488` |
-| `debugger.on("message", (e, method, params, sessionId))` 回传 sessionId                           | 同上 `:7394-7408`                               |
-| `apps/desktop` 无 `ws` 依赖；`apps/server` 有 `ws@^8.21.0`                                        | 各 `package.json`                               |
-| 现有 `browserManager.subscribeToCdpEvents` **丢弃** sessionId                                     | `browserManager.ts:1105-1120`                   |
+| 事实                                                                                    | 来源                                                    |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| chrome-devtools-mcp 支持 `--browser-url`、`--ws-endpoint`、`--ws-headers`（可带认证头） | 官方 README                                             |
+| 官方 README 自陈：开 remote debugging port 后"机器上任何程序都能连上并控制该浏览器"     | 官方 README                                             |
+| Electron 40.10.6 的 `debugger.sendCommand(method, params, sessionId)` 支持 sessionId    | `apps/desktop/node_modules/electron/electron.d.ts:7488` |
+| `debugger.on("message", (e, method, params, sessionId))` 回传 sessionId                 | 同上 `:7394-7408`                                       |
+| `apps/desktop` 无 `ws` 依赖；`apps/server` 有 `ws@^8.21.0`                              | 各 `package.json`                                       |
+| 现有 `browserManager.subscribeToCdpEvents` **丢弃** sessionId                           | `browserManager.ts:1105-1120`                           |
 
 **未核实、不得当作依据**：DeepWiki 关于 Codex IAB 管道的回答把 codex 的 **sandbox command-runner** 管道（`spawn_runner_transport` / `codex-command-runner.exe`）与 **IAB 浏览器管道**混为一谈，其"Windows 用命名管道且有 ACL"的结论不可用于本仓库决策。
 
 ## 4. 已确定的决策
 
-| 决策点       | 结论                                                            | 理由                                                                                                     |
-| ------------ | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 消费方       | chrome-devtools-mcp                                             | 复用其 50+ 成熟工具，避免自建浏览器工具集                                                                |
-| 路线         | **自建浏览器级 CDP 代理**，不开 `--remote-debugging-port`       | 见下方"被否决的方案"                                                                                     |
-| target 范围  | 只暴露**当前活跃 thread** 的 tab                                | agent 控制的就是用户此刻看得见的会话；无跨会话误操作                                                     |
-| 可见性       | **会话级租约**：attach 时唤醒一次，之后不抢焦点                 | chrome-devtools-mcp 一次高层操作背后是十几条 CDP 命令，命令级激活既吵又有开销                            |
-| 传输         | `ws` over TCP，绑 `127.0.0.1`，固定路径 `/synara/cdp`           | MCP 配置是静态 JSON，端点必须跨重启稳定                                                                  |
-| 端口         | 默认 `9333`，设置内可改                                         | 同上                                                                                                     |
-| 认证         | WS **upgrade 阶段**校验 `Authorization: Bearer`                 | 让未授权在协议状态机建立**之前**终结；chrome-devtools-mcp 的 `--ws-headers` 原生支持                     |
-| HTTP 发现    | **不提供** `/json/version`                                      | `--ws-endpoint` 已够用；少一个未认证端点、少一条认证路径（YAGNI）                                        |
-| 默认开关     | 默认**关闭**，设置内开启并持久化                                | 毕竟开了本地端口；配"复制 MCP 配置"按钮解决可发现性                                                      |
-| WS 库        | 给 `apps/desktop` 加 `ws`，版本对齐 `apps/server`               | 代理必须活在主进程（`browserManager` 持有 `WebContentsView`）；CDP 高频往返，绕 `desktopWsBridge` 多一跳不可接受 |
+| 决策点      | 结论                                                      | 理由                                                                                                             |
+| ----------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 消费方      | chrome-devtools-mcp                                       | 复用其 50+ 成熟工具，避免自建浏览器工具集                                                                        |
+| 路线        | **自建浏览器级 CDP 代理**，不开 `--remote-debugging-port` | 见下方"被否决的方案"                                                                                             |
+| target 范围 | 只暴露**当前活跃 thread** 的 tab                          | agent 控制的就是用户此刻看得见的会话；无跨会话误操作                                                             |
+| 可见性      | **会话级租约**：attach 时唤醒一次，之后不抢焦点           | chrome-devtools-mcp 一次高层操作背后是十几条 CDP 命令，命令级激活既吵又有开销                                    |
+| 传输        | `ws` over TCP，绑 `127.0.0.1`，固定路径 `/synara/cdp`     | MCP 配置是静态 JSON，端点必须跨重启稳定                                                                          |
+| 端口        | 默认 `9333`，设置内可改                                   | 同上                                                                                                             |
+| 认证        | WS **upgrade 阶段**校验 `Authorization: Bearer`           | 让未授权在协议状态机建立**之前**终结；chrome-devtools-mcp 的 `--ws-headers` 原生支持                             |
+| HTTP 发现   | **不提供** `/json/version`                                | `--ws-endpoint` 已够用；少一个未认证端点、少一条认证路径（YAGNI）                                                |
+| 默认开关    | 默认**关闭**，设置内开启并持久化                          | 毕竟开了本地端口；配"复制 MCP 配置"按钮解决可发现性                                                              |
+| WS 库       | 给 `apps/desktop` 加 `ws`，版本对齐 `apps/server`         | 代理必须活在主进程（`browserManager` 持有 `WebContentsView`）；CDP 高频往返，绕 `desktopWsBridge` 多一跳不可接受 |
 
 ### 被否决的方案
 
-| 方案                                            | 否决理由                                                                                                                                  |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 方案                                                              | 否决理由                                                                                                                                              |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 直接 `app.commandLine.appendSwitch("remote-debugging-port", ...)` | 一行即可，100% 兼容，但**整个 app（含 Synara 自身 UI）对本机任意进程全开**。Synara 渲染进程持有到后端的 WS 桥与各 provider 凭据。端口上没有认证这一说 |
-| 上述端口 + 前置过滤代理                         | 底层端口仍在，绕过代理直连即可——安全收益不成立，却付出了自建代理的大部分工作量                                                          |
-| 在 `apps/server` 侧实现代理                     | server 够不着 `WebContentsView`，需经 `desktopWsBridge` 多一跳，与"Performance first"冲突                                                 |
-| 自建一套 Synara 浏览器工具集（不走 CDP 协议）   | 等于重造 chrome-devtools-mcp 的 50+ 工具（含 a11y 快照、性能追踪），工作量与维护成本都不划算                                             |
+| 上述端口 + 前置过滤代理                                           | 底层端口仍在，绕过代理直连即可——安全收益不成立，却付出了自建代理的大部分工作量                                                                        |
+| 在 `apps/server` 侧实现代理                                       | server 够不着 `WebContentsView`，需经 `desktopWsBridge` 多一跳，与"Performance first"冲突                                                             |
+| 自建一套 Synara 浏览器工具集（不走 CDP 协议）                     | 等于重造 chrome-devtools-mcp 的 50+ 工具（含 a11y 快照、性能追踪），工作量与维护成本都不划算                                                          |
 
 ## 5. 架构
 
@@ -75,13 +75,13 @@
 
 全部带仓库现有的 `// FILE: / Purpose: / Layer: / Depends on:` 头注释。
 
-| 文件                          | 职责                                                                                       | 依赖             |
-| ----------------------------- | ------------------------------------------------------------------------------------------ | ---------------- |
-| `browserCdpTargetRegistry.ts` | **纯逻辑**。`ThreadBrowserState` + 活跃 threadId → target 列表；diff 出 `targetCreated` / `targetInfoChanged` / `targetDestroyed` | 无               |
-| `browserCdpProtocol.ts`       | **纯逻辑**。合成 `Browser.*` / `Target.*` 应答；flatten 模式 sessionId 信封编解码           | 无               |
-| `browserCdpSessionRouter.ts`  | sessionId ↔ (runtimeKey, Electron 上游 sessionId) 路由表与 attach/detach 生命周期           | 上两者           |
-| `browserCdpProxyServer.ts`    | `ws` 服务器：握手鉴权、连接数上限、背压、in-flight 上限、dispose                            | 以上 + 窄 host   |
-| `browserAutomationLease.ts`   | **共享**：引用计数 attach/detach、保活、首次唤醒、UI"agent 控制中"标记                     | 窄 host          |
+| 文件                          | 职责                                                                                                                              | 依赖           |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `browserCdpTargetRegistry.ts` | **纯逻辑**。`ThreadBrowserState` + 活跃 threadId → target 列表；diff 出 `targetCreated` / `targetInfoChanged` / `targetDestroyed` | 无             |
+| `browserCdpProtocol.ts`       | **纯逻辑**。合成 `Browser.*` / `Target.*` 应答；flatten 模式 sessionId 信封编解码                                                 | 无             |
+| `browserCdpSessionRouter.ts`  | sessionId ↔ (runtimeKey, Electron 上游 sessionId) 路由表与 attach/detach 生命周期                                                 | 上两者         |
+| `browserCdpProxyServer.ts`    | `ws` 服务器：握手鉴权、连接数上限、背压、in-flight 上限、dispose                                                                  | 以上 + 窄 host |
+| `browserAutomationLease.ts`   | **共享**：引用计数 attach/detach、保活、首次唤醒、UI"agent 控制中"标记                                                            | 窄 host        |
 
 前三者零 Electron 依赖——最高风险的协议逻辑因此可纯单测覆盖，无需起 Electron。
 
@@ -113,18 +113,18 @@
 
 合成的浏览器级命令：
 
-| 命令                                                     | 处理                                                                              |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `Browser.getVersion`                                     | 用 `process.versions.chrome` + `app.userAgentFallback` 拼真实值，`protocolVersion: "1.3"` |
-| `Target.setDiscoverTargets` / `getTargets` / `getTargetInfo` | 由 `browserCdpTargetRegistry` 供数                                              |
-| `Target.attachToTarget`                                  | 分配合成 sessionId，登记路由，回 `{sessionId}` 并发 `Target.attachedToTarget`     |
-| `Target.setAutoAttach`（浏览器级）                       | 记录开关；对现存/新增 target 自动补发 `attachedToTarget`                          |
-| `Target.createTarget`                                    | → 新建 tab；面板未开时复用 pipe server 已有的 `requestOpenPanel` + 轮询等待        |
-| `Target.closeTarget`                                     | → 关 tab                                                                          |
-| `Target.activateTarget`                                  | **唯一会切 UI 的入口**——与"会话级租约"一致：agent 想让用户看见，须显式请求        |
-| `Target.getBrowserContexts`                              | 只报告 default（Synara 全用单一 `BROWSER_SESSION_PARTITION`）                     |
-| `Target.createBrowserContext`                            | **明确报错**，不假装成功                                                          |
-| `Browser.close`                                          | **拒绝**——否则 agent 一条命令即可关掉整个 Synara                                 |
+| 命令                                                         | 处理                                                                                      |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `Browser.getVersion`                                         | 用 `process.versions.chrome` + `app.userAgentFallback` 拼真实值，`protocolVersion: "1.3"` |
+| `Target.setDiscoverTargets` / `getTargets` / `getTargetInfo` | 由 `browserCdpTargetRegistry` 供数                                                        |
+| `Target.attachToTarget`                                      | 分配合成 sessionId，登记路由，回 `{sessionId}` 并发 `Target.attachedToTarget`             |
+| `Target.setAutoAttach`（浏览器级）                           | 记录开关；对现存/新增 target 自动补发 `attachedToTarget`                                  |
+| `Target.createTarget`                                        | → 新建 tab；面板未开时复用 pipe server 已有的 `requestOpenPanel` + 轮询等待               |
+| `Target.closeTarget`                                         | → 关 tab                                                                                  |
+| `Target.activateTarget`                                      | **唯一会切 UI 的入口**——与"会话级租约"一致：agent 想让用户看见，须显式请求                |
+| `Target.getBrowserContexts`                                  | 只报告 default（Synara 全用单一 `BROWSER_SESSION_PARTITION`）                             |
+| `Target.createBrowserContext`                                | **明确报错**，不假装成功                                                                  |
+| `Browser.close`                                              | **拒绝**——否则 agent 一条命令即可关掉整个 Synara                                          |
 
 拒绝而非静默忽略，是因为 puppeteer 对"成功但无效果"容错极差，明确报错反而让上层能正确降级。
 
@@ -194,15 +194,15 @@ token 生成一次后持久化于 `app.getPath("userData")`，权限 0600。
 
 ### 7.2 其余
 
-| 场景                    | 处理                                                              |
-| ----------------------- | ------------------------------------------------------------------- |
-| 鉴权失败                | upgrade 阶段拒绝握手，协议状态机不建立                            |
-| 未知浏览器级命令        | 回 Chrome 同形状的 `-32601`，不静默吞                             |
-| runtime 已销毁          | 回 `Session with given id not found.` + 补发 `detachedFromTarget` |
-| 用户打开该页 DevTools   | 引用计数让位，发 `detachedFromTarget` 并在 UI 说明原因            |
-| 切换 thread             | `targetDestroyed` + `detachedFromTarget`（§6）                    |
-| 端口被占用              | **启动时大声失败**并在 UI 报出，绝不静默禁用                      |
-| 应用退出                | 接入现有 shutdown 序列                                            |
+| 场景                  | 处理                                                              |
+| --------------------- | ----------------------------------------------------------------- |
+| 鉴权失败              | upgrade 阶段拒绝握手，协议状态机不建立                            |
+| 未知浏览器级命令      | 回 Chrome 同形状的 `-32601`，不静默吞                             |
+| runtime 已销毁        | 回 `Session with given id not found.` + 补发 `detachedFromTarget` |
+| 用户打开该页 DevTools | 引用计数让位，发 `detachedFromTarget` 并在 UI 说明原因            |
+| 切换 thread           | `targetDestroyed` + `detachedFromTarget`（§6）                    |
+| 端口被占用            | **启动时大声失败**并在 UI 报出，绝不静默禁用                      |
+| 应用退出              | 接入现有 shutdown 序列                                            |
 
 ### 7.3 背压
 

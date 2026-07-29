@@ -27,10 +27,10 @@
 
 数据其实已经全部到位，只是没被渲染：
 
-| 字段 | 位置 | 内容 |
-| ---- | ---- | ---- |
-| `WorkLogSubagent` | `apps/web/src/workLog.ts:125-141` | `threadId` `resolvedThreadId` `agentId` `nickname` `role` `model` `effort` `background` `prompt` `rawStatus` `statusLabel` `isActive` |
-| `WorkLogSubagentAction` | `apps/web/src/workLog.ts:143-149` | `tool` `status` `summaryText` `model` `prompt` |
+| 字段                    | 位置                              | 内容                                                                                                                                  |
+| ----------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `WorkLogSubagent`       | `apps/web/src/workLog.ts:125-141` | `threadId` `resolvedThreadId` `agentId` `nickname` `role` `model` `effort` `background` `prompt` `rawStatus` `statusLabel` `isActive` |
+| `WorkLogSubagentAction` | `apps/web/src/workLog.ts:143-149` | `tool` `status` `summaryText` `model` `prompt`                                                                                        |
 
 `resolvedThreadId` 由 `enrichSubagentWorkEntries`（`apps/web/src/components/ChatView.logic.ts:1462`）在渲染前回填，指向一条**真实存在的 Synara thread**。
 
@@ -50,41 +50,41 @@ Claude 侧的子代理对话是完整落库的：`ClaudeAdapter.ts:4936` 设了 
 
 已逐条定位：
 
-| 位置 | 硬编码内容 |
-| ---- | ---------- |
-| `AgentActivityDetailView.tsx:94` | `` `${n} ${pluralize(n, "update")}` `` |
-| `agentActivity.logic.ts:53` | `"Reasoning"` |
-| `agentActivity.logic.ts:57` | `"Agent task"` / `"Activity"` |
-| `agentActivity.logic.ts:117` | `` `${n} updates - ${preview}` `` / `` `${n} updates` `` |
-| `agentActivity.logic.ts:123-124` | `"Reasoning trace"`（`label` 与 `toolTitle`） |
-| `agentActivity.logic.ts:154-155` | `"Reasoning trace"`（第二处，非折叠分支） |
-| `TimelineWorkEntryRow.tsx:790` | `"Edited"` —— i18n 键 `chat.work.edited` 已存在但从未被引用 |
-| `TimelineWorkEntryRow.tsx:173` | `` `${n} files` `` |
+| 位置                             | 硬编码内容                                                  |
+| -------------------------------- | ----------------------------------------------------------- |
+| `AgentActivityDetailView.tsx:94` | `` `${n} ${pluralize(n, "update")}` ``                      |
+| `agentActivity.logic.ts:53`      | `"Reasoning"`                                               |
+| `agentActivity.logic.ts:57`      | `"Agent task"` / `"Activity"`                               |
+| `agentActivity.logic.ts:117`     | `` `${n} updates - ${preview}` `` / `` `${n} updates` ``    |
+| `agentActivity.logic.ts:123-124` | `"Reasoning trace"`（`label` 与 `toolTitle`）               |
+| `agentActivity.logic.ts:154-155` | `"Reasoning trace"`（第二处，非折叠分支）                   |
+| `TimelineWorkEntryRow.tsx:790`   | `"Edited"` —— i18n 键 `chat.work.edited` 已存在但从未被引用 |
+| `TimelineWorkEntryRow.tsx:173`   | `` `${n} files` ``                                          |
 
 ## 3. 已确定的决策
 
-| 决策点 | 结论 | 理由 |
-| ------ | ---- | ---- |
-| Subagent 交互形态 | 详情页内嵌对话预览 **+** 跳转完整会话，两者都做 | 预览满足"扫一眼就够"的场景，跳转满足深入排查 |
-| 对话预览加载 | **懒加载**：折叠区展开时才 `retainThreadDetailSubscription` | 一次 fan-out 常见 5–10 个子代理，无条件订阅等于详情页一打开就建 10 条实时通道 |
-| 默认模型粒度 | **每供应商各存一个** | 与既有 `modelSelectionByProvider` / `hiddenModels` 的心智模型一致；切供应商时各自记住自己的默认值 |
-| 默认模型存储形状 | `Array<{provider, slug}>`，非 `Record` | 对齐 `hiddenModels`；`ProviderKind` 增删时无需 schema 迁移 |
-| 默认模型优先级 | 插在回退链**最末尾**（`getDefaultModel` 之前） | 保持"越具体的上下文越优先"这一既有原则；`defaultProvider` 目前也正是这个位置（`composerDraftModels.ts:763`，排在 project 之后） |
-| 默认模型候选范围 | 经 `filterModelOptionsByVisibility` 过滤 | 已被用户隐藏的模型不应还能被设成默认 |
-| i18n 修复手法 | 逻辑层返回**语义 key**，组件层翻译 | 见 §5 |
-| 新增组件 | 抽 `SubagentDetailSections.tsx` | `AgentActivityDetailView` 现 215 行，直接塞入会到 400+，违反"文件聚焦"约定 |
-| 开合动效 | 一律用 `DisclosureRegion` / `disclosureShellClassName` | `CLAUDE.md` 明令：任何开合切换必须复用 `lib/disclosureMotion.ts`，禁止自写高度/透明度过渡 |
+| 决策点            | 结论                                                        | 理由                                                                                                                            |
+| ----------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Subagent 交互形态 | 详情页内嵌对话预览 **+** 跳转完整会话，两者都做             | 预览满足"扫一眼就够"的场景，跳转满足深入排查                                                                                    |
+| 对话预览加载      | **懒加载**：折叠区展开时才 `retainThreadDetailSubscription` | 一次 fan-out 常见 5–10 个子代理，无条件订阅等于详情页一打开就建 10 条实时通道                                                   |
+| 默认模型粒度      | **每供应商各存一个**                                        | 与既有 `modelSelectionByProvider` / `hiddenModels` 的心智模型一致；切供应商时各自记住自己的默认值                               |
+| 默认模型存储形状  | `Array<{provider, slug}>`，非 `Record`                      | 对齐 `hiddenModels`；`ProviderKind` 增删时无需 schema 迁移                                                                      |
+| 默认模型优先级    | 插在回退链**最末尾**（`getDefaultModel` 之前）              | 保持"越具体的上下文越优先"这一既有原则；`defaultProvider` 目前也正是这个位置（`composerDraftModels.ts:763`，排在 project 之后） |
+| 默认模型候选范围  | 经 `filterModelOptionsByVisibility` 过滤                    | 已被用户隐藏的模型不应还能被设成默认                                                                                            |
+| i18n 修复手法     | 逻辑层返回**语义 key**，组件层翻译                          | 见 §5                                                                                                                           |
+| 新增组件          | 抽 `SubagentDetailSections.tsx`                             | `AgentActivityDetailView` 现 215 行，直接塞入会到 400+，违反"文件聚焦"约定                                                      |
+| 开合动效          | 一律用 `DisclosureRegion` / `disclosureShellClassName`      | `CLAUDE.md` 明令：任何开合切换必须复用 `lib/disclosureMotion.ts`，禁止自写高度/透明度过渡                                       |
 
 ### 被否决的方案
 
-| 方案 | 否决理由 |
-| ---- | -------- |
-| 只加跳转按钮，不做内嵌预览 | 排查一个 fan-out 要来回跳 10 次，失去"详情页"的意义 |
-| 只做内嵌预览，不做跳转 | 预览必然截断；深入排查仍需完整会话与其工具调用细节 |
-| 详情页打开即订阅全部子线程 | 与 `CLAUDE.md` "Performance first" 冲突，见上表 |
-| 只给 `defaultProvider` 配一个默认模型 | 切到别的供应商仍走硬编码兜底，问题只解决了 1/9 |
+| 方案                                                 | 否决理由                                                               |
+| ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| 只加跳转按钮，不做内嵌预览                           | 排查一个 fan-out 要来回跳 10 次，失去"详情页"的意义                    |
+| 只做内嵌预览，不做跳转                               | 预览必然截断；深入排查仍需完整会话与其工具调用细节                     |
+| 详情页打开即订阅全部子线程                           | 与 `CLAUDE.md` "Performance first" 冲突，见上表                        |
+| 只给 `defaultProvider` 配一个默认模型                | 切到别的供应商仍走硬编码兜底，问题只解决了 1/9                         |
 | 在 `agentActivity.logic.ts` 里直接调 `useMessages()` | 它是纯函数模块，不是组件，hook 不可用；且会让其现有单测被迫依赖 locale |
-| 把默认模型优先级放在 project 之上 | 会让 project 层的模型记忆形同虚设 |
+| 把默认模型优先级放在 project 之上                    | 会让 project 层的模型记忆形同虚设                                      |
 
 ## 4. 架构
 
