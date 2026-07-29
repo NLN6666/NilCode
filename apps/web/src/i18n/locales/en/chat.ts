@@ -8,6 +8,8 @@
 // the text around the value moves in translation (a Chinese colon is full-width, and units
 // follow the number instead of preceding the noun).
 
+import { pluralize } from "@synara/shared/text";
+
 export const chat = {
   timeline: {
     preparingWorktree: "Preparing worktree...",
@@ -165,6 +167,42 @@ export const chat = {
     agents: "Agents",
     activity: "Activity",
     open: "Open",
+    /** Count of compacted updates behind one activity row. */
+    updates: (count: number) => `${count} ${pluralize(count, "update")}`,
+    /** Same count joined to the latest line; the separator differs per script. */
+    updatesWithPreview: (count: number, preview: string) =>
+      `${count} ${pluralize(count, "update")} - ${preview}`,
+
+    /** Row headings. `agentActivity.logic` returns these as keys so it stays locale-free. */
+    titles: {
+      reasoning: "Reasoning",
+      reasoningTrace: "Reasoning trace",
+      agentTask: "Agent task",
+      activity: "Activity",
+    },
+
+    /** Per-subagent metadata and conversation preview inside the detail view. */
+    subagent: {
+      section: "Agents",
+      model: "Model",
+      role: "Role",
+      status: "Status",
+      effort: "Effort",
+      background: "Background",
+      backgroundOn: "Yes",
+      showConversation: "Show conversation",
+      hideConversation: "Hide conversation",
+      openFullConversation: "Open full conversation",
+      /** Why the open button is disabled: the child thread was never resolved. */
+      noThread: "This agent has no conversation to open.",
+      noMessages: "No messages yet.",
+      earlierMessages: (count: number) => `+${count} earlier ${pluralize(count, "message")}`,
+      roles: {
+        user: "You",
+        assistant: "Agent",
+        system: "System",
+      },
+    },
   },
 
   /** Rows inside the work timeline. */
@@ -175,6 +213,7 @@ export const chat = {
     moreToolUses: (count: number) => `+${count} more tool uses`,
     openThread: "Open thread",
     edited: "Edited",
+    files: (count: number) => `${count} ${pluralize(count, "file")}`,
     collapseDetails: "Collapse details",
   },
 

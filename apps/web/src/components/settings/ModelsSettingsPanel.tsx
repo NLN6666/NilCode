@@ -14,6 +14,7 @@ import { useCallback, useMemo, useState } from "react";
 import {
   CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS,
   type AppSettingsBinding,
+  DEFAULT_MODEL_PROVIDER_SETTINGS,
   MAX_CUSTOM_MODEL_LENGTH,
   getCustomModelsForProvider,
   getDefaultCustomModelsForProvider,
@@ -25,6 +26,7 @@ import { useMessages } from "../../i18n/context";
 import { useProviderModelCatalog } from "~/hooks/useProviderModelCatalog";
 import { PlusIcon, XIcon } from "~/lib/icons";
 import { resolveProviderDiscoveryCwd } from "~/lib/providerDiscovery";
+import { patchDefaultModelForProvider, resolveDefaultModelSlug } from "~/providerOrdering";
 import { refreshCloudModelCatalog } from "~/lib/providerDiscoveryReactQuery";
 import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { cn } from "~/lib/utils";
@@ -100,6 +102,7 @@ export function ModelsSettingsPanel({
   >({});
   const [showAllCustomModels, setShowAllCustomModels] = useState(false);
   const [visibilityProvider, setVisibilityProvider] = useState<ProviderKind>("claudeAgent");
+  const [defaultModelProvider, setDefaultModelProvider] = useState<ProviderKind>("codex");
 
   useSettingsRestoreSignal(resetEpoch, () => {
     setSelectedCustomModelProvider("codex");
@@ -107,6 +110,7 @@ export function ModelsSettingsPanel({
     setCustomModelErrorByProvider({});
     setShowAllCustomModels(false);
     setVisibilityProvider("claudeAgent");
+    setDefaultModelProvider("codex");
   });
 
   const {
@@ -131,8 +135,8 @@ export function ModelsSettingsPanel({
   // below renders every model of the provider being edited, so that one has to be
   // discovered too — otherwise switching it would only ever show built-in models.
   const discoveryProviders = useMemo<ReadonlyArray<ProviderKind>>(
-    () => [...GIT_WRITING_DISCOVERY_PROVIDERS, visibilityProvider],
-    [visibilityProvider],
+    () => [...GIT_WRITING_DISCOVERY_PROVIDERS, visibilityProvider, defaultModelProvider],
+    [defaultModelProvider, visibilityProvider],
   );
   const { modelOptionsByProvider: gitWritingCatalogOptionsByProvider, allModelOptionsByProvider } =
     useProviderModelCatalog({
@@ -280,6 +284,26 @@ export function ModelsSettingsPanel({
     </div>
   );
 
+  // Candidates come from the visibility-filtered catalog: a model the user hid
+  // must not be selectable as the model every new chat starts on.
+  const defaultModelCandidates = gitWritingCatalogOptionsByProvider[defaultModelProvider];
+  const selectedDefaultModelSlug =
+    resolveDefaultModelSlug(settings.defaultModelByProvider, defaultModelProvider) ?? "";
+  const selectedDefaultModelLabel =
+    selectedDefaultModelSlug.length === 0
+      ? m.settings.models.defaults.builtIn
+      : (defaultModelCandidates.find((option) => option.slug === selectedDefaultModelSlug)?.name ??
+        selectedDefaultModelSlug);
+  const setDefaultModel = (slug: string) => {
+    updateSettings({
+      defaultModelByProvider: patchDefaultModelForProvider(
+        settings.defaultModelByProvider,
+        defaultModelProvider,
+        slug.length > 0 ? slug : null,
+      ),
+    });
+  };
+
   const visibilityModels = allModelOptionsByProvider[visibilityProvider];
   const hiddenSlugsForProvider = new Set(
     settings.hiddenModels
@@ -398,6 +422,72 @@ export function ModelsSettingsPanel({
             </SettingsSelectControl>
           }
         />
+      </SettingsSection>
+
+      <SettingsSection title={m.settings.models.defaults.title}>
+        <SettingsRow
+          title={m.settings.models.defaults.picker.title}
+          anchorKey="models:default-models"
+          description={m.settings.models.defaults.picker.description}
+          resetAction={
+            settings.defaultModelByProvider.length > 0 ? (
+              <SettingResetButton
+                label={m.settings.models.defaults.picker.resetLabel}
+                onClick={() => updateSettings({ defaultModelByProvider: [] })}
+              />
+            ) : null
+          }
+        >
+          <div
+            className={cn(
+              "mt-4 flex flex-col gap-2 pt-4 sm:flex-row sm:items-center",
+              SETTINGS_CARD_ROW_DIVIDER_CLASS_NAME,
+            )}
+          >
+            <Select
+              value={defaultModelProvider}
+              onValueChange={(value) => {
+                if (value) setDefaultModelProvider(value as ProviderKind);
+              }}
+            >
+              <SelectTrigger
+                size="sm"
+                className="w-full sm:w-40"
+                aria-label={m.settings.models.defaults.providerAriaLabel}
+              >
+                <SelectValue>{PROVIDER_DISPLAY_NAMES[defaultModelProvider]}</SelectValue>
+              </SelectTrigger>
+              <SettingsSelectPopup align="start">
+                {DEFAULT_MODEL_PROVIDER_SETTINGS.map((config) => (
+                  <SelectItem hideIndicator key={config.provider} value={config.provider}>
+                    {PROVIDER_DISPLAY_NAMES[config.provider]}
+                  </SelectItem>
+                ))}
+              </SettingsSelectPopup>
+            </Select>
+
+            {defaultModelCandidates.length > 0 ? (
+              <SettingsSelectControl
+                value={selectedDefaultModelSlug}
+                onValueChange={setDefaultModel}
+                ariaLabel={m.settings.models.defaults.modelAriaLabel}
+                triggerClassName="w-full sm:w-56"
+                valueContent={selectedDefaultModelLabel}
+              >
+                <SelectItem hideIndicator value="">
+                  {m.settings.models.defaults.builtIn}
+                </SelectItem>
+                {defaultModelCandidates.map((option) => (
+                  <SelectItem hideIndicator key={option.slug} value={option.slug}>
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SettingsSelectControl>
+            ) : (
+              <p className="text-xs text-muted-foreground">{m.settings.models.defaults.noModels}</p>
+            )}
+          </div>
+        </SettingsRow>
       </SettingsSection>
 
       <SettingsSection title={m.settings.models.visible.title}>

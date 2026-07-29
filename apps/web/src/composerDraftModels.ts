@@ -24,6 +24,7 @@ import {
   resolveSelectableModel,
 } from "@synara/shared/model";
 import { resolveAppModelSelection } from "./appSettings";
+import { resolveDefaultModelSlug, type DefaultModelRef } from "./providerOrdering";
 import type { ComposerThreadDraftState } from "./composerDraftDomain";
 import { classifyProviderReasoningEffortSupport } from "./lib/codexReasoningEffort";
 
@@ -750,6 +751,8 @@ export function resolvePreferredComposerModelSelection(input: {
   threadModelSelection: ModelSelection | null | undefined;
   projectModelSelection: ModelSelection | null | undefined;
   defaultProvider?: ProviderKind | null | undefined;
+  /** User-configured per-provider defaults; consulted only after draft/thread/project. */
+  defaultModelByProvider?: ReadonlyArray<DefaultModelRef> | null | undefined;
 }): ModelSelection {
   const draftProviderWithSelection =
     COMPOSER_PROVIDER_KINDS.find(
@@ -763,6 +766,11 @@ export function resolvePreferredComposerModelSelection(input: {
     input.defaultProvider ??
     "codex";
 
+  // Pi has no built-in default model, so it falls back to Codex like the rest of
+  // the composer does; the user default is read for whichever provider survives.
+  const fallbackProvider = preferredProvider === "pi" ? "codex" : preferredProvider;
+  const userDefaultModel = resolveDefaultModelSlug(input.defaultModelByProvider, fallbackProvider);
+
   return (
     input.draft?.modelSelectionByProvider?.[preferredProvider] ??
     (input.threadModelSelection?.provider === preferredProvider
@@ -771,8 +779,11 @@ export function resolvePreferredComposerModelSelection(input: {
     (input.projectModelSelection?.provider === preferredProvider
       ? input.projectModelSelection
       : null) ?? {
-      provider: preferredProvider === "pi" ? "codex" : preferredProvider,
-      model: getDefaultModel(preferredProvider === "pi" ? "codex" : preferredProvider),
+      provider: fallbackProvider,
+      model:
+        (userDefaultModel
+          ? (normalizeModelSlug(userDefaultModel, fallbackProvider) ?? userDefaultModel)
+          : null) ?? getDefaultModel(fallbackProvider),
     }
   );
 }

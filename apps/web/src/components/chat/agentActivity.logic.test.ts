@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { WorkLogEntry } from "../../session-logic";
 import {
+  REASONING_TRACE_TITLE_KEY,
   deriveAgentActivityTimelineState,
   formatAgentActivityEntryPreview,
+  formatAgentActivityEntryTitle,
   isAgentActivityWorkEntry,
   isCodexActivityStatusWorkEntry,
   isReasoningUpdateWorkEntry,
@@ -43,10 +45,12 @@ describe("deriveAgentActivityTimelineState", () => {
       "agent-reasoning:reasoning-1",
       "tool-1",
     ]);
+    // The count travels as data; the component layer composes "N updates - ...".
     expect(state.timelineWorkEntries[0]).toMatchObject({
-      label: "Reasoning trace",
-      toolTitle: "Reasoning trace",
-      preview: "2 updates - Verify diffToggleControl uses valid props",
+      label: REASONING_TRACE_TITLE_KEY,
+      toolTitle: REASONING_TRACE_TITLE_KEY,
+      reasoningUpdateCount: 2,
+      preview: "Verify diffToggleControl uses valid props",
     });
     expect(state.detailById.get("agent-reasoning:reasoning-1")?.entries).toHaveLength(2);
   });
@@ -168,7 +172,7 @@ describe("deriveAgentActivityTimelineState", () => {
     expect(state.timelineWorkEntries.map((entry) => entry.id)).toEqual(["agent-task-1"]);
     expect(isAgentActivityWorkEntry(state.timelineWorkEntries[0]!)).toBe(true);
     expect(state.detailById.get("agent-task-1")).toMatchObject({
-      title: "Find changelog implementation",
+      title: { kind: "text", text: "Find changelog implementation" },
       summary: "Explore this codebase to find the changelog feature.",
     });
   });
@@ -195,6 +199,85 @@ describe("deriveAgentActivityTimelineState", () => {
     });
     expect(state.timelineWorkEntries[0]).toMatchObject({
       detail: "Full changelog report\nwith many file references and implementation notes.",
+    });
+  });
+  it("carries no update count for a single compacted reasoning update", () => {
+    const state = deriveAgentActivityTimelineState([
+      workEntry({
+        id: "reasoning-1",
+        label: "Reasoning update",
+        tone: "info",
+        detail: "Running Check sidebar z-index",
+      }),
+    ]);
+
+    expect(state.timelineWorkEntries[0]).toMatchObject({
+      label: REASONING_TRACE_TITLE_KEY,
+      preview: "Check sidebar z-index",
+    });
+    expect(state.timelineWorkEntries[0]?.reasoningUpdateCount).toBeUndefined();
+  });
+
+  it("still recognizes its own synthesized rows as reasoning after key-ification", () => {
+    const state = deriveAgentActivityTimelineState([
+      workEntry({
+        id: "reasoning-1",
+        label: "Reasoning update",
+        tone: "info",
+        detail: "Running Check sidebar z-index",
+      }),
+      workEntry({
+        id: "reasoning-2",
+        label: "Reasoning update",
+        tone: "info",
+        detail: "Running Verify the adapter",
+      }),
+    ]);
+
+    const synthesized = state.timelineWorkEntries[0]!;
+    expect(isReasoningUpdateWorkEntry(synthesized)).toBe(true);
+    expect(isAgentActivityWorkEntry(synthesized)).toBe(true);
+    expect(isCodexActivityStatusWorkEntry(synthesized)).toBe(true);
+    expect(formatAgentActivityEntryTitle(synthesized)).toEqual({ kind: "reasoning" });
+  });
+
+  it("never surfaces the reasoning title key as preview text", () => {
+    const state = deriveAgentActivityTimelineState([
+      workEntry({ id: "reasoning-1", label: "Reasoning update", tone: "info" }),
+    ]);
+
+    // A previewless group still yields a row; its preview must resolve to null
+    // rather than falling back to the raw key now living in `label`.
+    expect(state.timelineWorkEntries[0]?.label).toBe(REASONING_TRACE_TITLE_KEY);
+    expect(formatAgentActivityEntryPreview(state.timelineWorkEntries[0]!)).toBeNull();
+    expect(
+      formatAgentActivityEntryPreview(
+        workEntry({
+          id: "reasoning-key-only",
+          label: REASONING_TRACE_TITLE_KEY,
+          toolTitle: REASONING_TRACE_TITLE_KEY,
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("returns semantic title keys instead of English copy", () => {
+    expect(
+      formatAgentActivityEntryTitle(
+        workEntry({ id: "reasoning-1", label: "Reasoning update", tone: "info" }),
+      ),
+    ).toEqual({ kind: "reasoning" });
+    expect(
+      formatAgentActivityEntryTitle(
+        workEntry({ id: "agent-1", label: "", itemType: "collab_agent_tool_call" }),
+      ),
+    ).toEqual({ kind: "agentTask" });
+    expect(formatAgentActivityEntryTitle(workEntry({ id: "other-1", label: "" }))).toEqual({
+      kind: "activity",
+    });
+    expect(formatAgentActivityEntryTitle(workEntry({ id: "read-1", label: "Read" }))).toEqual({
+      kind: "text",
+      text: "Read",
     });
   });
 });

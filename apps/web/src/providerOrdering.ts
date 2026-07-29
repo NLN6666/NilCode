@@ -91,6 +91,50 @@ export function normalizeHiddenModels(
   return result;
 }
 
+/** A user-chosen default model for one provider. Same shape as {@link HiddenModelRef}
+ *  so the persisted settings stay a flat list and adding a `ProviderKind` needs no
+ *  schema migration. */
+export interface DefaultModelRef {
+  readonly provider: ProviderKind;
+  readonly slug: string;
+}
+
+/** Keeps the first entry per provider; a provider can only have one default. */
+export function normalizeDefaultModels(
+  defaultModels: ReadonlyArray<{ provider: string; slug: string }>,
+): DefaultModelRef[] {
+  const seen = new Set<ProviderKind>();
+  const result: DefaultModelRef[] = [];
+  for (const candidate of defaultModels) {
+    const slug = candidate.slug.trim();
+    if (!isProviderKind(candidate.provider) || slug.length === 0 || seen.has(candidate.provider)) {
+      continue;
+    }
+    seen.add(candidate.provider);
+    result.push({ provider: candidate.provider, slug });
+  }
+  return result;
+}
+
+export function resolveDefaultModelSlug(
+  defaultModels: ReadonlyArray<DefaultModelRef> | null | undefined,
+  provider: ProviderKind,
+): string | null {
+  const match = defaultModels?.find((entry) => entry.provider === provider);
+  const slug = match?.slug.trim();
+  return slug && slug.length > 0 ? slug : null;
+}
+
+export function patchDefaultModelForProvider(
+  defaultModels: ReadonlyArray<DefaultModelRef>,
+  provider: ProviderKind,
+  slug: string | null,
+): DefaultModelRef[] {
+  const others = defaultModels.filter((entry) => entry.provider !== provider);
+  const trimmed = slug?.trim() ?? "";
+  return trimmed.length > 0 ? [...others, { provider, slug: trimmed }] : others;
+}
+
 /**
  * Drops hidden models from a provider's picker list.
  *

@@ -148,6 +148,7 @@ export function useHandleNewThread() {
         activeDraftThread: activeDraftThreadSnapshot,
         activeThread: activeThreadSnapshot,
         defaultProvider: options?.provider ?? settings.defaultProvider,
+        defaultModelByProvider: settings.defaultModelByProvider,
         draftComposerState:
           useComposerDraftStore.getState().draftsByThreadId[targetThreadId] ?? null,
         draftThread,

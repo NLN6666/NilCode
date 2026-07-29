@@ -24,6 +24,7 @@ import { useRefreshProviderStatusesNow } from "~/hooks/useProviderStatusRefresh"
 import { createAndSendKanbanTask, createKanbanDraftTask } from "~/lib/kanbanTaskCreate";
 import { resolveProviderSendAvailabilityWithRefresh } from "~/lib/providerAvailability";
 import { buildModelSelection } from "~/providerModelOptions";
+import type { DefaultModelRef } from "~/providerOrdering";
 import { truncateKanbanTaskPreview } from "./KanbanNewTaskDialog.logic";
 
 interface UseKanbanTaskSubmitInput {
@@ -40,6 +41,7 @@ interface UseKanbanTaskSubmitInput {
   readonly envMode: DraftThreadEnvMode;
   readonly sendAsDraft: boolean;
   readonly defaultProvider: ProviderKind;
+  readonly defaultModelByProvider: ReadonlyArray<DefaultModelRef>;
   readonly assistantDeliveryMode: AssistantDeliveryMode;
   readonly providerOptionsForDispatch: ProviderStartOptions | undefined;
   readonly providerStatuses: readonly ServerProviderStatus[];
@@ -61,6 +63,7 @@ export function useKanbanTaskSubmit(input: UseKanbanTaskSubmitInput) {
     envMode,
     sendAsDraft,
     defaultProvider,
+    defaultModelByProvider,
     assistantDeliveryMode,
     providerOptionsForDispatch,
     providerStatuses,
@@ -145,6 +148,7 @@ export function useKanbanTaskSubmit(input: UseKanbanTaskSubmitInput) {
     void createAndSendKanbanTask({
       ...taskInput,
       defaultProvider,
+      defaultModelByProvider,
       assistantDeliveryMode,
       providerOptions: providerOptionsForDispatch,
     })

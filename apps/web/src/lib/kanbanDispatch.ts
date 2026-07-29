@@ -27,6 +27,7 @@ import {
 } from "../composerDraftStore";
 import { useKanbanUiStore } from "../kanbanUiStore";
 import { readNativeApi } from "../nativeApi";
+import type { DefaultModelRef } from "../providerOrdering";
 import { useStore } from "../store";
 import { getThreadFromState } from "../threadDerivation";
 import type { SidebarThreadSummary } from "../types";
@@ -63,6 +64,7 @@ export type KanbanDraftDispatchResult =
 export async function dispatchKanbanDraftCard(input: {
   card: KanbanCard;
   defaultProvider: ProviderKind;
+  defaultModelByProvider: ReadonlyArray<DefaultModelRef>;
   assistantDeliveryMode: AssistantDeliveryMode;
   providerOptions?: ProviderStartOptions | undefined;
 }): Promise<KanbanDraftDispatchResult> {
@@ -78,6 +80,7 @@ export async function dispatchKanbanDraftCard(input: {
     projectId: card.projectId,
     thread: card.thread,
     defaultProvider: input.defaultProvider,
+    defaultModelByProvider: input.defaultModelByProvider,
     assistantDeliveryMode: input.assistantDeliveryMode,
     providerOptions: input.providerOptions,
   });
@@ -89,6 +92,7 @@ interface KanbanDraftDispatchInput {
   /** Backing summary; null for local-only draft threads not yet promoted. */
   thread: SidebarThreadSummary | null;
   defaultProvider: ProviderKind;
+  defaultModelByProvider: ReadonlyArray<DefaultModelRef>;
   assistantDeliveryMode: AssistantDeliveryMode;
   providerOptions?: ProviderStartOptions | undefined;
 }
@@ -147,6 +151,7 @@ async function dispatchKanbanDraftThreadOnce(
     threadModelSelection: thread?.modelSelection ?? null,
     projectModelSelection: project?.defaultModelSelection ?? null,
     defaultProvider: input.defaultProvider,
+    defaultModelByProvider: input.defaultModelByProvider,
   });
   const draftThread = composerStore.getDraftThread(threadId);
   // Worktree creation is owned by the full chat composer path. Kanban stays a
@@ -245,6 +250,7 @@ async function dispatchKanbanDraftThreadOnce(
         activeDraftThread: null,
         activeThread: null,
         defaultProvider: input.defaultProvider,
+        defaultModelByProvider: input.defaultModelByProvider,
         draftComposerState,
         draftThread,
         options: undefined,

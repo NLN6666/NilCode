@@ -14,6 +14,9 @@ import {
   normalizeProviderOrder,
   normalizeHiddenModels,
   filterModelOptionsByVisibility,
+  normalizeDefaultModels,
+  patchDefaultModelForProvider,
+  resolveDefaultModelSlug,
 } from "./providerOrdering";
 
 const ALL_PROVIDER_KINDS = Object.keys(PROVIDER_DISPLAY_NAMES) as ProviderKind[];
@@ -95,5 +98,102 @@ describe("filterModelOptionsByVisibility", () => {
         options.map((option) => ({ provider: "claudeAgent" as const, slug: option.slug })),
       ),
     ).toEqual(options);
+  });
+});
+
+describe("default model preferences", () => {
+  it("normalizes an empty list to an empty list", () => {
+    expect(normalizeDefaultModels([])).toEqual([]);
+  });
+
+  it("keeps the first entry when a provider appears more than once", () => {
+    expect(
+      normalizeDefaultModels([
+        { provider: "codex", slug: "gpt-5.4" },
+        { provider: "codex", slug: "gpt-5.6-sol" },
+        { provider: "claudeAgent", slug: "claude-opus-4-6" },
+      ]),
+    ).toEqual([
+      { provider: "codex", slug: "gpt-5.4" },
+      { provider: "claudeAgent", slug: "claude-opus-4-6" },
+    ]);
+  });
+
+  it("drops unknown providers and blank slugs, and trims what it keeps", () => {
+    expect(
+      normalizeDefaultModels([
+        { provider: "not-a-provider", slug: "gpt-5.4" },
+        { provider: "codex", slug: "" },
+        { provider: "codex", slug: "   " },
+        { provider: "codex", slug: "  gpt-5.4  " },
+      ]),
+    ).toEqual([{ provider: "codex", slug: "gpt-5.4" }]);
+  });
+
+  it("resolves a provider's slug and returns null when it has none", () => {
+    const defaults = [
+      { provider: "codex" as const, slug: "gpt-5.4" },
+      { provider: "grok" as const, slug: "grok-build" },
+    ];
+
+    expect(resolveDefaultModelSlug(defaults, "codex")).toBe("gpt-5.4");
+    expect(resolveDefaultModelSlug(defaults, "grok")).toBe("grok-build");
+    expect(resolveDefaultModelSlug(defaults, "claudeAgent")).toBeNull();
+    expect(resolveDefaultModelSlug([], "codex")).toBeNull();
+    expect(resolveDefaultModelSlug(null, "codex")).toBeNull();
+    expect(resolveDefaultModelSlug(undefined, "codex")).toBeNull();
+  });
+
+  it("treats a whitespace-only stored slug as no default", () => {
+    expect(resolveDefaultModelSlug([{ provider: "codex", slug: "   " }], "codex")).toBeNull();
+  });
+
+  it("replaces a provider's entry without disturbing the others", () => {
+    const defaults = [
+      { provider: "codex" as const, slug: "gpt-5.4" },
+      { provider: "grok" as const, slug: "grok-build" },
+    ];
+
+    expect(patchDefaultModelForProvider(defaults, "codex", "gpt-5.6-sol")).toEqual([
+      { provider: "grok", slug: "grok-build" },
+      { provider: "codex", slug: "gpt-5.6-sol" },
+    ]);
+  });
+
+  it("removes the entry when the slug is null, empty, or blank", () => {
+    const defaults = [
+      { provider: "codex" as const, slug: "gpt-5.4" },
+      { provider: "grok" as const, slug: "grok-build" },
+    ];
+
+    expect(patchDefaultModelForProvider(defaults, "codex", null)).toEqual([
+      { provider: "grok", slug: "grok-build" },
+    ]);
+    expect(patchDefaultModelForProvider(defaults, "codex", "")).toEqual([
+      { provider: "grok", slug: "grok-build" },
+    ]);
+    expect(patchDefaultModelForProvider(defaults, "codex", "   ")).toEqual([
+      { provider: "grok", slug: "grok-build" },
+    ]);
+  });
+
+  it("adds an entry for a provider that had none, and never mutates the input", () => {
+    const defaults = [{ provider: "codex" as const, slug: "gpt-5.4" }];
+    const patched = patchDefaultModelForProvider(defaults, "grok", "  grok-build  ");
+
+    expect(patched).toEqual([
+      { provider: "codex", slug: "gpt-5.4" },
+      { provider: "grok", slug: "grok-build" },
+    ]);
+    expect(defaults).toEqual([{ provider: "codex", slug: "gpt-5.4" }]);
+  });
+
+  it("survives a round trip through normalization after patching", () => {
+    const patched = patchDefaultModelForProvider(
+      [{ provider: "codex", slug: "gpt-5.4" }],
+      "codex",
+      "gpt-5.6-sol",
+    );
+    expect(normalizeDefaultModels(patched)).toEqual([{ provider: "codex", slug: "gpt-5.6-sol" }]);
   });
 });

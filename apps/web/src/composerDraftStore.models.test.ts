@@ -1,4 +1,5 @@
 import { ThreadId, type ModelSelection } from "@synara/contracts";
+import { getDefaultModel } from "@synara/shared/model";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   deriveEffectiveComposerModelState,
@@ -46,6 +47,98 @@ describe("resolvePreferredComposerModelSelection", () => {
         projectModelSelection: modelSelection("codex", "gpt-5.4"),
       }),
     ).toEqual(modelSelection("grok", "grok-build"));
+  });
+
+  it("falls back to the user default model only after draft, thread, and project", () => {
+    const defaultModelByProvider = [
+      { provider: "codex", slug: "gpt-5.4" },
+      { provider: "claudeAgent", slug: "claude-opus-4-6" },
+    ] as const;
+
+    // draft wins
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: {
+          modelSelectionByProvider: { codex: modelSelection("codex", "gpt-5.6-sol") },
+          activeProvider: "codex",
+        },
+        threadModelSelection: null,
+        projectModelSelection: null,
+        defaultModelByProvider,
+      }),
+    ).toEqual(modelSelection("codex", "gpt-5.6-sol"));
+
+    // thread wins over project + user default
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: modelSelection("codex", "gpt-5"),
+        projectModelSelection: modelSelection("codex", "gpt-5.1"),
+        defaultModelByProvider,
+      }),
+    ).toEqual(modelSelection("codex", "gpt-5"));
+
+    // project wins over the user default
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: null,
+        projectModelSelection: modelSelection("codex", "gpt-5.1"),
+        defaultModelByProvider,
+      }),
+    ).toEqual(modelSelection("codex", "gpt-5.1"));
+
+    // user default wins over getDefaultModel
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: null,
+        projectModelSelection: null,
+        defaultProvider: "codex",
+        defaultModelByProvider,
+      }),
+    ).toEqual({ provider: "codex", model: "gpt-5.4" });
+
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: null,
+        projectModelSelection: null,
+        defaultProvider: "claudeAgent",
+        defaultModelByProvider,
+      }),
+    ).toEqual({ provider: "claudeAgent", model: "claude-opus-4-6" });
+  });
+
+  it("keeps the built-in default when no user default exists for the provider", () => {
+    const withDefault = resolvePreferredComposerModelSelection({
+      draft: null,
+      threadModelSelection: null,
+      projectModelSelection: null,
+      defaultProvider: "codex",
+      defaultModelByProvider: [{ provider: "grok", slug: "grok-build" }],
+    });
+    const withoutDefault = resolvePreferredComposerModelSelection({
+      draft: null,
+      threadModelSelection: null,
+      projectModelSelection: null,
+      defaultProvider: "codex",
+    });
+
+    expect(withDefault).toEqual(withoutDefault);
+    expect(withDefault.model).toBe(getDefaultModel("codex"));
+  });
+
+  it("reads the Codex user default for Pi, which has no model of its own", () => {
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: null,
+        projectModelSelection: null,
+        defaultProvider: "pi",
+        defaultModelByProvider: [{ provider: "codex", slug: "gpt-5.4" }],
+      }),
+    ).toEqual({ provider: "codex", model: "gpt-5.4" });
   });
 
   it("uses only the active provider selection for terminal-first promotion", () => {

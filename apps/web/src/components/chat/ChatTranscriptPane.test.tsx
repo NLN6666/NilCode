@@ -57,7 +57,7 @@ describe("ChatTranscriptPane", () => {
     const markup = renderTranscriptPaneMarkup({
       agentActivityDetail: {
         id: "agent-task-1",
-        title: "Agent task",
+        title: { kind: "agentTask" },
         summary: "Checked the sidebar issue.",
         primaryEntry: {
           id: "agent-task-1",

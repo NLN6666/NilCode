@@ -8,7 +8,7 @@ describe("AgentActivityDetailView", () => {
       <AgentActivityDetailView
         detail={{
           id: "agent-task-1",
-          title: "Find changelog implementation",
+          title: { kind: "text", text: "Find changelog implementation" },
           summary: "Agent found the relevant files.",
           primaryEntry: {
             id: "agent-task-1",

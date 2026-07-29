@@ -64,6 +64,10 @@ export interface WorkLogEntry {
   toolDetails?: WorkLogToolDetails;
   itemType?: ToolLifecycleItemType;
   requestKind?: WorkLogRequestKind;
+  // Set only on the synthesized rows `agentActivity.logic` produces when it
+  // compacts consecutive reasoning updates. The count travels as data rather
+  // than baked into `preview` so the "N updates" phrasing can be translated.
+  reasoningUpdateCount?: number;
   subagents?: ReadonlyArray<WorkLogSubagent>;
   subagentAction?: WorkLogSubagentAction;
   automation?: WorkLogAutomation;

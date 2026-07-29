@@ -351,6 +351,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "Synara reads the public models.dev catalog so newly released models show up without waiting for an update. refresh 云端模型目录 刷新",
   },
   {
+    id: "models:default-models",
+    section: "models",
+    title: (m) => m.settings.models.defaults.picker.title,
+    keywords:
+      "Pick the model each provider starts a new chat on. default model new chat 默认模型 新会话",
+  },
+  {
     id: "models:visible-models",
     section: "models",
     title: (m) => m.settings.models.visible.picker.title,

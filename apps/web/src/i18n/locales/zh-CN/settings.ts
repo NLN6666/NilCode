@@ -885,6 +885,19 @@ export const settings: Settings = {
         ariaLabel: "Git 文本生成模型",
       },
     },
+    defaults: {
+      title: "默认模型",
+      picker: {
+        title: "新会话使用的模型",
+        description:
+          "为每个提供商选择新会话默认使用的模型。如果会话本身、所属项目或你上次的选择已经记住了某个模型，则仍以那个为准。Pi 没有自己的模型，沿用 Codex 的默认值。",
+        resetLabel: "这些模型选择",
+      },
+      providerAriaLabel: "默认模型提供商",
+      modelAriaLabel: "默认模型",
+      builtIn: "内置默认值",
+      noModels: "尚未发现此提供商的模型。",
+    },
     visible: {
       title: "可见模型",
       picker: {

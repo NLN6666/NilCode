@@ -3,7 +3,7 @@
 // Layer: Chat presentation component
 // Depends on: agentActivity.logic and ChatMarkdown
 
-import { pluralize } from "@synara/shared/text";
+import type { ThreadId } from "@synara/contracts";
 import { type CSSProperties, type ReactNode } from "react";
 import { BotIcon, ChevronLeftIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
@@ -20,11 +20,21 @@ import {
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   type AgentActivityDetail,
+  type AgentActivityEntryTitle,
   formatAgentActivityEntryPreview,
   formatAgentActivityEntryTitle,
   isReasoningUpdateWorkEntry,
 } from "./agentActivity.logic";
+import { collectDetailSubagents, SubagentDetailSections } from "./SubagentDetailSections";
 import { useMessages } from "~/i18n/context";
+import type { Messages } from "~/i18n/locales/en";
+
+type ActivityCopy = Messages["chat"]["activity"];
+
+/** `agentActivity.logic` stays locale-free, so titles arrive as keys. */
+function resolveActivityTitle(title: AgentActivityEntryTitle, copy: ActivityCopy): string {
+  return title.kind === "text" ? title.text : copy.titles[title.kind];
+}
 
 const DETAIL_BOTTOM_INSET_PX = 64;
 
@@ -35,6 +45,7 @@ interface AgentActivityDetailViewProps {
   markdownCwd: string | undefined;
   onBack: () => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
+  onOpenThread?: ((threadId: ThreadId) => void) | undefined;
   timestampFormat: TimestampFormat;
 }
 
@@ -45,6 +56,7 @@ export function AgentActivityDetailView({
   markdownCwd,
   onBack,
   onImageExpand,
+  onOpenThread,
   timestampFormat,
 }: AgentActivityDetailViewProps) {
   const copy = useMessages().chat.activity;
@@ -56,6 +68,7 @@ export function AgentActivityDetailView({
   };
   const prompt = findPrompt(detail.entries);
   const result = findResult(detail.entries);
+  const subagents = collectDetailSubagents(detail.entries);
 
   return (
     <div
@@ -88,10 +101,10 @@ export function AgentActivityDetailView({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <h2 className="truncate text-[18px] font-medium leading-6 text-foreground/92">
-                  {detail.title}
+                  {resolveActivityTitle(detail.title, copy)}
                 </h2>
                 <span className="rounded-full border border-border/45 px-2 py-0.5 text-[10px] font-medium text-muted-foreground/56">
-                  {`${detail.entries.length} ${pluralize(detail.entries.length, "update")}`}
+                  {copy.updates(detail.entries.length)}
                 </span>
               </div>
               {detail.summary ? (
@@ -102,6 +115,17 @@ export function AgentActivityDetailView({
             </div>
           </div>
         </div>
+
+        {subagents.length > 0 ? (
+          <AgentActivitySection title={copy.subagent.section}>
+            <SubagentDetailSections
+              subagents={subagents}
+              chatTypographyStyle={chatTypographyStyle}
+              footerTextStyle={footerTextStyle}
+              onOpenThread={onOpenThread}
+            />
+          </AgentActivitySection>
+        ) : null}
 
         {prompt ? (
           <AgentActivitySection title={copy.prompt}>
@@ -164,8 +188,9 @@ function AgentActivityEventRow(props: {
   onImageExpand: (preview: ExpandedImagePreview) => void;
   timestampFormat: TimestampFormat;
 }) {
+  const copy = useMessages().chat.activity;
   const preview = formatAgentActivityEntryPreview(props.entry);
-  const title = formatAgentActivityEntryTitle(props.entry);
+  const title = resolveActivityTitle(formatAgentActivityEntryTitle(props.entry), copy);
   const body = isReasoningUpdateWorkEntry(props.entry) ? preview : (preview ?? props.entry.detail);
 
   return (

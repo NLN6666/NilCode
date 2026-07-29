@@ -941,6 +941,20 @@ export const settings = {
         ariaLabel: "Git text generation model",
       },
     },
+    defaults: {
+      title: "Default models",
+      picker: {
+        title: "Model for new chats",
+        description:
+          "Pick the model each provider starts a new chat on. A chat that already remembers a model — its own, its project's, or your last pick — keeps that instead. Pi has no model of its own and follows the Codex default.",
+        resetLabel: "these model choices",
+      },
+      providerAriaLabel: "Default model provider",
+      modelAriaLabel: "Default model",
+      /** Placeholder option meaning "no preference"; the built-in default applies. */
+      builtIn: "Built-in default",
+      noModels: "No models discovered for this provider yet.",
+    },
     visible: {
       title: "Visible models",
       picker: {

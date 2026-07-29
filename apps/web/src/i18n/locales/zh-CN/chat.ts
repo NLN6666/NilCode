@@ -148,6 +148,36 @@ export const chat: Chat = {
     agents: "智能体",
     activity: "活动",
     open: "打开",
+    updates: (count) => `${count} 条更新`,
+    updatesWithPreview: (count, preview) => `${count} 条更新 · ${preview}`,
+
+    titles: {
+      reasoning: "推理",
+      reasoningTrace: "推理轨迹",
+      agentTask: "智能体任务",
+      activity: "活动",
+    },
+
+    subagent: {
+      section: "智能体",
+      model: "模型",
+      role: "角色",
+      status: "状态",
+      effort: "推理强度",
+      background: "后台运行",
+      backgroundOn: "是",
+      showConversation: "展开对话",
+      hideConversation: "收起对话",
+      openFullConversation: "打开完整会话",
+      noThread: "这个智能体没有可打开的会话。",
+      noMessages: "还没有消息。",
+      earlierMessages: (count) => `另有 ${count} 条更早的消息`,
+      roles: {
+        user: "你",
+        assistant: "智能体",
+        system: "系统",
+      },
+    },
   },
 
   work: {
@@ -157,6 +187,7 @@ export const chat: Chat = {
     moreToolUses: (count) => `另有 ${count} 次工具调用`,
     openThread: "打开会话",
     edited: "编辑了",
+    files: (count) => `${count} 个文件`,
     collapseDetails: "收起详情",
   },
 

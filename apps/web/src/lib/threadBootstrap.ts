@@ -21,6 +21,7 @@ import {
   type DraftThreadState,
   resolvePreferredComposerModelSelection,
 } from "../composerDraftStore";
+import type { DefaultModelRef } from "../providerOrdering";
 import { DEFAULT_INTERACTION_MODE, type Thread, type ThreadPrimarySurface } from "../types";
 
 export interface NewThreadOptions {
@@ -105,6 +106,7 @@ interface ResolveTerminalThreadCreationStateInput {
   activeDraftThread: DraftThreadState | null;
   activeThread: ActiveThreadSnapshot | null;
   defaultProvider?: ProviderKind | null | undefined;
+  defaultModelByProvider?: ReadonlyArray<DefaultModelRef> | null | undefined;
   draftComposerState: ComposerThreadDraftState | null;
   draftThread: DraftThreadState | null;
   options: NewThreadOptions | undefined;
@@ -310,6 +312,7 @@ export function resolveTerminalThreadCreationState(
           : null,
       projectModelSelection: input.projectDefaultModelSelection,
       defaultProvider: input.defaultProvider,
+      defaultModelByProvider: input.defaultModelByProvider,
     }),
     runtimeMode:
       input.draftThread?.runtimeMode ??

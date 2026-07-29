@@ -271,6 +271,7 @@ export function KanbanNewTaskDialog({
     envMode,
     sendAsDraft,
     defaultProvider: settings.defaultProvider,
+    defaultModelByProvider: settings.defaultModelByProvider,
     assistantDeliveryMode,
     providerOptionsForDispatch,
     providerStatuses,

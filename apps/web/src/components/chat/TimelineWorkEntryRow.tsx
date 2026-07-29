@@ -45,6 +45,7 @@ import {
   formatAgentActivityEntryPreview,
   isAgentActivityWorkEntry,
   isCodexActivityStatusWorkEntry,
+  isReasoningTraceTitleKey,
   isReasoningUpdateWorkEntry,
 } from "./agentActivity.logic";
 import { AutomationCreatedCard } from "./AutomationCreatedCard";
@@ -95,6 +96,7 @@ const EMPTY_FILE_DIFF_STATS: ReadonlyMap<string, { additions: number; deletions:
 
 type TimelineWorkEntry = WorkLogEntry;
 type WorkCopy = Messages["chat"]["work"];
+type ActivityCopy = Messages["chat"]["activity"];
 
 const AgentTaskIcon: LucideIcon = (props) => <BotIcon {...props} />;
 
@@ -150,7 +152,7 @@ function extractFilePathFromDetail(detail: string): string | null {
   });
 }
 
-function workEntryPreview(workEntry: TimelineWorkEntry): string | null {
+function workEntryPreview(workEntry: TimelineWorkEntry, copy: WorkCopy): string | null {
   if (isReasoningUpdateWorkEntry(workEntry)) {
     return formatAgentActivityEntryPreview(workEntry);
   }
@@ -170,7 +172,7 @@ function workEntryPreview(workEntry: TimelineWorkEntry): string | null {
   if (workEntry.changedFiles && workEntry.changedFiles.length > 0) {
     const names = workEntry.changedFiles.map((p) => basenameOfPath(p));
     if (names.length === 1) return names[0]!;
-    return `${names.length} files`;
+    return copy.files(names.length);
   }
 
   if (workEntry.itemType === "collab_agent_tool_call") {
@@ -343,7 +345,12 @@ function capitalizePhrase(value: string): string {
   return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
 }
 
-function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
+function toolWorkEntryHeading(workEntry: TimelineWorkEntry, reasoningTraceTitle: string): string {
+  // `agentActivity.logic` writes a translation key onto the rows it synthesizes,
+  // so resolve it before any label-derived heading path runs on the raw key.
+  if (isReasoningTraceTitleKey(workEntry.toolTitle ?? workEntry.label)) {
+    return reasoningTraceTitle;
+  }
   const synaraTitle = deriveSynaraMcpToolTitle({
     toolName: workEntry.toolName,
     title: workEntry.toolTitle,
@@ -357,6 +364,19 @@ function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
     return capitalizePhrase(normalizeCompactToolLabel(workEntry.label));
   }
   return capitalizePhrase(normalizeCompactToolLabel(workEntry.toolTitle));
+}
+
+/** "N updates - <latest>" for a compacted reasoning group; plain preview otherwise. */
+function reasoningTraceDisplayText(
+  workEntry: TimelineWorkEntry,
+  preview: string | null,
+  copy: ActivityCopy,
+): string | null {
+  const updateCount = workEntry.reasoningUpdateCount ?? 0;
+  if (updateCount > 1) {
+    return preview ? copy.updatesWithPreview(updateCount, preview) : copy.updates(updateCount);
+  }
+  return preview;
 }
 
 function combineWorkEntryDisplayText(heading: string, preview: string | null): string {
@@ -438,7 +458,9 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
   onOpenAutomation?: (automationId: string) => void;
   timestampFormat: TimestampFormat;
 }) {
-  const rowCopy = useMessages().chat.work;
+  const messages = useMessages();
+  const rowCopy = messages.chat.work;
+  const activityCopy = messages.chat.activity;
   // Defaults are applied in the body (not in the destructuring pattern): a default
   // value inside a destructuring pattern makes React Compiler bail out on the whole
   // component, silently dropping memoization for every tool-call row.
@@ -481,8 +503,8 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
         : isMcpToolRow
           ? "mcp"
           : undefined;
-  const heading = toolWorkEntryHeading(workEntry);
-  const rawPreview = workEntryPreview(workEntry);
+  const heading = toolWorkEntryHeading(workEntry, activityCopy.titles.reasoningTrace);
+  const rawPreview = workEntryPreview(workEntry, rowCopy);
   const preview = isSynaraToolRow
     ? sanitizeSynaraMcpToolPreview({
         preview: rawPreview,
@@ -492,8 +514,9 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
     : rawPreview;
   const defaultDisplayText = webFetchUrl
     ? describeLinkChip(webFetchUrl).label
-    : isReasoningUpdateWorkEntry(workEntry) && preview
-      ? preview
+    : isReasoningUpdateWorkEntry(workEntry)
+      ? (reasoningTraceDisplayText(workEntry, preview, activityCopy) ??
+        combineWorkEntryDisplayText(heading, preview))
       : combineWorkEntryDisplayText(heading, preview);
   const showInlineAgentTaskPreview =
     workEntry.itemType === "collab_agent_tool_call" &&
@@ -770,6 +793,7 @@ export function EditedFileRowContent(props: {
   compact: boolean;
 }) {
   const { filePath, additions, deletions, fontSizePx, compact } = props;
+  const editedLabel = useMessages().chat.work.edited;
   const hasStat = (additions ?? 0) + (deletions ?? 0) > 0;
   return (
     <>
@@ -787,7 +811,7 @@ export function EditedFileRowContent(props: {
         className={cn("font-system-ui shrink-0", WORK_ROW_MUTED_HOVER_TONE["file-row"])}
         style={{ fontSize: `${fontSizePx}px` }}
       >
-        Edited
+        {editedLabel}
       </span>
       <span
         className={cn(

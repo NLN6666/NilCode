@@ -16,6 +16,7 @@ import type {
 } from "@synara/contracts";
 
 import { useComposerDraftStore, type DraftThreadEnvMode } from "../composerDraftStore";
+import type { DefaultModelRef } from "../providerOrdering";
 import { dispatchKanbanDraftThread, type KanbanDraftDispatchResult } from "./kanbanDispatch";
 import { newThreadId } from "./utils";
 
@@ -64,6 +65,7 @@ export function createKanbanDraftTask(input: KanbanDraftTaskInput): ThreadId {
 export async function createAndSendKanbanTask(
   input: KanbanDraftTaskInput & {
     defaultProvider: ProviderKind;
+    defaultModelByProvider: ReadonlyArray<DefaultModelRef>;
     assistantDeliveryMode: AssistantDeliveryMode;
     providerOptions?: ProviderStartOptions | undefined;
   },
@@ -74,6 +76,7 @@ export async function createAndSendKanbanTask(
     projectId: input.projectId,
     thread: null,
     defaultProvider: input.defaultProvider,
+    defaultModelByProvider: input.defaultModelByProvider,
     assistantDeliveryMode: input.assistantDeliveryMode,
     providerOptions: input.providerOptions,
   });

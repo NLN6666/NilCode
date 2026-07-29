@@ -40,6 +40,7 @@ import { normalizeCursorModelVariantBaseId } from "./cursorModelVariants";
 import { formatProviderModelOptionName, type ProviderModelOption } from "./providerModelOptions";
 import {
   DEFAULT_PROVIDER_ORDER,
+  normalizeDefaultModels,
   normalizeHiddenModels,
   normalizeHiddenProviders,
   normalizeProviderOrder,
@@ -305,6 +306,16 @@ export const AppSettingsSchema = Schema.Struct({
       slug: Schema.String,
     }),
   ).pipe(withDefaults(() => [])),
+  // Local-only preference: the model a new thread starts on, per provider.
+  // Stored as a flat list rather than a record so adding a `ProviderKind` needs
+  // no schema migration — same shape and rationale as `hiddenModels`. It is the
+  // last link of the new-thread fallback chain, just before the built-in default.
+  defaultModelByProvider: Schema.Array(
+    Schema.Struct({
+      provider: PersistedProviderKind,
+      slug: Schema.String,
+    }),
+  ).pipe(withDefaults(() => [])),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;
 
@@ -430,6 +441,14 @@ export const MODEL_PROVIDER_SETTINGS = Object.values(PROVIDER_CUSTOM_MODEL_CONFI
 // persisted config for compatibility, but do not offer an editor it cannot honor.
 export const CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS = MODEL_PROVIDER_SETTINGS.filter(
   (config) => config.provider !== "droid",
+);
+
+// Pi is excluded on purpose: it has no built-in default model, so
+// `resolvePreferredComposerModelSelection` resolves a Pi thread's new-chat model
+// against Codex. Offering Pi here would let a user save a default that silently
+// never applies. The picker's description says Pi follows Codex instead.
+export const DEFAULT_MODEL_PROVIDER_SETTINGS = MODEL_PROVIDER_SETTINGS.filter(
+  (config) => config.provider !== "pi",
 );
 
 export function normalizeCustomModelSlugs(
@@ -573,6 +592,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     hiddenProviders: normalizeHiddenProviders(settings.hiddenProviders),
     providerOrder: normalizeProviderOrder(settings.providerOrder),
     hiddenModels: normalizeHiddenModels(settings.hiddenModels),
+    defaultModelByProvider: normalizeDefaultModels(settings.defaultModelByProvider),
   };
 }
 

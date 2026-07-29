@@ -110,6 +110,7 @@ export function KanbanProjectBoardView({
     const result = await dispatchKanbanDraftCard({
       card,
       defaultProvider: settings.defaultProvider,
+      defaultModelByProvider: settings.defaultModelByProvider,
       assistantDeliveryMode,
       providerOptions: providerOptionsForDispatch,
     });
