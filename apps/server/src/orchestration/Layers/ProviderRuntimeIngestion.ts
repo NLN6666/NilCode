@@ -17,7 +17,18 @@ import {
   type ProviderRuntimeEvent,
   type RuntimeMode,
 } from "@synara/contracts";
-import { Cache, Cause, Deferred, Duration, Effect, Layer, Option, Ref, Stream } from "effect";
+import {
+  Cache,
+  Cause,
+  Clock,
+  Deferred,
+  Duration,
+  Effect,
+  Layer,
+  Option,
+  Ref,
+  Stream,
+} from "effect";
 import * as Semaphore from "effect/Semaphore";
 import { makeDrainableWorker, startDrainableWorkerProducers } from "@synara/shared/DrainableWorker";
 import {
@@ -60,6 +71,7 @@ import {
   type ProviderRuntimeIngestionShape,
 } from "../Services/ProviderRuntimeIngestion.ts";
 import {
+  isStreamingReasoningProvider,
   projectProviderRuntimeActivities,
   providerActivityUpdateDedupeKey,
   providerActivityUpdateFingerprint,
@@ -67,6 +79,12 @@ import {
   runtimePayloadRecord,
   runtimeTurnState,
 } from "../providerRuntimeActivityProjection.ts";
+import {
+  advanceReasoningStreamThrottle,
+  INITIAL_REASONING_STREAM_THROTTLE_STATE,
+  type ReasoningStreamThrottleState,
+  shouldDispatchReasoningStream,
+} from "../reasoningStreamThrottle.ts";
 
 // FILE: ProviderRuntimeIngestion.ts
 // Purpose: Projects provider runtime events into orchestration read-model updates and thread activity.
@@ -273,18 +291,33 @@ export function appendCappedBufferedText(existing: string, delta: string, limit:
   )}${BUFFERED_TEXT_TRUNCATION_MARKER}`;
 }
 
+// Providers whose reasoning text arrives as deltas that have to be buffered into
+// one reasoning item. Claude streams `reasoning_text` per thinking block; its
+// adapter mints a stable per-block item id so the buffer can key on it.
+const REASONING_SUMMARY_BUFFER_PROVIDERS: ReadonlySet<ProviderRuntimeEvent["provider"]> = new Set([
+  "codex",
+  "antigravity",
+  "claudeAgent",
+]);
+
+function isBufferedReasoningTextDelta(
+  event: Extract<ProviderRuntimeEvent, { readonly type: "content.delta" }>,
+): boolean {
+  return (
+    event.payload.streamKind === "reasoning_summary_text" ||
+    ((event.provider === "antigravity" || event.provider === "claudeAgent") &&
+      event.payload.streamKind === "reasoning_text")
+  );
+}
+
 function reasoningSummaryBufferKey(
   event: ProviderRuntimeEvent,
   threadId = event.threadId,
 ): string | null {
-  if ((event.provider !== "codex" && event.provider !== "antigravity") || !event.itemId) {
+  if (!REASONING_SUMMARY_BUFFER_PROVIDERS.has(event.provider) || !event.itemId) {
     return null;
   }
-  if (
-    event.type === "content.delta" &&
-    (event.payload.streamKind === "reasoning_summary_text" ||
-      (event.provider === "antigravity" && event.payload.streamKind === "reasoning_text"))
-  ) {
+  if (event.type === "content.delta" && isBufferedReasoningTextDelta(event)) {
     return [threadId, event.turnId ?? "no-turn", event.itemId].join(":");
   }
   if (
@@ -311,13 +344,63 @@ function joinedBufferedReasoningSummary(
   );
 }
 
+/**
+ * Per-reasoning-item write throttle, keyed exactly like the reasoning buffer so
+ * both are cleared together when a turn settles. Leaking this across turns is the
+ * classic failure mode: a stale high character watermark would silently mute
+ * streaming for the next turn.
+ *
+ * Deliberately has no TTL. `Cache.get` does not refresh `expiresAt` on a hit, and
+ * the throttle only writes on an actual dispatch - so any expiry window would
+ * silently reset the watermark between two dispatches spaced further apart than
+ * the TTL, hand back a free dispatch, and make the write-amplification bound
+ * scale with turn duration instead of trace length. Lifetime is owned by
+ * `clearReasoningStreamThrottles` (turn settle, revert, rollback), with
+ * `capacity` as the backstop if a turn never settles.
+ *
+ * Exported so the regression test exercises this exact configuration.
+ */
+export const makeReasoningStreamThrottleCache = Cache.make<string, ReasoningStreamThrottleState>({
+  capacity: BUFFERED_REASONING_SUMMARY_BY_KEY_CACHE_CAPACITY,
+  timeToLive: Duration.infinity,
+  lookup: () => Effect.succeed(INITIAL_REASONING_STREAM_THROTTLE_STATE),
+});
+
+/**
+ * Synthesize the reasoning item event that carries a buffered trace to the
+ * activity projection. The streaming path and the authoritative settle path both
+ * go through here so they always agree on item identity: same source event, same
+ * item id, therefore the same `provider-reasoning:<threadId>:<itemId>` activity.
+ */
+function bufferedReasoningItemEvent(input: {
+  readonly summary: BufferedReasoningSummary;
+  readonly threadId: ThreadId;
+  readonly eventId: EventId;
+  readonly type: "item.updated" | "item.completed";
+  readonly status: "inProgress" | "completed" | "failed";
+  readonly detail: string;
+}): ProviderRuntimeEvent {
+  return {
+    ...input.summary.sourceEvent,
+    eventId: input.eventId,
+    threadId: input.threadId,
+    type: input.type,
+    payload: {
+      itemType: "reasoning",
+      status: input.status,
+      title: "Reasoning",
+      detail: input.detail,
+    },
+  };
+}
+
 function withBufferedReasoningSummary(
   event: ProviderRuntimeEvent,
   summary: BufferedReasoningSummary | undefined,
 ): ProviderRuntimeEvent {
   if (
     event.type !== "item.completed" ||
-    (event.provider !== "codex" && event.provider !== "antigravity") ||
+    !REASONING_SUMMARY_BUFFER_PROVIDERS.has(event.provider) ||
     event.payload.itemType !== "reasoning" ||
     readableReasoningDetail(event.payload.detail)
   ) {
@@ -745,6 +828,7 @@ const make = Effect.gen(function* () {
     timeToLive: BUFFERED_REASONING_SUMMARY_BY_KEY_TTL,
     lookup: () => Effect.succeed(undefined),
   });
+  const reasoningStreamThrottleByKey = yield* makeReasoningStreamThrottleCache;
   // Display paths of generated images completed during a still-running turn, keyed by
   // providerTurnKey. Flushed into the turn's terminal assistant message when the turn
   // settles, so the visible final row owns the image instead of collapsed narration.
@@ -1015,8 +1099,50 @@ const make = Effect.gen(function* () {
   const takeBufferedToolOutput = (key: string) =>
     takeCached(bufferedToolOutputByKey, key).pipe(Effect.map(Option.getOrUndefined));
 
+  // Emit the trace so far as an in-progress reasoning activity, under the same
+  // activity id the authoritative completion will later overwrite. The payload is
+  // the full text rather than a delta: full text is idempotent, so a reordered or
+  // repeated update can never corrupt the row.
+  const dispatchStreamedReasoningSummary = Effect.fnUntraced(function* (
+    key: string,
+    threadId: ThreadId,
+    summary: BufferedReasoningSummary,
+  ) {
+    if (!isStreamingReasoningProvider(summary.sourceEvent.provider)) {
+      return;
+    }
+    const detail = joinedBufferedReasoningSummary(summary);
+    if (!detail || !summary.sourceEvent.itemId) {
+      return;
+    }
+    const nowMs = yield* Clock.currentTimeMillis;
+    const throttleState = yield* Cache.get(reasoningStreamThrottleByKey, key);
+    if (!shouldDispatchReasoningStream({ state: throttleState, nowMs, chars: detail.length })) {
+      return;
+    }
+    yield* Cache.set(
+      reasoningStreamThrottleByKey,
+      key,
+      advanceReasoningStreamThrottle({ nowMs, chars: detail.length }),
+    );
+    const streamingEvent = bufferedReasoningItemEvent({
+      summary,
+      threadId,
+      eventId: EventId.makeUnsafe(
+        `${summary.sourceEvent.eventId}:reasoning-stream:${summary.sourceEvent.itemId}`,
+      ),
+      type: "item.updated",
+      status: "inProgress",
+      detail,
+    });
+    yield* Effect.forEach(projectProviderRuntimeActivities(streamingEvent), (activity) =>
+      dispatchActivityUpdate(streamingEvent, threadId, activity),
+    );
+  });
+
   const appendBufferedReasoningSummary = (
     key: string,
+    threadId: ThreadId,
     event: Extract<ProviderRuntimeEvent, { readonly type: "content.delta" }>,
   ) =>
     Cache.getOption(bufferedReasoningSummaryByKey, key).pipe(
@@ -1042,11 +1168,21 @@ const make = Effect.gen(function* () {
           return Effect.void;
         }
         parts.set(summaryIndex, appendCappedBufferedText(existingPart, delta, partLimit));
-        return Cache.set(bufferedReasoningSummaryByKey, key, {
-          parts,
-          sourceEvent: event,
-        });
+        const summary: BufferedReasoningSummary = { parts, sourceEvent: event };
+        return Cache.set(bufferedReasoningSummaryByKey, key, summary).pipe(
+          Effect.andThen(() => dispatchStreamedReasoningSummary(key, threadId, summary)),
+        );
       }),
+    );
+
+  const clearReasoningStreamThrottles = (keyPrefix: string) =>
+    Cache.keys(reasoningStreamThrottleByKey).pipe(
+      Effect.flatMap((keys) =>
+        Effect.forEach(
+          Array.from(keys).filter((key) => key.startsWith(keyPrefix)),
+          (key) => Cache.invalidate(reasoningStreamThrottleByKey, key),
+        ).pipe(Effect.asVoid),
+      ),
     );
 
   const takeBufferedReasoningSummary = (key: string) =>
@@ -1076,20 +1212,16 @@ const make = Effect.gen(function* () {
                 if (!summary || !detail || !summary.sourceEvent.itemId) {
                   return Effect.void;
                 }
-                const completionEvent: ProviderRuntimeEvent = {
-                  ...summary.sourceEvent,
+                const completionEvent = bufferedReasoningItemEvent({
+                  summary,
+                  threadId,
                   eventId: EventId.makeUnsafe(
                     `${terminalEvent.eventId}:reasoning:${summary.sourceEvent.itemId}`,
                   ),
-                  threadId,
                   type: "item.completed",
-                  payload: {
-                    itemType: "reasoning",
-                    status,
-                    title: "Reasoning",
-                    detail,
-                  },
-                };
+                  status,
+                  detail,
+                });
                 return Effect.forEach(
                   projectProviderRuntimeActivities(completionEvent),
                   (activity) => dispatchActivityUpdate(completionEvent, threadId, activity),
@@ -1098,6 +1230,10 @@ const make = Effect.gen(function* () {
             ),
         ).pipe(Effect.asVoid),
       ),
+      // Throttle state is cleared by prefix rather than per settled buffer key:
+      // a buffer entry may have aged out of its cache while the throttle entry
+      // survived, and a stale watermark would mute the next turn's streaming.
+      Effect.andThen(() => clearReasoningStreamThrottles(prefix)),
     );
   };
 
@@ -2030,11 +2166,10 @@ const make = Effect.gen(function* () {
       if (
         reasoningSummaryKey &&
         event.type === "content.delta" &&
-        (event.payload.streamKind === "reasoning_summary_text" ||
-          (event.provider === "antigravity" && event.payload.streamKind === "reasoning_text")) &&
+        isBufferedReasoningTextDelta(event) &&
         event.payload.delta.length > 0
       ) {
-        yield* appendBufferedReasoningSummary(reasoningSummaryKey, event);
+        yield* appendBufferedReasoningSummary(reasoningSummaryKey, thread.id, event);
       }
 
       const assistantDelta =
@@ -2437,6 +2572,7 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       if (event.type === "thread.reverted" || event.type === "thread.conversation-rolled-back") {
         yield* clearActivityUpdateFingerprints(event.payload.threadId);
+        yield* clearReasoningStreamThrottles(`${event.payload.threadId}:`);
         yield* clearAssistantDeliveryModeBindingsForThread(event.payload.threadId);
         yield* clearOutstandingTurns(event.payload.threadId);
         return;

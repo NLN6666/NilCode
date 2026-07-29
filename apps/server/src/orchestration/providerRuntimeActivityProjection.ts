@@ -15,6 +15,23 @@ const MAX_ACTIVITY_DATA_ARRAY_ITEMS = 24;
 const MAX_ACTIVITY_DATA_OBJECT_KEYS = 64;
 const ACTIVITY_DATA_TRUNCATION_MARKER = "__synaraTruncated";
 
+// Providers whose reasoning items render as a transcript row at all.
+const REASONING_ACTIVITY_PROVIDERS: ReadonlySet<ProviderRuntimeEvent["provider"]> = new Set([
+  "codex",
+  "antigravity",
+  "claudeAgent",
+]);
+// Subset that also streams in-progress reasoning through `item.updated`.
+const STREAMING_REASONING_PROVIDERS: ReadonlySet<ProviderRuntimeEvent["provider"]> = new Set([
+  "codex",
+  "claudeAgent",
+]);
+
+/** Whether in-progress reasoning from this provider renders as a streaming row. */
+export function isStreamingReasoningProvider(provider: ProviderRuntimeEvent["provider"]): boolean {
+  return STREAMING_REASONING_PROVIDERS.has(provider);
+}
+
 type ActivityPayload = OrchestrationThreadActivity["payload"];
 
 /**
@@ -473,13 +490,23 @@ export function projectProviderRuntimeActivities(
       ? { sequence }
       : {};
   })();
-  // Codex and Antigravity only render completed reasoning items with a readable summary.
-  // Empty starts/completions are private/encrypted reasoning boundaries, not
-  // transcript rows. Waiting for the authoritative completion also avoids
-  // per-token activity writes and transcript height churn.
+  // Reasoning rows need a readable summary: empty starts/completions are
+  // private/encrypted reasoning boundaries, not transcript rows.
+  //
+  // Codex and Claude additionally stream in-progress reasoning as `item.updated`
+  // carrying the text so far, under the same activity id as the authoritative
+  // completion. Write amplification is bounded server-side by the reasoning
+  // stream throttle (250ms + minimum character growth, see
+  // `reasoningStreamThrottle.ts`), and transcript height churn is handled where
+  // it belongs — the web reasoning row renders a fixed-height, internally
+  // scrolling region while the trace is in progress.
+  //
+  // Antigravity stays completion-only: its reasoning event shape has not been
+  // verified against the streaming path.
   if (
-    (event.provider === "codex" || event.provider === "antigravity") &&
-    event.type === "item.completed" &&
+    REASONING_ACTIVITY_PROVIDERS.has(event.provider) &&
+    (event.type === "item.completed" ||
+      (event.type === "item.updated" && STREAMING_REASONING_PROVIDERS.has(event.provider))) &&
     event.payload.itemType === "reasoning" &&
     event.itemId !== undefined &&
     readableReasoningDetail(event.payload.detail) !== undefined
@@ -1126,7 +1153,13 @@ export function providerActivityUpdateDedupeKey(
   const payload = asObject(activity.payload);
   if (activity.kind === "task.progress") {
     const taskId = asString(payload?.taskId);
-    return taskId ? `${prefix}:${taskId}` : undefined;
+    if (taskId) {
+      return `${prefix}:${taskId}`;
+    }
+    // Streamed reasoning rows carry no taskId. They repeat under one activity id
+    // for the whole trace, so dedupe on that id to drop content-identical writes.
+    const reasoningItemId = asString(asObject(payload?.data)?.toolCallId);
+    return reasoningItemId ? `${prefix}:reasoning:${reasoningItemId}` : undefined;
   }
   if (activity.kind !== "tool.updated") {
     return undefined;

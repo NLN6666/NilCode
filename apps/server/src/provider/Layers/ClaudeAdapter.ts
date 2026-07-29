@@ -196,6 +196,11 @@ interface ClaudeTurnState {
   readonly items: Array<unknown>;
   readonly assistantTextBlocks: Map<number, AssistantTextBlockState>;
   readonly assistantTextBlockOrder: Array<AssistantTextBlockState>;
+  // Thinking blocks carry no provider-side id, but downstream reasoning buffering
+  // and the reasoning activity row are both keyed by a stable item id. Mint one
+  // per content-block index and drop it when the block closes, so each thinking
+  // block becomes its own reasoning item instead of one turn-wide blob.
+  readonly reasoningBlockItemIds: Map<number, string>;
   readonly capturedProposedPlanKeys: Set<string>;
   readonly sawFileChange: boolean;
   nextSyntheticAssistantBlockIndex: number;
@@ -2012,6 +2017,26 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
         return { blockIndex, block };
       });
 
+    // Block indices restart with every assistant API message, so the id is dropped
+    // on content_block_stop; a later block reusing the index gets a fresh item.
+    const ensureReasoningBlockItemId = (
+      context: ClaudeSessionContext,
+      blockIndex: number,
+    ): Effect.Effect<string | undefined> =>
+      Effect.gen(function* () {
+        const turnState = context.turnState;
+        if (!turnState) {
+          return undefined;
+        }
+        const existing = turnState.reasoningBlockItemIds.get(blockIndex);
+        if (existing) {
+          return existing;
+        }
+        const itemId = yield* Random.nextUUIDv4;
+        turnState.reasoningBlockItemIds.set(blockIndex, itemId);
+        return itemId;
+      });
+
     const createSyntheticAssistantTextBlock = (
       context: ClaudeSessionContext,
       fallbackText: string,
@@ -2881,6 +2906,10 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             if (assistantBlockEntry?.block && event.delta.type === "text_delta") {
               assistantBlockEntry.block.emittedTextDelta = true;
             }
+            const reasoningItemId =
+              event.delta.type === "thinking_delta"
+                ? yield* ensureReasoningBlockItemId(context, event.index)
+                : undefined;
             const stamp = yield* makeEventStamp();
             yield* offerRuntimeEvent(context, {
               type: "content.delta",
@@ -2889,9 +2918,11 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
               createdAt: stamp.createdAt,
               threadId: context.session.threadId,
               turnId: context.turnState.turnId,
-              ...(assistantBlockEntry?.block
-                ? { itemId: asRuntimeItemId(assistantBlockEntry.block.itemId) }
-                : {}),
+              ...(reasoningItemId
+                ? { itemId: asRuntimeItemId(reasoningItemId) }
+                : assistantBlockEntry?.block
+                  ? { itemId: asRuntimeItemId(assistantBlockEntry.block.itemId) }
+                  : {}),
               payload: {
                 streamKind,
                 delta: deltaText,
@@ -3016,6 +3047,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
 
         if (event.type === "content_block_stop") {
           const { index } = event;
+          context.turnState?.reasoningBlockItemIds.delete(index);
           const assistantBlock = context.turnState?.assistantTextBlocks.get(index);
           if (assistantBlock) {
             assistantBlock.streamClosed = true;
@@ -3230,6 +3262,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           items: [],
           assistantTextBlocks: new Map(),
           assistantTextBlockOrder: [],
+          reasoningBlockItemIds: new Map(),
           capturedProposedPlanKeys: new Set(),
           sawFileChange: false,
           nextSyntheticAssistantBlockIndex: -1,
@@ -5385,6 +5418,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           items: [],
           assistantTextBlocks: new Map(),
           assistantTextBlockOrder: [],
+          reasoningBlockItemIds: new Map(),
           capturedProposedPlanKeys: new Set(),
           sawFileChange: false,
           nextSyntheticAssistantBlockIndex: -1,

@@ -60,6 +60,10 @@ export interface WorkLogEntry {
   toolName?: string;
   toolCallId?: string;
   toolStatus?: SynaraMcpToolStatus;
+  // Lifecycle of a provider reasoning trace. `inProgress` means the provider is
+  // still streaming the trace, so the row renders as a fixed-height live region
+  // instead of a one-line summary.
+  reasoningStatus?: WorkLogReasoningStatus;
   liveActivity?: WorkLogLiveActivity;
   toolDetails?: WorkLogToolDetails;
   itemType?: ToolLifecycleItemType;
@@ -80,6 +84,8 @@ export interface WorkLogEntry {
   // "background_tasks_changed") so the timeline can pick a specific icon.
   nativeEventType?: string;
 }
+
+export type WorkLogReasoningStatus = "inProgress" | "completed" | "failed";
 
 export type WorkLogLiveActivityState =
   | "starting"
@@ -452,6 +458,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   const toolName = extractToolName(payload);
   const toolCallId = extractToolCallId(payload);
   const toolStatus = deriveToolLifecycleStatus(activity.kind, payload);
+  const reasoningStatus = deriveReasoningStatus(activity, payload);
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
     createdAt: activity.createdAt,
@@ -462,6 +469,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     ...(toolName ? { toolName } : {}),
     ...(toolCallId ? { toolCallId } : {}),
     ...(toolStatus ? { toolStatus } : {}),
+    ...(reasoningStatus ? { reasoningStatus } : {}),
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
@@ -629,6 +637,27 @@ function deriveProviderRuntimeReconciliationCollapseKey(
     projectedTurnId,
     runtimeTurnId ?? null,
   ])}`;
+}
+
+// Summary emitted by the server-side provider reasoning projection. Reasoning
+// activities are `task.progress` rows, so the summary is what separates them
+// from generic task progress.
+const PROVIDER_REASONING_ACTIVITY_SUMMARY = "Reasoning trace";
+
+function deriveReasoningStatus(
+  activity: OrchestrationThreadActivity,
+  payload: Record<string, unknown> | null,
+): WorkLogReasoningStatus | undefined {
+  if (
+    activity.kind !== "task.progress" ||
+    activity.summary !== PROVIDER_REASONING_ACTIVITY_SUMMARY
+  ) {
+    return undefined;
+  }
+  const status = payload?.status;
+  return status === "inProgress" || status === "completed" || status === "failed"
+    ? status
+    : undefined;
 }
 
 function deriveToolLifecycleStatus(
@@ -1030,6 +1059,7 @@ function mergeDerivedWorkLogEntries(
   const toolStatus = preservePreviousTerminalState
     ? previous.toolStatus
     : (next.toolStatus ?? previous.toolStatus);
+  const reasoningStatus = next.reasoningStatus ?? previous.reasoningStatus;
   const liveActivity = mergeWorkLogLiveActivity(previous.liveActivity, next.liveActivity);
   const toolDetails = mergeWorkLogToolDetails(previous.toolDetails, next.toolDetails);
   const turnId = next.turnId ?? previous.turnId;
@@ -1052,6 +1082,7 @@ function mergeDerivedWorkLogEntries(
     ...(toolName ? { toolName } : {}),
     ...(toolCallId ? { toolCallId } : {}),
     ...(toolStatus ? { toolStatus } : {}),
+    ...(reasoningStatus ? { reasoningStatus } : {}),
     ...(liveActivity ? { liveActivity } : {}),
     ...(toolDetails ? { toolDetails } : {}),
   };

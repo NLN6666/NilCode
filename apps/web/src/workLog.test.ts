@@ -3546,4 +3546,44 @@ describe("deriveWorkLogEntries Codex find regression", () => {
       toolCallId: "call_UmQKQmLCCrj9PF82rupLIFDO",
     });
   });
+
+  it("carries the reasoning lifecycle status through to the work entry", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "provider-reasoning:thread-1:reasoning-1",
+        createdAt: "2026-07-29T00:00:01.000Z",
+        kind: "task.progress",
+        summary: "Reasoning trace",
+        tone: "tool",
+        payload: {
+          status: "inProgress",
+          detail: "Weighing the protocol change",
+          data: { toolCallId: "reasoning-1" },
+        },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      reasoningStatus: "inProgress",
+      detail: "Weighing the protocol change",
+    });
+  });
+
+  it("leaves generic task progress rows without a reasoning status", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "task-progress-generic",
+        createdAt: "2026-07-29T00:00:01.000Z",
+        kind: "task.progress",
+        summary: "Reasoning update",
+        tone: "info",
+        payload: { taskId: "task-1", detail: "Working" },
+      }),
+    ];
+
+    const entries = deriveWorkLogEntries(activities, undefined);
+    expect(entries[0]?.reasoningStatus).toBeUndefined();
+  });
 });

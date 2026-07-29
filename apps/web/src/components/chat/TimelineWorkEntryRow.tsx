@@ -54,6 +54,7 @@ import { DiffStatLabel } from "./DiffStatLabel";
 import { type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { LinkChipIcon } from "../LinkChipIcon";
 import { normalizeCompactToolLabel } from "./MessagesTimeline.logic";
+import { ReasoningStreamRegion } from "./ReasoningStreamRegion";
 import { SynaraLogo } from "../SynaraLogo";
 import { ToolCallDetailsContent } from "./ToolCallDetailsDialog";
 import { CollapseRail } from "../ui/CollapseRail";
@@ -518,6 +519,13 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
       ? (reasoningTraceDisplayText(workEntry, preview, activityCopy) ??
         combineWorkEntryDisplayText(heading, preview))
       : combineWorkEntryDisplayText(heading, preview);
+  // While a reasoning trace streams the row shows the trace itself in a
+  // fixed-height region; once it settles it collapses back to the summary line.
+  const streamingReasoningText =
+    isReasoningUpdateWorkEntry(workEntry) && workEntry.reasoningStatus === "inProgress"
+      ? (workEntry.detail?.trim() ?? "")
+      : "";
+  const isStreamingReasoning = streamingReasoningText.length > 0;
   const showInlineAgentTaskPreview =
     workEntry.itemType === "collab_agent_tool_call" &&
     Boolean(preview) &&
@@ -694,10 +702,17 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
                   // Single-line tool labels size to their content so the disclosure
                   // chevron can sit right after the name; the multi-line markdown
                   // preview still needs the full row width.
-                  showInlineAgentTaskPreview && "flex-1",
+                  (showInlineAgentTaskPreview || isStreamingReasoning) && "flex-1",
                 )}
               >
-                {showInlineAgentTaskPreview ? (
+                {isStreamingReasoning ? (
+                  <ReasoningStreamRegion
+                    text={streamingReasoningText}
+                    fontSizePx={rowFontSizePx}
+                    compact={compact}
+                    cwd={markdownCwd}
+                  />
+                ) : showInlineAgentTaskPreview ? (
                   <div className={cn(compact ? "space-y-[1px]" : "space-y-0.5")}>
                     <p
                       className="truncate font-medium leading-5 text-muted-foreground/72"
