@@ -34,21 +34,31 @@ export const COLOR_PREVIEW_INSTRUCTIONS = [
     "button. When the user adopts one, they send the confirmed palette back to " +
     "you — implement it then, not now.",
   "",
-  `Preferred format — a \`\`\`${THEME_FENCE_LANGUAGE} fence containing JSON. ` +
-    '"name" (string) and "colors" (non-empty array) are required; every color ' +
-    'entry requires "token" (string) and "hex" (#RGB, #RGBA, #RRGGBB, or ' +
+  `Preferred format — a \`\`\`html ${THEME_FENCE_HTML_MODIFIER} fence showing the ` +
+    "palette applied to a realistic mockup of whatever the user is theming (an " +
+    "editor window with syntax-highlighted code, a dashboard, a settings panel, " +
+    "…). Seeing the colors in context is the point; a bare list of values is not " +
+    `what the user asked for. The trailing "${THEME_FENCE_HTML_MODIFIER}" keyword ` +
+    "is required — a bare ```html fence stays a plain code block.",
+  "",
+  "Rules for that HTML:",
+  "- It renders in a fully sandboxed iframe: scripts never run and every network " +
+    "request (external images, fonts, trackers) is blocked. Use inline styles and " +
+    "data: URIs only — no <script>, no external CSS or fonts.",
+  "- The visible area is about 360px tall and the user can expand it to 720px. " +
+    "Design a compact mockup that reads at that size instead of a full-length page.",
+  "- Write every color as an explicit hex literal in the markup. Adopting an HTML " +
+    "preview extracts the hex values from the source in the order they appear.",
+  "",
+  `Use a \`\`\`${THEME_FENCE_LANGUAGE} JSON fence instead only when the user wants ` +
+    "the raw token list rather than a rendered mockup. It renders as labelled " +
+    'swatch rows. "name" (string) and "colors" (non-empty array) are required; ' +
+    'every entry requires "token" (string) and "hex" (#RGB, #RGBA, #RRGGBB, or ' +
     '#RRGGBBAA string) and may add an optional "note" (string):',
   "",
   `\`\`\`${THEME_FENCE_LANGUAGE}`,
   exampleThemeJson,
   "```",
-  "",
-  `Only when you need to demonstrate typography or component composition, use a ` +
-    `\`\`\`html ${THEME_FENCE_HTML_MODIFIER} fence instead (the trailing ` +
-    `"${THEME_FENCE_HTML_MODIFIER}" keyword is required; a bare \`\`\`html fence ` +
-    "stays a plain code block). The HTML renders in a fully sandboxed iframe: " +
-    "scripts never run and network requests (external images, fonts, trackers) " +
-    "are blocked, so use inline styles and data: images only.",
   "",
   "Plain hex colors you mention in prose or inline code automatically get an " +
     "inline swatch, so reference exact hex values when discussing colors.",
