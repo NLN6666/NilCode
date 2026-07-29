@@ -192,6 +192,10 @@
       "types": "./src/binaryTransfer.ts",
       "import": "./src/binaryTransfer.ts"
     },
+    "./outboundProxy": {
+      "types": "./src/outboundProxy.ts",
+      "import": "./src/outboundProxy.ts"
+    },
     "./outboundHttpPolicy": {
       "types": "./src/outboundHttpPolicy.ts",
       "import": "./src/outboundHttpPolicy.ts"

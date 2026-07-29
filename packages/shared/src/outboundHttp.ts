@@ -8,14 +8,18 @@ import * as Dns from "node:dns/promises";
 import * as Http from "node:http";
 import * as Https from "node:https";
 import * as Net from "node:net";
+import * as Tls from "node:tls";
 
 import {
   assertJsonWithinLimits,
   assertOutboundUrlAllowed,
   assertPublicIpAddress,
+  isLoopbackIpAddress,
+  isPublicIpAddress,
   normalizeOutboundOrigin,
   stripOutboundSensitiveHeaders,
 } from "./outboundHttpPolicy";
+import { type OutboundProxyConfig, shouldBypassProxy } from "./outboundProxy";
 
 export type OutboundHttpErrorCode =
   | "aborted"
@@ -24,6 +28,7 @@ export type OutboundHttpErrorCode =
   | "dns"
   | "invalid-redirect"
   | "json"
+  | "proxy"
   | "request"
   | "request-too-large"
   | "response-too-large"
@@ -340,6 +345,105 @@ export function createPinnedLookup(pinned: {
   }) as Net.LookupFunction;
 }
 
+export type OutboundProxyResolver = () => OutboundProxyConfig | undefined;
+
+let outboundProxyResolver: OutboundProxyResolver | undefined;
+
+/**
+ * Register the process-wide proxy source. Left unset, every request behaves
+ * exactly as it did before proxy support existed.
+ *
+ * A resolver (rather than a value) is what lets a settings-panel change take
+ * effect on the next request without a restart.
+ */
+export function setOutboundProxyResolver(resolver: OutboundProxyResolver | undefined): void {
+  outboundProxyResolver = resolver;
+}
+
+function resolveProxyForTarget(target: URL): OutboundProxyConfig | undefined {
+  const proxy = outboundProxyResolver?.();
+  if (!proxy) return undefined;
+  return shouldBypassProxy(target, proxy.noProxy) ? undefined : proxy;
+}
+
+/**
+ * A proxy may be on loopback (a local proxy app) or on a public address, but
+ * never elsewhere in private space — that would turn a misconfiguration into an
+ * SSRF pivot into the user's LAN.
+ */
+function assertProxyAddressAllowed(address: string): void {
+  if (isLoopbackIpAddress(address) || isPublicIpAddress(address)) return;
+  throw new OutboundHttpError(
+    "proxy",
+    "Proxy address resolved to a private, reserved, or invalid address. Only loopback or public proxies are allowed.",
+  );
+}
+
+/**
+ * Open a CONNECT tunnel through the proxy and hand back the raw socket.
+ *
+ * Note the security consequence, which is unavoidable rather than an oversight:
+ * the destination hostname is resolved by the proxy, so the destination's
+ * `requirePublicAddress` check cannot apply on this path. The remaining — and
+ * still hard — control is the per-service origin allowlist enforced by
+ * `assertOutboundUrlAllowed` before we ever get here.
+ */
+async function connectThroughProxy(input: {
+  readonly proxyUrl: URL;
+  readonly target: URL;
+  readonly signal: AbortSignal;
+}): Promise<Net.Socket> {
+  const pinnedProxy = await resolvePinnedAddress(input.proxyUrl, false, input.signal).catch(
+    (cause: unknown) => {
+      if (cause instanceof OutboundHttpError && cause.code === "aborted") throw cause;
+      throw new OutboundHttpError("proxy", "Could not resolve the configured proxy address.", cause);
+    },
+  );
+  assertProxyAddressAllowed(pinnedProxy.address);
+
+  const targetPort = input.target.port || (input.target.protocol === "https:" ? "443" : "80");
+  const authority = `${input.target.hostname}:${targetPort}`;
+
+  return await new Promise<Net.Socket>((resolve, reject) => {
+    let settled = false;
+    const request = Http.request({
+      host: input.proxyUrl.hostname,
+      port: Number(input.proxyUrl.port || "80"),
+      method: "CONNECT",
+      path: authority,
+      headers: { host: authority },
+      signal: input.signal,
+      lookup: createPinnedLookup(pinnedProxy),
+      agent: false,
+    });
+    request.once("connect", (response: Http.IncomingMessage, socket: Net.Socket) => {
+      if (settled) return;
+      settled = true;
+      if (response.statusCode !== 200) {
+        socket.destroy();
+        reject(
+          new OutboundHttpError(
+            "proxy",
+            `Proxy refused the CONNECT tunnel (${response.statusCode ?? 0}).`,
+          ),
+        );
+        return;
+      }
+      resolve(socket);
+    });
+    request.once("error", (cause) => {
+      if (settled) return;
+      settled = true;
+      if (input.signal.aborted) {
+        reject(abortedError(input.signal.reason));
+        return;
+      }
+      reject(new OutboundHttpError("proxy", "Could not reach the configured HTTP proxy.", cause));
+    });
+    request.end();
+  });
+}
+
 async function requestHop(input: {
   readonly url: URL;
   readonly method: string;
@@ -347,9 +451,32 @@ async function requestHop(input: {
   readonly body?: Uint8Array;
   readonly maxResponseBytes: number;
   readonly requirePublicAddress: boolean;
+  readonly proxy?: OutboundProxyConfig;
   readonly signal: AbortSignal;
 }): Promise<OutboundHttpResponse> {
-  const pinned = await resolvePinnedAddress(input.url, input.requirePublicAddress, input.signal);
+  // Through a proxy the destination is dialed by the proxy, so we pin the proxy
+  // instead. Failure here is terminal: we never silently fall back to a direct
+  // connection, or "did this request use the proxy?" becomes unanswerable.
+  const tunnel = input.proxy
+    ? await connectThroughProxy({
+        proxyUrl: input.proxy.url,
+        target: input.url,
+        signal: input.signal,
+      })
+    : undefined;
+  const connectionOptions = tunnel
+    ? {
+        agent: false as const,
+        // The tunnel already reaches the destination, so wrap it in TLS and
+        // hand the stream to the request instead of dialing. `normalizeOutboundOrigin`
+        // admits https origins only, so the destination is always TLS.
+        createConnection: () => Tls.connect({ socket: tunnel, servername: input.url.hostname }),
+      }
+    : {
+        lookup: createPinnedLookup(
+          await resolvePinnedAddress(input.url, input.requirePublicAddress, input.signal),
+        ),
+      };
 
   return await new Promise<OutboundHttpResponse>((resolve, reject) => {
     let settled = false;
@@ -366,7 +493,7 @@ async function requestHop(input: {
         method: input.method,
         headers: requestHeaders(input.headers),
         signal: input.signal,
-        lookup: createPinnedLookup(pinned),
+        ...connectionOptions,
       },
       (response) => {
         const headers = responseHeaders(response.headers);
@@ -485,6 +612,8 @@ export class OutboundHttpClient {
       releaseGlobal = await globalAdmission.acquire(controller.signal);
       releaseService = await serviceAdmission(policy).acquire(controller.signal);
       for (let redirects = 0; ; redirects += 1) {
+        // Resolved per hop: a redirect may cross into a NO_PROXY host.
+        const proxy = resolveProxyForTarget(url);
         const response = await requestHop({
           url,
           method,
@@ -492,6 +621,7 @@ export class OutboundHttpClient {
           ...(body ? { body } : {}),
           maxResponseBytes: policy.maxResponseBytes,
           requirePublicAddress: policy.requirePublicAddress ?? true,
+          ...(proxy ? { proxy } : {}),
           signal: controller.signal,
         });
         if (!isRedirectStatus(response.status)) return response;

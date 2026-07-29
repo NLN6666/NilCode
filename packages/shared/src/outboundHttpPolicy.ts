@@ -56,6 +56,29 @@ for (const [network, prefix] of [
   blockedAddresses.addSubnet(network, prefix, "ipv6");
 }
 
+const loopbackAddresses = new Net.BlockList();
+loopbackAddresses.addSubnet("127.0.0.0", 8, "ipv4");
+loopbackAddresses.addAddress("::1", "ipv6");
+
+/**
+ * Loopback is the one private range an outbound *proxy* may live in: a local
+ * proxy app (Clash, v2ray, Surge) binds 127.0.0.1. Destinations are still held
+ * to {@link isPublicIpAddress}.
+ */
+export function isLoopbackIpAddress(address: string): boolean {
+  const family = Net.isIP(address);
+  if (family === 4) return loopbackAddresses.check(address, "ipv4");
+  if (family === 6) {
+    const normalized = address.toLowerCase();
+    if (normalized.startsWith("::ffff:")) {
+      const mapped = normalized.slice("::ffff:".length);
+      return Net.isIP(mapped) === 4 && loopbackAddresses.check(mapped, "ipv4");
+    }
+    return loopbackAddresses.check(address, "ipv6");
+  }
+  return false;
+}
+
 export function isPublicIpAddress(address: string): boolean {
   const family = Net.isIP(address);
   if (family === 4) {
