@@ -8,6 +8,7 @@ import { Schema } from "effect";
 
 import {
   THEME_FENCE_EXAMPLE_PAYLOAD,
+  THEME_FENCE_HTML_MODIFIER,
   THEME_FENCE_LANGUAGE,
   ThemeFencePayload,
 } from "@synara/contracts";
@@ -40,6 +41,18 @@ describe("buildColorPreviewInstructions", () => {
     expect(COLOR_PREVIEW_INSTRUCTIONS).toContain("to disk");
     expect(COLOR_PREVIEW_INSTRUCTIONS).toContain("Open a browser");
     expect(COLOR_PREVIEW_INSTRUCTIONS).toContain("proposal, not an implementation");
+  });
+
+  it("leads with the rendered HTML mockup, not the raw token list", () => {
+    // The user asked to SEE the palette in context. Reordering these two
+    // sections silently flips which format the model reaches for first, so
+    // the precedence is asserted rather than left to prose review.
+    const htmlAt = COLOR_PREVIEW_INSTRUCTIONS.indexOf(`\`\`\`html ${THEME_FENCE_HTML_MODIFIER}`);
+    const jsonAt = COLOR_PREVIEW_INSTRUCTIONS.indexOf(`\`\`\`${THEME_FENCE_LANGUAGE} JSON fence`);
+    expect(htmlAt).toBeGreaterThan(-1);
+    expect(jsonAt).toBeGreaterThan(-1);
+    expect(htmlAt).toBeLessThan(jsonAt);
+    expect(COLOR_PREVIEW_INSTRUCTIONS).toContain("Preferred format — a ```html");
   });
 
   it("teaches exactly the fence format the renderer accepts", () => {
