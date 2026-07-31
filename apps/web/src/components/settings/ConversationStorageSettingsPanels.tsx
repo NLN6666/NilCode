@@ -4,6 +4,7 @@
 // Exports: WorktreesSettingsPanel, ArchivedSettingsPanel
 
 import type { ThreadId } from "@synara/contracts";
+import { collectSubagentDescendants } from "@synara/shared/threadHierarchy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
@@ -11,10 +12,7 @@ import { Button } from "~/components/ui/button";
 import { useMessages } from "../../i18n/context";
 import { gitRemoveWorktreeMutationOptions } from "~/lib/gitReactQuery";
 import { ArchiveIcon } from "~/lib/icons";
-import {
-  deleteArchivedThreadFromClient,
-  deleteArchivedThreadsFromClient,
-} from "~/lib/archivedThreadDelete";
+import { deleteArchivedThreadsFromClient } from "~/lib/archivedThreadDelete";
 import { formatRelativeTime } from "~/lib/relativeTime";
 import { serverQueryKeys, serverWorktreesQueryOptions } from "~/lib/serverReactQuery";
 import { unarchiveThreadFromClient } from "~/lib/threadArchive";
@@ -277,7 +275,11 @@ export function ArchivedSettingsPanel({ active }: { readonly active: boolean }) 
   const threadShells = useStore(useMemo(() => createThreadShellsSelector(), []));
   const projects = useStore((store) => store.projects);
   const archivedGroups = useMemo(() => {
-    const archivedThreads = threadShells.filter((thread) => thread.archivedAt != null);
+    // Subagent threads are archived and restored through their parent, so only
+    // top-level threads are listed here.
+    const archivedThreads = threadShells.filter(
+      (thread) => thread.archivedAt != null && (thread.parentThreadId ?? null) === null,
+    );
     const knownProjectIds = new Set(projects.map((project) => project.id));
     const groups: Array<{
       project: (typeof projects)[number] | null;
@@ -327,9 +329,15 @@ export function ArchivedSettingsPanel({ active }: { readonly active: boolean }) 
       const confirmed = await api.dialogs.confirm(m.settings.archived.deleteConfirm(threadTitle));
       if (!confirmed) return;
       try {
-        await deleteArchivedThreadFromClient({
+        // Subagent threads are hidden from this list and unreachable without their
+        // parent, so deleting the parent removes the whole subtree. Children go
+        // first so a mid-flight failure cannot strand them without a parent entry.
+        const subagentThreadIds = collectSubagentDescendants(threadShells, threadId).map(
+          (thread) => thread.id,
+        );
+        await deleteArchivedThreadsFromClient({
           api: api.orchestration,
-          threadId,
+          threadIds: [...subagentThreadIds.toReversed(), threadId],
           removeDeletedThreadFromClientState,
         });
         toastManager.add({
@@ -346,7 +354,7 @@ export function ArchivedSettingsPanel({ active }: { readonly active: boolean }) 
         });
       }
     },
-    [m, removeDeletedThreadFromClientState],
+    [m, removeDeletedThreadFromClientState, threadShells],
   );
 
   const handleContextMenu = useCallback(

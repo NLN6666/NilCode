@@ -293,7 +293,7 @@ export interface PromptHistoryNavigationResult {
 }
 
 export function derivePromptHistoryFromMessages(
-  messages: ReadonlyArray<Pick<ChatMessage, "role" | "source" | "text">>,
+  messages: ReadonlyArray<Pick<ChatMessage, "id" | "role" | "source" | "text">>,
   limit: number = PROMPT_HISTORY_MAX_ENTRIES,
 ): string[] {
   if (limit <= 0) {
@@ -307,6 +307,7 @@ export function derivePromptHistoryFromMessages(
     }
     const prompt = deriveDisplayedUserMessageState(message.text, {
       hideImageOnlyBootstrapPrompt: true,
+      messageId: message.id,
     }).copyText.trim();
     if (prompt.length === 0) {
       continue;
@@ -924,6 +925,7 @@ export interface WorktreeSetupSnapshotOptions {
 
 export interface WorktreeSetupDispatchOptions extends WorktreeSetupSnapshotOptions {
   worktreeSetupStepId?: WorktreeSetupStepId;
+  expectedUserMessageId?: ChatMessage["id"];
 }
 
 function worktreeSetupStepDefinitions(
@@ -982,6 +984,7 @@ export function worktreeSetupHasError(snapshot: WorktreeSetupSnapshot | null): b
 export interface LocalDispatchSnapshot {
   startedAt: string;
   worktreeSetup: WorktreeSetupSnapshot | null;
+  expectedUserMessageId: ChatMessage["id"] | null;
   latestTurnTurnId: Thread["latestTurn"] extends infer T
     ? T extends { turnId: infer U }
       ? U | null
@@ -1009,6 +1012,7 @@ export function createLocalDispatchSnapshot(
     worktreeSetup: options?.worktreeSetupStepId
       ? createWorktreeSetupSnapshot(options.worktreeSetupStepId, options)
       : null,
+    expectedUserMessageId: options?.expectedUserMessageId ?? null,
     latestTurnTurnId: latestTurn?.turnId ?? null,
     latestTurnRequestedAt: latestTurn?.requestedAt ?? null,
     latestTurnStartedAt: latestTurn?.startedAt ?? null,
@@ -1050,6 +1054,7 @@ export function hasServerAcknowledgedLocalDispatch(input: {
   phase: SessionPhase;
   latestTurn: Thread["latestTurn"] | null;
   session: Thread["session"] | null;
+  messages: readonly ChatMessage[];
   hasPendingApproval: boolean;
   hasPendingUserInput: boolean;
   threadError: string | null | undefined;
@@ -1062,6 +1067,15 @@ export function hasServerAcknowledgedLocalDispatch(input: {
     input.hasPendingApproval ||
     input.hasPendingUserInput ||
     Boolean(input.threadError)
+  ) {
+    return true;
+  }
+  if (
+    input.localDispatch.expectedUserMessageId !== null &&
+    input.messages.some(
+      (message) =>
+        message.role === "user" && message.id === input.localDispatch?.expectedUserMessageId,
+    )
   ) {
     return true;
   }
@@ -1199,6 +1213,7 @@ export function deriveComposerSendState(options: {
   imageCount: number;
   fileCount: number;
   assistantSelectionCount: number;
+  browserAnnotationCount: number;
   fileCommentCount: number;
   browserElementCount: number;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
@@ -1225,6 +1240,7 @@ export function deriveComposerSendState(options: {
       options.imageCount > 0 ||
       options.fileCount > 0 ||
       options.assistantSelectionCount > 0 ||
+      options.browserAnnotationCount > 0 ||
       options.fileCommentCount > 0 ||
       options.browserElementCount > 0 ||
       sendableTerminalContexts.length > 0 ||

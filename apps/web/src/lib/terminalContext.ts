@@ -1,8 +1,13 @@
-import { type ThreadId } from "@synara/contracts";
+import { type MessageId, type ThreadId } from "@synara/contracts";
 import {
   extractTrailingAssistantSelections,
   type ParsedAssistantSelectionEntry,
 } from "./assistantSelections";
+import {
+  buildBrowserAnnotationsPromptBlock,
+  extractTrailingBrowserAnnotations,
+  type BrowserAnnotationDraft,
+} from "./browserAnnotations";
 import { extractTrailingFileComments, type ParsedFileCommentEntry } from "./fileComments";
 import {
   extractTrailingBrowserElements,
@@ -42,6 +47,7 @@ export interface DisplayedUserMessageState {
   fileComments: ParsedFileCommentEntry[];
   browserElements: ParsedBrowserElementEntry[];
   pastedTexts: ParsedPastedTextEntry[];
+  browserAnnotations: BrowserAnnotationDraft[];
 }
 
 export interface ParsedTerminalContextEntry {
@@ -66,6 +72,7 @@ const TRAILING_SERIALIZED_COMPOSER_BLOCK_PATTERNS = [
 
 interface DisplayedUserMessageOptions {
   hideImageOnlyBootstrapPrompt?: boolean;
+  messageId: MessageId | undefined;
 }
 
 export function normalizeTerminalContextText(text: string): string {
@@ -270,9 +277,25 @@ export function appendOriginalTerminalContextBlock(input: {
 export function appendOriginalComposerPromptBlocks(input: {
   editedPrompt: string;
   originalPrompt: string;
+  messageId?: MessageId;
 }): string {
   let remainingPrompt = input.originalPrompt;
   const originalBlocks: string[] = [];
+  if (input.messageId) {
+    const extractedBrowserAnnotations = extractTrailingBrowserAnnotations(
+      input.originalPrompt,
+      input.messageId,
+    );
+    if (extractedBrowserAnnotations.annotations.length > 0) {
+      remainingPrompt = extractedBrowserAnnotations.promptText;
+      originalBlocks.push(
+        buildBrowserAnnotationsPromptBlock(
+          extractedBrowserAnnotations.annotations,
+          input.messageId,
+        ),
+      );
+    }
+  }
   let strippedBlock = true;
   while (strippedBlock) {
     strippedBlock = false;
@@ -324,17 +347,22 @@ export function extractTrailingTerminalContexts(prompt: string): ExtractedTermin
 
 export function deriveDisplayedUserMessageState(
   prompt: string,
-  options?: DisplayedUserMessageOptions,
+  options: DisplayedUserMessageOptions,
 ): DisplayedUserMessageState {
   // Trailing blocks are serialized in order: assistant selections, then terminal
-  // contexts, then file comments, then browser elements, then pasted text
-  // (outermost). Strip them in reverse so each extractor sees its block at the end
-  // of the remaining text.
+  // contexts, then file comments, then browser elements, then pasted text, then
+  // browser annotations (outermost). Strip them in reverse so each extractor sees
+  // its block at the end of the remaining text.
   //
   // The `<available-mcp-tools>` block sits outside all of them — send appends it last, after the
   // composer has already serialized its own blocks — so it comes off first. It carries no parsed
   // state: the `&` chips in the body already say which tools were referenced.
-  const extractedPastedTexts = extractTrailingPastedTexts(stripAvailableMcpToolsBlock(prompt));
+  const promptWithoutMcpTools = stripAvailableMcpToolsBlock(prompt);
+  const extractedBrowserAnnotations =
+    options.messageId === undefined
+      ? { promptText: promptWithoutMcpTools, annotations: [] }
+      : extractTrailingBrowserAnnotations(promptWithoutMcpTools, options.messageId);
+  const extractedPastedTexts = extractTrailingPastedTexts(extractedBrowserAnnotations.promptText);
   const extractedBrowserElements = extractTrailingBrowserElements(extractedPastedTexts.promptText);
   const extractedFileComments = extractTrailingFileComments(extractedBrowserElements.promptText);
   const extractedContexts = extractTrailingTerminalContexts(extractedFileComments.promptText);
@@ -342,7 +370,7 @@ export function deriveDisplayedUserMessageState(
     extractedContexts.promptText,
   );
   const hidePrompt =
-    options?.hideImageOnlyBootstrapPrompt === true &&
+    options.hideImageOnlyBootstrapPrompt === true &&
     extractedAssistantSelections.promptText.trim() === IMAGE_ONLY_BOOTSTRAP_PROMPT;
   return {
     // Keep the internal bootstrap prompt hidden while still giving image-only
@@ -358,6 +386,7 @@ export function deriveDisplayedUserMessageState(
     fileComments: extractedFileComments.comments,
     browserElements: extractedBrowserElements.elements,
     pastedTexts: extractedPastedTexts.pastedTexts,
+    browserAnnotations: extractedBrowserAnnotations.annotations,
   };
 }
 

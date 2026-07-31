@@ -8,6 +8,7 @@ import {
   type ComposerImageAttachment,
 } from "../../composerDraftStore";
 import { type BrowserElementDraft } from "../../lib/browserElementContext";
+import { type BrowserAnnotationDraft } from "../../lib/browserAnnotations";
 import { type PastedTextDraft } from "../../lib/composerPastedText";
 import { type FileCommentDraft } from "../../lib/fileComments";
 import { type ChatAssistantSelectionAttachment } from "../../types";
@@ -18,9 +19,11 @@ import { ComposerImageAttachmentChip } from "./ComposerImageAttachmentChip";
 import { FileAttachmentChip } from "./FileAttachmentChip";
 import { ComposerPastedTextCard } from "./PastedTextChip";
 import { FileCommentsSummaryChip } from "./FileCommentsSummaryChip";
+import { BrowserAnnotationStrip } from "./BrowserAnnotationStrip";
 
 interface ComposerReferenceAttachmentsProps {
   assistantSelections: ReadonlyArray<ChatAssistantSelectionAttachment>;
+  browserAnnotations?: ReadonlyArray<BrowserAnnotationDraft>;
   fileComments: ReadonlyArray<FileCommentDraft>;
   browserElements?: ReadonlyArray<BrowserElementDraft>;
   pastedTexts?: ReadonlyArray<PastedTextDraft>;
@@ -29,6 +32,7 @@ interface ComposerReferenceAttachmentsProps {
   nonPersistedImageIdSet: ReadonlySet<string>;
   onExpandImage: (preview: ExpandedImagePreview) => void;
   onRemoveAssistantSelections: () => void;
+  onRemoveBrowserAnnotation?: (annotationId: string) => void;
   onRemoveFileComments: () => void;
   onRemoveBrowserElement?: (elementId: string) => void;
   onRemovePastedText?: (pastedTextId: string) => void;
@@ -41,6 +45,7 @@ const NO_BROWSER_ELEMENTS: ReadonlyArray<BrowserElementDraft> = [];
 
 export function ComposerReferenceAttachments({
   assistantSelections,
+  browserAnnotations = [],
   fileComments,
   pastedTexts: pastedTextsProp,
   browserElements: browserElementsProp,
@@ -49,6 +54,7 @@ export function ComposerReferenceAttachments({
   nonPersistedImageIdSet,
   onExpandImage,
   onRemoveAssistantSelections,
+  onRemoveBrowserAnnotation,
   onRemoveFileComments,
   onRemoveBrowserElement,
   onRemovePastedText,
@@ -60,6 +66,7 @@ export function ComposerReferenceAttachments({
   const browserElements = browserElementsProp ?? NO_BROWSER_ELEMENTS;
   if (
     assistantSelections.length === 0 &&
+    browserAnnotations.length === 0 &&
     fileComments.length === 0 &&
     browserElements.length === 0 &&
     pastedTexts.length === 0 &&
@@ -74,6 +81,10 @@ export function ComposerReferenceAttachments({
       <AssistantSelectionsSummaryChip
         selections={assistantSelections}
         onRemove={assistantSelections.length > 0 ? onRemoveAssistantSelections : undefined}
+      />
+      <BrowserAnnotationStrip
+        annotations={browserAnnotations}
+        onRemove={onRemoveBrowserAnnotation}
       />
       <FileCommentsSummaryChip
         comments={fileComments}

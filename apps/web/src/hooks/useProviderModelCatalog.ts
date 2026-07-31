@@ -135,6 +135,7 @@ export function useProviderModelCatalog(input: {
   const claudeDynamicModelsQuery = useQuery(
     providerModelsQueryOptions({
       provider: "claudeAgent",
+      binaryPath: settings.claudeBinaryPath || null,
       enabled: claudeModelDiscoveryEnabled,
     }),
   );

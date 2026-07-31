@@ -1,5 +1,5 @@
 // FILE: composerDraftPersistence.ts
-// Purpose: Owns composer draft schema v5, migrations, partialization, merge normalization, and hydration.
+// Purpose: Owns composer draft schema v6, migrations, partialization, merge normalization, and hydration.
 // Exports: Persist middleware transitions and persisted state type.
 
 import {
@@ -56,6 +56,7 @@ import {
   type BrowserElementDraft,
   normalizeBrowserElementSelection,
 } from "./lib/browserElementContext";
+import { type BrowserAnnotationDraft, normalizeBrowserAnnotations } from "./lib/browserAnnotations";
 import { normalizePastedTextContent } from "./lib/composerPastedText";
 import { normalizeFileCommentSelection } from "./lib/fileComments";
 import {
@@ -66,6 +67,13 @@ import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE } from "./types";
 
 const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
 const DraftThreadEntryPointSchema = Schema.Literals(["chat", "terminal"]);
+
+function cloneBrowserAnnotation(annotation: BrowserAnnotationDraft): BrowserAnnotationDraft {
+  return {
+    ...annotation,
+    source: { ...annotation.source },
+  };
+}
 
 const PersistedTerminalContextDraft = Schema.Struct({
   id: Schema.String,
@@ -151,6 +159,25 @@ const PersistedAssistantSelectionDraft = Schema.Struct({
 
 type PersistedAssistantSelectionDraft = typeof PersistedAssistantSelectionDraft.Type;
 
+const PersistedBrowserAnnotationDraft = Schema.Struct({
+  id: Schema.String,
+  ordinal: Schema.Number,
+  tabId: Schema.String,
+  documentKey: Schema.optionalKey(Schema.String),
+  source: Schema.Struct({
+    url: Schema.String,
+    pageTitle: Schema.String,
+  }),
+  selector: Schema.String,
+  tagName: Schema.String,
+  role: Schema.NullOr(Schema.String),
+  name: Schema.NullOr(Schema.String),
+  text: Schema.NullOr(Schema.String),
+  fingerprint: Schema.String,
+  comment: Schema.NullOr(Schema.String),
+  capturedAt: Schema.String,
+});
+
 const PersistedQueuedComposerChatTurn = Schema.Struct({
   id: Schema.String,
   kind: Schema.Literal("chat"),
@@ -159,6 +186,7 @@ const PersistedQueuedComposerChatTurn = Schema.Struct({
   prompt: Schema.String,
   images: Schema.Array(PersistedComposerImageAttachment),
   assistantSelections: Schema.optionalKey(Schema.Array(PersistedAssistantSelectionDraft)),
+  browserAnnotations: Schema.optionalKey(Schema.Array(PersistedBrowserAnnotationDraft)),
   terminalContexts: Schema.Array(PersistedQueuedTerminalContextDraft),
   fileComments: Schema.optionalKey(Schema.Array(PersistedFileCommentDraft)),
   browserElements: Schema.optionalKey(Schema.Array(PersistedBrowserElementDraft)),
@@ -208,6 +236,7 @@ const PersistedComposerPromptHistorySavedDraft = Schema.Union([
     prompt: Schema.String,
     attachments: Schema.optionalKey(Schema.Array(PersistedComposerImageAttachment)),
     assistantSelections: Schema.optionalKey(Schema.Array(PersistedAssistantSelectionDraft)),
+    browserAnnotations: Schema.optionalKey(Schema.Array(PersistedBrowserAnnotationDraft)),
     terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
     fileComments: Schema.optionalKey(Schema.Array(PersistedFileCommentDraft)),
     browserElements: Schema.optionalKey(Schema.Array(PersistedBrowserElementDraft)),
@@ -235,6 +264,7 @@ const PersistedComposerThreadDraftState = Schema.Struct({
       }),
     ),
   ),
+  browserAnnotations: Schema.optionalKey(Schema.Array(PersistedBrowserAnnotationDraft)),
   terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
   fileComments: Schema.optionalKey(Schema.Array(PersistedFileCommentDraft)),
   browserElements: Schema.optionalKey(Schema.Array(PersistedBrowserElementDraft)),
@@ -351,6 +381,9 @@ function normalizePersistedPromptHistorySavedDraft(
         return normalized ? [normalized] : [];
       })
     : [];
+  const browserAnnotations = Array.isArray(candidate.browserAnnotations)
+    ? normalizeBrowserAnnotations(candidate.browserAnnotations)
+    : [];
   const terminalContexts = Array.isArray(candidate.terminalContexts)
     ? candidate.terminalContexts.flatMap((entry) => {
         const normalized = normalizePersistedTerminalContextDraft(entry);
@@ -385,6 +418,7 @@ function normalizePersistedPromptHistorySavedDraft(
     prompt,
     attachments,
     ...(assistantSelections.length > 0 ? { assistantSelections } : {}),
+    ...(browserAnnotations.length > 0 ? { browserAnnotations } : {}),
     ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
     ...(fileComments.length > 0 ? { fileComments } : {}),
     ...(browserElements.length > 0 ? { browserElements } : {}),
@@ -651,6 +685,9 @@ function normalizePersistedQueuedTurns(
             return normalized ? [normalized] : [];
           })
         : [];
+      const browserAnnotations = Array.isArray(candidate.browserAnnotations)
+        ? normalizeBrowserAnnotations(candidate.browserAnnotations)
+        : [];
       const fileComments = Array.isArray(candidate.fileComments)
         ? candidate.fileComments.flatMap((comment) => {
             const normalized = normalizePersistedFileCommentDraft(comment);
@@ -694,6 +731,7 @@ function normalizePersistedQueuedTurns(
         prompt,
         images,
         ...(assistantSelections.length > 0 ? { assistantSelections } : {}),
+        ...(browserAnnotations.length > 0 ? { browserAnnotations } : {}),
         terminalContexts,
         ...(fileComments.length > 0 ? { fileComments } : {}),
         ...(browserElements.length > 0 ? { browserElements } : {}),
@@ -911,6 +949,9 @@ function normalizePersistedDraftsByThreadId(
           return normalized ? [normalized] : [];
         })
       : [];
+    const browserAnnotations = Array.isArray(draftCandidate.browserAnnotations)
+      ? normalizeBrowserAnnotations(draftCandidate.browserAnnotations)
+      : [];
     const fileComments = Array.isArray(draftCandidate.fileComments)
       ? draftCandidate.fileComments.flatMap((entry) => {
           const normalized = normalizePersistedFileCommentDraft(entry);
@@ -1009,6 +1050,7 @@ function normalizePersistedDraftsByThreadId(
       attachments.length === 0 &&
       terminalContexts.length === 0 &&
       assistantSelections.length === 0 &&
+      browserAnnotations.length === 0 &&
       fileComments.length === 0 &&
       browserElements.length === 0 &&
       pastedTexts.length === 0 &&
@@ -1026,6 +1068,7 @@ function normalizePersistedDraftsByThreadId(
       ...(promptHistorySavedDraft !== null ? { promptHistorySavedDraft } : {}),
       attachments,
       ...(assistantSelections.length > 0 ? { assistantSelections } : {}),
+      ...(browserAnnotations.length > 0 ? { browserAnnotations } : {}),
       ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
       ...(fileComments.length > 0 ? { fileComments } : {}),
       ...(browserElements.length > 0 ? { browserElements } : {}),
@@ -1087,6 +1130,11 @@ export function partializeComposerDraftStoreState(
             assistantMessageId: selection.assistantMessageId,
             text: selection.text,
           })),
+          ...(queuedTurn.browserAnnotations.length > 0
+            ? {
+                browserAnnotations: queuedTurn.browserAnnotations.map(cloneBrowserAnnotation),
+              }
+            : {}),
           terminalContexts: queuedTurn.terminalContexts.map((context) => ({
             id: context.id,
             threadId: context.threadId,
@@ -1164,6 +1212,7 @@ export function partializeComposerDraftStoreState(
       draft.promptHistorySavedDraft === null &&
       draft.persistedAttachments.length === 0 &&
       draft.assistantSelections.length === 0 &&
+      draft.browserAnnotations.length === 0 &&
       draft.terminalContexts.length === 0 &&
       draft.fileComments.length === 0 &&
       draft.browserElements.length === 0 &&
@@ -1195,6 +1244,12 @@ export function partializeComposerDraftStoreState(
                         text: selection.text,
                       }),
                     ),
+                  }
+                : {}),
+              ...(draft.promptHistorySavedDraft.browserAnnotations.length > 0
+                ? {
+                    browserAnnotations:
+                      draft.promptHistorySavedDraft.browserAnnotations.map(cloneBrowserAnnotation),
                   }
                 : {}),
               ...(draft.promptHistorySavedDraft.terminalContexts.length > 0
@@ -1255,6 +1310,11 @@ export function partializeComposerDraftStoreState(
               assistantMessageId: selection.assistantMessageId,
               text: selection.text,
             })),
+          }
+        : {}),
+      ...(draft.browserAnnotations.length > 0
+        ? {
+            browserAnnotations: draft.browserAnnotations.map(cloneBrowserAnnotation),
           }
         : {}),
       ...(draft.terminalContexts.length > 0
@@ -1428,6 +1488,7 @@ function hydrateQueuedTurnsFromPersisted(
         images: hydrateImagesFromPersisted(queuedTurn.images),
         files: [],
         assistantSelections: normalizeAssistantSelections(queuedTurn.assistantSelections ?? []),
+        browserAnnotations: normalizeBrowserAnnotations(queuedTurn.browserAnnotations ?? []),
         terminalContexts: normalizeTerminalContextsForThread(threadId, queuedTurn.terminalContexts),
         fileComments: normalizeFileComments(queuedTurn.fileComments ?? []),
         browserElements: normalizeBrowserElements(
@@ -1456,6 +1517,7 @@ function hydratePromptHistorySavedDraft(
       nonPersistedImageIds: [],
       persistedAttachments: [],
       assistantSelections: [],
+      browserAnnotations: [],
       terminalContexts: [],
       fileComments: [],
       pastedTexts: [],
@@ -1472,6 +1534,7 @@ function hydratePromptHistorySavedDraft(
     nonPersistedImageIds: [],
     persistedAttachments: [...attachments],
     assistantSelections: normalizeAssistantSelections(savedDraft.assistantSelections ?? []),
+    browserAnnotations: normalizeBrowserAnnotations(savedDraft.browserAnnotations ?? []),
     terminalContexts:
       savedDraft.terminalContexts?.map((context) => ({
         ...context,
@@ -1504,6 +1567,7 @@ export function toHydratedThreadDraft(
     nonPersistedImageIds: [],
     persistedAttachments: [...persistedDraft.attachments],
     assistantSelections: normalizeAssistantSelections(persistedDraft.assistantSelections ?? []),
+    browserAnnotations: normalizeBrowserAnnotations(persistedDraft.browserAnnotations ?? []),
     terminalContexts:
       persistedDraft.terminalContexts?.map((context) => ({
         ...context,

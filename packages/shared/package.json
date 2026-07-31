@@ -152,6 +152,10 @@
       "types": "./src/threadWorkspace.ts",
       "import": "./src/threadWorkspace.ts"
     },
+    "./threadHierarchy": {
+      "types": "./src/threadHierarchy.ts",
+      "import": "./src/threadHierarchy.ts"
+    },
     "./subagents": {
       "types": "./src/subagents.ts",
       "import": "./src/subagents.ts"
@@ -252,6 +256,18 @@
       "types": "./src/mcp/redact.ts",
       "import": "./src/mcp/redact.ts"
     },
+    "./browserAutomationCatalogue": {
+      "types": "./src/browserAutomationCatalogue.ts",
+      "import": "./src/browserAutomationCatalogue.ts"
+    },
+    "./browserAutomationErrors": {
+      "types": "./src/browserAutomationErrors.ts",
+      "import": "./src/browserAutomationErrors.ts"
+    },
+    "./browserAutomationMcpError": {
+      "types": "./src/browserAutomationMcpError.ts",
+      "import": "./src/browserAutomationMcpError.ts"
+    },
     "./unifiedPatchStats": {
       "types": "./src/unifiedPatchStats.ts",
       "import": "./src/unifiedPatchStats.ts"
@@ -259,6 +275,10 @@
     "./providerDeliveryBlock": {
       "types": "./src/providerDeliveryBlock.ts",
       "import": "./src/providerDeliveryBlock.ts"
+    },
+    "./browserAnnotations": {
+      "types": "./src/browserAnnotations.ts",
+      "import": "./src/browserAnnotations.ts"
     }
   },
   "scripts": {
