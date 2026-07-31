@@ -108,6 +108,10 @@
       "types": "./src/browserSession.ts",
       "import": "./src/browserSession.ts"
     },
+    "./browserSurface": {
+      "types": "./src/browserSurface.ts",
+      "import": "./src/browserSurface.ts"
+    },
     "./conversationEdit": {
       "types": "./src/conversationEdit.ts",
       "import": "./src/conversationEdit.ts"

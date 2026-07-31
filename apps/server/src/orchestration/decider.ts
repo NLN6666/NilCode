@@ -698,6 +698,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           defaultModelSelection: command.defaultModelSelection ?? null,
           scripts: [],
           isPinned: command.isPinned,
+          browserSharing: command.browserSharing,
           spaceId: creationSpaceId,
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
@@ -731,7 +732,8 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command.workspaceRoot !== undefined ||
         command.defaultModelSelection !== undefined ||
         command.scripts !== undefined ||
-        command.isPinned !== undefined;
+        command.isPinned !== undefined ||
+        command.browserSharing !== undefined;
       const isLegacyHomeChatContainer = isLegacyHomeChatContainerRow({
         projectTitle: existingProject.title,
         projectWorkspaceRoot: existingProject.workspaceRoot,
@@ -838,6 +840,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             : {}),
           ...(command.scripts !== undefined ? { scripts: command.scripts } : {}),
           ...(command.isPinned !== undefined ? { isPinned: command.isPinned } : {}),
+          ...(command.browserSharing !== undefined
+            ? { browserSharing: command.browserSharing }
+            : {}),
           ...(changedSpaceId !== undefined ? { spaceId: changedSpaceId } : {}),
           updatedAt: occurredAt,
         },

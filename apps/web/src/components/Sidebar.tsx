@@ -12,6 +12,7 @@ import {
   ExternalLinkIcon,
   FolderOpenIcon,
   GiftIcon,
+  GlobeIcon,
   KanbanIcon,
   KeyboardIcon,
   type LucideIcon,
@@ -81,6 +82,7 @@ import {
   type OrchestrationShellSnapshot,
   PROVIDER_DISPLAY_NAMES,
   ProjectId,
+  type ProjectBrowserSharing,
   SpaceId,
   type ProviderKind,
   ThreadId,
@@ -104,6 +106,7 @@ import { isMacPlatform, newCommandId, newThreadId, randomUUID } from "../lib/uti
 import { isOrdinarySpaceProject } from "../lib/spaces";
 import { reconcileDeletedThreadsFromClient } from "../lib/deletedThreadClientReconciliation";
 import { deleteProjectFromClient } from "../lib/projectDelete";
+import { setProjectBrowserSharing as dispatchProjectBrowserSharing } from "../lib/projectBrowserSharing";
 import { persistAppStateNow, useStore } from "../store";
 import { getThreadFromState } from "../threadDerivation";
 import {
@@ -444,6 +447,7 @@ type ProjectContextMenuId =
   | "open-dev-server"
   | "rename"
   | "toggle-pin"
+  | "toggle-shared-browser"
   | "archive-threads"
   | "delete-threads"
   | "delete";
@@ -1809,6 +1813,19 @@ export default function Sidebar() {
       });
     },
     [],
+  );
+  const setProjectBrowserSharing = useCallback(
+    async (projectId: ProjectId, browserSharing: ProjectBrowserSharing) => {
+      await dispatchProjectBrowserSharing({
+        projectId,
+        browserSharing,
+        failureTitle:
+          browserSharing === "shared"
+            ? m.sidebar.projectMenu.shareBrowserFailed
+            : m.sidebar.projectMenu.separateBrowsersFailed,
+      });
+    },
+    [m],
   );
   const setProjectPinned = useCallback(
     async (projectId: ProjectId, isPinned: boolean) => {
@@ -3240,6 +3257,13 @@ export default function Sidebar() {
         toggleProjectPinned(projectId);
         return;
       }
+      if (clicked === "toggle-shared-browser") {
+        await setProjectBrowserSharing(
+          projectId,
+          project.browserSharing === "shared" ? "isolated" : "shared",
+        );
+        return;
+      }
       if (clicked === "archive-threads") {
         await archiveAllThreadsInProject(projectId);
         return;
@@ -3322,6 +3346,7 @@ export default function Sidebar() {
       openProjectRunDialog,
       projectById,
       removeDeletedProjectFromClientState,
+      setProjectBrowserSharing,
       sidebarThreads,
       toggleProjectPinned,
     ],
@@ -5543,6 +5568,7 @@ export default function Sidebar() {
   const projectContextMenuIsPinned = projectContextMenuProject
     ? pinnedProjectIdSet.has(projectContextMenuProject.id)
     : false;
+  const projectContextMenuSharesBrowser = projectContextMenuProject?.browserSharing === "shared";
   const projectContextMenuIsRunning = projectContextMenuProject
     ? Boolean(projectRunsByProjectId[projectContextMenuProject.id])
     : false;
@@ -6259,6 +6285,22 @@ export default function Sidebar() {
               >
                 <ProjectContextMenuIcon icon={PinIcon} />
                 <span>{pinActionLabel("project", projectContextMenuIsPinned)}</span>
+              </MenuItem>
+              <MenuItem
+                className={PROJECT_CONTEXT_MENU_ITEM_CLASS_NAME}
+                onClick={() =>
+                  void handleProjectContextMenuAction(
+                    projectContextMenuState.projectId,
+                    "toggle-shared-browser",
+                  )
+                }
+              >
+                <ProjectContextMenuIcon icon={GlobeIcon} />
+                <span>
+                  {projectContextMenuSharesBrowser
+                    ? m.sidebar.projectMenu.useSeparateBrowsers
+                    : m.sidebar.projectMenu.useSharedBrowser}
+                </span>
               </MenuItem>
               {projectContextMenuHasArchivableThreads || projectContextMenuHasAnyThreads ? (
                 <MenuSeparator />

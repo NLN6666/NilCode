@@ -44,6 +44,19 @@ export const browser: Messages["browser"] = {
     linkCopied: "已复制链接",
   },
 
+  attachments: {
+    limit: (max) => `每条消息最多可附加 ${max} 个引用。`,
+    screenshotTooLarge: (name, limit) => `「${name}」超出 ${limit} 的附件大小限制。`,
+    annotatedScreenshotTooLarge: (limit) => `标注后的截图超出 ${limit} 的附件大小限制。`,
+  },
+
+  sharing: {
+    shareOne: "本项目共享同一个浏览器",
+    perThread: "每个会话使用独立浏览器",
+    shareFailed: "无法让该项目共享浏览器",
+    isolateFailed: "无法让每个会话使用独立浏览器",
+  },
+
   localServers: {
     title: "本地",
     refresh: "刷新本地服务",
@@ -74,5 +87,15 @@ export const browser: Messages["browser"] = {
     cancel: "取消",
     confirmDiscard: "确定丢弃标记？",
     addToChat: "添加到对话",
+    errors: {
+      notVisible: "请先让浏览器标签页处于可见状态，再开始标注。",
+      stillLoading: "页面仍在加载，请稍后再试。",
+      tabUnavailable: "该浏览器标签页无法用于标注。",
+      alreadyActive: "标注模式已经开启。",
+      cancelFailed: "无法退出标注模式，请重试。",
+      syncFailed: "无法刷新标注标记。",
+      startFailed: "无法开启标注模式，请重试。",
+      draftFull: "当前草稿无法再添加浏览器标注。",
+    },
   },
 };

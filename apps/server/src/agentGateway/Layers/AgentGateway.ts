@@ -26,6 +26,7 @@ import {
   type TurnDispatchMode,
 } from "@synara/contracts";
 import { runtimeModeEscalatesPrivilege } from "@synara/shared/runtimeMode";
+import { resolveBrowserSurfaceId } from "@synara/shared/browserSurface";
 import { Effect, Layer, Option } from "effect";
 
 import { GitCore } from "../../git/Services/GitCore.ts";
@@ -607,6 +608,22 @@ export const makeAgentGateway = Effect.gen(function* () {
           }) ?? null
         );
       }).pipe(Effect.orElseSucceed(() => null)),
+    // A project that shares one browser must hand every one of its threads the same surface,
+    // so an agent drives the window the user is actually looking at. Anything unresolvable —
+    // missing thread, missing project — degrades to the thread's own isolated surface.
+    resolveBrowserSurfaceId: (context) =>
+      Effect.gen(function* () {
+        const threadId = ThreadId.makeUnsafe(context.callerThreadId);
+        const thread = yield* requireThreadShell(context.callerThreadId);
+        const project = yield* snapshotQuery
+          .getProjectShellById(thread.projectId)
+          .pipe(Effect.map(Option.getOrNull));
+        return resolveBrowserSurfaceId({
+          threadId,
+          projectId: thread.projectId,
+          sharing: project?.browserSharing,
+        });
+      }).pipe(Effect.orElseSucceed(() => ThreadId.makeUnsafe(context.callerThreadId))),
   });
 
   const tools: ReadonlyArray<ToolEntry> = [

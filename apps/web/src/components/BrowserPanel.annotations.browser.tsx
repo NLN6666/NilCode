@@ -18,6 +18,7 @@ import type { BrowserAnnotationDraft } from "../lib/browserAnnotations";
 import { BrowserAnnotationButton } from "./BrowserPanel";
 import { browserAnnotationTheme } from "./BrowserPanel.logic";
 import { useBrowserAnnotations } from "./browser/useBrowserAnnotations";
+import { en } from "~/i18n/locales/en";
 
 const THREAD_A = ThreadId.makeUnsafe("thread-a");
 const THREAD_B = ThreadId.makeUnsafe("thread-b");
@@ -100,7 +101,7 @@ function AnnotationHarness(props: {
   const [browserStateVersion, setBrowserStateVersion] = useState(1);
   const [activeTabId, setActiveTabId] = useState<string | null>("tab-a");
   const addAnnotation = useCallback(
-    (_threadId: ThreadId, annotation: Omit<BrowserAnnotationDraft, "ordinal">) => {
+    (annotation: Omit<BrowserAnnotationDraft, "ordinal">) => {
       props.onAdd(annotation);
       setAnnotations((current) => [
         ...current,
@@ -122,6 +123,7 @@ function AnnotationHarness(props: {
     annotations,
     addAnnotation,
     onError: () => {},
+    errorCopy: en.browser.annotation.errors,
   });
 
   return (

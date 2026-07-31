@@ -36,6 +36,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         defaultModelSelection: null,
         scripts: [],
         isPinned: false,
+        browserSharing: "isolated" as const,
         spaceId,
         createdAt: "2026-07-20T00:00:00.000Z",
         updatedAt,
@@ -94,6 +95,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         },
         scripts: [],
         isPinned: false,
+        browserSharing: "isolated",
         spaceId: null,
         createdAt: "2026-03-24T00:00:00.000Z",
         updatedAt: "2026-03-24T00:00:00.000Z",
@@ -127,6 +129,69 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         provider: "codex",
         model: "gpt-5.4",
       });
+    }),
+  );
+
+  it.effect("round-trips project browser sharing and defaults legacy rows to isolated", () =>
+    Effect.gen(function* () {
+      const projects = yield* ProjectionProjectRepository;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* projects.upsert({
+        projectId: ProjectId.makeUnsafe("project-shared-browser"),
+        kind: "project",
+        title: "Shared browser project",
+        workspaceRoot: "/tmp/project-shared-browser",
+        defaultModelSelection: null,
+        scripts: [],
+        isPinned: false,
+        browserSharing: "shared",
+        spaceId: null,
+        createdAt: "2026-07-31T00:00:00.000Z",
+        updatedAt: "2026-07-31T00:00:00.000Z",
+        deletedAt: null,
+      });
+
+      const persisted = yield* projects.getById({
+        projectId: ProjectId.makeUnsafe("project-shared-browser"),
+      });
+      assert.strictEqual(Option.getOrNull(persisted)?.browserSharing, "shared");
+
+      // A row inserted without the column - i.e. written before migration 088 - must keep the
+      // historical per-thread browser behavior.
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id,
+          kind,
+          title,
+          workspace_root,
+          default_model_selection_json,
+          scripts_json,
+          is_pinned,
+          space_id,
+          created_at,
+          updated_at,
+          deleted_at
+        )
+        VALUES (
+          'project-legacy-browser',
+          'project',
+          'Legacy browser project',
+          '/tmp/project-legacy-browser',
+          NULL,
+          '[]',
+          0,
+          NULL,
+          '2026-07-31T00:00:00.000Z',
+          '2026-07-31T00:00:00.000Z',
+          NULL
+        )
+      `;
+
+      const legacy = yield* projects.getById({
+        projectId: ProjectId.makeUnsafe("project-legacy-browser"),
+      });
+      assert.strictEqual(Option.getOrNull(legacy)?.browserSharing, "isolated");
     }),
   );
 

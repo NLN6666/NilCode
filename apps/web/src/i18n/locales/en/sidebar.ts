@@ -77,6 +77,11 @@ export const sidebar = {
     voidSpace: "Void",
     newSpace: "New space…",
     editName: "Edit name",
+    // Toggle: every thread in the project drives one browser, or each keeps its own.
+    useSharedBrowser: "Share one browser",
+    useSeparateBrowsers: "Use a browser per thread",
+    shareBrowserFailed: "Unable to share this project's browser",
+    separateBrowsersFailed: "Unable to give each thread its own browser",
     archiveThreads: "Archive threads",
     deleteThreads: "Delete threads",
     remove: "Remove",

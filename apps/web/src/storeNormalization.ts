@@ -3,6 +3,7 @@
 // Exports: Pure normalization and equality helpers consumed by projection and event reduction.
 
 import {
+  DEFAULT_PROJECT_BROWSER_SHARING,
   MessageId,
   type OrchestrationReadModel,
   type OrchestrationSpaceShell,
@@ -47,6 +48,7 @@ export type ProjectNormalizationInput = Pick<
   | "defaultModelSelection"
   | "scripts"
   | "isPinned"
+  | "browserSharing"
   | "spaceId"
   | "createdAt"
   | "updatedAt"
@@ -341,6 +343,8 @@ export function normalizeProject(
     previous.cwd === incoming.workspaceRoot &&
     previous.defaultModelSelection === defaultModelSelection &&
     previous.expanded === expanded &&
+    (previous.browserSharing ?? DEFAULT_PROJECT_BROWSER_SHARING) ===
+      (incoming.browserSharing ?? DEFAULT_PROJECT_BROWSER_SHARING) &&
     (previous.isPinned ?? false) === (incoming.isPinned ?? false) &&
     (previous.spaceId ?? null) === (incoming.spaceId ?? null) &&
     previous.createdAt === incoming.createdAt &&
@@ -361,6 +365,7 @@ export function normalizeProject(
     defaultModelSelection,
     expanded,
     isPinned: incoming.isPinned ?? false,
+    browserSharing: incoming.browserSharing ?? DEFAULT_PROJECT_BROWSER_SHARING,
     spaceId: incoming.spaceId ?? null,
     createdAt: incoming.createdAt,
     updatedAt: incoming.updatedAt,

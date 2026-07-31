@@ -11,11 +11,13 @@ import type {
 } from "@synara/contracts";
 
 import type { BrowserAnnotationDraft } from "../../lib/browserAnnotations";
+import type { Messages } from "~/i18n/locales/en";
+
 import {
+  browserAnnotationActionErrorKey,
   browserAnnotationDraftFromCommittedEvent,
   browserAnnotationMarkers,
   browserAnnotationTheme,
-  formatBrowserAnnotationActionError,
   isBrowserAnnotationEventInScope,
 } from "../BrowserPanel.logic";
 
@@ -34,16 +36,21 @@ export interface BrowserAnnotationsController {
 
 interface UseBrowserAnnotationsInput {
   readonly methods: BrowserAnnotationMethods | undefined;
+  /** The browser surface being annotated — a project-wide id when the project shares a browser. */
   readonly threadId: ThreadId;
   readonly activeTabId: string | null;
   readonly browserStateVersion: number;
   readonly enabled: boolean;
   readonly annotations: readonly BrowserAnnotationDraft[];
-  readonly addAnnotation: (
-    threadId: ThreadId,
-    annotation: Omit<BrowserAnnotationDraft, "ordinal">,
-  ) => boolean;
+  /**
+   * Pre-bound to the chat thread that owns the composer draft. It deliberately takes no
+   * thread id: `threadId` above is the BROWSER SURFACE, which is a project-wide id when the
+   * project shares its browser, and an annotation belongs to the chat it was taken from.
+   */
+  readonly addAnnotation: (annotation: Omit<BrowserAnnotationDraft, "ordinal">) => boolean;
   readonly onError: (message: string | null) => void;
+  /** Active-locale annotation failure copy, keyed by `browserAnnotationActionErrorKey`. */
+  readonly errorCopy: Messages["browser"]["annotation"]["errors"];
 }
 
 // Main survives renderer reloads, so a module-local 1,2,3 counter could move
@@ -76,6 +83,7 @@ export function useBrowserAnnotations({
   annotations,
   addAnnotation,
   onError,
+  errorCopy,
 }: UseBrowserAnnotationsInput): BrowserAnnotationsController {
   const [phase, setPhase] = useState<"idle" | "starting" | "active">("idle");
   const [documentRevision, setDocumentRevision] = useState(0);
@@ -101,11 +109,11 @@ export function useBrowserAnnotations({
         .cancel({ threadId: pending.threadId, tabId: pending.tabId })
         .catch((error: unknown) => {
           if (surfaceError) {
-            onError(formatBrowserAnnotationActionError(error, "cancel"));
+            onError(errorCopy[browserAnnotationActionErrorKey(error, "cancel")]);
           }
         });
     },
-    [clearLocalSession, methods, onError],
+    [clearLocalSession, errorCopy, methods, onError],
   );
 
   const toggle = useCallback(() => {
@@ -160,10 +168,19 @@ export function useBrowserAnnotations({
             return;
           }
           clearLocalSession();
-          onError(formatBrowserAnnotationActionError(error, "start"));
+          onError(errorCopy[browserAnnotationActionErrorKey(error, "start")]);
         },
       );
-  }, [activeTabId, cancelPendingSession, clearLocalSession, enabled, methods, onError, threadId]);
+  }, [
+    activeTabId,
+    cancelPendingSession,
+    clearLocalSession,
+    enabled,
+    errorCopy,
+    methods,
+    onError,
+    threadId,
+  ]);
 
   useEffect(() => {
     if (!methods) {
@@ -202,13 +219,10 @@ export function useBrowserAnnotations({
         ) {
           return;
         }
-        const added = addAnnotation(
-          scope.threadId,
-          browserAnnotationDraftFromCommittedEvent(event),
-        );
+        const added = addAnnotation(browserAnnotationDraftFromCommittedEvent(event));
         if (!added) {
           cancelPendingSession(false);
-          onError("This draft can't accept another browser annotation.");
+          onError(errorCopy.draftFull);
         } else {
           onError(null);
         }
@@ -233,7 +247,7 @@ export function useBrowserAnnotations({
         setDocumentRevision((revision) => revision + 1);
       }
     });
-  }, [addAnnotation, cancelPendingSession, clearLocalSession, methods, onError]);
+  }, [addAnnotation, cancelPendingSession, clearLocalSession, errorCopy, methods, onError]);
 
   useEffect(() => {
     const pending = pendingRef.current;
@@ -266,7 +280,7 @@ export function useBrowserAnnotations({
           scope.threadId === threadId &&
           scope.activeTabId === activeTabId
         ) {
-          onError(formatBrowserAnnotationActionError(error, "sync"));
+          onError(errorCopy[browserAnnotationActionErrorKey(error, "sync")]);
         }
       });
   }, [
@@ -275,6 +289,7 @@ export function useBrowserAnnotations({
     browserStateVersion,
     documentRevision,
     enabled,
+    errorCopy,
     methods,
     onError,
     threadId,

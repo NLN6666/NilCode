@@ -312,6 +312,67 @@ describe("store event reducer", () => {
     });
   });
 
+  // The project reducer copies known fields one by one, so a new field silently vanishes
+  // until a full snapshot reload unless it is threaded through both project cases.
+  it("carries browser sharing through project.created and project.meta-updated", () => {
+    const projectId = ProjectId.makeUnsafe("project-shared-browser");
+    const created = applyOrchestrationEvents(
+      {
+        spaces: [],
+        projects: [],
+        sidebarThreadSummaryById: {},
+        threadsHydrated: false,
+      },
+      [
+        makeDomainEvent(
+          "project.created",
+          {
+            projectId,
+            title: "Shared Browser Project",
+            workspaceRoot: "/tmp/shared-browser-project",
+            defaultModelSelection: null,
+            scripts: [],
+            browserSharing: "shared",
+            createdAt: "2026-02-27T00:00:00.000Z",
+            updatedAt: "2026-02-27T00:00:00.000Z",
+          },
+          { aggregateKind: "project" },
+        ),
+      ],
+    );
+
+    expect(created.projects[0]?.browserSharing).toBe("shared");
+
+    const switchedToIsolated = applyOrchestrationEvents(created, [
+      makeDomainEvent(
+        "project.meta-updated",
+        {
+          projectId,
+          browserSharing: "isolated",
+          updatedAt: "2026-02-27T00:05:00.000Z",
+        },
+        { aggregateKind: "project" },
+      ),
+    ]);
+
+    expect(switchedToIsolated.projects[0]?.browserSharing).toBe("isolated");
+
+    // An unrelated meta update must not reset the setting.
+    const renamed = applyOrchestrationEvents(switchedToIsolated, [
+      makeDomainEvent(
+        "project.meta-updated",
+        {
+          projectId,
+          title: "Renamed",
+          updatedAt: "2026-02-27T00:06:00.000Z",
+        },
+        { aggregateKind: "project" },
+      ),
+    ]);
+
+    expect(renamed.projects[0]?.browserSharing).toBe("isolated");
+  });
+
   it("removes projects immediately from live project.deleted events", () => {
     const next = applyOrchestrationEvents(
       {

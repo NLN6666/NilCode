@@ -20,9 +20,9 @@ import { TerminalIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { useBrowserTerminalHostStore } from "~/browserTerminalHostStore";
 import { useStore } from "~/store";
-import { createProjectSelector } from "~/storeSelectors";
+import { createProjectSelector, createThreadShellsSelector } from "~/storeSelectors";
 import {
-  selectRunningServiceScriptIds,
+  selectRunningServiceScriptIdsAcrossThreads,
   selectThreadTerminalState,
   useTerminalStateStore,
 } from "~/terminalStateStore";
@@ -39,9 +39,8 @@ export function BrowserPaneTerminalSplit(props: {
   children: ReactNode;
 }) {
   const copy = useMessages().chat.panes.serviceTerminal;
-  const terminalState = useTerminalStateStore((store) =>
-    selectThreadTerminalState(store.terminalStateByThreadId, props.hostThreadId),
-  );
+  const terminalStateByThreadId = useTerminalStateStore((store) => store.terminalStateByThreadId);
+  const terminalState = selectThreadTerminalState(terminalStateByThreadId, props.hostThreadId);
   const setTerminalOpen = useTerminalStateStore((store) => store.setTerminalOpen);
   const setHost = useBrowserTerminalHostStore((store) => store.setHost);
   const project = useStore(
@@ -113,7 +112,23 @@ export function BrowserPaneTerminalSplit(props: {
 
   // Name the alive service(s) on the collapsed bar so the strip says what it is holding
   // rather than a generic "Terminal".
-  const runningScriptIds = selectRunningServiceScriptIds(terminalState);
+  // Scoped to the PROJECT, not this chat: the dev server belongs to the project, so every
+  // thread in it must report the same thing. Expand/collapse below stays thread-local because
+  // the terminal runtime itself is.
+  const threadShells = useStore(useMemo(() => createThreadShellsSelector(), []));
+  const projectThreadIds = useMemo(
+    () =>
+      props.projectId === null
+        ? [props.hostThreadId]
+        : threadShells
+            .filter((shell) => shell.projectId === props.projectId)
+            .map((shell) => shell.id),
+    [props.hostThreadId, props.projectId, threadShells],
+  );
+  const runningScriptIds = useMemo(
+    () => selectRunningServiceScriptIdsAcrossThreads(terminalStateByThreadId, projectThreadIds),
+    [projectThreadIds, terminalStateByThreadId],
+  );
   const runningScriptNames =
     project?.kind === "project"
       ? project.scripts

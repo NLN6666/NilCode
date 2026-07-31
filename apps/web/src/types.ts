@@ -29,6 +29,7 @@ import type {
   CheckpointRef,
   ProviderInteractionMode,
   ProjectKind,
+  ProjectBrowserSharing,
   RuntimeMode,
   ThreadCreationSource,
   ThreadEnvironmentMode,
@@ -177,6 +178,11 @@ export interface Project {
   defaultModelSelection: ModelSelection | null;
   expanded: boolean;
   isPinned?: boolean;
+  /**
+   * Whether this project's threads share one in-app browser or each get their own.
+   * Optional like `isPinned`: normalized snapshots always set it, older renderer state may not.
+   */
+  browserSharing?: ProjectBrowserSharing;
   /** Missing on renderer state written before Spaces; normalized snapshots always set it. */
   spaceId?: SpaceId | null;
   createdAt?: string | undefined;

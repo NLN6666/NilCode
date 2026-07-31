@@ -449,6 +449,19 @@ export const OrchestrationSpaceShell = Schema.Struct({
 });
 export type OrchestrationSpaceShell = typeof OrchestrationSpaceShell.Type;
 
+/**
+ * How a project scopes the in-app browser across its threads.
+ *
+ * `isolated` keeps the historical behavior (one private browser per thread); `shared` points
+ * every thread of the project at a single project-wide browser. Resolution lives in
+ * `@synara/shared/browserSurface` so the UI and the agent gateway can never disagree.
+ */
+export const ProjectBrowserSharing = Schema.Literals(["shared", "isolated"]);
+export type ProjectBrowserSharing = typeof ProjectBrowserSharing.Type;
+
+/** Projects created before browser sharing existed decode as isolated, matching old behavior. */
+export const DEFAULT_PROJECT_BROWSER_SHARING: ProjectBrowserSharing = "isolated";
+
 export const OrchestrationProject = Schema.Struct({
   id: ProjectId,
   kind: Schema.optional(ProjectKind).pipe(Schema.withDecodingDefault(() => "project")),
@@ -457,6 +470,9 @@ export const OrchestrationProject = Schema.Struct({
   defaultModelSelection: Schema.NullOr(ModelSelection),
   scripts: Schema.Array(ProjectScript),
   isPinned: Schema.optional(Schema.Boolean).pipe(Schema.withDecodingDefault(() => false)),
+  browserSharing: Schema.optional(ProjectBrowserSharing).pipe(
+    Schema.withDecodingDefault(() => DEFAULT_PROJECT_BROWSER_SHARING),
+  ),
   spaceId: Schema.optional(Schema.NullOr(SpaceId)).pipe(Schema.withDecodingDefault(() => null)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -472,6 +488,9 @@ export const OrchestrationProjectShell = Schema.Struct({
   defaultModelSelection: Schema.NullOr(ModelSelection),
   scripts: Schema.Array(ProjectScript),
   isPinned: Schema.optional(Schema.Boolean).pipe(Schema.withDecodingDefault(() => false)),
+  browserSharing: Schema.optional(ProjectBrowserSharing).pipe(
+    Schema.withDecodingDefault(() => DEFAULT_PROJECT_BROWSER_SHARING),
+  ),
   spaceId: Schema.optional(Schema.NullOr(SpaceId)).pipe(Schema.withDecodingDefault(() => null)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -997,6 +1016,9 @@ export const ProjectCreateCommand = Schema.Struct({
   ),
   defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   isPinned: Schema.optional(Schema.Boolean).pipe(Schema.withDecodingDefault(() => false)),
+  browserSharing: Schema.optional(ProjectBrowserSharing).pipe(
+    Schema.withDecodingDefault(() => DEFAULT_PROJECT_BROWSER_SHARING),
+  ),
   /**
    * Space the project is born into (usually the client's active space). Best-effort:
    * an unusable target (deleted space, non-ordinary kind) degrades to Void rather
@@ -1019,6 +1041,7 @@ const ProjectMetaUpdateCommand = Schema.Struct({
   defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   scripts: Schema.optional(Schema.Array(ProjectScript)),
   isPinned: Schema.optional(Schema.Boolean),
+  browserSharing: Schema.optional(ProjectBrowserSharing),
   spaceId: Schema.optional(Schema.NullOr(SpaceId)),
 });
 
@@ -1697,6 +1720,9 @@ export const ProjectCreatedPayload = Schema.Struct({
   defaultModelSelection: Schema.NullOr(ModelSelection),
   scripts: Schema.Array(ProjectScript),
   isPinned: Schema.optional(Schema.Boolean).pipe(Schema.withDecodingDefault(() => false)),
+  browserSharing: Schema.optional(ProjectBrowserSharing).pipe(
+    Schema.withDecodingDefault(() => DEFAULT_PROJECT_BROWSER_SHARING),
+  ),
   spaceId: Schema.optional(Schema.NullOr(SpaceId)).pipe(Schema.withDecodingDefault(() => null)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -1710,6 +1736,7 @@ export const ProjectMetaUpdatedPayload = Schema.Struct({
   defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
   scripts: Schema.optional(Schema.Array(ProjectScript)),
   isPinned: Schema.optional(Schema.Boolean),
+  browserSharing: Schema.optional(ProjectBrowserSharing),
   spaceId: Schema.optional(Schema.NullOr(SpaceId)),
   updatedAt: IsoDateTime,
 });

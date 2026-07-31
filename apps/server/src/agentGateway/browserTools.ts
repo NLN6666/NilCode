@@ -44,6 +44,11 @@ const TARGET_ALIAS_TOOL_NAMES = new Set<BrowserToolName>([
 export interface AgentGatewayBrowserToolsOptions {
   /** Resolve the authenticated caller thread's canonical cwd outside public MCP arguments. */
   readonly resolveWorkspaceRoot?: (context: ToolContext) => Effect.Effect<string | null>;
+  /**
+   * Resolve the browser surface the caller thread's calls address: the thread itself for
+   * isolated projects, and a shared project-wide surface when the project shares one browser.
+   */
+  readonly resolveBrowserSurfaceId?: (context: ToolContext) => Effect.Effect<ThreadId>;
 }
 
 const NAMED_KEY_ALIASES = Object.freeze({
@@ -501,6 +506,10 @@ export function makeAgentGatewayBrowserTools(
               }),
             );
           }
+          const browserSurfaceId = yield* (
+            options.resolveBrowserSurfaceId?.(context) ??
+              Effect.succeed(ThreadId.makeUnsafe(context.callerThreadId))
+          );
           const requestedTimeout = decodedArguments.timeoutMs;
           const timeoutMs =
             typeof requestedTimeout === "number"
@@ -510,7 +519,7 @@ export function makeAgentGatewayBrowserTools(
             .execute({
               sessionKey: context.callerSessionKey,
               provider: context.callerProvider,
-              threadId: ThreadId.makeUnsafe(context.callerThreadId),
+              threadId: browserSurfaceId,
               name,
               arguments: decodedArguments,
               ...(workspaceRoot ? { workspaceRoot } : {}),

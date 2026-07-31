@@ -92,10 +92,30 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 interface BrowserPanelProps {
   mode: DiffPanelMode;
+  /**
+   * The chat thread hosting this panel. Used only for composer-draft writes: a screenshot or
+   * picked element belongs to the chat it was taken from.
+   */
   threadId: ThreadId;
+  /**
+   * The browser this panel drives. Equals `threadId` when the project isolates browsers, or a
+   * shared project-wide surface when the project shares one. All browser IPC and cached browser
+   * state key off this.
+   */
+  browserSurfaceId: ThreadId;
   onClosePanel: () => void;
   runtimeMode?: DockPaneRuntimeMode;
   onRequestLive?: () => void;
+  /**
+   * Project browser-sharing control, omitted when the panel has no resolvable project. Rendered
+   * in the actions menu so the setting is reachable from the browser it governs.
+   */
+  projectBrowserSharing?:
+    | {
+        readonly shared: boolean;
+        readonly onToggle: () => void;
+      }
+    | undefined;
 }
 
 const BROWSER_BOUNDS_SYNC_BURST_FRAMES = 30;
@@ -558,9 +578,11 @@ function BrowserLocalServersHome({
 export function BrowserPanel({
   mode,
   threadId,
+  browserSurfaceId,
   onClosePanel,
   runtimeMode: runtimeModeProp,
   onRequestLive,
+  projectBrowserSharing,
 }: BrowserPanelProps) {
   const browserCopy = useMessages().browser;
   // Defaults belong in the body, never in the destructuring pattern: React Compiler cannot lower an
@@ -568,8 +590,8 @@ export function BrowserPanel({
   const runtimeMode = runtimeModeProp ?? "live";
   const api = readNativeApi();
   const isLiveRuntime = runtimeMode === "live";
-  const threadBrowserState = useBrowserStateStore(selectThreadBrowserState(threadId));
-  const recentHistory = useBrowserStateStore(selectThreadBrowserHistory(threadId));
+  const threadBrowserState = useBrowserStateStore(selectThreadBrowserState(browserSurfaceId));
+  const recentHistory = useBrowserStateStore(selectThreadBrowserHistory(browserSurfaceId));
   const upsertThreadState = useBrowserStateStore((store) => store.upsertThreadState);
   const addComposerDraftImage = useComposerDraftStore((store) => store.addImage);
   const addComposerDraftBrowserElement = useComposerDraftStore((store) => store.addBrowserElement);
@@ -666,17 +688,25 @@ export function BrowserPanel({
   });
   const showBrowserAddressSuggestions =
     isLiveRuntime && isAddressFocused && browserAddressSuggestions.length > 0 && runtimeReady;
+  // Bound to the host thread, never the surface: a shared browser is annotated from whichever
+  // chat is driving it, and the annotation belongs to that chat's composer draft.
+  const addAnnotationToHostThreadDraft = useCallback(
+    (annotation: Omit<BrowserAnnotationDraft, "ordinal">) =>
+      addBrowserAnnotation(threadId, annotation),
+    [addBrowserAnnotation, threadId],
+  );
   const annotationMethods = api?.browser.annotations;
   const annotationController = useBrowserAnnotations({
     methods: annotationMethods,
-    threadId,
+    threadId: browserSurfaceId,
     activeTabId,
     browserStateVersion: threadBrowserState?.version ?? 0,
     enabled:
       isElectron && isLiveRuntime && workspaceReady && activeTab !== null && !showLocalServersHome,
     annotations: browserAnnotations,
-    addAnnotation: addBrowserAnnotation,
+    addAnnotation: addAnnotationToHostThreadDraft,
     onError: setLocalError,
+    errorCopy: browserCopy.annotation.errors,
   });
 
   const requestLiveRuntime = useCallback(() => {
@@ -729,7 +759,7 @@ export function BrowserPanel({
         if (webContentsId && webContentsId > 0) {
           try {
             void api.browser
-              .detachWebview({ threadId, tabId, webContentsId })
+              .detachWebview({ threadId: browserSurfaceId, tabId, webContentsId })
               .catch(ignoreBrowserWebviewDetachError);
           } catch {
             ignoreBrowserWebviewDetachError();
@@ -751,7 +781,7 @@ export function BrowserPanel({
         }
       }
     },
-    [api, isLiveRuntime, threadId],
+    [api, browserSurfaceId, isLiveRuntime],
   );
 
   useEffect(() => {
@@ -769,7 +799,7 @@ export function BrowserPanel({
       return;
     }
 
-    browserPanelHideScheduler.cancel(threadId);
+    browserPanelHideScheduler.cancel(browserSurfaceId);
 
     // Timeout-0 keeps the reset writes asynchronous (no wasted pre-paint
     // render), which also keeps this component eligible for React Compiler.
@@ -781,27 +811,29 @@ export function BrowserPanel({
       setWorkspaceReady(false);
       setLocalError(null);
 
-      void runBrowserAction(() => api.browser.open({ threadId })).then((state) => {
-        if (cancelled) {
-          return;
-        }
-        if (!state) {
+      void runBrowserAction(() => api.browser.open({ threadId: browserSurfaceId })).then(
+        (state) => {
+          if (cancelled) {
+            return;
+          }
+          if (!state) {
+            setWorkspaceReady(true);
+            return;
+          }
+          upsertThreadState(state);
           setWorkspaceReady(true);
-          return;
-        }
-        upsertThreadState(state);
-        setWorkspaceReady(true);
-      });
+        },
+      );
     }, 0);
 
     return () => {
       cancelled = true;
       window.clearTimeout(timeoutId);
-      browserPanelHideScheduler.schedule(threadId, () => {
-        void api.browser.hide({ threadId });
+      browserPanelHideScheduler.schedule(browserSurfaceId, () => {
+        void api.browser.hide({ threadId: browserSurfaceId });
       });
     };
-  }, [api, isLiveRuntime, runBrowserAction, threadId, upsertThreadState]);
+  }, [api, browserSurfaceId, isLiveRuntime, runBrowserAction, upsertThreadState]);
 
   useEffect(() => {
     const activeTabId = activeTab?.id ?? null;
@@ -965,7 +997,7 @@ export function BrowserPanel({
       };
       void api.browser
         .attachWebview({
-          threadId,
+          threadId: browserSurfaceId,
           tabId: activeTabId,
           webContentsId,
         })
@@ -1011,10 +1043,10 @@ export function BrowserPanel({
     activeTabId,
     api,
     browserRendererGeneration,
+    browserSurfaceId,
     detachRendererBrowserWebview,
     isLiveRuntime,
     showLocalServersHome,
-    threadId,
     upsertThreadState,
     workspaceReady,
   ]);
@@ -1042,7 +1074,7 @@ export function BrowserPanel({
 
     const intervalId = window.setInterval(() => {
       console.info(`[${SYNARA_BROWSER_LABEL} panel perf]`, {
-        threadId,
+        threadId: browserSurfaceId,
         ...perfCountersRef.current,
       });
     }, BROWSER_PERF_SAMPLE_INTERVAL_MS);
@@ -1050,7 +1082,7 @@ export function BrowserPanel({
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [isLiveRuntime, threadId]);
+  }, [browserSurfaceId, isLiveRuntime]);
 
   useLayoutEffect(() => {
     if (!api || !isLiveRuntime) {
@@ -1098,7 +1130,7 @@ export function BrowserPanel({
       lastSentBoundsRef.current = nextKey;
       perfCountersRef.current.syncSends += 1;
       void api.browser
-        .setPanelBounds({ threadId, bounds, surface: "renderer" })
+        .setPanelBounds({ threadId: browserSurfaceId, bounds, surface: "renderer" })
         .catch(ignoreBrowserBoundsSyncError);
     };
 
@@ -1205,7 +1237,7 @@ export function BrowserPanel({
       burstFramesRemainingRef.current = 0;
       burstStableFramesRef.current = 0;
     };
-  }, [api, isAnnotating, isLiveRuntime, showLocalServersHome, threadId]);
+  }, [api, browserSurfaceId, isAnnotating, isLiveRuntime, showLocalServersHome]);
 
   const onSubmitAddress = useCallback(() => {
     if (!ensureLiveRuntime()) {
@@ -1221,7 +1253,7 @@ export function BrowserPanel({
     setAddressValue(normalizedAddress);
     void runBrowserAction(() =>
       api.browser.navigate({
-        threadId,
+        threadId: browserSurfaceId,
         tabId: activeTab.id,
         url: normalizedAddress,
       }),
@@ -1234,9 +1266,9 @@ export function BrowserPanel({
     activeTab,
     addressValue,
     api,
+    browserSurfaceId,
     ensureLiveRuntime,
     runBrowserAction,
-    threadId,
     upsertThreadState,
   ]);
 
@@ -1255,7 +1287,9 @@ export function BrowserPanel({
 
       const tabId = suggestion.tabId;
       if (suggestion.kind === "tab" && typeof tabId === "string") {
-        void runBrowserAction(() => api.browser.selectTab({ threadId, tabId })).then((state) => {
+        void runBrowserAction(() =>
+          api.browser.selectTab({ threadId: browserSurfaceId, tabId }),
+        ).then((state) => {
           if (state) {
             upsertThreadState(state);
           }
@@ -1273,7 +1307,7 @@ export function BrowserPanel({
 
       void runBrowserAction(() =>
         api.browser.navigate({
-          threadId,
+          threadId: browserSurfaceId,
           url: suggestion.url,
           ...(activeTab ? { tabId: activeTab.id } : {}),
         }),
@@ -1283,7 +1317,7 @@ export function BrowserPanel({
         }
       });
     },
-    [activeTab, api, ensureLiveRuntime, runBrowserAction, threadId, upsertThreadState],
+    [activeTab, api, browserSurfaceId, ensureLiveRuntime, runBrowserAction, upsertThreadState],
   );
 
   const onOpenLocalServer = useCallback(
@@ -1304,7 +1338,7 @@ export function BrowserPanel({
 
       void runBrowserAction(() =>
         api.browser.navigate({
-          threadId,
+          threadId: browserSurfaceId,
           url,
           ...(tabId ? { tabId } : {}),
         }),
@@ -1314,7 +1348,7 @@ export function BrowserPanel({
         }
       });
     },
-    [api, ensureLiveRuntime, runBrowserAction, threadId, upsertThreadState],
+    [api, browserSurfaceId, ensureLiveRuntime, runBrowserAction, upsertThreadState],
   );
 
   const onCreateTab = useCallback(() => {
@@ -1324,7 +1358,9 @@ export function BrowserPanel({
     if (!api) {
       return;
     }
-    void runBrowserAction(() => api.browser.newTab({ threadId, activate: true })).then((state) => {
+    void runBrowserAction(() =>
+      api.browser.newTab({ threadId: browserSurfaceId, activate: true }),
+    ).then((state) => {
       if (state) {
         upsertThreadState(state);
       }
@@ -1333,12 +1369,12 @@ export function BrowserPanel({
         addressInputRef.current?.select();
       });
     });
-  }, [api, ensureLiveRuntime, runBrowserAction, threadId, upsertThreadState]);
+  }, [api, browserSurfaceId, ensureLiveRuntime, runBrowserAction, upsertThreadState]);
 
   const composerAttachmentCount =
     composerDraftImageCount + composerDraftFileCount + composerDraftAssistantSelectionCount;
   const composerAttachmentsAreFull = composerAttachmentCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS;
-  const attachmentLimitMessage = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} references per message.`;
+  const attachmentLimitMessage = browserCopy.attachments.limit(PROVIDER_SEND_TURN_MAX_ATTACHMENTS);
 
   const onCaptureScreenshot = useCallback(() => {
     if (!ensureLiveRuntime()) {
@@ -1354,14 +1390,17 @@ export function BrowserPanel({
     }
 
     void runBrowserAction(() =>
-      api.browser.captureScreenshot({ threadId, tabId: activeTab.id }),
+      api.browser.captureScreenshot({ threadId: browserSurfaceId, tabId: activeTab.id }),
     ).then((screenshot) => {
       if (!screenshot) {
         return;
       }
       if (screenshot.sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
         setLocalError(
-          `'${screenshotAttachmentName(screenshot)}' exceeds the ${IMAGE_SIZE_LIMIT_LABEL} attachment limit.`,
+          browserCopy.attachments.screenshotTooLarge(
+            screenshotAttachmentName(screenshot),
+            IMAGE_SIZE_LIMIT_LABEL,
+          ),
         );
         return;
       }
@@ -1374,6 +1413,8 @@ export function BrowserPanel({
     addComposerDraftImage,
     api,
     attachmentLimitMessage,
+    browserCopy,
+    browserSurfaceId,
     composerAttachmentsAreFull,
     ensureLiveRuntime,
     runBrowserAction,
@@ -1386,8 +1427,10 @@ export function BrowserPanel({
     if (!api) {
       return;
     }
-    void api.browser.cancelElementPick({ threadId }).catch(ignoreBrowserElementPickCancelError);
-  }, [api, threadId]);
+    void api.browser
+      .cancelElementPick({ threadId: browserSurfaceId })
+      .catch(ignoreBrowserElementPickCancelError);
+  }, [api, browserSurfaceId]);
 
   // Mode and bitmap are mirrored into refs so the exit path never has to depend on the
   // current mode/bitmap state. A state-dependent exitInteractionMode would change identity
@@ -1449,7 +1492,7 @@ export function BrowserPanel({
     setAnnotationError(null);
     applyInteractionMode("picking");
     void runBrowserAction(() =>
-      api.browser.startElementPick({ threadId, tabId: activeTab.id }),
+      api.browser.startElementPick({ threadId: browserSurfaceId, tabId: activeTab.id }),
     ).then((result) => {
       if (interactionRequestRef.current !== requestId) {
         return;
@@ -1462,12 +1505,12 @@ export function BrowserPanel({
     activeTab,
     api,
     applyInteractionMode,
+    browserSurfaceId,
     claimInteractionRequest,
     ensureLiveRuntime,
     exitInteractionMode,
     replaceAnnotationBitmap,
     runBrowserAction,
-    threadId,
   ]);
 
   const onToggleAnnotating = useCallback(() => {
@@ -1490,7 +1533,7 @@ export function BrowserPanel({
     const requestId = claimInteractionRequest();
     setAnnotationError(null);
     void runBrowserAction(() =>
-      api.browser.captureScreenshot({ threadId, tabId: activeTab.id }),
+      api.browser.captureScreenshot({ threadId: browserSurfaceId, tabId: activeTab.id }),
     ).then(async (screenshot) => {
       if (!screenshot || interactionRequestRef.current !== requestId) {
         return;
@@ -1517,13 +1560,13 @@ export function BrowserPanel({
     activeTab,
     api,
     applyInteractionMode,
+    browserSurfaceId,
     cancelElementPick,
     claimInteractionRequest,
     ensureLiveRuntime,
     exitInteractionMode,
     replaceAnnotationBitmap,
     runBrowserAction,
-    threadId,
   ]);
 
   const onConfirmAnnotation = useCallback(
@@ -1534,7 +1577,7 @@ export function BrowserPanel({
       }
       if (blob.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
         setAnnotationError(
-          `The annotated screenshot exceeds the ${IMAGE_SIZE_LIMIT_LABEL} attachment limit.`,
+          browserCopy.attachments.annotatedScreenshotTooLarge(IMAGE_SIZE_LIMIT_LABEL),
         );
         return;
       }
@@ -1545,6 +1588,7 @@ export function BrowserPanel({
     [
       addComposerDraftImage,
       attachmentLimitMessage,
+      browserCopy,
       composerAttachmentsAreFull,
       exitInteractionMode,
       threadId,
@@ -1558,7 +1602,7 @@ export function BrowserPanel({
       return;
     }
     return api.browser.onElementPicked((event) => {
-      if (event.threadId !== threadId) {
+      if (event.threadId !== browserSurfaceId) {
         return;
       }
       applyInteractionMode("browse");
@@ -1580,7 +1624,10 @@ export function BrowserPanel({
       }
       if (screenshot.sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
         setLocalError(
-          `'${screenshotAttachmentName(screenshot)}' exceeds the ${IMAGE_SIZE_LIMIT_LABEL} attachment limit.`,
+          browserCopy.attachments.screenshotTooLarge(
+            screenshotAttachmentName(screenshot),
+            IMAGE_SIZE_LIMIT_LABEL,
+          ),
         );
         return;
       }
@@ -1593,6 +1640,8 @@ export function BrowserPanel({
     api,
     applyInteractionMode,
     attachmentLimitMessage,
+    browserCopy,
+    browserSurfaceId,
     composerAttachmentsAreFull,
     isLiveRuntime,
     threadId,
@@ -1603,7 +1652,7 @@ export function BrowserPanel({
       return;
     }
     return api.browser.onElementPickCancelled((event) => {
-      if (event.threadId !== threadId) {
+      if (event.threadId !== browserSurfaceId) {
         return;
       }
       applyInteractionMode("browse");
@@ -1613,7 +1662,7 @@ export function BrowserPanel({
         setLocalError(event.message ?? "Couldn't pick that page element.");
       }
     });
-  }, [api, applyInteractionMode, isLiveRuntime, threadId]);
+  }, [api, applyInteractionMode, browserSurfaceId, isLiveRuntime]);
 
   // Esc leaves picking only. Annotating is deliberately excluded: a long markup session is
   // too easy to lose to a stray keypress, so it exits through its own toolbar buttons.
@@ -1636,12 +1685,13 @@ export function BrowserPanel({
     };
   }, [exitInteractionMode, interactionMode]);
 
-  // Switching tab/thread or unmounting the panel must not leave a live pick session behind.
+  // Switching tab/browser surface or unmounting the panel must not leave a live pick session
+  // behind.
   useEffect(() => {
     return () => {
       exitInteractionMode();
     };
-  }, [activeTab?.id, exitInteractionMode, threadId]);
+  }, [activeTab?.id, browserSurfaceId, exitInteractionMode]);
 
   const onCopyScreenshotToClipboard = useCallback(() => {
     if (!ensureLiveRuntime()) {
@@ -1652,7 +1702,7 @@ export function BrowserPanel({
     }
 
     void runBrowserAction(() =>
-      api.browser.copyScreenshotToClipboard({ threadId, tabId: activeTab.id }),
+      api.browser.copyScreenshotToClipboard({ threadId: browserSurfaceId, tabId: activeTab.id }),
     ).then((result) => {
       if (result === null) {
         return;
@@ -1677,7 +1727,7 @@ export function BrowserPanel({
         title: browserCopy.toast.screenshotCopied,
       });
     });
-  }, [activeTab, api, browserCopy, ensureLiveRuntime, runBrowserAction, threadId]);
+  }, [activeTab, api, browserCopy, browserSurfaceId, ensureLiveRuntime, runBrowserAction]);
 
   const copyActiveTabLink = useCallback(() => {
     if (!activeTab) {
@@ -1688,7 +1738,9 @@ export function BrowserPanel({
     // mirrors the keyboard chord — main writes the URL and emits onCopyLink, which surfaces
     // the toast in the listener below.
     if (isElectron && api) {
-      void runBrowserAction(() => api.browser.copyLink({ threadId, tabId: activeTab.id }));
+      void runBrowserAction(() =>
+        api.browser.copyLink({ threadId: browserSurfaceId, tabId: activeTab.id }),
+      );
       return;
     }
     const url = resolveCopyableBrowserTabUrl(activeTab);
@@ -1707,7 +1759,7 @@ export function BrowserPanel({
         // Clipboard writes can reject without user gesture; nothing actionable to surface.
       },
     );
-  }, [activeTab, api, browserCopy, runBrowserAction, threadId]);
+  }, [activeTab, api, browserCopy, browserSurfaceId, runBrowserAction]);
 
   // React chrome focus path: the native page handles the chord through the desktop main
   // process, so this only fires when the address bar/tab strip (not the page) is focused.
@@ -1747,12 +1799,12 @@ export function BrowserPanel({
       return;
     }
     return api.browser.onCopyLink((event) => {
-      if (event.threadId !== threadId) {
+      if (event.threadId !== browserSurfaceId) {
         return;
       }
       toastManager.add({ type: "success", title: browserCopy.toast.linkCopied });
     });
-  }, [api, browserCopy, isLiveRuntime, threadId]);
+  }, [api, browserCopy, browserSurfaceId, isLiveRuntime]);
 
   const onCloseTab = useCallback(
     (tabId: string) => {
@@ -1762,17 +1814,19 @@ export function BrowserPanel({
       if (!api) {
         return;
       }
-      void runBrowserAction(() => api.browser.closeTab({ threadId, tabId })).then((state) => {
-        if (!state) {
-          return;
-        }
-        upsertThreadState(state);
-        if (!state.open && state.tabs.length === 0) {
-          onClosePanel();
-        }
-      });
+      void runBrowserAction(() => api.browser.closeTab({ threadId: browserSurfaceId, tabId })).then(
+        (state) => {
+          if (!state) {
+            return;
+          }
+          upsertThreadState(state);
+          if (!state.open && state.tabs.length === 0) {
+            onClosePanel();
+          }
+        },
+      );
     },
-    [api, ensureLiveRuntime, onClosePanel, runBrowserAction, threadId, upsertThreadState],
+    [api, browserSurfaceId, ensureLiveRuntime, onClosePanel, runBrowserAction, upsertThreadState],
   );
 
   const header = (
@@ -1790,7 +1844,7 @@ export function BrowserPanel({
               if (!ensureLiveRuntime()) return;
               if (!api || !activeTab) return;
               void runBrowserAction(() =>
-                api.browser.goBack({ threadId, tabId: activeTab.id }),
+                api.browser.goBack({ threadId: browserSurfaceId, tabId: activeTab.id }),
               ).then((state) => {
                 if (state) {
                   upsertThreadState(state);
@@ -1811,7 +1865,7 @@ export function BrowserPanel({
               if (!ensureLiveRuntime()) return;
               if (!api || !activeTab) return;
               void runBrowserAction(() =>
-                api.browser.goForward({ threadId, tabId: activeTab.id }),
+                api.browser.goForward({ threadId: browserSurfaceId, tabId: activeTab.id }),
               ).then((state) => {
                 if (state) {
                   upsertThreadState(state);
@@ -1832,7 +1886,7 @@ export function BrowserPanel({
               if (!ensureLiveRuntime()) return;
               if (!api || !activeTab) return;
               void runBrowserAction(() =>
-                api.browser.reload({ threadId, tabId: activeTab.id }),
+                api.browser.reload({ threadId: browserSurfaceId, tabId: activeTab.id }),
               ).then((state) => {
                 if (state) {
                   upsertThreadState(state);
@@ -2040,6 +2094,22 @@ export function BrowserPanel({
               <BrowserActionMenuIcon icon={ExternalLinkIcon} />
               <span>{browserCopy.actions.openExternally}</span>
             </MenuItem>
+            {projectBrowserSharing ? (
+              <>
+                <MenuSeparator />
+                <MenuItem
+                  className={BROWSER_ACTION_MENU_ITEM_CLASS_NAME}
+                  onClick={projectBrowserSharing.onToggle}
+                >
+                  <BrowserActionMenuIcon icon={GlobeIcon} />
+                  <span>
+                    {projectBrowserSharing.shared
+                      ? browserCopy.sharing.perThread
+                      : browserCopy.sharing.shareOne}
+                  </span>
+                </MenuItem>
+              </>
+            ) : null}
             <MenuSeparator />
             <MenuItem className={BROWSER_ACTION_MENU_ITEM_CLASS_NAME} onClick={onClosePanel}>
               <BrowserActionMenuIcon icon={XIcon} />
@@ -2101,7 +2171,7 @@ export function BrowserPanel({
                       if (!ensureLiveRuntime()) return;
                       if (!api) return;
                       void runBrowserAction(() =>
-                        api.browser.selectTab({ threadId, tabId: tab.id }),
+                        api.browser.selectTab({ threadId: browserSurfaceId, tabId: tab.id }),
                       ).then((state) => {
                         if (state) {
                           upsertThreadState(state);

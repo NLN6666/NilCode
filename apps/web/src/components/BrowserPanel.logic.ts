@@ -328,30 +328,43 @@ export function browserAnnotationTheme(
   };
 }
 
-export function formatBrowserAnnotationActionError(
+/**
+ * Which annotation failure occurred. This module stays locale-free, so the caller maps the key
+ * through the active catalog (`browser.annotation.errors`) instead of receiving English here.
+ */
+export type BrowserAnnotationErrorKey =
+  | "notVisible"
+  | "stillLoading"
+  | "tabUnavailable"
+  | "alreadyActive"
+  | "cancelFailed"
+  | "syncFailed"
+  | "startFailed";
+
+export function browserAnnotationActionErrorKey(
   error: unknown,
   action: "start" | "cancel" | "sync",
-): string {
+): BrowserAnnotationErrorKey {
   const message = error instanceof Error ? error.message : "";
   if (/not (?:currently )?visible|must be visible/i.test(message)) {
-    return "Bring the browser tab into view before annotating.";
+    return "notVisible";
   }
   if (/document.*not ready|page.*not ready|still loading/i.test(message)) {
-    return "This page is still loading. Try annotating again in a moment.";
+    return "stillLoading";
   }
   if (/guest.*(?:missing|unavailable|not found)|tab.*not found/i.test(message)) {
-    return "This browser tab isn't available for annotation.";
+    return "tabUnavailable";
   }
   if (/session.*active|already.*annotat/i.test(message)) {
-    return "Annotation mode is already active.";
+    return "alreadyActive";
   }
   if (action === "cancel") {
-    return "Couldn't close annotation mode. Try again.";
+    return "cancelFailed";
   }
   if (action === "sync") {
-    return "Couldn't refresh annotation markers.";
+    return "syncFailed";
   }
-  return "Couldn't start annotation mode. Try again.";
+  return "startFailed";
 }
 
 // Hides about:blank from the address bar so new tabs behave like real browsers.

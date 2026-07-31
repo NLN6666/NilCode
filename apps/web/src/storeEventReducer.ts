@@ -783,6 +783,7 @@ function applyOrchestrationEvent(
           defaultModelSelection: event.payload.defaultModelSelection,
           scripts: event.payload.scripts,
           isPinned: event.payload.isPinned ?? false,
+          browserSharing: event.payload.browserSharing,
           spaceId: event.payload.spaceId ?? null,
           createdAt: event.payload.createdAt,
           updatedAt: event.payload.updatedAt,
@@ -810,6 +811,7 @@ function applyOrchestrationEvent(
               : existingProject.defaultModelSelection,
           scripts: event.payload.scripts ?? existingProject.scripts,
           isPinned: event.payload.isPinned ?? existingProject.isPinned ?? false,
+          browserSharing: event.payload.browserSharing ?? existingProject.browserSharing,
           spaceId:
             event.payload.spaceId !== undefined
               ? event.payload.spaceId

@@ -7,8 +7,10 @@
  * @module ProjectionProjectRepository
  */
 import {
+  DEFAULT_PROJECT_BROWSER_SHARING,
   IsoDateTime,
   ModelSelection,
+  ProjectBrowserSharing,
   ProjectId,
   ProjectKind,
   ProjectScript,
@@ -27,6 +29,9 @@ export const ProjectionProject = Schema.Struct({
   defaultModelSelection: Schema.NullOr(ModelSelection),
   scripts: Schema.Array(ProjectScript),
   isPinned: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  browserSharing: ProjectBrowserSharing.pipe(
+    Schema.withDecodingDefault(() => DEFAULT_PROJECT_BROWSER_SHARING),
+  ),
   spaceId: Schema.NullOr(SpaceId).pipe(Schema.withDecodingDefault(() => null)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,

@@ -9,7 +9,7 @@ import {
   buildBrowserAddressSuggestions,
   createBrowserPanelHideScheduler,
   createBrowserRendererLossHandler,
-  formatBrowserAnnotationActionError,
+  browserAnnotationActionErrorKey,
   isBrowserAnnotationEventInScope,
   normalizeBrowserAddressInput,
   resolveBrowserChromeStatus,
@@ -162,11 +162,11 @@ describe("browser annotation presentation", () => {
       primaryText: "rgb(24, 24, 27)",
     });
     expect(
-      formatBrowserAnnotationActionError(
+      browserAnnotationActionErrorKey(
         new Error("Browser annotation document is not ready"),
         "start",
       ),
-    ).toBe("This page is still loading. Try annotating again in a moment.");
+    ).toBe("stillLoading");
   });
 });
 

@@ -19,10 +19,10 @@ import { PanelStateMessage } from "./PanelStateMessage";
 import {
   ChatMountLoader,
   DeferredChatView,
-  LazyBrowserPanel,
   LazyDiffPanel,
   noopChatSurfaceAction,
 } from "./ChatThreadSurfacePrimitives";
+import { BrowserDockPane } from "./BrowserDockPane";
 import { useBrowserPanelDesktopBridge } from "../../hooks/useBrowserPanelDesktopBridge";
 import { useHandleNewChat } from "../../hooks/useHandleNewChat";
 import type { ChatRightPanel } from "../../diffRouteSearch";
@@ -110,7 +110,6 @@ function SplitPaneEmbeddedPanel(props: {
     patch: Partial<Pick<SplitViewPanePanelState, "panel" | "diffTurnId" | "diffFilePath">>,
   ) => void;
 }) {
-  const paneCopy = useMessages().chat.panes;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const panelWidthStorageKey =
     props.panel === "browser" ? "browser" : props.panel === "diff" ? "diff" : "panel";
@@ -208,13 +207,11 @@ function SplitPaneEmbeddedPanel(props: {
         onPointerDown={startResize}
       />
       {props.panel === "browser" ? (
-        <Suspense fallback={<PanelStateMessage>{paneCopy.loadingBrowser}</PanelStateMessage>}>
-          <LazyBrowserPanel
-            mode="sidebar"
-            threadId={props.threadId}
-            onClosePanel={props.onClosePanel}
-          />
-        </Suspense>
+        <BrowserDockPane
+          threadId={props.threadId}
+          paneId={props.paneId}
+          onClosePanel={props.onClosePanel}
+        />
       ) : (
         <LazyDiffPanel
           mode="sidebar"

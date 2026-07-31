@@ -70,12 +70,12 @@ import { ChatPaneDropOverlay } from "../chat-drop-overlay/ChatPaneDropOverlay";
 import {
   ChatMountLoader,
   DeferredChatView,
-  LazyBrowserPanel,
   LazyDiffPanel,
   noopChatSurfaceAction,
 } from "./ChatThreadSurfacePrimitives";
 import { PanelStateMessage } from "./PanelStateMessage";
 import { BrowserPaneTerminalSplit } from "./BrowserPaneTerminalSplit";
+import { BrowserDockPane } from "./BrowserDockPane";
 import { RightDock } from "./RightDock";
 import { RIGHT_DOCK_ADD_MENU_KINDS, getRightDockPaneMeta } from "./rightDockPaneMeta";
 import {
@@ -675,15 +675,13 @@ export function SingleChatSurface(props: {
       case "browser":
         return (
           <BrowserPaneTerminalSplit hostThreadId={props.threadId} projectId={props.projectId}>
-            <Suspense fallback={<PanelStateMessage>{paneCopy.loadingBrowser}</PanelStateMessage>}>
-              <LazyBrowserPanel
-                mode="sidebar"
-                threadId={props.threadId}
-                onClosePanel={() => closePane(props.threadId, pane.id)}
-                runtimeMode={context.runtimeMode}
-                onRequestLive={requestActiveDockPaneLive}
-              />
-            </Suspense>
+            <BrowserDockPane
+              threadId={props.threadId}
+              paneId={pane.id}
+              onClosePanel={() => closePane(props.threadId, pane.id)}
+              runtimeMode={context.runtimeMode}
+              onRequestLive={requestActiveDockPaneLive}
+            />
           </BrowserPaneTerminalSplit>
         );
       case "pullRequest":

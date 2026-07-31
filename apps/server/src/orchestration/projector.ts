@@ -410,6 +410,7 @@ export function projectEvent(
             defaultModelSelection: payload.defaultModelSelection,
             scripts: payload.scripts,
             isPinned: payload.isPinned ?? false,
+            browserSharing: payload.browserSharing ?? "isolated",
             spaceId: payload.spaceId ?? null,
             createdAt: payload.createdAt,
             updatedAt: payload.updatedAt,
@@ -445,6 +446,9 @@ export function projectEvent(
                     : {}),
                   ...(payload.scripts !== undefined ? { scripts: payload.scripts } : {}),
                   ...(payload.isPinned !== undefined ? { isPinned: payload.isPinned } : {}),
+                  ...(payload.browserSharing !== undefined
+                    ? { browserSharing: payload.browserSharing }
+                    : {}),
                   ...(payload.spaceId !== undefined ? { spaceId: payload.spaceId } : {}),
                   updatedAt: payload.updatedAt,
                 }

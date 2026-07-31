@@ -352,12 +352,14 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
               command: "bun run build",
               icon: "build",
               runOnWorktreeCreate: false,
+              port: null,
             },
           ],
           createdAt: "2026-02-24T00:00:00.000Z",
           updatedAt: "2026-02-24T00:00:01.000Z",
           deletedAt: null,
           isPinned: false,
+          browserSharing: "isolated",
         },
       ]);
       assert.deepEqual(snapshot.threads, [

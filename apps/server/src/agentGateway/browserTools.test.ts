@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { Effect } from "effect";
+import { ProjectId } from "@synara/contracts";
+import { projectBrowserSurfaceId } from "@synara/shared/browserSurface";
 
 import type { BrowserAutomationHostShape } from "../browserAutomation/Services/BrowserAutomationHost.ts";
 import { makeAgentGatewayBrowserTools, normalizeGatewayBrowserArguments } from "./browserTools.ts";
@@ -335,6 +337,49 @@ describe("agent gateway browser tools", () => {
         name: "browser_tabs",
       }),
     );
+  });
+
+  it("addresses the caller thread's own surface when no surface resolver is supplied", async () => {
+    const execute = vi.fn(() =>
+      Effect.succeed({
+        tabs: [],
+        activeTabId: null,
+        assignedTabId: null,
+      }),
+    );
+    const tools = makeAgentGatewayBrowserTools({ available: true, execute }, {});
+    const tabs = tools.find((tool) => tool.definition.name === "browser_tabs")!;
+
+    const result = await Effect.runPromise(tabs.handler({}, context));
+
+    expect(result.isError).not.toBe(true);
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ threadId: "thread-a" }));
+  });
+
+  it("addresses the shared project surface when the resolver returns one", async () => {
+    const execute = vi.fn(() =>
+      Effect.succeed({
+        tabs: [],
+        activeTabId: null,
+        assignedTabId: null,
+      }),
+    );
+    const sharedSurfaceId = projectBrowserSurfaceId(ProjectId.makeUnsafe("project-a"));
+    const resolveBrowserSurfaceId = vi.fn(() => Effect.succeed(sharedSurfaceId));
+    const tools = makeAgentGatewayBrowserTools(
+      { available: true, execute },
+      { resolveBrowserSurfaceId },
+    );
+    const tabs = tools.find((tool) => tool.definition.name === "browser_tabs")!;
+
+    const result = await Effect.runPromise(tabs.handler({}, context));
+
+    expect(result.isError).not.toBe(true);
+    expect(resolveBrowserSurfaceId).toHaveBeenCalledWith(context);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "project-browser:project-a" }),
+    );
+    expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({ threadId: "thread-a" }));
   });
 
   it("resolves upload workspace server-side and never places it in public arguments", async () => {
