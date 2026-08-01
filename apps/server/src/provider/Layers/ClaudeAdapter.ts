@@ -1168,11 +1168,27 @@ export function mapSupportedAgents(agents: ReadonlyArray<AgentInfo>): ProviderAg
   );
 }
 
+// Claude's CLI only treats a slash command as a command when it is the very
+// first thing in the user message. Anything Synara prepends (the `Ultrathink:`
+// effort keyword, the plan-mode preamble) pushes it into the body, where the
+// CLI hands it to the model as ordinary prose instead — `/compact` then answers
+// "that's a built-in CLI command" and silently never compacts. A leading
+// command word followed by whitespace or end-of-input is the CLI's own shape;
+// `/home/user/x.ts is broken` is not a command and stays decorated because the
+// path separator is not part of a command word.
+const CLAUDE_NATIVE_SLASH_COMMAND_PATTERN = /^\/[A-Za-z0-9][A-Za-z0-9_:-]*(?:\s[\s\S]*)?$/;
+
 function buildPromptText(
   input: ProviderSendTurnInput,
   agents: ReadonlyArray<ProviderAgentDescriptor>,
 ): string {
   const basePrompt = buildClaudeSubagentPrompt(input.input?.trim() ?? "", { agents }).prompt;
+  // Plan mode stays enforced for these turns: `sendTurn` sends the real gate via
+  // `query.setPermissionMode`, so dropping the advisory text preamble here costs
+  // no safety while keeping the command at offset 0.
+  if (CLAUDE_NATIVE_SLASH_COMMAND_PATTERN.test(basePrompt)) {
+    return basePrompt;
+  }
   const rawEffort =
     input.modelSelection?.provider === "claudeAgent" ? input.modelSelection.options?.effort : null;
   const requestedEffort = trimOrNull(rawEffort);
