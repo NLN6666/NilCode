@@ -4,6 +4,7 @@ import type {
   BrowserAnnotationMarker,
   BrowserAnnotationSource,
   BrowserAnnotationTheme,
+  BrowserAnnotationLocale,
 } from "@synara/contracts";
 import { sanitizeBrowserAnnotationUrl } from "@synara/shared/browserAnnotations";
 
@@ -339,6 +340,34 @@ function applyVisualTheme(theme: BrowserAnnotationTheme): void {
   host.style.setProperty("--annotation-focus-border", theme.focusBorder);
   host.style.setProperty("--annotation-primary", theme.primary);
   host.style.setProperty("--annotation-primary-text", theme.primaryText);
+}
+
+/**
+ * Copy for the in-page popover, resolved inside the guest.
+ *
+ * The guest is an isolated world with no route to the web message catalog, and its shell is
+ * built from an `innerHTML` template — so the renderer sends a bounded locale name and the
+ * strings stay compile-time constants here. Applied via `textContent` / `setAttribute`, never
+ * interpolated into markup.
+ */
+const GUEST_COPY = {
+  en: {
+    dialogLabel: "Annotate element",
+    notePlaceholder: "Add an optional note…",
+    submit: "Annotate",
+  },
+  "zh-CN": {
+    dialogLabel: "标注元素",
+    notePlaceholder: "添加备注（可选）…",
+    submit: "标注",
+  },
+} as const satisfies Record<BrowserAnnotationLocale, Record<string, string>>;
+
+function applyGuestCopy(locale: BrowserAnnotationLocale): void {
+  const copy = GUEST_COPY[locale];
+  popover?.setAttribute("aria-label", copy.dialogLabel);
+  textarea?.setAttribute("placeholder", copy.notePlaceholder);
+  if (submitButton) submitButton.textContent = copy.submit;
 }
 
 function renderOverlay(): void {
@@ -751,9 +780,9 @@ function initializeOverlay(): void {
     </style>
     <div class="badges"></div>
     <div class="outline" hidden></div>
-    <section class="popover" role="dialog" aria-label="Annotate element" hidden>
-      <textarea maxlength="${GUEST_ANNOTATION_MAX_COMMENT_LENGTH}" placeholder="Add an optional note…"></textarea>
-      <div class="footer"><span class="hint">⌘/Ctrl + Enter</span><button type="button">Annotate</button></div>
+    <section class="popover" role="dialog" hidden>
+      <textarea maxlength="${GUEST_ANNOTATION_MAX_COMMENT_LENGTH}"></textarea>
+      <div class="footer"><span class="hint">⌘/Ctrl + Enter</span><button type="button"></button></div>
     </section>
   `;
   outline = shadow.querySelector(".outline");
@@ -761,6 +790,10 @@ function initializeOverlay(): void {
   textarea = shadow.querySelector("textarea");
   badgeLayer = shadow.querySelector(".badges");
   submitButton = shadow.querySelector("button");
+  // English until `start` names the session locale: the popover only becomes reachable from
+  // that command, so this is the marker-projection path's inert default rather than a fallback
+  // a user can read.
+  applyGuestCopy("en");
   document.documentElement.append(host);
   markerResizeObserver = new ResizeObserver(queueRender);
   markerResizeObserver.observe(document.documentElement);
@@ -792,6 +825,7 @@ ipcRenderer.on(BROWSER_ANNOTATION_GUEST_COMMAND_CHANNEL, (_event, rawCommand: un
   if (rawCommand.kind === "start") {
     activeSession = { sessionId: rawCommand.sessionId };
     applyVisualTheme(rawCommand.theme);
+    applyGuestCopy(rawCommand.locale);
     host?.setAttribute("data-interactive", "");
     resetSelection();
     queueRender();

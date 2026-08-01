@@ -166,15 +166,21 @@ export function nextBrowserAnnotationOrdinal(
   return annotations.reduce((max, annotation) => Math.max(max, annotation.ordinal), 0) + 1;
 }
 
+/**
+ * Locale-free: the caller supplies the fallback so this module never imports a catalog.
+ * UI callers pass `composer.attachments.browserAnnotation.fallbackLabel`; the English default
+ * serves the thread-title seeds, which are an English family in their own right.
+ */
 export function formatBrowserAnnotationLabel(
   annotation: Pick<BrowserAnnotationDraft, "comment" | "name" | "tagName" | "selector">,
+  fallbackLabel = "Page element",
 ): string {
   return (
     annotation.comment?.trim() ||
     annotation.name?.trim() ||
     annotation.tagName.trim() ||
     annotation.selector.trim() ||
-    "Page element"
+    fallbackLabel
   );
 }
 

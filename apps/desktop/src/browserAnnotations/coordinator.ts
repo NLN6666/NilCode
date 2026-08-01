@@ -11,6 +11,7 @@ import type {
   BrowserAnnotationDocument,
   BrowserAnnotationSource,
   BrowserAnnotationTheme,
+  BrowserAnnotationLocale,
   ThreadId,
 } from "@synara/contracts";
 import { sanitizeBrowserAnnotationUrl } from "@synara/shared/browserAnnotations";
@@ -20,6 +21,7 @@ import {
   BROWSER_ANNOTATION_PROTOCOL_VERSION,
   parseAnnotationGuestMessage,
   parseBrowserAnnotationTheme,
+  parseBrowserAnnotationLocale,
   parseBrowserAnnotationMarkers,
 } from "./protocol";
 
@@ -53,6 +55,7 @@ interface ActiveSession {
   readonly document: BrowserAnnotationDocument;
   readonly source: BrowserAnnotationSource;
   readonly theme: BrowserAnnotationTheme;
+  readonly locale: BrowserAnnotationLocale;
 }
 
 interface MarkerProjection {
@@ -106,6 +109,10 @@ export class BrowserAnnotationCoordinator {
     if (!theme) {
       throw new Error("Invalid browser annotation theme.");
     }
+    const locale = parseBrowserAnnotationLocale(input.locale);
+    if (!locale) {
+      throw new Error("Invalid browser annotation locale.");
+    }
     const runtime = this.options.resolveVisibleRuntime(input);
     const key = runtimeKey(input.threadId, input.tabId);
     const documentState = this.documentsByRuntimeKey.get(key);
@@ -148,6 +155,7 @@ export class BrowserAnnotationCoordinator {
       document: documentState.document,
       source: documentState.source,
       theme,
+      locale,
     };
     this.sessionsByRuntimeKey.set(key, session);
     runtime.webContents.send(BROWSER_ANNOTATION_GUEST_COMMAND_CHANNEL, {
@@ -156,6 +164,7 @@ export class BrowserAnnotationCoordinator {
       documentToken: session.document.token,
       sessionId: session.sessionId,
       theme: session.theme,
+      locale: session.locale,
     });
     this.emit({
       kind: "started",

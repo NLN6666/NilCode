@@ -15,6 +15,8 @@ import {
   type BrowserAnnotationMarker,
   type BrowserAnnotationSource,
   type BrowserAnnotationTheme,
+  type BrowserAnnotationLocale,
+  BROWSER_ANNOTATION_LOCALES,
 } from "@synara/contracts";
 import { sanitizeBrowserAnnotationPageTitle } from "@synara/shared/browserAnnotations";
 
@@ -63,6 +65,7 @@ export type AnnotationGuestCommand =
       readonly documentToken: string;
       readonly sessionId: string;
       readonly theme: BrowserAnnotationTheme;
+      readonly locale: BrowserAnnotationLocale;
     }
   | {
       readonly version: 1;
@@ -143,6 +146,17 @@ export function parseBrowserAnnotationTheme(value: unknown): BrowserAnnotationTh
         primary,
         primaryText,
       }
+    : null;
+}
+
+/**
+ * Narrow an untrusted renderer value onto a supported locale. Returns `null` rather than
+ * silently defaulting so `start` rejects a malformed payload the same way it rejects a bad
+ * theme, instead of quietly serving English.
+ */
+export function parseBrowserAnnotationLocale(value: unknown): BrowserAnnotationLocale | null {
+  return BROWSER_ANNOTATION_LOCALES.includes(value as BrowserAnnotationLocale)
+    ? (value as BrowserAnnotationLocale)
     : null;
 }
 

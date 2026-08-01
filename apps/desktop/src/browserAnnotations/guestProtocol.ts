@@ -12,6 +12,8 @@ export const GUEST_ANNOTATION_MAX_SELECTOR_LENGTH = 1_024;
 export const GUEST_ANNOTATION_MAX_TEXT_LENGTH = 280;
 export const GUEST_ANNOTATION_MAX_URL_LENGTH = 2_048;
 const GUEST_ANNOTATION_MAX_MARKERS = 32;
+/** Mirror of `BROWSER_ANNOTATION_LOCALES`; see the file header on why this is duplicated. */
+const GUEST_ANNOTATION_LOCALES: ReadonlySet<string> = new Set(["en", "zh-CN"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -77,7 +79,12 @@ export function isGuestAnnotationCommand(value: unknown): value is AnnotationGue
     return false;
   }
   if (value.kind === "start") {
-    return validIdentifier(value.sessionId) && validTheme(value.theme);
+    return (
+      validIdentifier(value.sessionId) &&
+      validTheme(value.theme) &&
+      typeof value.locale === "string" &&
+      GUEST_ANNOTATION_LOCALES.has(value.locale)
+    );
   }
   if (value.kind === "cancel") return validIdentifier(value.sessionId);
   if (value.kind === "refresh-document") return true;

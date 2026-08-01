@@ -87,7 +87,7 @@ import { Input } from "./ui/input";
 import { Menu, MenuItem, MenuSeparator, MenuTrigger } from "./ui/menu";
 import { Skeleton } from "./ui/skeleton";
 import { toastManager } from "./ui/toast";
-import { useMessages } from "~/i18n/context";
+import { useLocale, useMessages } from "~/i18n/context";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 interface BrowserPanelProps {
@@ -585,6 +585,7 @@ export function BrowserPanel({
   projectBrowserSharing,
 }: BrowserPanelProps) {
   const browserCopy = useMessages().browser;
+  const activeLocale = useLocale();
   // Defaults belong in the body, never in the destructuring pattern: React Compiler cannot lower an
   // AssignmentPattern there and silently drops the whole component's memoization.
   const runtimeMode = runtimeModeProp ?? "live";
@@ -707,6 +708,7 @@ export function BrowserPanel({
     addAnnotation: addAnnotationToHostThreadDraft,
     onError: setLocalError,
     errorCopy: browserCopy.annotation.errors,
+    locale: activeLocale,
   });
 
   const requestLiveRuntime = useCallback(() => {

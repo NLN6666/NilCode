@@ -879,6 +879,7 @@ describe("wsNativeApi", () => {
         primary: "rgb(250, 250, 250)",
         primaryText: "rgb(24, 24, 27)",
       },
+      locale: "en" as const,
     };
     const cancelInput = { threadId, tabId: "tab-a" };
     const projection = {

@@ -124,6 +124,7 @@ function AnnotationHarness(props: {
     addAnnotation,
     onError: () => {},
     errorCopy: en.browser.annotation.errors,
+    locale: "en",
   });
 
   return (
@@ -186,6 +187,7 @@ describe("BrowserPanel annotations", () => {
         surface: expect.stringMatching(/^rgb/),
         primary: expect.stringMatching(/^rgb/),
       }),
+      locale: "en",
     });
 
     await mounted.getByRole("button", { name: "Cancel annotation" }).click();

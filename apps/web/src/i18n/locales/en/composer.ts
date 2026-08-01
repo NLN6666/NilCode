@@ -248,6 +248,23 @@ export const composer = {
     hideText: "Hide text",
     draftWarningLabel: "Draft attachment may not persist",
     draftWarningDescription: "Draft attachment is kept in memory and may be lost on navigation.",
+
+    /**
+     * DOM annotations picked from the in-app browser and carried as prompt attachments.
+     * Distinct from `browser.annotation`, which covers the screenshot-markup overlay.
+     */
+    browserAnnotation: {
+      /** Only reached when the element reported no comment, name, tag, and no selector. */
+      fallbackLabel: "Page element",
+      remove: (ordinal: number) => `Remove browser annotation ${ordinal}`,
+      describe: (ordinal: number, label: string, page: string) =>
+        `Browser annotation ${ordinal}: ${label}, ${page}`,
+      overflow: (count: number) => `+${count} ${count === 1 ? "other" : "others"}`,
+      showOverflow: (count: number) =>
+        `Show ${count} more browser ${count === 1 ? "annotation" : "annotations"}`,
+      overflowHeading: (count: number) =>
+        `${count} more ${count === 1 ? "annotation" : "annotations"}`,
+    },
   },
 
   /** The `/status` dialog: a read-only snapshot of the active thread's runtime. */

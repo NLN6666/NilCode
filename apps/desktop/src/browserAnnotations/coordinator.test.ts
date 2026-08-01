@@ -113,6 +113,7 @@ describe("BrowserAnnotationCoordinator", () => {
       threadId: THREAD_ID,
       tabId: TAB_ID,
       theme: DARK_ANNOTATION_THEME,
+      locale: "en",
     });
     expect(harness.markHumanControl).toHaveBeenCalledOnce();
 
@@ -183,6 +184,7 @@ describe("BrowserAnnotationCoordinator", () => {
       threadId: THREAD_ID,
       tabId: TAB_ID,
       theme: LIGHT_ANNOTATION_THEME,
+      locale: "en",
     });
     harness.coordinator.cancel({ threadId: THREAD_ID, tabId: TAB_ID });
 
@@ -193,6 +195,36 @@ describe("BrowserAnnotationCoordinator", () => {
       kind: "sync-markers",
       projectionVersion: 2,
     });
+  });
+
+  // The guest resolves its own popover copy, so the locale must survive the hop to the
+  // start command — otherwise the in-page annotate dialog silently stays English.
+  it("forwards the requested locale to the guest start command", () => {
+    const harness = createHarness();
+    harness.ready("document-a");
+    harness.coordinator.start({
+      threadId: THREAD_ID,
+      tabId: TAB_ID,
+      theme: LIGHT_ANNOTATION_THEME,
+      locale: "zh-CN",
+    });
+    expect(harness.sent.at(-1)?.payload).toMatchObject({
+      kind: "start",
+      locale: "zh-CN",
+    });
+  });
+
+  it("rejects a start whose locale is not supported", () => {
+    const harness = createHarness();
+    harness.ready("document-a");
+    expect(() =>
+      harness.coordinator.start({
+        threadId: THREAD_ID,
+        tabId: TAB_ID,
+        theme: LIGHT_ANNOTATION_THEME,
+        locale: "fr" as never,
+      }),
+    ).toThrow(/locale/i);
   });
 
   it("refreshes strict document/source affinity across SPA navigation and back", () => {
@@ -208,6 +240,7 @@ describe("BrowserAnnotationCoordinator", () => {
       threadId: THREAD_ID,
       tabId: TAB_ID,
       theme: LIGHT_ANNOTATION_THEME,
+      locale: "en",
     });
 
     harness.setUrl("https://example.test/next");
@@ -252,6 +285,7 @@ describe("BrowserAnnotationCoordinator", () => {
       threadId: THREAD_ID,
       tabId: TAB_ID,
       theme: LIGHT_ANNOTATION_THEME,
+      locale: "en",
     });
     harness.coordinator.handleNavigation(THREAD_ID, TAB_ID, harness.webContents.id);
     expect(harness.sent.at(-1)?.payload).toMatchObject({
@@ -264,6 +298,7 @@ describe("BrowserAnnotationCoordinator", () => {
         threadId: THREAD_ID,
         tabId: TAB_ID,
         theme: LIGHT_ANNOTATION_THEME,
+        locale: "en",
       }),
     ).toThrow(/not ready/i);
 
@@ -278,6 +313,7 @@ describe("BrowserAnnotationCoordinator", () => {
         threadId: THREAD_ID,
         tabId: TAB_ID,
         theme: LIGHT_ANNOTATION_THEME,
+        locale: "en",
       }),
     ).not.toThrow();
   });
@@ -322,6 +358,7 @@ describe("BrowserAnnotationCoordinator", () => {
       threadId: THREAD_ID,
       tabId: TAB_ID,
       theme: LIGHT_ANNOTATION_THEME,
+      locale: "en",
     });
     expect(session).toMatchObject({
       document: { url: safeUrl },

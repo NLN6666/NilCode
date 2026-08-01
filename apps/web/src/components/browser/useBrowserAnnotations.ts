@@ -10,6 +10,8 @@ import type {
   ThreadId,
 } from "@synara/contracts";
 
+import type { Locale } from "@synara/shared/i18n";
+
 import type { BrowserAnnotationDraft } from "../../lib/browserAnnotations";
 import type { Messages } from "~/i18n/locales/en";
 
@@ -51,6 +53,8 @@ interface UseBrowserAnnotationsInput {
   readonly onError: (message: string | null) => void;
   /** Active-locale annotation failure copy, keyed by `browserAnnotationActionErrorKey`. */
   readonly errorCopy: Messages["browser"]["annotation"]["errors"];
+  /** Names the copy table the isolated annotation guest resolves for its in-page popover. */
+  readonly locale: Locale;
 }
 
 // Main survives renderer reloads, so a module-local 1,2,3 counter could move
@@ -84,6 +88,7 @@ export function useBrowserAnnotations({
   addAnnotation,
   onError,
   errorCopy,
+  locale,
 }: UseBrowserAnnotationsInput): BrowserAnnotationsController {
   const [phase, setPhase] = useState<"idle" | "starting" | "active">("idle");
   const [documentRevision, setDocumentRevision] = useState(0);
@@ -141,6 +146,7 @@ export function useBrowserAnnotations({
         threadId,
         tabId: activeTabId,
         theme: browserAnnotationTheme(document.documentElement),
+        locale,
       })
       .then(
         (session) => {
@@ -177,6 +183,7 @@ export function useBrowserAnnotations({
     clearLocalSession,
     enabled,
     errorCopy,
+    locale,
     methods,
     onError,
     threadId,

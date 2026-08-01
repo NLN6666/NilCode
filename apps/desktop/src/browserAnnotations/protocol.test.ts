@@ -61,6 +61,7 @@ describe("browser annotation protocol", () => {
         documentToken: "document-1",
         sessionId: "session-1",
         theme,
+        locale: "zh-CN",
       }),
     ).toBe(true);
     expect(
@@ -78,6 +79,22 @@ describe("browser annotation protocol", () => {
         theme: { ...theme, primary: "var(--primary)" },
       }),
     ).toBe(false);
+  });
+
+  // The guest picks its popover copy from this field, so an unknown value must be rejected
+  // outright rather than silently falling through to a default.
+  it("requires a supported locale on the guest start command", () => {
+    const command = {
+      version: 1,
+      kind: "start",
+      documentToken: "document-1",
+      sessionId: "session-1",
+      theme,
+    };
+    expect(isGuestAnnotationCommand({ ...command, locale: "en" })).toBe(true);
+    expect(isGuestAnnotationCommand(command)).toBe(false);
+    expect(isGuestAnnotationCommand({ ...command, locale: "fr" })).toBe(false);
+    expect(isGuestAnnotationCommand({ ...command, locale: 7 })).toBe(false);
   });
 
   it("normalizes an empty optional comment to null without exposing form text", () => {

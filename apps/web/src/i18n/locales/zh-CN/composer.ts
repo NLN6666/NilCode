@@ -219,6 +219,15 @@ export const composer: Messages["composer"] = {
     hideText: "收起全文",
     draftWarningLabel: "草稿附件可能不会保留",
     draftWarningDescription: "草稿附件仅保存在内存中，页面跳转后可能丢失。",
+
+    browserAnnotation: {
+      fallbackLabel: "页面元素",
+      remove: (ordinal) => `移除浏览器标注 ${ordinal}`,
+      describe: (ordinal, label, page) => `浏览器标注 ${ordinal}：${label}，${page}`,
+      overflow: (count) => `+${count} 个`,
+      showOverflow: (count) => `显示另外 ${count} 个浏览器标注`,
+      overflowHeading: (count) => `另外 ${count} 个标注`,
+    },
   },
 
   status: {

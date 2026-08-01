@@ -68,10 +68,25 @@ export interface BrowserAnnotationTheme {
   primaryText: string;
 }
 
+/**
+ * Locale for guest-rendered copy.
+ *
+ * Bounded for the same reason as the theme: the annotation guest is an isolated world that
+ * cannot reach the web message catalog, and interpolating renderer-supplied strings into its
+ * shadow DOM would widen the injection surface. The renderer therefore only names a locale and
+ * the guest resolves its own compile-time copy table.
+ *
+ * Mirrors `SUPPORTED_LOCALES` in `@synara/shared/i18n`; contracts stays dependency-free, and
+ * `browserAnnotationLocales.test.ts` fails if the two lists ever drift apart.
+ */
+export const BROWSER_ANNOTATION_LOCALES = ["en", "zh-CN"] as const;
+export type BrowserAnnotationLocale = (typeof BROWSER_ANNOTATION_LOCALES)[number];
+
 export interface BrowserAnnotationStartInput {
   threadId: ThreadId;
   tabId: string;
   theme: BrowserAnnotationTheme;
+  locale: BrowserAnnotationLocale;
 }
 
 export interface BrowserAnnotationCancelInput {
