@@ -3,6 +3,7 @@ import {
   type AutomationSchedule,
   type ApprovalRequestId,
   DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_PROJECT_BROWSER_SHARING,
   EventId,
   MessageId,
   type ModelSelection,
@@ -39,6 +40,8 @@ import {
   RuntimeMode,
 } from "@synara/contracts";
 import { automationRequiresTargetThread } from "@synara/shared/automationMode";
+import { resolveBrowserSurfaceId } from "@synara/shared/browserSurface";
+import { abortProjectPreview } from "~/lib/projectPreviewLauncher";
 import { getModelCapabilities, normalizeModelSlug } from "@synara/shared/model";
 import { resolveTailUserMessageEditTarget } from "@synara/shared/conversationEdit";
 import { threadExportBlockedReason } from "@synara/shared/threadExport";
@@ -273,12 +276,7 @@ import {
   togglePendingUserInputOptionSelection,
   type PendingUserInputDraftAnswer,
 } from "../pendingUserInput";
-import { createPortal } from "react-dom";
-
-import {
-  selectBrowserTerminalHost,
-  useBrowserTerminalHostStore,
-} from "../browserTerminalHostStore";
+import { resolveProjectScriptTerminalScope } from "../lib/projectServiceTerminalScope";
 import { selectRightDockState, useRightDockStore } from "../rightDockStore";
 import { useStore } from "../store";
 import { RenameThreadDialog } from "./RenameThreadDialog";
@@ -2029,11 +2027,6 @@ export default function ChatView({
     confirmTerminalClose: settings.confirmTerminalTabClose,
     onDeletePlaceholderThread: deletePlaceholderTerminalThread,
   });
-  // Non-null while this thread's browser dock pane is mounted: the slot beneath its preview
-  // that the terminal drawer renders into instead of the chat column's bottom drawer.
-  const browserTerminalHost = useBrowserTerminalHostStore(
-    useMemo(() => selectBrowserTerminalHost(threadId), [threadId]),
-  );
   const projectInstructions = useProjectInstructionsStore((state) =>
     activeProjectId ? (state.instructionsByProjectId[activeProjectId] ?? "") : "",
   );
@@ -4043,15 +4036,23 @@ export default function ChatView({
       },
     });
   }, [browserOpen, navigate, onToggleBrowserPanel, threadId]);
+  // The URL must land on the surface the pane actually shows: a project set to share one
+  // browser drives `project-browser:<projectId>`, and opening the thread's own surface instead
+  // would navigate a window nobody is looking at. Same resolver as BrowserDockPane and the
+  // agent gateway, so all three drive one browser.
   const openBrowserUrl = useCallback(
     (url: string) => {
       const api = readNativeApi();
-      void api?.browser.open({ threadId, initialUrl: url }).catch((error) => {
+      const browserSurfaceId = resolveBrowserSurfaceId({
+        threadId,
+        projectId: activeProjectId,
+        sharing: activeProject?.browserSharing ?? DEFAULT_PROJECT_BROWSER_SHARING,
+      });
+      void api?.browser.open({ threadId: browserSurfaceId, initialUrl: url }).catch((error) => {
         toastManager.add({
           type: "error",
-          title: "Could not open repository",
-          description:
-            error instanceof Error ? error.message : "The in-app browser could not open GitHub.",
+          title: "Could not open the in-app browser",
+          description: error instanceof Error ? error.message : url,
         });
       });
       if (onOpenBrowserUrl) {
@@ -4068,7 +4069,7 @@ export default function ChatView({
         }),
       });
     },
-    [navigate, onOpenBrowserUrl, threadId],
+    [activeProject?.browserSharing, activeProjectId, navigate, onOpenBrowserUrl, threadId],
   );
 
   const envLocked = Boolean(
@@ -4480,7 +4481,10 @@ export default function ChatView({
       hasRightDockPanes,
     ],
   );
-  const { startPreview: startScriptPreview } = useProjectScriptPreview({ openBrowserUrl });
+  const { startPreview: startScriptPreview } = useProjectScriptPreview({
+    projectId: activeProjectId,
+    openBrowserUrl,
+  });
   const runProjectScript = useCallback(
     async (
       script: ProjectScript,
@@ -4495,33 +4499,52 @@ export default function ChatView({
         });
       }
       const targetCwd = options?.cwd ?? gitCwd ?? activeProject.cwd;
+      // A service — an action that declares a port — runs in the project-wide service scope
+      // rather than in this chat: the port is a project singleton, so every thread has to see
+      // the same terminal, the same running state, and the same Stop button. Everything else
+      // (tests, builds, one-off commands) stays in this chat's own drawer.
+      const isService = script.port !== null && script.port !== undefined;
+      const runScopeId =
+        resolveProjectScriptTerminalScope({
+          isService,
+          projectId: activeProject.id,
+          threadId: activeThreadId,
+        }) ?? activeThreadId;
+      const runScopeTerminalState = selectThreadTerminalState(
+        useTerminalStateStore.getState().terminalStateByThreadId,
+        runScopeId,
+      );
       const baseTerminalId =
-        terminalState.activeTerminalId ||
-        terminalState.terminalIds[0] ||
+        runScopeTerminalState.activeTerminalId ||
+        runScopeTerminalState.terminalIds[0] ||
         DEFAULT_THREAD_TERMINAL_ID;
       const { shouldCreateNewTerminal, terminalId: targetTerminalId } =
         resolveProjectScriptTerminalTarget({
           baseTerminalId,
           createTerminalId: randomTerminalId,
-          hasRunningTerminal: terminalState.runningTerminalIds.length > 0,
+          hasRunningTerminal: runScopeTerminalState.runningTerminalIds.length > 0,
           preferNewTerminal: options?.preferNewTerminal,
-          terminalOpen: terminalState.terminalOpen,
+          terminalOpen: runScopeTerminalState.terminalOpen,
         });
 
-      setTerminalOpen(true);
+      useTerminalStateStore.getState().setTerminalOpen(runScopeId, true);
       if (shouldCreateNewTerminal) {
-        storeNewTerminal(activeThreadId, targetTerminalId);
+        storeNewTerminal(runScopeId, targetTerminalId);
       } else {
-        storeSetActiveTerminal(activeThreadId, targetTerminalId);
+        storeSetActiveTerminal(runScopeId, targetTerminalId);
       }
-      requestTerminalFocus();
+      // Only the chat drawer takes focus. A service's terminal lives under the browser
+      // preview, which expands itself off the `terminalOpen` set above.
+      if (!isService) {
+        requestTerminalFocus();
+      }
 
       // Nested function so the `try` body holds no value blocks — see the comment on
       // `deleteEmptyTerminalThread` above for why React Compiler requires this shape.
       const runScriptInTargetTerminal = async () => {
         const { metadata } = await runProjectCommandInTerminal({
           api,
-          threadId: activeThreadId,
+          threadId: runScopeId,
           terminalId: targetTerminalId,
           project: {
             cwd: isStudioContainer ? targetCwd : activeProject.cwd,
@@ -4532,24 +4555,24 @@ export default function ChatView({
           ...(options?.env ? { env: options.env } : {}),
         });
         if (metadata) {
-          storeSetTerminalMetadata(activeThreadId, targetTerminalId, {
+          storeSetTerminalMetadata(runScopeId, targetTerminalId, {
             cliKind: metadata.cliKind,
             label: metadata.label,
           });
         }
-        if (script.port !== null && script.port !== undefined) {
+        if (isService) {
           // Only port-declaring actions become stoppable services; a test or build
           // run is expected to end on its own and should not grow a Stop button.
           useTerminalStateStore
             .getState()
-            .markTerminalServiceScript(activeThreadId, targetTerminalId, script.id);
+            .markTerminalServiceScript(runScopeId, targetTerminalId, script.id);
         }
         startScriptPreview(script);
       };
 
       try {
         await runScriptInTargetTerminal();
-        return { terminalId: targetTerminalId };
+        return { threadId: runScopeId, terminalId: targetTerminalId };
       } catch (error) {
         setThreadError(
           activeThreadId,
@@ -4570,17 +4593,12 @@ export default function ChatView({
       gitCwd,
       isStudioContainer,
       requestTerminalFocus,
-      setTerminalOpen,
       setThreadError,
       startScriptPreview,
       storeNewTerminal,
       storeSetActiveTerminal,
       storeSetTerminalMetadata,
       setLastInvokedScriptByProjectId,
-      terminalState.activeTerminalId,
-      terminalState.terminalOpen,
-      terminalState.runningTerminalIds,
-      terminalState.terminalIds,
     ],
   );
   const stopActiveThreadSession = useCallback(async () => {
@@ -4670,21 +4688,45 @@ export default function ChatView({
     setPrompt,
   ]);
 
+  // The service scope is the project's, so a sibling chat shows the same Stop button instead
+  // of offering to start a second copy on an already-occupied port. Subscribing to that one
+  // scope's state (a stable object reference) keeps this out of the hot path: unrelated
+  // terminals in other chats no longer re-render the view.
+  const serviceScopeId = resolveProjectScriptTerminalScope({
+    isService: true,
+    projectId: activeProjectId,
+    threadId: activeThreadId,
+  });
+  const serviceTerminalState = useTerminalStateStore((state) =>
+    serviceScopeId === null
+      ? null
+      : selectThreadTerminalState(state.terminalStateByThreadId, serviceScopeId),
+  );
   const runningProjectScriptIds = useMemo(
-    () => selectRunningServiceScriptIds(terminalState),
-    [terminalState],
+    () =>
+      serviceTerminalState === null
+        ? new Set<string>()
+        : selectRunningServiceScriptIds(serviceTerminalState),
+    [serviceTerminalState],
   );
 
   const stopProjectScript = useCallback(
     (script: ProjectScript) => {
       const api = readNativeApi();
-      if (!api || !activeThreadId) return;
+      // Stopping supersedes a preview that is still waiting for the port, so the user does not
+      // get a "never started serving" report for a server they deliberately killed.
+      if (activeProjectId) {
+        abortProjectPreview(activeProjectId);
+      }
+      if (!api || !activeThreadId || serviceScopeId === null || serviceTerminalState === null) {
+        return;
+      }
       // Ctrl-C, not terminal.close: after a dev server stops the next thing anyone
       // does is read why, and closing the terminal would take the log with it. The
       // process exiting clears `runningTerminalIds`, which flips the button back.
-      for (const terminalId of selectServiceTerminalIdsForScript(terminalState, script.id)) {
+      for (const terminalId of selectServiceTerminalIdsForScript(serviceTerminalState, script.id)) {
         void api.terminal
-          .write({ threadId: activeThreadId, terminalId, data: TERMINAL_INTERRUPT_SEQUENCE })
+          .write({ threadId: serviceScopeId, terminalId, data: TERMINAL_INTERRUPT_SEQUENCE })
           .catch((error: unknown) => {
             setThreadError(
               activeThreadId,
@@ -4693,7 +4735,7 @@ export default function ChatView({
           });
       }
     },
-    [activeThreadId, setThreadError, terminalState],
+    [activeProjectId, activeThreadId, serviceScopeId, serviceTerminalState, setThreadError],
   );
   const persistProjectScripts = useCallback(
     async (input: {
@@ -8212,7 +8254,7 @@ export default function ChatView({
           const setupTerminal = await runProjectScript(setupScript, setupScriptOptions);
           if (setupTerminal) {
             await waitForSetupScriptTerminalActivity({
-              threadId: threadIdForSend,
+              threadId: setupTerminal.threadId,
               terminalId: setupTerminal.terminalId,
             });
           }
@@ -11905,26 +11947,16 @@ export default function ChatView({
       </div>
       {/* end horizontal flex container */}
 
-      {(() => {
-        if (!terminalState.terminalOpen || terminalWorkspaceOpen) {
-          return null;
-        }
-        // When the browser dock pane is open it publishes a slot beneath the preview and the
-        // drawer is portaled into it, so a running service's output sits directly under the
-        // page it serves. One mount either way: `terminalRuntimeRegistry` can only attach an
-        // xterm runtime to a single container, so rendering it in both places would steal it.
-        const drawer = (
-          <Suspense fallback={null}>
-            <ThreadTerminalDrawer
-              key={activeThread.id}
-              {...terminalDrawerProps}
-              presentationMode={browserTerminalHost ? "workspace" : "drawer"}
-              onTogglePresentationMode={expandTerminalWorkspace}
-            />
-          </Suspense>
-        );
-        return browserTerminalHost ? createPortal(drawer, browserTerminalHost) : drawer;
-      })()}
+      {terminalState.terminalOpen && !terminalWorkspaceOpen ? (
+        <Suspense fallback={null}>
+          <ThreadTerminalDrawer
+            key={activeThread.id}
+            {...terminalDrawerProps}
+            presentationMode="drawer"
+            onTogglePresentationMode={expandTerminalWorkspace}
+          />
+        </Suspense>
+      ) : null}
 
       <ComposerSlashStatusDialog
         open={isSlashStatusDialogOpen}

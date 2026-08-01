@@ -1,36 +1,42 @@
 // FILE: BrowserPaneTerminalSplit.tsx
-// Purpose: Stack the thread's terminal under the browser preview inside one dock pane —
+// Purpose: Stack the project's service terminal under the browser preview inside one dock pane —
 //          a draggable vertical split whose bottom half collapses to a status bar.
 // Layer: Chat right-dock UI
-// Depends on: browserTerminalSplit.logic (sizing), browserTerminalHostStore (mount slot),
-//             terminalStateStore (open/collapsed + which action's service is alive).
+// Depends on: browserTerminalSplit.logic (sizing), projectServiceTerminalScope (which terminal
+//             set to show), useTerminalSurfaceController (store wiring), ThreadTerminalDrawer.
 //
-// The terminal itself is NOT rendered here. This component only publishes the slot; ChatView
-// portals its existing ThreadTerminalDrawer into it, so the terminal keeps one xterm runtime
-// and one set of store callbacks whether it sits here or in the chat column.
+// The terminal shown here is the PROJECT's service scope, not this chat's own drawer: a dev
+// server is a project-level resource (its port is), so every thread of the project must see the
+// same running state, the same Stop button, and the same output. `projectServiceTerminalThreadId`
+// is the same scope `runProjectScript` starts services in.
 //
-// Collapsed state deliberately reuses `terminalOpen` instead of adding another flag: running an
-// action already sets it, which is exactly the "expand when a service starts" behavior we want.
+// Collapsed state deliberately reuses the scope's `terminalOpen` instead of adding another flag:
+// starting a service already sets it, which is exactly the "expand when a service starts"
+// behavior we want — and it now expands in every thread of the project at once.
+//
+// `cwd` is the HOST thread's workspace: it only applies to terminals created from this pane's
+// "+" button. A service keeps the cwd of the run that started it, so a worktree thread's dev
+// server still runs in its worktree even though the scope is shared.
 
 import type { ProjectId, ThreadId } from "@synara/contracts";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { resolveThreadWorkspaceCwd } from "@synara/shared/threadEnvironment";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useMessages } from "~/i18n/context";
 import { TerminalIcon } from "~/lib/icons";
+import { resolveProjectScriptTerminalScope } from "~/lib/projectServiceTerminalScope";
 import { cn } from "~/lib/utils";
-import { useBrowserTerminalHostStore } from "~/browserTerminalHostStore";
+import { useTerminalSurfaceController } from "~/hooks/useTerminalSurfaceController";
+import { projectScriptRuntimeEnv } from "~/projectScripts";
 import { useStore } from "~/store";
-import { createProjectSelector, createThreadShellsSelector } from "~/storeSelectors";
-import {
-  selectRunningServiceScriptIdsAcrossThreads,
-  selectThreadTerminalState,
-  useTerminalStateStore,
-} from "~/terminalStateStore";
+import { createProjectSelector, createThreadWorkspaceMetadataSelector } from "~/storeSelectors";
+import { selectRunningServiceScriptIds, useTerminalStateStore } from "~/terminalStateStore";
 import {
   BROWSER_TERMINAL_DEFAULT_HEIGHT,
   browserTerminalHeightFromDrag,
   clampBrowserTerminalHeight,
 } from "./browserTerminalSplit.logic";
+import ThreadTerminalDrawer from "../ThreadTerminalDrawer";
 import { DisclosureChevron } from "../ui/DisclosureChevron";
 
 export function BrowserPaneTerminalSplit(props: {
@@ -39,12 +45,40 @@ export function BrowserPaneTerminalSplit(props: {
   children: ReactNode;
 }) {
   const copy = useMessages().chat.panes.serviceTerminal;
-  const terminalStateByThreadId = useTerminalStateStore((store) => store.terminalStateByThreadId);
-  const terminalState = selectThreadTerminalState(terminalStateByThreadId, props.hostThreadId);
+  const scopeId =
+    resolveProjectScriptTerminalScope({
+      isService: true,
+      projectId: props.projectId,
+      threadId: props.hostThreadId,
+    }) ?? props.hostThreadId;
+  const terminal = useTerminalSurfaceController(scopeId);
+  const terminalState = terminal.terminalState;
   const setTerminalOpen = useTerminalStateStore((store) => store.setTerminalOpen);
-  const setHost = useBrowserTerminalHostStore((store) => store.setHost);
   const project = useStore(
     useMemo(() => createProjectSelector(props.projectId), [props.projectId]),
+  );
+  const threadWorkspace = useStore(
+    useMemo(() => createThreadWorkspaceMetadataSelector(props.hostThreadId), [props.hostThreadId]),
+  );
+
+  const projectCwd = project?.kind === "project" ? project.cwd : null;
+  const cwd =
+    resolveThreadWorkspaceCwd({
+      projectCwd,
+      envMode: threadWorkspace.envMode,
+      worktreePath: threadWorkspace.worktreePath,
+      workingDirectory: threadWorkspace.workingDirectory,
+    }) ?? "";
+  const runtimeProjectCwd = threadWorkspace.workingDirectory ?? projectCwd;
+  const runtimeEnv = useMemo(
+    () =>
+      runtimeProjectCwd
+        ? projectScriptRuntimeEnv({
+            project: { cwd: runtimeProjectCwd },
+            worktreePath: threadWorkspace.worktreePath,
+          })
+        : {},
+    [runtimeProjectCwd, threadWorkspace.worktreePath],
   );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -53,17 +87,6 @@ export function BrowserPaneTerminalSplit(props: {
   const dragRef = useRef<{ startHeight: number; startPointerY: number } | null>(null);
 
   const expanded = terminalState.terminalOpen;
-
-  // Publish the slot for as long as this pane is mounted. ChatView decides whether to portal
-  // into it (it renders no drawer at all while the terminal is closed), so registering
-  // unconditionally keeps the two sides from disagreeing about who owns the terminal.
-  const registerHost = useCallback(
-    (node: HTMLDivElement | null) => {
-      setHost(props.hostThreadId, node);
-    },
-    [props.hostThreadId, setHost],
-  );
-  useEffect(() => () => setHost(props.hostThreadId, null), [props.hostThreadId, setHost]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -111,23 +134,11 @@ export function BrowserPaneTerminalSplit(props: {
   };
 
   // Name the alive service(s) on the collapsed bar so the strip says what it is holding
-  // rather than a generic "Terminal".
-  // Scoped to the PROJECT, not this chat: the dev server belongs to the project, so every
-  // thread in it must report the same thing. Expand/collapse below stays thread-local because
-  // the terminal runtime itself is.
-  const threadShells = useStore(useMemo(() => createThreadShellsSelector(), []));
-  const projectThreadIds = useMemo(
-    () =>
-      props.projectId === null
-        ? [props.hostThreadId]
-        : threadShells
-            .filter((shell) => shell.projectId === props.projectId)
-            .map((shell) => shell.id),
-    [props.hostThreadId, props.projectId, threadShells],
-  );
+  // rather than a generic "Terminal". Read from the project-wide service scope, which is
+  // where `runProjectScript` starts them, so every thread of the project reports the same.
   const runningScriptIds = useMemo(
-    () => selectRunningServiceScriptIdsAcrossThreads(terminalStateByThreadId, projectThreadIds),
-    [projectThreadIds, terminalStateByThreadId],
+    () => selectRunningServiceScriptIds(terminalState),
+    [terminalState],
   );
   const runningScriptNames =
     project?.kind === "project"
@@ -167,7 +178,7 @@ export function BrowserPaneTerminalSplit(props: {
           aria-expanded={expanded}
           aria-label={expanded ? copy.collapse : copy.expand}
           title={expanded ? copy.collapse : copy.expand}
-          onClick={() => setTerminalOpen(props.hostThreadId, !expanded)}
+          onClick={() => setTerminalOpen(scopeId, !expanded)}
         >
           <DisclosureChevron open={expanded} />
           <TerminalIcon className="size-3.5 shrink-0" />
@@ -180,12 +191,48 @@ export function BrowserPaneTerminalSplit(props: {
           ) : null}
         </button>
 
-        {/* Kept mounted so the portal target survives a collapse; height is what animates. */}
         <div
-          ref={registerHost}
           className="w-full shrink-0 overflow-hidden transition-[height] duration-220 ease-out motion-reduce:transition-none"
           style={{ height: expanded ? `${resolvedTerminalHeight}px` : "0px" }}
-        />
+        >
+          {/* Mounted only while open: a collapsed pane must not spawn a shell for a project
+              whose service was never started. Unmounting detaches the xterm runtime without
+              disposing it, so re-expanding restores the same buffer and the same PTY. */}
+          {expanded ? (
+            <ThreadTerminalDrawer
+              key={scopeId}
+              threadId={scopeId}
+              cwd={cwd}
+              runtimeEnv={runtimeEnv}
+              height={resolvedTerminalHeight}
+              presentationMode="workspace"
+              isVisible
+              terminalIds={terminalState.terminalIds}
+              terminalLabelsById={terminalState.terminalLabelsById}
+              terminalTitleOverridesById={terminalState.terminalTitleOverridesById}
+              terminalCliKindsById={terminalState.terminalCliKindsById}
+              terminalAttentionStatesById={terminalState.terminalAttentionStatesById ?? {}}
+              runningTerminalIds={terminalState.runningTerminalIds}
+              activeTerminalId={terminalState.activeTerminalId}
+              terminalGroups={terminalState.terminalGroups}
+              activeTerminalGroupId={terminalState.activeTerminalGroupId}
+              focusRequestId={terminal.focusRequestId}
+              onSplitTerminal={terminal.splitRight}
+              onSplitTerminalDown={terminal.splitDown}
+              onNewTerminal={terminal.newTerminalGroup}
+              onNewTerminalTab={terminal.createTerminalTab}
+              onMoveTerminalToGroup={terminal.moveTerminalToNewGroup}
+              onActiveTerminalChange={terminal.activateTerminal}
+              onCloseTerminal={terminal.closeTerminal}
+              onCloseTerminalGroup={terminal.closeTerminalGroup}
+              onHeightChange={terminal.setTerminalHeight}
+              onResizeTerminalSplit={terminal.resizeTerminalSplit}
+              onTerminalMetadataChange={terminal.setTerminalMetadata}
+              onTerminalActivityChange={terminal.setTerminalActivity}
+              onAddTerminalContext={() => {}}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );

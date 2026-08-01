@@ -78,6 +78,7 @@ import { invalidateProjectFileQueriesForCwds, projectQueryKeys } from "../lib/pr
 import { collectActiveTerminalThreadIds } from "../lib/terminalStateCleanup";
 import { useProjectRunStore } from "../projectRunStore";
 import { dockTerminalThreadId } from "../lib/dockTerminalScope";
+import { projectServiceTerminalThreadId } from "../lib/projectServiceTerminalScope";
 import { TaskCompletionNotifications } from "../notifications/taskCompletion";
 import { useWorkspacePathsStore } from "../workspacePathsStore";
 import {
@@ -1273,6 +1274,13 @@ function EventRouter() {
       // Snapshot first: we mutate the set while iterating its prior membership.
       for (const activeThreadId of Array.from(activeThreadIds)) {
         activeThreadIds.add(dockTerminalThreadId(activeThreadId));
+      }
+      // Services run under a synthetic project-wide scope so every thread of the project
+      // sees the same dev server; that scope belongs to no thread, so retain it explicitly
+      // for as long as the project still has a live thread. After the dock loop on purpose:
+      // a service scope must not grow a dock scope of its own.
+      for (const thread of getThreadsFromState(useStore.getState())) {
+        activeThreadIds.add(projectServiceTerminalThreadId(thread.projectId));
       }
       removeOrphanedTerminalStates(activeThreadIds);
     };

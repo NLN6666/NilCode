@@ -1216,33 +1216,6 @@ export function selectRunningServiceScriptIds(state: ThreadTerminalState): Reado
   return running;
 }
 
-/**
- * The same question asked across several threads at once: which service scripts are alive
- * anywhere in this set.
- *
- * A dev server is a property of the PROJECT, not of the chat that happened to start it. The
- * terminal hosting it stays thread-local (threads can sit on different worktrees), but every
- * thread in the project must agree on whether the server is up — otherwise a second chat shows
- * an idle strip and invites you to start a duplicate on the same port.
- */
-export function selectRunningServiceScriptIdsAcrossThreads(
-  terminalStateByThreadId: Record<ThreadId, ThreadTerminalState>,
-  threadIds: readonly ThreadId[],
-): ReadonlySet<string> {
-  const running = new Set<string>();
-  for (const threadId of threadIds) {
-    const state = terminalStateByThreadId[threadId];
-    if (state === undefined) continue;
-    for (const terminalId of state.runningTerminalIds) {
-      const scriptId = state.serviceScriptIdsByTerminalId[terminalId];
-      if (scriptId !== undefined) {
-        running.add(scriptId);
-      }
-    }
-  }
-  return running;
-}
-
 /** Every live terminal running the given action, for stopping all of them at once. */
 export function selectServiceTerminalIdsForScript(
   state: ThreadTerminalState,

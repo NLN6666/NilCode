@@ -5,7 +5,6 @@ import { collectTerminalIdsFromLayout } from "./terminalPaneLayout";
 import {
   sanitizePersistedTerminalStateByThreadId,
   selectRunningServiceScriptIds,
-  selectRunningServiceScriptIdsAcrossThreads,
   selectServiceTerminalIdsForScript,
   selectThreadTerminalState,
   useTerminalStateStore,
@@ -516,24 +515,6 @@ describe("project action services", () => {
       "terminal-2",
     ]);
     expect(selectServiceTerminalIdsForScript(currentState(), "other")).toEqual([]);
-  });
-
-  // A dev server belongs to the project, so a sibling chat must not read as idle and invite a
-  // duplicate on the same port.
-  it("reports a service started in one thread to every thread in the project", () => {
-    const SIBLING_ID = ThreadId.makeUnsafe("thread-sibling");
-    startService("default", "erp-web");
-
-    const byThreadId = useTerminalStateStore.getState().terminalStateByThreadId;
-
-    expect(
-      selectRunningServiceScriptIds(selectThreadTerminalState(byThreadId, SIBLING_ID)),
-    ).toEqual(new Set());
-    expect(selectRunningServiceScriptIdsAcrossThreads(byThreadId, [THREAD_ID, SIBLING_ID])).toEqual(
-      new Set(["erp-web"]),
-    );
-    // Threads outside the project contribute nothing.
-    expect(selectRunningServiceScriptIdsAcrossThreads(byThreadId, [SIBLING_ID])).toEqual(new Set());
   });
 
   it("drops service ownership from persisted state while keeping the layout", () => {

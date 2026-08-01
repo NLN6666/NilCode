@@ -2,6 +2,7 @@ import {
   SCRIPT_RUN_COMMAND_PATTERN,
   type KeybindingCommand,
   type ProjectScript,
+  type ThreadId,
 } from "@synara/contracts";
 import { nextProjectScriptId } from "@synara/shared/projectScripts";
 import { Schema } from "effect";
@@ -40,6 +41,8 @@ export interface ProjectScriptRunOptions {
 }
 
 export interface ProjectScriptRunResult {
+  /** Terminal scope the run landed in — a service runs project-wide, not in the caller's chat. */
+  threadId: ThreadId;
   terminalId: string;
 }
 
