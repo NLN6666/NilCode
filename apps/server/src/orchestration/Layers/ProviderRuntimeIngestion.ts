@@ -1124,7 +1124,7 @@ const make = Effect.gen(function* () {
     yield* Cache.set(
       reasoningStreamThrottleByKey,
       key,
-      advanceReasoningStreamThrottle({ nowMs, chars: detail.length }),
+      advanceReasoningStreamThrottle({ state: throttleState, nowMs, chars: detail.length }),
     );
     const streamingEvent = bufferedReasoningItemEvent({
       summary,

@@ -269,7 +269,7 @@ describe("provider runtime activity projection", () => {
     ];
     expect(absent.map(projectProviderRuntimeActivities)).toEqual([[], [], []]);
 
-    for (const provider of ["codex", "antigravity"] as const) {
+    for (const provider of ["codex", "antigravity", "claudeAgent"] as const) {
       const [activity] = projectProviderRuntimeActivities(
         runtimeEvent({
           type: "item.completed",
@@ -295,6 +295,56 @@ describe("provider runtime activity projection", () => {
         },
       });
     }
+  });
+
+  // Claude streams each thinking block as in-progress `item.updated` under the
+  // same activity id the completion later overwrites, so the row updates in place
+  // instead of stacking one row per streamed chunk.
+  it("projects streaming in-progress reasoning for streaming providers only", () => {
+    for (const provider of ["codex", "claudeAgent"] as const) {
+      const [activity] = projectProviderRuntimeActivities(
+        runtimeEvent({
+          type: "item.updated",
+          eventId: `reasoning-stream-${provider}`,
+          provider,
+          turnId: TURN_ID,
+          itemId: RuntimeItemId.makeUnsafe("reasoning-block-1"),
+          payload: {
+            itemType: "reasoning",
+            status: "inProgress",
+            detail: "Weighing the adapter options",
+          },
+        }),
+      );
+      expect(activity).toMatchObject({
+        id: `provider-reasoning:${THREAD_ID}:reasoning-block-1`,
+        kind: "task.progress",
+        summary: "Reasoning trace",
+        payload: {
+          status: "inProgress",
+          detail: "Weighing the adapter options",
+          data: { toolCallId: "reasoning-block-1" },
+        },
+      });
+    }
+
+    // Antigravity is completion-only: its streaming shape is unverified.
+    expect(
+      projectProviderRuntimeActivities(
+        runtimeEvent({
+          type: "item.updated",
+          eventId: "reasoning-stream-antigravity",
+          provider: "antigravity",
+          turnId: TURN_ID,
+          itemId: RuntimeItemId.makeUnsafe("reasoning-block-1"),
+          payload: {
+            itemType: "reasoning",
+            status: "inProgress",
+            detail: "Weighing the adapter options",
+          },
+        }),
+      ),
+    ).toEqual([]);
   });
 
   it("maps tool progress without losing call identity", () => {

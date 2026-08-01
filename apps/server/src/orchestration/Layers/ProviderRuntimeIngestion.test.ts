@@ -1816,9 +1816,13 @@ describe("ProviderRuntimeIngestion", () => {
     });
 
     const stableActivityId = "provider-reasoning:thread-1:reasoning-failed-turn-1";
+    // Short traces now stream an in-progress row before the turn settles, so the
+    // activity id alone appears too early - wait for the terminal status.
     const thread = await waitForThread(harness.engine, (entry) =>
       entry.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.id === stableActivityId,
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === stableActivityId &&
+          (activity.payload as { status?: string } | null)?.status === "failed",
       ),
     );
 
@@ -1866,7 +1870,9 @@ describe("ProviderRuntimeIngestion", () => {
     const stableActivityId = "provider-reasoning:thread-1:reasoning-errored-1";
     const thread = await waitForThread(harness.engine, (entry) =>
       entry.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.id === stableActivityId,
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === stableActivityId &&
+          (activity.payload as { status?: string } | null)?.status === "failed",
       ),
     );
 
@@ -1961,6 +1967,95 @@ describe("ProviderRuntimeIngestion", () => {
     });
   });
 
+  // Regression: a real Claude trace is short - the one that surfaced this bug was
+  // 134 characters over 3 deltas. While the first streamed update was held to the
+  // sustained-growth threshold, every trace below that threshold streamed zero
+  // times and only appeared once the turn settled, so live reasoning was dead for
+  // the common case.
+  it("streams a reasoning trace shorter than the sustained growth threshold", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+    const baseEvent = {
+      provider: "claudeAgent" as const,
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-claude-short-reasoning"),
+      itemId: asItemId("claude-short-reasoning-1"),
+    };
+    const deltas = [
+      "Visual FoxPro 9.0 SP2 from 2007 is the ",
+      "latest version, and Microsoft ended ",
+      "support for it back in 2015.",
+    ];
+    const trace = deltas.join("");
+    // The growth threshold the first update used to be held to. The fixture has to
+    // stay under it, or it stops reproducing the case that was broken.
+    const GROWTH_GATED_FIRST_DISPATCH_THRESHOLD = 240;
+    expect(trace.length).toBeLessThan(GROWTH_GATED_FIRST_DISPATCH_THRESHOLD);
+
+    harness.emit({
+      ...baseEvent,
+      type: "content.delta",
+      eventId: asEventId("evt-claude-short-reasoning-delta-0"),
+      payload: { streamKind: "reasoning_text", delta: deltas[0]! },
+    });
+
+    // Asserted before the turn settles: the row has to exist while the model is
+    // still thinking, not only once the authoritative completion lands.
+    const stableActivityId = "provider-reasoning:thread-1:claude-short-reasoning-1";
+    const streamingThread = await waitForThread(harness.engine, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === stableActivityId &&
+          (activity.payload as { status?: string } | null)?.status === "inProgress",
+      ),
+    );
+    expect(
+      streamingThread.activities.find(
+        (activity: ProviderRuntimeTestActivity) => activity.id === stableActivityId,
+      ),
+    ).toMatchObject({
+      summary: "Reasoning trace",
+      payload: { status: "inProgress", detail: deltas[0]!.trim() },
+    });
+
+    for (const [index, delta] of deltas.slice(1).entries()) {
+      harness.emit({
+        ...baseEvent,
+        type: "content.delta",
+        eventId: asEventId(`evt-claude-short-reasoning-delta-${index + 1}`),
+        payload: { streamKind: "reasoning_text", delta },
+      });
+    }
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-claude-short-reasoning-turn-completed"),
+      provider: "claudeAgent",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-claude-short-reasoning"),
+      payload: { state: "completed" },
+    });
+
+    const settledThread = await waitForThread(harness.engine, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === stableActivityId &&
+          (activity.payload as { status?: string } | null)?.status === "completed",
+      ),
+    );
+    expect(
+      settledThread.activities.filter(
+        (activity: ProviderRuntimeTestActivity) => activity.id === stableActivityId,
+      ),
+    ).toHaveLength(1);
+    expect(
+      settledThread.activities.find(
+        (activity: ProviderRuntimeTestActivity) => activity.id === stableActivityId,
+      ),
+    ).toMatchObject({ payload: { status: "completed", detail: trace.trim() } });
+  });
+
   it("throttles streamed reasoning writes instead of persisting every delta", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
@@ -2039,7 +2134,11 @@ describe("ProviderRuntimeIngestion", () => {
           if (!shouldDispatchReasoningStream({ state, nowMs, chars })) {
             return false;
           }
-          yield* Cache.set(throttleCache, key, advanceReasoningStreamThrottle({ nowMs, chars }));
+          yield* Cache.set(
+            throttleCache,
+            key,
+            advanceReasoningStreamThrottle({ state, nowMs, chars }),
+          );
           return true;
         });
 
@@ -2051,10 +2150,10 @@ describe("ProviderRuntimeIngestion", () => {
 
       // An hour passes - longer than any cache TTL in this module - while the
       // trace grows by less than the character minimum. An expiring entry would
-      // reset the watermark to 0, making the accumulated 600 characters look
-      // like fresh growth and leaking an extra write.
+      // reset the watermark and the dispatch counter, making the accumulated
+      // characters look like a fresh first update and leaking an extra write.
       yield* TestClock.adjust(Duration.minutes(61));
-      const dispatchedAfterExpiryWindow = yield* offer(600);
+      const dispatchedAfterExpiryWindow = yield* offer(400 + REASONING_STREAM_MIN_CHARS - 1);
       expect(dispatchedAfterExpiryWindow).toBe(false);
 
       // Genuine growth past the minimum still streams, so the state survived

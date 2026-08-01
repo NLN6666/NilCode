@@ -28,6 +28,7 @@ import type {
   SlashCommand,
   SpawnOptions as ClaudeSpawnOptions,
   SpawnedProcess as ClaudeSpawnedProcess,
+  ThinkingConfig,
 } from "@anthropic-ai/claude-agent-sdk";
 import {
   ApprovalRequestId,
@@ -785,6 +786,33 @@ function resolveSelectedClaudeThinkingToggle(
   return getModelCapabilities("claudeAgent", model).supportsThinkingToggle
     ? selectedThinking
     : undefined;
+}
+
+/**
+ * SDK extended-thinking configuration for a session.
+ *
+ * Without an explicit `thinking` option the SDK falls back to the API default,
+ * which forwards no thinking content to the SDK consumer. The adapter then never
+ * sees a `thinking_delta`, so no `reasoning_text` runtime event is emitted and the
+ * transcript's reasoning row silently never renders - even though every stage
+ * downstream (ingestion buffer, activity projection, web row) is wired for it.
+ * `display: "summarized"` is the part that actually opts the stream in.
+ *
+ * `maxThinkingTokens` is deprecated in favour of `thinking`, so an explicitly
+ * configured budget maps onto `{ type: "enabled", budgetTokens }`. Otherwise let
+ * the model decide how much to think via `adaptive`, and honour an explicit
+ * user-facing thinking toggle of `false` as a hard disable.
+ */
+function resolveClaudeThinkingConfig(input: {
+  readonly thinkingToggle: boolean | undefined;
+  readonly maxThinkingTokens: number | undefined;
+}): ThinkingConfig {
+  if (input.thinkingToggle === false) {
+    return { type: "disabled" };
+  }
+  return input.maxThinkingTokens !== undefined
+    ? { type: "enabled", budgetTokens: input.maxThinkingTokens, display: "summarized" }
+    : { type: "adaptive", display: "summarized" };
 }
 
 function asCanonicalTurnId(value: TurnId): TurnId {
@@ -4949,6 +4977,10 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           effectiveClaudeModel,
           modelSelection?.options?.thinking,
         );
+        const thinkingConfig = resolveClaudeThinkingConfig({
+          thinkingToggle: thinking,
+          maxThinkingTokens: providerOptions?.maxThinkingTokens,
+        });
         const effectiveEffort = getEffectiveClaudeCodeEffort(effort);
         const ultracode = effort === "ultracode" && hasEffortLevel(caps, "xhigh");
         const permissionMode =
@@ -5045,9 +5077,9 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           ...(permissionMode === "bypassPermissions"
             ? { allowDangerouslySkipPermissions: true }
             : {}),
-          ...(providerOptions?.maxThinkingTokens !== undefined
-            ? { maxThinkingTokens: providerOptions.maxThinkingTokens }
-            : {}),
+          // Supersedes the deprecated `maxThinkingTokens`, and is what makes the
+          // CLI stream thinking content the reasoning row is built from.
+          thinking: thinkingConfig,
           settings,
           ...(existingResumeSessionId ? { resume: existingResumeSessionId } : {}),
           ...(newSessionId ? { sessionId: newSessionId } : {}),
@@ -5257,9 +5289,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
                   ...(input.cwd ? { cwd: input.cwd } : {}),
                   ...(effectiveEffort ? { effort: effectiveEffort } : {}),
                   ...(permissionMode ? { permissionMode } : {}),
-                  ...(providerOptions?.maxThinkingTokens !== undefined
-                    ? { maxThinkingTokens: providerOptions.maxThinkingTokens }
-                    : {}),
+                  thinking: thinkingConfig,
                   ...(fastMode ? { fastMode: true } : {}),
                   ...(ultracode ? { ultracode: true } : {}),
                 },
