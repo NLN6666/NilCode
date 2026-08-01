@@ -33,6 +33,10 @@
 ; cost of these commands is ~0.5s, so these ceilings only ever trip on a broken host.
 !define SYNARA_PROCESS_QUERY_TIMEOUT_MS 10000
 !define SYNARA_PROCESS_KILL_TIMEOUT_MS 15000
+; The external-lock probe opens every already-installed file once. Measured at ~1s for a 345-file
+; install plus PowerShell startup; the ceiling only trips on a wedged host, where the probe is
+; skipped and the install proceeds exactly as it did before this check existed.
+!define SYNARA_LOCK_PROBE_TIMEOUT_MS 20000
 
 Var synaraInstallerPid
 Var synaraProcessName
@@ -42,6 +46,9 @@ Var synaraProcessName
 Var synaraAppFound
 Var synaraCloseRequested
 Var synaraWaitAttempts
+; Full path of the first already-installed file that some *other* process holds open, or "" when
+; nothing external is blocking the install.
+Var synaraLockedFile
 
 !macro synaraFindAppProcess
   !ifdef INSTALL_MODE_PER_ALL_USERS
@@ -78,6 +85,34 @@ Var synaraWaitAttempts
   !endif
 !macroend
 
+; Closing every Synara process is not enough to make an update succeed. When ${isUpdated} the
+; uninstaller does not delete files one by one — it renames the whole install directory aside
+; (app-builder-lib 26.15.3, templates/nsis/uninstaller.nsh -> un.atomicRMDir), and a rename needs
+; FILE_SHARE_DELETE from *every* process holding a handle in there. Any unrelated program that
+; opened a file under $INSTDIR without sharing delete (an editor, an indexer, a backup agent) makes
+; that rename fail, the uninstaller aborts, and installUtil.nsh retries five times before showing
+; "$(appCannotBeClosed)" — an instruction to close Synara, which by then is not even running.
+;
+; Probe for exactly that condition so the installer can name the file that is actually stuck.
+; Opening with FileShare.Delete requested is the cheapest faithful test: it fails for precisely the
+; handles that would break the rename, and unlike a write test it does not modify anything.
+; Any failure to run the probe leaves $synaraLockedFile empty, which restores the previous behavior.
+!macro synaraFindExternalLock
+  StrCpy $synaraLockedFile ""
+  ${if} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+    ; $$ escapes a literal PowerShell sigil; a bare $PSItem would read as an unknown NSIS variable.
+    nsExec::ExecToStack /TIMEOUT=${SYNARA_LOCK_PROBE_TIMEOUT_MS} `"$PowerShellPath" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPath '$INSTDIR' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { try { [IO.File]::Open($$PSItem.FullName,'Open','ReadWrite','Delete').Close(); $$false } catch { $$true } } | Select-Object -First 1 -ExpandProperty FullName | ForEach-Object { [Console]::Out.Write($$PSItem) }"`
+    Pop $R0
+    Pop $R1
+    ; A missing PowerShell, a blocked script policy or a timeout all report a non-zero status here.
+    ; Treat every one of them as "nothing external is locked" so the probe can only ever add
+    ; information, never block an install that would otherwise have worked.
+    ${if} $R0 == 0
+      StrCpy $synaraLockedFile $R1
+    ${endif}
+  ${endif}
+!macroend
+
 !macro customCheckAppRunning
   ${GetProcessInfo} 0 $synaraInstallerPid $R1 $R2 $synaraProcessName $R4
   ${if} $synaraProcessName == "${APP_EXECUTABLE_FILENAME}"
@@ -95,7 +130,7 @@ Var synaraWaitAttempts
   synaraAppRunningCheck:
     !insertmacro synaraFindAppProcess
     ${if} $synaraAppFound != 0
-      Goto synaraAppRunningDone
+      Goto synaraAppProcessesCleared
     ${endif}
 
     ${if} $synaraCloseRequested == 0
@@ -112,7 +147,7 @@ Var synaraWaitAttempts
         Sleep 1000
         !insertmacro synaraFindAppProcess
         ${if} $synaraAppFound != 0
-          Goto synaraAppRunningDone
+          Goto synaraAppProcessesCleared
         ${endif}
         IntOp $synaraWaitAttempts $synaraWaitAttempts + 1
         ${if} $synaraWaitAttempts < ${SYNARA_GRACEFUL_CLOSE_ATTEMPTS}
@@ -126,7 +161,7 @@ Var synaraWaitAttempts
       Sleep 1000
       !insertmacro synaraFindAppProcess
       ${if} $synaraAppFound != 0
-        Goto synaraAppRunningDone
+        Goto synaraAppProcessesCleared
       ${endif}
       IntOp $synaraWaitAttempts $synaraWaitAttempts + 1
       ${if} $synaraWaitAttempts < ${SYNARA_FORCE_KILL_ATTEMPTS}
@@ -140,6 +175,25 @@ Var synaraWaitAttempts
     ; the manual-download fallback.
     MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(appCannotBeClosed)" /SD IDCANCEL IDRETRY synaraAppRunningCheck
     Quit
+
+  ; No Synara process is left, but that does not mean the install can proceed: a handle held by an
+  ; unrelated program still blocks the directory rename the uninstaller is about to attempt.
+  synaraAppProcessesCleared:
+    ; Silent runs (electron-updater) have nobody to answer a prompt. Skip the probe entirely so an
+    ; unattended update keeps its existing timing and failure path.
+    ${if} ${Silent}
+      Goto synaraAppRunningDone
+    ${endif}
+
+  synaraExternalLockCheck:
+    !insertmacro synaraFindExternalLock
+    ${if} $synaraLockedFile != ""
+      ; Deliberately not "$(appCannotBeClosed)": that string tells the user to close Synara, which
+      ; is already gone. Name the file and the tool that identifies its owner instead, because the
+      ; installer cannot close a handle that belongs to a process it does not own.
+      MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Setup cannot update ${PRODUCT_NAME} because another program is holding an installed file open:$\n$\n$synaraLockedFile$\n$\n${PRODUCT_NAME} is not running, so closing it will not help.$\n$\nTo find the program: open Resource Monitor (resmon.exe), go to the CPU tab, expand Associated Handles and search for the file name. Close that program, then click Retry." /SD IDCANCEL IDRETRY synaraExternalLockCheck
+      Quit
+    ${endif}
 
   synaraAppRunningDone:
 !macroend
