@@ -12,10 +12,7 @@ import type { ProjectId, ProjectScript } from "@synara/contracts";
 import { useCallback, useEffect, useRef } from "react";
 
 import { isElectron } from "~/env";
-import {
-  registerProjectPreviewOpener,
-  startProjectPreview,
-} from "~/lib/projectPreviewLauncher";
+import { registerProjectPreviewOpener, startProjectPreview } from "~/lib/projectPreviewLauncher";
 
 export interface ProjectScriptPreviewController {
   /** Begin waiting for `script.port`; a no-op for actions that declare none. */

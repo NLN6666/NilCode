@@ -31,11 +31,7 @@ import {
   buildWhyLinesPrompt,
   type ChatFileReference,
 } from "../../lib/chatReferences";
-import {
-  dockSidechatPaneScopeId,
-  EDITOR_CHAT_PANE_SCOPE_ID,
-  SINGLE_CHAT_PANE_SCOPE_ID,
-} from "../../lib/chatPaneScope";
+import { EDITOR_CHAT_PANE_SCOPE_ID, SINGLE_CHAT_PANE_SCOPE_ID } from "../../lib/chatPaneScope";
 import type { DockPaneRuntimeMode } from "../../lib/dockPaneActivation";
 import type { FileCommentSelection } from "../../lib/fileComments";
 import { gitBranchesQueryOptions } from "../../lib/gitReactQuery";
@@ -49,6 +45,7 @@ import {
   WorkspaceFileOpenerContext,
   type WorkspaceFileOpener,
 } from "../../lib/workspaceFileOpener";
+import { resolveSubagentPresentationForThread } from "../../lib/subagentPresentation";
 import { selectRightDockState, useRightDockStore } from "../../rightDockStore";
 import {
   resolveActivePane,
@@ -76,6 +73,7 @@ import {
   noopChatSurfaceAction,
 } from "./ChatThreadSurfacePrimitives";
 import { PanelStateMessage } from "./PanelStateMessage";
+import { DockThreadPane } from "./DockThreadPane";
 import { BrowserPaneTerminalSplit } from "./BrowserPaneTerminalSplit";
 import { BrowserDockPane } from "./BrowserDockPane";
 import { RightDock } from "./RightDock";
@@ -630,14 +628,33 @@ export function SingleChatSurface(props: {
     (pane) => pane.kind === "pullRequest" && pane.pullRequestNumber !== null,
   );
   let paneLabelOverrides: Record<string, string | undefined> | undefined;
+  let embeddedThreadIconOverrides: Record<string, ReactNode | undefined> | undefined;
   if (hasSidechatPane || hasNamedFilePane || hasNumberedPullRequestPane) {
-    const titleByThreadId = hasSidechatPane
-      ? new Map(threadSummaries.map((summary) => [summary.id, summary.title]))
+    const summaryByThreadId = hasSidechatPane
+      ? new Map(threadSummaries.map((summary) => [summary.id, summary]))
       : null;
     const overrides: Record<string, string | undefined> = {};
+    const iconOverrides: Record<string, ReactNode | undefined> = {};
     for (const pane of dockState.panes) {
       if (pane.kind === "sidechat" && pane.threadId) {
-        overrides[pane.id] = titleByThreadId?.get(pane.threadId) || paneCopy.kinds.sidechat;
+        const summary = summaryByThreadId?.get(pane.threadId);
+        // Subagents ride the same embedded-thread pane kind, so give their tab the
+        // identity the sidebar row used — "Nickname [role]" plus the agent accent
+        // dot — instead of the generic side-chat label and bubble glyph.
+        const subagentPresentation = summary?.parentThreadId
+          ? resolveSubagentPresentationForThread({ thread: summary })
+          : null;
+        overrides[pane.id] =
+          subagentPresentation?.fullLabel || summary?.title || paneCopy.kinds.sidechat;
+        if (subagentPresentation) {
+          iconOverrides[pane.id] = (
+            <span
+              aria-hidden="true"
+              className="size-[7px] shrink-0 rounded-full"
+              style={{ backgroundColor: subagentPresentation.accentColor }}
+            />
+          );
+        }
       } else if (pane.kind === "file" && pane.filePath) {
         overrides[pane.id] = basenameOfPath(pane.filePath);
       } else if (pane.kind === "pullRequest" && pane.pullRequestNumber !== null) {
@@ -645,6 +662,7 @@ export function SingleChatSurface(props: {
       }
     }
     paneLabelOverrides = overrides;
+    embeddedThreadIconOverrides = iconOverrides;
   }
 
   // The pull request pane is a singleton, so at most one tab needs the live state glyph.
@@ -656,8 +674,8 @@ export function SingleChatSurface(props: {
   );
   const paneIconOverrides =
     pullRequestPane && pullRequestPaneStateIcon
-      ? { [pullRequestPane.id]: pullRequestPaneStateIcon }
-      : undefined;
+      ? { ...embeddedThreadIconOverrides, [pullRequestPane.id]: pullRequestPaneStateIcon }
+      : embeddedThreadIconOverrides;
 
   const handleAddDockPane = (kind: RightDockPaneKind) => {
     requestImmediateDockHydration(kind);
@@ -793,18 +811,11 @@ export function SingleChatSurface(props: {
           return null;
         }
         return (
-          <DeferredChatView
+          <DockThreadPane
             threadId={pane.threadId}
-            paneScopeId={dockSidechatPaneScopeId(pane.id)}
-            deferMount={false}
-            surfaceMode="split"
-            isFocusedPane={false}
+            paneId={pane.id}
             panelState={DOCK_EMBEDDED_PANEL_STATE}
-            onToggleDiff={noopChatSurfaceAction}
-            onToggleBrowser={noopChatSurfaceAction}
-            onOpenBrowserUrl={noopChatSurfaceAction}
-            onOpenTurnDiff={noopChatSurfaceAction}
-            onCloseThreadPane={() => closePane(props.threadId, pane.id)}
+            onClose={() => closePane(props.threadId, pane.id)}
           />
         );
       default:

@@ -216,6 +216,7 @@ import {
   persistSidebarUiState,
   readSidebarUiState,
 } from "./Sidebar.uiState";
+import { useRightDockStore } from "../rightDockStore";
 import {
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
@@ -1492,6 +1493,18 @@ export default function Sidebar() {
   >(() => new Map(Object.entries(readSidebarUiState().projectThreadListExtraPagesByCwd)));
   const [chatSectionExpanded, setChatSectionExpanded] = useState(
     () => readSidebarUiState().chatSectionExpanded,
+  );
+  // Subagent children stay collapsed until asked for; remembering which parents
+  // are open keeps a fan-out visible across navigation and reloads.
+  const [expandedSubagentParentThreadIds, setExpandedSubagentParentThreadIds] = useState<
+    ReadonlySet<ThreadId>
+  >(
+    () =>
+      new Set(
+        readSidebarUiState().expandedSubagentParentThreadIds.map((threadId) =>
+          ThreadId.makeUnsafe(threadId),
+        ),
+      ),
   );
   const [chatThreadListExtraPages, setChatThreadListExtraPages] = useState(
     () => readSidebarUiState().chatThreadListExtraPages,
@@ -3091,6 +3104,7 @@ export default function Sidebar() {
         chatThreadListExtraPages,
         projectThreadListExtraPagesByCwd: Object.fromEntries(threadListExtraPagesByProjectCwd),
         dismissedThreadStatusKeyByThreadId,
+        expandedSubagentParentThreadIds: [...expandedSubagentParentThreadIds],
         lastThreadRoute: nextLastThreadRoute,
       });
     },
@@ -3098,6 +3112,7 @@ export default function Sidebar() {
       chatSectionExpanded,
       chatThreadListExtraPages,
       dismissedThreadStatusKeyByThreadId,
+      expandedSubagentParentThreadIds,
       threadListExtraPagesByProjectCwd,
     ],
   );
@@ -3477,12 +3492,14 @@ export default function Sidebar() {
         appSettings.sidebarThreadSortOrder,
       ),
       forceVisibleThreadId: activeSidebarThreadId ?? undefined,
+      expandedParentThreadIds: expandedSubagentParentThreadIds,
     });
   }, [
     activeSidebarThreadId,
     appSettings.sidebarThreadSortOrder,
     chatSectionExpanded,
     chatProjects,
+    expandedSubagentParentThreadIds,
     sortedSidebarThreadsByProjectId,
   ]);
   const visibleChatThreadIds = useMemo(
@@ -3508,9 +3525,11 @@ export default function Sidebar() {
         appSettings.sidebarThreadSortOrder,
       ),
       forceVisibleThreadId: activeSidebarThreadId ?? undefined,
+      expandedParentThreadIds: expandedSubagentParentThreadIds,
     });
   }, [
     activeSidebarThreadId,
+    expandedSubagentParentThreadIds,
     appSettings.sidebarThreadSortOrder,
     isOnStudio,
     pinnedThreadIds,
@@ -3626,12 +3645,14 @@ export default function Sidebar() {
         threadListExtraPagesByProjectCwd,
         normalizeProjectCwd: normalizeSidebarProjectThreadListCwd,
         activeSidebarThreadId: activeSidebarThreadId ?? undefined,
+        expandedSubagentParentThreadIds,
         previewLimit: THREAD_PREVIEW_LIMIT,
         previewPageSize: THREAD_PREVIEW_PAGE_SIZE,
         resolveThreadStatus: resolveThreadStatusForSidebar,
       }),
     [
       activeSidebarThreadId,
+      expandedSubagentParentThreadIds,
       threadListExtraPagesByProjectCwd,
       pinnedThreadIds,
       sortedSidebarThreadsByProjectId,
@@ -3656,12 +3677,14 @@ export default function Sidebar() {
       threadListExtraPagesByProjectCwd,
       normalizeProjectCwd: normalizeSidebarProjectThreadListCwd,
       activeSidebarThreadId: activeSidebarThreadId ?? undefined,
+      expandedSubagentParentThreadIds,
       previewLimit: THREAD_PREVIEW_LIMIT,
       previewPageSize: THREAD_PREVIEW_PAGE_SIZE,
       resolveThreadStatus: resolveThreadStatusForSidebar,
     });
   }, [
     activeSidebarThreadId,
+    expandedSubagentParentThreadIds,
     isOnStudio,
     threadListExtraPagesByProjectCwd,
     pinnedThreadIds,
@@ -3721,12 +3744,14 @@ export default function Sidebar() {
       chatThreadListExtraPages,
       projectThreadListExtraPagesByCwd: Object.fromEntries(threadListExtraPagesByProjectCwd),
       dismissedThreadStatusKeyByThreadId,
+      expandedSubagentParentThreadIds: [...expandedSubagentParentThreadIds],
       lastThreadRoute,
     });
   }, [
     chatSectionExpanded,
     chatThreadListExtraPages,
     dismissedThreadStatusKeyByThreadId,
+    expandedSubagentParentThreadIds,
     threadListExtraPagesByProjectCwd,
     lastThreadRoute,
   ]);
@@ -3754,8 +3779,40 @@ export default function Sidebar() {
     return () => window.clearTimeout(settle);
   }, [isOnSettings, routeSearch.splitViewId, routeThreadId]);
 
+  const openDockPane = useRightDockStore((store) => store.openPane);
+
+  const toggleSubagentExpansion = useCallback((threadId: ThreadId) => {
+    setExpandedSubagentParentThreadIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(threadId)) {
+        next.add(threadId);
+      }
+      return next;
+    });
+  }, []);
+
+  // A subagent is a detail of the conversation that spawned it, so activating one
+  // opens its transcript beside that parent in the right dock instead of replacing
+  // the main view — which is what makes a running fan-out watchable.
+  const activateSidebarThread = useCallback(
+    (threadId: ThreadId, parentThreadId: ThreadId | null) => {
+      if (parentThreadId) {
+        openDockPane(parentThreadId, { kind: "sidechat", threadId });
+        activateThreadFromSidebarIntent(parentThreadId);
+        return;
+      }
+      activateThreadFromSidebarIntent(threadId);
+    },
+    [activateThreadFromSidebarIntent, openDockPane],
+  );
+
   const handleThreadClick = useCallback(
-    (event: MouseEvent, threadId: ThreadId, orderedProjectThreadIds: readonly ThreadId[]) => {
+    (
+      event: MouseEvent,
+      threadId: ThreadId,
+      orderedProjectThreadIds: readonly ThreadId[],
+      parentThreadId: ThreadId | null,
+    ) => {
       const isMac = isMacPlatform(navigator.platform);
       const isModClick = isMac ? event.metaKey : event.ctrlKey;
       const isShiftClick = event.shiftKey;
@@ -3772,9 +3829,9 @@ export default function Sidebar() {
         return;
       }
 
-      activateThreadFromSidebarIntent(threadId);
+      activateSidebarThread(threadId, parentThreadId);
     },
-    [activateThreadFromSidebarIntent, rangeSelectTo, toggleThreadSelection],
+    [activateSidebarThread, rangeSelectTo, toggleThreadSelection],
   );
 
   const visibleSidebarThreadIds = useMemo(() => {
@@ -4353,6 +4410,7 @@ export default function Sidebar() {
     // their top-level rows align flush like pinned rows instead of the indented
     // column used for project-nested threads.
     topLevel = false,
+    childCount = 0,
   ) {
     const threadTerminalState = selectThreadTerminalState(terminalStateByThreadId, thread.id);
     const threadEntryPoint = threadTerminalState.entryPoint;
@@ -4388,6 +4446,11 @@ export default function Sidebar() {
         ? null
         : prStatus;
     const subagentIndentPx = Math.max(0, Math.min(depth - 1, 3) * 10);
+    const hasSubagentChildren = childCount > 0;
+    const subagentChildrenExpanded = expandedSubagentParentThreadIds.has(thread.id);
+    const subagentDisclosureLabel = subagentChildrenExpanded
+      ? m.sidebar.thread.hideSubagents(childCount)
+      : m.sidebar.thread.showSubagents(childCount);
     const showCompactMeta = !isSubagentThread;
     const showTemporaryThreadIcon =
       showCompactMeta && isTemporaryThread && !thread.sidechatSourceThreadId;
@@ -4406,11 +4469,33 @@ export default function Sidebar() {
         className="group/thread-row w-full"
         data-thread-item
       >
+        {hasSubagentChildren ? (
+          <button
+            type="button"
+            data-thread-selection-safe
+            aria-expanded={subagentChildrenExpanded}
+            aria-label={subagentDisclosureLabel}
+            title={subagentDisclosureLabel}
+            className="pointer-events-auto absolute left-1.5 top-1/2 z-30 flex size-4 -translate-y-1/2 items-center justify-center rounded text-muted-foreground/79 hover:text-foreground"
+            onMouseDown={preventFocusOnMouseDown}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              toggleSubagentExpansion(thread.id);
+            }}
+          >
+            <DisclosureChevron open={subagentChildrenExpanded} />
+          </button>
+        ) : null}
         {leadingPrStatus ? (
           <ThreadPrStatusBadge
             prStatus={leadingPrStatus}
             onOpen={openPrLink}
-            className="pointer-events-auto absolute left-1.5 top-1/2 z-30 size-5 -translate-y-1/2"
+            className={cn(
+              "pointer-events-auto absolute top-1/2 z-30 size-5 -translate-y-1/2",
+              // The chevron owns the leading slot, so the badge steps one slot right.
+              hasSubagentChildren ? "left-7" : "left-1.5",
+            )}
           />
         ) : null}
         <Tooltip>
@@ -4427,7 +4512,14 @@ export default function Sidebar() {
                     isActive,
                     isSelected,
                   }),
-                  leadingPrStatus ? "pl-8" : topLevel && !isSubagentThread ? "pl-2" : null,
+                  leadingPrStatus && hasSubagentChildren
+                    ? "pl-13"
+                    : leadingPrStatus
+                      ? "pl-8"
+                      : // The base row padding already clears a leading chevron.
+                        !hasSubagentChildren && topLevel && !isSubagentThread
+                        ? "pl-2"
+                        : null,
                   isSubagentThread
                     ? "pr-7.5"
                     : resolveThreadRowTrailingReserveClass({
@@ -4453,7 +4545,12 @@ export default function Sidebar() {
                   }
                 }}
                 onClick={(event) => {
-                  handleThreadClick(event, thread.id, orderedProjectThreadIds);
+                  handleThreadClick(
+                    event,
+                    thread.id,
+                    orderedProjectThreadIds,
+                    thread.parentThreadId ?? null,
+                  );
                 }}
                 onPointerDown={(event) => primeThreadActivation(event, thread.id)}
                 onDoubleClick={(event) => {
@@ -4465,7 +4562,7 @@ export default function Sidebar() {
                 onKeyDown={(event) => {
                   if (event.key !== "Enter" && event.key !== " ") return;
                   event.preventDefault();
-                  activateThreadFromSidebarIntent(thread.id);
+                  activateSidebarThread(thread.id, thread.parentThreadId ?? null);
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault();
@@ -4781,7 +4878,13 @@ export default function Sidebar() {
               )}
             >
               {visibleEntries.map((entry) =>
-                renderThreadRow(entry.thread, orderedProjectThreadIds, entry.depth),
+                renderThreadRow(
+                  entry.thread,
+                  orderedProjectThreadIds,
+                  entry.depth,
+                  false,
+                  entry.childCount,
+                ),
               )}
 
               {(canShowMoreThreads || canShowLessThreads) && (
@@ -5756,7 +5859,13 @@ export default function Sidebar() {
                   <SidebarMenu ref={attachProjectListAutoAnimateRef} className="gap-1">
                     {studioChatThreadRows.length > 0 ? (
                       studioChatThreadRows.map((row) =>
-                        renderThreadRow(row.thread, studioChatThreadIds, row.depth, true),
+                        renderThreadRow(
+                          row.thread,
+                          studioChatThreadIds,
+                          row.depth,
+                          true,
+                          row.childCount,
+                        ),
                       )
                     ) : (
                       <div className="px-2 pt-4 text-center text-[length:var(--app-font-size-ui,12px)] text-muted-foreground/58">
@@ -5962,6 +6071,7 @@ export default function Sidebar() {
                           visibleChatThreadIds,
                           entry.row.depth,
                           true,
+                          entry.row.childCount,
                         ),
                       )
                     ) : (

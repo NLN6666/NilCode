@@ -40,6 +40,7 @@ describe("Sidebar.uiState", () => {
       chatThreadListExtraPages: 0,
       projectThreadListExtraPagesByCwd: {},
       dismissedThreadStatusKeyByThreadId: {},
+      expandedSubagentParentThreadIds: [],
       lastThreadRoute: null,
     });
   });
@@ -56,6 +57,11 @@ describe("Sidebar.uiState", () => {
       dismissedThreadStatusKeyByThreadId: {
         "thread-123": "Plan Ready:turn-1",
       },
+      expandedSubagentParentThreadIds: [
+        "subagent:thread-123:child-a",
+        "subagent:thread-123:child-a",
+        "",
+      ],
       lastThreadRoute: {
         threadId: "thread-123",
         splitViewId: "split-456",
@@ -73,6 +79,8 @@ describe("Sidebar.uiState", () => {
       dismissedThreadStatusKeyByThreadId: {
         "thread-123": "Plan Ready:turn-1",
       },
+      // Duplicates and empty ids are dropped on the way through storage.
+      expandedSubagentParentThreadIds: ["subagent:thread-123:child-a"],
       lastThreadRoute: {
         threadId: "thread-123",
         splitViewId: "split-456",
@@ -98,6 +106,7 @@ describe("Sidebar.uiState", () => {
           "": "bad",
           "thread-456": 42,
         },
+        expandedSubagentParentThreadIds: ["thread-parent", 7, null, "thread-parent"],
         lastThreadRoute: {
           threadId: "thread-123",
           splitViewId: 42,
@@ -114,6 +123,7 @@ describe("Sidebar.uiState", () => {
       dismissedThreadStatusKeyByThreadId: {
         "thread-123": "Awaiting Input:turn-2",
       },
+      expandedSubagentParentThreadIds: ["thread-parent"],
       lastThreadRoute: {
         threadId: "thread-123",
       },
@@ -155,6 +165,7 @@ describe("Sidebar.uiState", () => {
       chatThreadListExtraPages: 0,
       projectThreadListExtraPagesByCwd: {},
       dismissedThreadStatusKeyByThreadId: {},
+      expandedSubagentParentThreadIds: [],
       lastThreadRoute: null,
     });
   });

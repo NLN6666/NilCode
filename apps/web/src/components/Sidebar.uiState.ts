@@ -13,6 +13,8 @@ export type SidebarUiState = {
   chatThreadListExtraPages: number;
   projectThreadListExtraPagesByCwd: Record<string, number>;
   dismissedThreadStatusKeyByThreadId: Record<string, string>;
+  /** Thread rows whose subagent children the user expanded in the sidebar tree. */
+  expandedSubagentParentThreadIds: string[];
   lastThreadRoute: LastThreadRoute | null;
 };
 
@@ -21,12 +23,36 @@ const DEFAULT_SIDEBAR_UI_STATE: SidebarUiState = {
   chatThreadListExtraPages: 0,
   projectThreadListExtraPagesByCwd: {},
   dismissedThreadStatusKeyByThreadId: {},
+  expandedSubagentParentThreadIds: [],
   lastThreadRoute: null,
 };
 
 // Persisted paging is a request, not a promise: render-time clamping trims it to the real
 // thread count, so the cap here only guards against absurd/corrupted stored values.
 const MAX_PERSISTED_THREAD_LIST_EXTRA_PAGES = 1000;
+
+// Expanded parents accumulate as threads come and go; the list is a UI hint, so
+// cap it rather than letting a long-lived profile grow it without bound.
+const MAX_PERSISTED_EXPANDED_SUBAGENT_PARENTS = 200;
+
+function sanitizeExpandedSubagentParentThreadIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const threadIds: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string" || entry.length === 0 || seen.has(entry)) {
+      continue;
+    }
+    seen.add(entry);
+    threadIds.push(entry);
+    if (threadIds.length >= MAX_PERSISTED_EXPANDED_SUBAGENT_PARENTS) {
+      break;
+    }
+  }
+  return threadIds;
+}
 
 export function normalizeSidebarProjectThreadListCwd(cwd: string): string {
   return normalizeWorkspaceRootForComparison(cwd);
@@ -77,6 +103,7 @@ export function readSidebarUiState(): SidebarUiState {
       chatThreadListExpanded?: boolean;
       expandedProjectThreadListCwds?: string[];
       dismissedThreadStatusKeyByThreadId?: Record<string, string>;
+      expandedSubagentParentThreadIds?: unknown;
       lastThreadRoute?: {
         threadId?: unknown;
         splitViewId?: unknown;
@@ -127,6 +154,9 @@ export function readSidebarUiState(): SidebarUiState {
             statusKey.length > 0,
         ),
       ),
+      expandedSubagentParentThreadIds: sanitizeExpandedSubagentParentThreadIds(
+        parsed.expandedSubagentParentThreadIds,
+      ),
       lastThreadRoute,
     };
   } catch {
@@ -152,6 +182,9 @@ export function persistSidebarUiState(input: SidebarUiState): void {
           Object.entries(input.dismissedThreadStatusKeyByThreadId).filter(
             ([threadId, statusKey]) => threadId.length > 0 && statusKey.length > 0,
           ),
+        ),
+        expandedSubagentParentThreadIds: sanitizeExpandedSubagentParentThreadIds(
+          input.expandedSubagentParentThreadIds,
         ),
         lastThreadRoute: input.lastThreadRoute
           ? {

@@ -2,7 +2,9 @@ import { ProjectId, type ProjectScript } from "@synara/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const toastAdd = vi.fn();
-vi.mock("~/components/ui/toast", () => ({ toastManager: { add: (...args: unknown[]) => toastAdd(...args) } }));
+vi.mock("~/components/ui/toast", () => ({
+  toastManager: { add: (...args: unknown[]) => toastAdd(...args) },
+}));
 vi.mock("~/nativeApi", () => ({ readNativeApi: () => null }));
 
 import {

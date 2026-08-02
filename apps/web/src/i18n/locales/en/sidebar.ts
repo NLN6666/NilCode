@@ -56,6 +56,8 @@ export const sidebar = {
     temporary: "Temporary chat",
     pendingApproval: "Pending approval",
     pendingBadge: "Pending",
+    showSubagents: (count: number) => `Show ${count} subagent${count === 1 ? "" : "s"}`,
+    hideSubagents: (count: number) => `Hide ${count} subagent${count === 1 ? "" : "s"}`,
   },
 
   space: {

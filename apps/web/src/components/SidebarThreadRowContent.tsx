@@ -13,7 +13,7 @@ import { resolveSubagentPresentationForThread } from "../lib/subagentPresentatio
 import { resolveThreadHandoffBadgeLabel } from "../lib/threadHandoff";
 import { SIDEBAR_ROW_LABEL_TEXT_CLASS_NAME } from "../sidebarRowStyles";
 import type { SidebarThreadSummary } from "../types";
-import { TerminalIcon } from "../lib/icons";
+import { BotIcon, TerminalIcon } from "../lib/icons";
 import { cn } from "../lib/utils";
 import { ProviderIcon } from "./ProviderIcon";
 import { SidebarGlyph } from "./sidebarGlyphs";
@@ -208,14 +208,14 @@ export function SidebarThreadRowContent({
       {variant === "standard" && isSubagentThread ? (
         <span
           aria-hidden="true"
-          className="relative inline-flex h-3.5 w-[18px] shrink-0 items-center"
+          className="relative inline-flex h-3.5 w-[26px] shrink-0 items-center"
           style={{ marginLeft: `${subagentIndentPx}px` }}
         >
           <span className="absolute left-1.5 top-0 bottom-0 w-px rounded-full bg-border/35" />
-          <span className="absolute left-1.5 top-1/2 h-px w-2.5 -translate-y-1/2 bg-border/35" />
-          <span
-            className="absolute left-1.5 top-1/2 size-[5px] -translate-x-1/2 -translate-y-1/2 rounded-full"
-            style={{ backgroundColor: subagentPresentation?.accentColor }}
+          <span className="absolute left-1.5 top-1/2 h-px w-2 -translate-y-1/2 bg-border/35" />
+          <BotIcon
+            className="absolute right-0 top-1/2 size-3.5 -translate-y-1/2"
+            style={{ color: subagentPresentation?.accentColor }}
           />
         </span>
       ) : terminalEntryPoint ? (

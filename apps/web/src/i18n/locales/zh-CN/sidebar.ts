@@ -57,6 +57,8 @@ export const sidebar: Sidebar = {
     temporary: "临时对话",
     pendingApproval: "等待审批",
     pendingBadge: "待处理",
+    showSubagents: (count: number) => `展开 ${count} 个子代理`,
+    hideSubagents: (count: number) => `收起 ${count} 个子代理`,
   },
 
   space: {

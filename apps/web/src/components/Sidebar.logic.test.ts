@@ -1179,6 +1179,69 @@ describe("buildProjectThreadTree", () => {
       [ThreadId.makeUnsafe("thread-grandchild"), 2],
     ]);
   });
+
+  it("reveals children of an explicitly expanded parent and reports child counts", () => {
+    const threads = [
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-parent"),
+        createdAt: "2026-03-09T10:03:00.000Z",
+      }),
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-child-a"),
+        parentThreadId: ThreadId.makeUnsafe("thread-parent"),
+        createdAt: "2026-03-09T10:02:00.000Z",
+      }),
+      makeThread({
+        id: ThreadId.makeUnsafe("thread-child-b"),
+        parentThreadId: ThreadId.makeUnsafe("thread-parent"),
+        createdAt: "2026-03-09T10:01:00.000Z",
+      }),
+    ];
+
+    // Collapsed: the parent still advertises how many children it hides, so the
+    // row can offer a toggle without rescanning the thread list.
+    expect(
+      buildProjectThreadTree({ threads }).map((row) => [row.thread.id, row.childCount]),
+    ).toEqual([[ThreadId.makeUnsafe("thread-parent"), 2]]);
+
+    expect(
+      buildProjectThreadTree({
+        threads,
+        expandedParentThreadIds: new Set([ThreadId.makeUnsafe("thread-parent")]),
+      }).map((row) => [row.thread.id, row.depth]),
+    ).toEqual([
+      [ThreadId.makeUnsafe("thread-parent"), 0],
+      [ThreadId.makeUnsafe("thread-child-a"), 1],
+      [ThreadId.makeUnsafe("thread-child-b"), 1],
+    ]);
+  });
+
+  it("does not expand a subtree deeper than the expanded parent", () => {
+    const rows = buildProjectThreadTree({
+      threads: [
+        makeThread({
+          id: ThreadId.makeUnsafe("thread-parent"),
+          createdAt: "2026-03-09T10:03:00.000Z",
+        }),
+        makeThread({
+          id: ThreadId.makeUnsafe("thread-child"),
+          parentThreadId: ThreadId.makeUnsafe("thread-parent"),
+          createdAt: "2026-03-09T10:02:00.000Z",
+        }),
+        makeThread({
+          id: ThreadId.makeUnsafe("thread-grandchild"),
+          parentThreadId: ThreadId.makeUnsafe("thread-child"),
+          createdAt: "2026-03-09T10:01:00.000Z",
+        }),
+      ],
+      expandedParentThreadIds: new Set([ThreadId.makeUnsafe("thread-parent")]),
+    });
+
+    expect(rows.map((row) => [row.thread.id, row.depth, row.childCount])).toEqual([
+      [ThreadId.makeUnsafe("thread-parent"), 0, 1],
+      [ThreadId.makeUnsafe("thread-child"), 1, 1],
+    ]);
+  });
 });
 
 describe("getVisibleSidebarEntriesForPreview", () => {
@@ -1363,6 +1426,42 @@ describe("getVisibleSidebarThreadIds", () => {
       previewLimit: 6,
       previewPageSize: 5,
       threadSortOrder: "created_at",
+    });
+
+    expect(visibleThreadIds).toEqual([
+      ThreadId.makeUnsafe("thread-parent"),
+      ThreadId.makeUnsafe("thread-child"),
+      ThreadId.makeUnsafe("thread-other"),
+    ]);
+  });
+
+  it("keeps an expanded parent's children in the keyboard-visible order", () => {
+    const visibleThreadIds = getVisibleSidebarThreadIds({
+      projects: [makeProject({ id: ProjectId.makeUnsafe("project-1"), expanded: true })],
+      threads: [
+        makeThread({
+          id: ThreadId.makeUnsafe("thread-parent"),
+          projectId: ProjectId.makeUnsafe("project-1"),
+          createdAt: "2026-03-09T10:03:00.000Z",
+        }),
+        makeThread({
+          id: ThreadId.makeUnsafe("thread-child"),
+          projectId: ProjectId.makeUnsafe("project-1"),
+          parentThreadId: ThreadId.makeUnsafe("thread-parent"),
+          createdAt: "2026-03-09T10:02:00.000Z",
+        }),
+        makeThread({
+          id: ThreadId.makeUnsafe("thread-other"),
+          projectId: ProjectId.makeUnsafe("project-1"),
+          createdAt: "2026-03-09T10:01:00.000Z",
+        }),
+      ],
+      activeThreadId: ThreadId.makeUnsafe("thread-other"),
+      threadListExtraPagesByProjectId: new Map<ProjectId, number>(),
+      previewLimit: 6,
+      previewPageSize: 5,
+      threadSortOrder: "created_at",
+      expandedSubagentParentThreadIds: new Set([ThreadId.makeUnsafe("thread-parent")]),
     });
 
     expect(visibleThreadIds).toEqual([
