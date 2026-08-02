@@ -777,7 +777,7 @@ export class DesktopBrowserAutomationHost {
     reveal: boolean,
   ): Promise<BrowserAutomationVisibleRuntime> {
     throwIfAborted(signal);
-    if (!reveal) {
+    const observeVisibleRuntime = async (): Promise<BrowserAutomationVisibleRuntime | null> => {
       try {
         const runtime = this.browserManager.getVisibleAutomationRuntime({
           threadId: affinity.threadId,
@@ -788,14 +788,26 @@ export class DesktopBrowserAutomationHost {
         return runtime;
       } catch {
         throwIfAborted(signal);
-        browserHostError({
-          code: "BrowserHostUnavailable",
-          retryable: true,
-          phase: "runtime",
-          effectMayHaveCommitted: false,
-          tabId: tabId as BrowserTabId,
-        });
+        return null;
       }
+    };
+
+    // Revealing an already-visible browser is not free: it re-opens and re-focuses the dock
+    // pane in the renderer on every single tool call, yanking the pane back under the user
+    // and churning React state for no gain. Only pay for the reveal when the tab is not
+    // already the visible one.
+    const visible = await observeVisibleRuntime();
+    if (visible) {
+      return visible;
+    }
+    if (!reveal) {
+      browserHostError({
+        code: "BrowserHostUnavailable",
+        retryable: true,
+        phase: "runtime",
+        effectMayHaveCommitted: false,
+        tabId: tabId as BrowserTabId,
+      });
     }
     this.browserManager.selectAutomationTab({ threadId: affinity.threadId, tabId });
     throwIfAborted(signal);
@@ -805,18 +817,11 @@ export class DesktopBrowserAutomationHost {
     throwIfAborted(signal);
     const deadline = performance.now() + this.visibleRuntimeTimeoutMs;
     do {
-      try {
-        const runtime = this.browserManager.getVisibleAutomationRuntime({
-          threadId: affinity.threadId,
-          tabId,
-        });
-        throwIfAborted(signal);
-        await this.diagnostics.observe(runtime, signal);
+      const runtime = await observeVisibleRuntime();
+      if (runtime) {
         return runtime;
-      } catch {
-        throwIfAborted(signal);
-        await sleep(VISIBLE_RUNTIME_POLL_MS, signal);
       }
+      await sleep(VISIBLE_RUNTIME_POLL_MS, signal);
     } while (performance.now() <= deadline);
     browserHostError({
       code: "BrowserHostUnavailable",
@@ -1455,6 +1460,9 @@ export class DesktopBrowserAutomationHost {
     timeoutMs: number,
     signal: AbortSignal,
   ): Promise<BrowserNavigationObservation> {
+    // `getURL()` is Chromium's visible URL, so it already names an in-flight navigation the
+    // renderer started when it mounted the guest. Re-navigating there would abort that load
+    // and start it over, which the user sees as the page refreshing itself mid-load.
     if (runtime.webContents.getURL() !== url) {
       const navigation = await beginBrowserNavigation(runtime, url, signal);
       return this.waitForNavigation(

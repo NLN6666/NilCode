@@ -348,6 +348,27 @@ const createManager = () => {
   return { manager: manager as unknown as DesktopBrowserManager, raw: manager, webContents };
 };
 
+/**
+ * Models the real precondition for a reveal: the requested tab is not the visible one, so
+ * `getVisibleAutomationRuntime` refuses until the host selects it. Without this the fake
+ * reports an always-visible browser and the host correctly skips the reveal entirely.
+ */
+const hideVisibleRuntimeUntilRevealed = (raw: ReturnType<typeof createManager>["raw"]): void => {
+  const resolveVisible = raw.getVisibleAutomationRuntime.getMockImplementation()!;
+  const select = raw.selectAutomationTab.getMockImplementation()!;
+  let revealed = false;
+  raw.selectAutomationTab.mockImplementation(((): unknown => {
+    revealed = true;
+    return select();
+  }) as never);
+  raw.getVisibleAutomationRuntime.mockImplementation(((): unknown => {
+    if (!revealed) {
+      throw new Error("The requested browser webview is not currently visible.");
+    }
+    return resolveVisible();
+  }) as never);
+};
+
 describe("DesktopBrowserAutomationHost", () => {
   it("blocks new DOM tools while a human annotation picker is interactive", async () => {
     const { manager, raw } = createManager();
@@ -516,6 +537,7 @@ describe("DesktopBrowserAutomationHost", () => {
 
   it("opens the requested thread, keeps tab affinity and deduplicates an identical intention", async () => {
     const { manager, raw } = createManager();
+    hideVisibleRuntimeUntilRevealed(raw);
     const openPanel = vi.fn(async () => undefined);
     const host = new DesktopBrowserAutomationHost(manager, {
       requestOpenPanel: openPanel,
@@ -1250,6 +1272,27 @@ describe("DesktopBrowserAutomationHost", () => {
       loadState: "domcontentloaded",
     });
     expect(webContents.loadURL).not.toHaveBeenCalled();
+  });
+
+  it("never re-reveals a browser that is already the visible tab", async () => {
+    const { manager, raw } = createManager();
+    const openPanel = vi.fn(async () => undefined);
+    const host = new DesktopBrowserAutomationHost(manager, { requestOpenPanel: openPanel });
+
+    for (const idempotencyKey of ["reveal-a", "reveal-b", "reveal-c"]) {
+      await host.executeTool({
+        sessionId: "session-no-reveal-churn",
+        provider: "codex",
+        threadId: THREAD_ID,
+        name: "browser_click",
+        arguments: { idempotencyKey, target: { selector: "#save" } },
+      });
+    }
+
+    // Revealing re-opens and re-focuses the dock pane in the renderer. Doing it per tool
+    // call yanks the pane back under the user and churns React state for nothing.
+    expect(openPanel).not.toHaveBeenCalled();
+    expect(raw.selectAutomationTab).not.toHaveBeenCalled();
   });
 
   it("closes a restore-held tab without requiring an attached renderer guest", async () => {
@@ -2132,7 +2175,8 @@ describe("DesktopBrowserAutomationHost", () => {
   });
 
   it("cancels a pending visible-panel reveal without stranding the browser locks", async () => {
-    const { manager } = createManager();
+    const { manager, raw } = createManager();
+    hideVisibleRuntimeUntilRevealed(raw);
     const panelReveal = deferred<void>();
     const requestOpenPanel = vi.fn(() => panelReveal.promise);
     const host = new DesktopBrowserAutomationHost(manager, { requestOpenPanel });

@@ -5,10 +5,19 @@ export interface VisibleBrowserFixtureSite {
   readonly appUrl: string;
   readonly nextUrl: string;
   readonly redirectUrl: string;
+  /** Delays its response long enough that the document is still uncommitted when a caller
+   *  polls for the visible runtime, so a second navigation to it is observable. */
+  readonly slowUrl: string;
+  /** How many times the fixture served `slowUrl`. */
+  readonly slowRequestCount: () => number;
   readonly close: () => Promise<void>;
 }
 
+const SLOW_RESPONSE_DELAY_MS = 1_500;
+
 const INITIAL_HTML = `<!doctype html><html><head><title>Initial fixture</title></head><body><h1>Initial page</h1></body></html>`;
+
+const SLOW_HTML = `<!doctype html><html><head><title>Slow fixture</title></head><body><h1>Slow page</h1></body></html>`;
 
 const APP_HTML = `<!doctype html>
 <html>
@@ -221,8 +230,21 @@ const HTML_BY_PATH: Readonly<Record<string, string>> = {
 };
 
 export async function startVisibleBrowserFixtureSite(): Promise<VisibleBrowserFixtureSite> {
+  let slowRequests = 0;
+  const pendingSlowResponses = new Set<ReturnType<typeof setTimeout>>();
   const server: Server = createServer((request, response) => {
     const requestPath = new URL(request.url ?? "/", "http://fixture.test").pathname;
+    if (requestPath === "/slow") {
+      slowRequests += 1;
+      const timer = setTimeout(() => {
+        pendingSlowResponses.delete(timer);
+        response.setHeader("Content-Type", "text/html; charset=utf-8");
+        response.setHeader("Cache-Control", "no-store");
+        response.end(SLOW_HTML);
+      }, SLOW_RESPONSE_DELAY_MS);
+      pendingSlowResponses.add(timer);
+      return;
+    }
     if (requestPath === "/redirect") {
       response.statusCode = 302;
       response.setHeader("Location", "/next");
@@ -258,8 +280,12 @@ export async function startVisibleBrowserFixtureSite(): Promise<VisibleBrowserFi
     appUrl: `${origin}/app`,
     nextUrl: `${origin}/next`,
     redirectUrl: `${origin}/redirect`,
+    slowUrl: `${origin}/slow`,
+    slowRequestCount: () => slowRequests,
     close: () =>
       new Promise<void>((resolve, reject) => {
+        for (const timer of pendingSlowResponses) clearTimeout(timer);
+        pendingSlowResponses.clear();
         server.close((error) => (error ? reject(error) : resolve()));
       }),
   };

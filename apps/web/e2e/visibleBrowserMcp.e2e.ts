@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { BROWSER_TOOL_NAMES } from "@synara/contracts";
 import { _electron as electron, expect, test, type ElectronApplication } from "playwright/test";
 
+import { browserHostPipePath } from "./fixtures/browserHostPipe";
 import { createBrowserMcpHarness } from "./fixtures/mcpBrowserHarness";
 import { startVisibleBrowserFixtureSite } from "./fixtures/siteServer";
 
@@ -70,7 +71,7 @@ test("production MCP controls the exact visible Electron webview", async () => {
   writeFileSync(join(workspaceRoot, "fixture-upload.txt"), "visible-browser-upload\n", "utf8");
   writeFileSync(join(home, "outside-workspace.txt"), "must-not-upload\n", "utf8");
   symlinkSync(join(home, "outside-workspace.txt"), join(workspaceRoot, "outside-link.txt"));
-  const pipePath = join(home, "browser-host.sock");
+  const pipePath = browserHostPipePath(home);
   const capability = `visible-browser-e2e-${crypto.randomUUID()}-${crypto.randomUUID()}`;
   const threadId = `thread-visible-browser-${crypto.randomUUID()}`;
   const shellPath = resolve(WEB_DIR, "e2e/fixtures/visibleBrowserShell.html");

@@ -11,6 +11,7 @@ import type {
 } from "@synara/contracts";
 import { _electron as electron, expect, test, type ElectronApplication } from "playwright/test";
 
+import { browserHostPipePath } from "./fixtures/browserHostPipe";
 import { createBrowserMcpHarness } from "./fixtures/mcpBrowserHarness";
 import { startVisibleBrowserFixtureSite } from "./fixtures/siteServer";
 
@@ -63,7 +64,7 @@ test("a real Electron guest commits and reprojects a continuous annotation sessi
   const home = mkdtempSync(join(tmpdir(), "synara-browser-annotations-e2e-"));
   const workspaceRoot = join(home, "workspace");
   mkdirSync(workspaceRoot);
-  const pipePath = join(home, "browser-host.sock");
+  const pipePath = browserHostPipePath(home);
   const capability = `browser-annotations-${crypto.randomUUID()}-${crypto.randomUUID()}`;
   const threadId = `thread-browser-annotations-${crypto.randomUUID()}`;
   const shellPath = resolve(WEB_DIR, "e2e/fixtures/visibleBrowserShell.html");

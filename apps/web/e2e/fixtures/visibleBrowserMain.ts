@@ -18,6 +18,9 @@ const shellPath = process.env.SYNARA_E2E_SHELL_PATH;
 const threadId = process.env.SYNARA_E2E_THREAD_ID as ThreadId | undefined;
 const synaraHome = process.env.SYNARA_HOME;
 const annotationPreloadPath = process.env.SYNARA_E2E_BROWSER_ANNOTATION_PRELOAD;
+// Mirrors production BrowserPanel: the browser pane is not mounted until the host asks for
+// it, so the guest is created after automation has already projected the target URL.
+const coldPanel = process.env.SYNARA_E2E_COLD_PANEL === "1";
 
 if (!pipePath || !capability || !shellPath || !threadId || !synaraHome || !annotationPreloadPath) {
   throw new Error("The visible-browser Electron fixture requires its isolated E2E environment.");
@@ -31,6 +34,18 @@ let latestState: ThreadBrowserState | null = null;
 let shellReady = false;
 const annotationEvents: BrowserAnnotationEvent[] = [];
 const rendererLifecycleHide = createBrowserPanelHideScheduler();
+// How many times the host asked the renderer to reveal the browser pane. Once per tool call
+// would mean the pane is force-opened and re-focused under the user on every agent action.
+let panelRevealRequests = 0;
+// Every main-frame navigation the visible guest performs, in order. A URL appearing twice
+// for one requested navigation is the double-load the user perceives as a forced refresh.
+const guestMainFrameNavigations: string[] = [];
+app.on("web-contents-created", (_event, contents) => {
+  if (contents.getType() !== "webview") return;
+  contents.on("did-start-navigation", (_navigationEvent, url, isInPlace, isMainFrame) => {
+    if (isMainFrame && !isInPlace) guestMainFrameNavigations.push(url);
+  });
+});
 function pushState(): void {
   if (shellReady && latestState && mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("synara-e2e:browser-state", latestState);
@@ -65,6 +80,7 @@ const pipeServer = new BrowserUsePipeServer(browserManager, {
   capability,
   requestOpenPanel: (requestedThreadId) => {
     if (requestedThreadId !== threadId) throw new Error("Unexpected E2E thread scope.");
+    panelRevealRequests += 1;
     // Exercise React development's setup/cleanup/setup sequence against the
     // real desktop human-control boundary. The remount must cancel the passive
     // cleanup before it can masquerade as a user takeover.
@@ -84,6 +100,8 @@ Object.assign(globalThis, {
   __synaraVisibleBrowserE2E: {
     browserManager,
     annotationEvents,
+    guestMainFrameNavigations,
+    panelRevealRequestCount: () => panelRevealRequests,
     threadId,
     pipePath,
   },
@@ -114,7 +132,7 @@ app.whenReady().then(async () => {
       event.preventDefault();
     }
   });
-  await mainWindow.loadFile(shellPath);
+  await mainWindow.loadFile(shellPath, coldPanel ? { query: { coldPanel: "1" } } : {});
   await pipeServer.start();
 });
 

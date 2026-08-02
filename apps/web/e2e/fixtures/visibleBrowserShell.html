@@ -60,6 +60,10 @@
       let attachInFlight = false;
       let attachRetryTimer = null;
       const composer = document.getElementById("host-composer");
+      // Production BrowserPanel only exists once the pane is open, so the guest is created
+      // after automation projected the tab URL. Cold mode reproduces that ordering.
+      const coldPanel = new URLSearchParams(location.search).get("coldPanel") === "1";
+      let panelOpen = !coldPanel;
       document.documentElement.dataset.hostSubmits = "0";
       composer.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
@@ -152,9 +156,12 @@
           delete document.documentElement.dataset.webviewAttached;
           return;
         }
+        if (panelOpen) mountActiveTab();
+      });
+      ipcRenderer.on("synara-e2e:open-panel", () => {
+        panelOpen = true;
         mountActiveTab();
       });
-      ipcRenderer.on("synara-e2e:open-panel", () => mountActiveTab());
       document.documentElement.dataset.shellReady = "true";
       ipcRenderer.send("synara-e2e:shell-ready");
     </script>
