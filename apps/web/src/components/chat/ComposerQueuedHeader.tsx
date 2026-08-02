@@ -67,7 +67,7 @@ interface ComposerQueuedHeaderProps {
   /** Workspace root used to resolve local file links/mentions inside the parsed preview. */
   cwd?: string | undefined;
   attachedToPrevious?: boolean;
-  /** Whether steering has to stop the live turn first — see providerSteer. */
+  /** Whether steering has to stop the live turn first — see providerMetadata. */
   interruptsLiveTurn: boolean;
 }
 

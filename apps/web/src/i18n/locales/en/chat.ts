@@ -125,6 +125,18 @@ export const chat = {
       fallback: "Panel",
     },
 
+    /**
+     * Empty-dock launcher names. These read as workspace tools rather than dock
+     * tabs, so a kind may present differently here than in `kinds`; any kind
+     * absent from this map falls back to its `kinds` label.
+     */
+    launchers: {
+      diff: "Review",
+      explorer: "Files",
+      sidechat: "Side chat",
+      git: "Source control",
+    },
+
     closePane: (label: string) => `Close ${label}`,
     addPanel: "Add panel",
     collapsePanel: "Collapse panel",
@@ -366,6 +378,7 @@ export const chat = {
     newTerminal: "New terminal",
     terminal: "Terminal",
     toggleDiffPanel: "Toggle diff panel",
+    toggleRightSidebar: "Toggle right sidebar",
     closeSelectedSide: "Close selected Side",
     handOff: "Hand off",
     handoffTo: (provider: string) => `Handoff to ${provider}`,

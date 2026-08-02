@@ -119,6 +119,13 @@ export const chat: Chat = {
       fallback: "面板",
     },
 
+    launchers: {
+      diff: "代码审阅",
+      explorer: "文件",
+      sidechat: "侧边会话",
+      git: "源代码管理",
+    },
+
     closePane: (label) => `关闭${label}`,
     addPanel: "添加面板",
     collapsePanel: "折叠面板",
@@ -332,6 +339,7 @@ export const chat: Chat = {
     newTerminal: "新建终端",
     terminal: "终端",
     toggleDiffPanel: "切换差异面板",
+    toggleRightSidebar: "切换右侧边栏",
     closeSelectedSide: "关闭选中的 Side",
     handOff: "交接",
     handoffTo: (provider) => `交接给 ${provider}`,

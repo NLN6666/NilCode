@@ -196,11 +196,6 @@ export interface BrowserAutomationVisibleRuntime {
   readonly expectAgentInput?: (signal: BrowserAutomationExpectedInput) => () => void;
 }
 
-export interface BrowserUseSnapshot {
-  threadId: ThreadId;
-  state: ThreadBrowserState;
-}
-
 export interface BrowserUseCdpEvent {
   method: string;
   params?: unknown;
@@ -448,9 +443,6 @@ export class DesktopBrowserManager {
   private readonly runtimeLastActiveAtByKey = new Map<string, number>();
   private readonly pendingRuntimeSyncs = new Map<string, PendingRuntimeSync>();
   private readonly listeners = new Set<BrowserStateListener>();
-  // Notified whenever the set of CDP-exposable targets may have changed (state emits and
-  // active-thread transitions); the CDP proxy re-snapshots and diffs on each signal.
-  private readonly browserTargetListeners = new Set<() => void>();
   private readonly copyLinkListeners = new Set<BrowserCopyLinkListener>();
   private readonly elementPickedListeners = new Set<BrowserElementPickedListener>();
   private readonly elementPickCancelledListeners = new Set<BrowserElementPickCancelledListener>();
@@ -1241,7 +1233,6 @@ export class DesktopBrowserManager {
     this.runtimeLastActiveAtByKey.clear();
     this.rendererOnlyRuntimeKeys.clear();
     this.listeners.clear();
-    this.browserTargetListeners.clear();
     this.copyLinkListeners.clear();
     this.elementPickedListeners.clear();
     this.elementPickCancelledListeners.clear();
@@ -1270,28 +1261,6 @@ export class DesktopBrowserManager {
       counters: { ...this.perfCounters },
       trackedProcessIds: this.getTrackedProcessIds(),
     };
-  }
-
-  getBrowserUseSnapshot(): BrowserUseSnapshot | null {
-    if (this.activeThreadId) {
-      const activeState = this.states.get(this.activeThreadId);
-      if (activeState?.open) {
-        return {
-          threadId: this.activeThreadId,
-          state: this.snapshotThreadState(this.activeThreadId, activeState),
-        };
-      }
-    }
-
-    for (const [threadId, state] of this.states) {
-      if (state.open) {
-        return {
-          threadId,
-          state: this.snapshotThreadState(threadId, state),
-        };
-      }
-    }
-    return null;
   }
 
   getAutomationHumanControlEpoch(threadId: ThreadId): number {
@@ -1584,12 +1553,10 @@ export class DesktopBrowserManager {
     }
 
     if (!state?.open) {
-      this.notifyBrowserTargetListeners();
       return;
     }
 
     this.scheduleThreadSuspend(input.threadId);
-    this.notifyBrowserTargetListeners();
   }
 
   getState(input: BrowserThreadInput): ThreadBrowserState {
@@ -2137,24 +2104,6 @@ export class DesktopBrowserManager {
     );
   }
 
-  /** The shared automation lease; external consumers (CDP proxy) acquire through this. */
-  getAutomationLease(): BrowserAutomationLease {
-    return this.automationLease;
-  }
-
-  subscribeBrowserTargets(listener: () => void): () => void {
-    this.browserTargetListeners.add(listener);
-    return () => {
-      this.browserTargetListeners.delete(listener);
-    };
-  }
-
-  private notifyBrowserTargetListeners(): void {
-    for (const listener of this.browserTargetListeners) {
-      listener();
-    }
-  }
-
   // Lease wake path: ensure the exact tab is live and loaded, nothing more. Unlike
   // attachBrowserUseTab this never activates the tab or switches the visible thread.
   private async wakeTabForAutomation(input: BrowserTabInput): Promise<void> {
@@ -2234,8 +2183,6 @@ export class DesktopBrowserManager {
     this.resumeThread(threadId);
     this.attachActiveTab(threadId, bounds);
     this.updatePopupWindowsForThread(threadId);
-    // Active-thread transitions change the CDP-exposable target set without a state emit.
-    this.notifyBrowserTargetListeners();
   }
 
   // Renderer panels create their own <webview>; keep active-thread bookkeeping current while
@@ -2250,8 +2197,6 @@ export class DesktopBrowserManager {
     this.activeBounds = bounds;
     this.activeBoundsThreadId = threadId;
     this.clearSuspendTimer(threadId);
-    this.updatePopupWindowsForThread(threadId);
-    this.notifyBrowserTargetListeners();
   }
 
   private setActiveBounds(threadId: ThreadId, bounds: BrowserPanelBounds | null): void {
@@ -3360,7 +3305,6 @@ export class DesktopBrowserManager {
     for (const listener of this.listeners) {
       listener(snapshot);
     }
-    this.notifyBrowserTargetListeners();
   }
 }
 

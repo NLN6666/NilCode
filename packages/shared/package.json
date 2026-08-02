@@ -12,10 +12,6 @@
       "types": "./src/runtimeMode.ts",
       "import": "./src/runtimeMode.ts"
     },
-    "./providerSteer": {
-      "types": "./src/providerSteer.ts",
-      "import": "./src/providerSteer.ts"
-    },
     "./git": {
       "types": "./src/git.ts",
       "import": "./src/git.ts"
@@ -263,6 +259,10 @@
     "./browserAutomationCatalogue": {
       "types": "./src/browserAutomationCatalogue.ts",
       "import": "./src/browserAutomationCatalogue.ts"
+    },
+    "./browserAutomationPresentation": {
+      "types": "./src/browserAutomationPresentation.ts",
+      "import": "./src/browserAutomationPresentation.ts"
     },
     "./browserAutomationErrors": {
       "types": "./src/browserAutomationErrors.ts",

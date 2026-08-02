@@ -37,8 +37,6 @@ import type {
 } from "electron";
 import * as Effect from "effect/Effect";
 import type {
-  DesktopBrowserCdpProxySettingsInput,
-  DesktopBrowserCdpProxyState,
   DesktopTheme,
   DesktopUpdateActionResult,
   DesktopUpdateState,
@@ -195,13 +193,6 @@ import {
   SYNARA_BROWSER_HOST_PIPE_PATH,
   resolveBrowserHostPipeBackendEnv,
 } from "./browserUsePipeServer";
-import {
-  BrowserCdpProxyServer,
-  loadOrCreateBrowserCdpProxyToken,
-  readBrowserCdpProxySettings,
-  writeBrowserCdpProxySettings,
-  type BrowserCdpProxySettings,
-} from "./browserCdpProxyServer";
 import { normalizeDesktopWsUrl, resolveDesktopWsUrlFromEnv } from "./desktopWsBridge";
 import {
   repairBrowserProfileFromBridgeManifest,
@@ -378,9 +369,6 @@ const browserManager = new DesktopBrowserManager({
   },
 });
 let browserHostPipeServer: BrowserHostPipeServer | null = null;
-let browserCdpProxyServer: BrowserCdpProxyServer | null = null;
-let browserCdpProxySettings: BrowserCdpProxySettings | null = null;
-let browserCdpProxyLastError: string | null = null;
 let appSnapManager: DesktopAppSnapManager | null = null;
 let configuredUpdaterCacheDirName: string | null = null;
 
@@ -445,104 +433,6 @@ async function ensureBrowserHostPipeServer(): Promise<void> {
   });
   await server.start();
   browserHostPipeServer = server;
-}
-
-function getBrowserCdpProxySettings(): BrowserCdpProxySettings {
-  if (!browserCdpProxySettings) {
-    browserCdpProxySettings = readBrowserCdpProxySettings(app.getPath("userData"));
-  }
-  return browserCdpProxySettings;
-}
-
-function currentBrowserCdpProxyState(): DesktopBrowserCdpProxyState {
-  const settings = getBrowserCdpProxySettings();
-  return {
-    enabled: settings.enabled,
-    port: settings.port,
-    running: browserCdpProxyServer !== null,
-    endpoint: browserCdpProxyServer?.endpoint ?? null,
-    // Minted lazily so the token file only exists for users who enabled the proxy.
-    token: settings.enabled ? loadOrCreateBrowserCdpProxyToken(app.getPath("userData")) : null,
-    lastError: browserCdpProxyLastError,
-  };
-}
-
-function broadcastBrowserCdpProxyState(): void {
-  mainWindow?.webContents.send(IPC.browser.cdpProxyState, currentBrowserCdpProxyState());
-}
-
-async function stopBrowserCdpProxyServer(): Promise<void> {
-  const server = browserCdpProxyServer;
-  browserCdpProxyServer = null;
-  if (!server) return;
-  try {
-    await server.dispose();
-  } catch (error: unknown) {
-    console.warn("[Synara browser] Failed to dispose the browser CDP proxy", error);
-  }
-}
-
-async function startBrowserCdpProxyServer(): Promise<void> {
-  if (browserCdpProxyServer) return;
-  const settings = getBrowserCdpProxySettings();
-  const server = new BrowserCdpProxyServer({
-    browserHost: {
-      getSnapshot: () => browserManager.getBrowserUseSnapshot(),
-      subscribeTargets: (listener) => browserManager.subscribeBrowserTargets(listener),
-      acquireLease: (input, options) => browserManager.getAutomationLease().acquire(input, options),
-      sendCdpCommand: (input) => browserManager.sendCdpCommand(input),
-      subscribeToCdpEvents: (input, listener) =>
-        browserManager.subscribeToCdpEvents(input, listener),
-      newTab: (input) => browserManager.newTab(input),
-      closeTab: (input) => browserManager.closeTab(input),
-      selectTab: (input) => browserManager.selectTab(input),
-      getVersionInfo: () => ({
-        chromeVersion: process.versions.chrome ?? "0.0.0.0",
-        userAgent: app.userAgentFallback,
-        v8Version: process.versions.v8 ?? "0.0",
-      }),
-      requestOpenPanel: () => {
-        mainWindow?.webContents.send(IPC.browser.requestOpenPanel);
-      },
-    },
-    token: loadOrCreateBrowserCdpProxyToken(app.getPath("userData")),
-    port: settings.port,
-  });
-  await server.start();
-  browserCdpProxyServer = server;
-}
-
-async function applyBrowserCdpProxySettings(
-  input: DesktopBrowserCdpProxySettingsInput,
-): Promise<DesktopBrowserCdpProxyState> {
-  browserCdpProxySettings = writeBrowserCdpProxySettings(app.getPath("userData"), input);
-  browserCdpProxyLastError = null;
-  await stopBrowserCdpProxyServer();
-  if (browserCdpProxySettings.enabled) {
-    try {
-      await startBrowserCdpProxyServer();
-    } catch (error: unknown) {
-      // Loud failure (e.g. the port is taken): the error lands in the state the settings
-      // UI renders. The proxy is never silently disabled.
-      browserCdpProxyLastError = formatErrorMessage(error);
-      console.error("[Synara browser] Failed to start the browser CDP proxy", error);
-    }
-  }
-  broadcastBrowserCdpProxyState();
-  return currentBrowserCdpProxyState();
-}
-
-async function ensureBrowserCdpProxyServerAtStartup(): Promise<void> {
-  if (!getBrowserCdpProxySettings().enabled) {
-    return;
-  }
-  try {
-    await startBrowserCdpProxyServer();
-  } catch (error: unknown) {
-    browserCdpProxyLastError = formatErrorMessage(error);
-    console.error("[Synara browser] Failed to start the browser CDP proxy", error);
-    broadcastBrowserCdpProxyState();
-  }
 }
 
 let destructiveMenuIconCache: Electron.NativeImage | null | undefined;
@@ -3593,8 +3483,6 @@ async function shutdownDesktopRuntime(reason: string): Promise<void> {
       writeDesktopLogHeader(`${reason} appsnap disposed`);
       await disposeBrowserHostPipeServerForShutdown(reason);
       writeDesktopLogHeader(`${reason} browser host pipe disposed`);
-      await stopBrowserCdpProxyServer();
-      writeDesktopLogHeader(`${reason} browser cdp proxy disposed`);
       browserManager.dispose();
       writeDesktopLogHeader(`${reason} browser disposed`);
       restoreStdIoCapture?.();
@@ -3961,15 +3849,6 @@ function registerIpcHandlers(): void {
   registerDesktopVoiceTranscriptionHandler();
   startBrowserPerformanceLogging();
   registerBrowserIpcHandlers(ipcMain, browserManager);
-
-  ipcMain.removeHandler(IPC.browser.cdpProxyGetState);
-  ipcMain.handle(IPC.browser.cdpProxyGetState, async () => currentBrowserCdpProxyState());
-  ipcMain.removeHandler(IPC.browser.cdpProxySetSettings);
-  ipcMain.handle(
-    IPC.browser.cdpProxySetSettings,
-    async (_event, input: DesktopBrowserCdpProxySettingsInput) =>
-      applyBrowserCdpProxySettings(input),
-  );
 }
 
 function getIconOption(): { icon: string } | Record<string, never> {
@@ -4409,7 +4288,6 @@ async function bootstrap(): Promise<void> {
   } catch (error) {
     console.warn("[Synara browser] Failed to start browser host pipe", error);
   }
-  await ensureBrowserCdpProxyServerAtStartup();
   startBackend();
   writeDesktopLogHeader("bootstrap backend start requested");
 

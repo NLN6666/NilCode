@@ -42,11 +42,11 @@ import {
 import { automationRequiresTargetThread } from "@synara/shared/automationMode";
 import { resolveBrowserSurfaceId } from "@synara/shared/browserSurface";
 import { abortProjectPreview } from "~/lib/projectPreviewLauncher";
+import { providerSupportsNativeTurnSteering } from "@synara/shared/providerMetadata";
 import { getModelCapabilities, normalizeModelSlug } from "@synara/shared/model";
 import { resolveTailUserMessageEditTarget } from "@synara/shared/conversationEdit";
 import { threadExportBlockedReason } from "@synara/shared/threadExport";
 import { pendingRequestInstanceKey } from "@synara/shared/threadSummary";
-import { steerInterruptsLiveTurn } from "@synara/shared/providerSteer";
 import {
   buildPromptThreadTitleFallback,
   GENERIC_CHAT_THREAD_TITLE,
@@ -1118,6 +1118,7 @@ interface ChatViewProps {
   isFocusedPane?: boolean;
   panelState?: SplitViewPanePanelState;
   onToggleDiffPanel?: () => void;
+  onToggleRightDock?: () => void;
   onToggleBrowserPanel?: () => void;
   onOpenBrowserUrl?: (url: string) => void;
   onOpenTurnDiffPanel?: (turnId: TurnId, filePath?: string) => void;
@@ -1180,6 +1181,7 @@ export default function ChatView({
   isFocusedPane: isFocusedPaneProp,
   panelState,
   onToggleDiffPanel,
+  onToggleRightDock,
   onToggleBrowserPanel,
   onOpenBrowserUrl,
   onOpenTurnDiffPanel,
@@ -1191,6 +1193,7 @@ export default function ChatView({
 }: ChatViewProps) {
   const appChatCopy = useMessages().app.chat;
   const composerPlaceholderCopy = useMessages().composer.placeholder;
+  const composerTraitStatusLabels = useMessages().composer.modelPicker;
   // Prop defaults are resolved here instead of in the destructuring pattern: an
   // AssignmentPattern in the parameter list makes React Compiler bail out (silently —
   // `panicThreshold` is unset) on this entire component, the hottest one in the app.
@@ -1594,8 +1597,9 @@ export default function ChatView({
     restoredSourceProposedPlan ?? null,
   );
   const autoDispatchingQueuedTurnRef = useRef(false);
-  // Holds queued-composer auto-dispatch through a non-Codex steer's
-  // interrupt→re-dispatch gap; see resolveQueuedSteerGateTransition.
+  // Holds queued-composer auto-dispatch through a non-natively-steerable
+  // provider steer's interrupt→re-dispatch gap; see
+  // resolveQueuedSteerGateTransition.
   const [queuedSteerGate, setQueuedSteerGate] = useState<QueuedSteerGate | null>(null);
   // Bumped to re-evaluate auto-dispatch when only non-reactive guards (refs)
   // blocked it; nothing else re-triggers the effect once they reset.
@@ -3230,6 +3234,19 @@ export default function ChatView({
     () => new Set(optimisticUserMessages.map((message) => message.id)),
     [optimisticUserMessages],
   );
+  // The user message a local send anchored at the top of the transcript viewport.
+  // Set at the send sites and kept after the turn settles — collapsing the tail
+  // spacer when a turn ends would visibly yank the settled transcript. The next
+  // send replaces it, and thread switches reset it via the per-thread timeline
+  // remount plus the threadId guard at the render site.
+  const [tailAnchor, setTailAnchor] = useState<{
+    threadId: ThreadId;
+    messageId: MessageId;
+  } | null>(null);
+  // True from send until the tail-anchor hook finishes sliding the sent message
+  // to the viewport top. The auto-follow effect stays quiet while set so the
+  // anchored slide has exactly one scroll owner (see useTailAnchorScroll).
+  const tailAnchorScrollInFlightRef = useRef(false);
   // --- Pinned messages & notes (per-thread, server-synced through sidepanel commands) ---
   const pinnedMessages = activeThread?.pinnedMessages ?? EMPTY_PINNED_MESSAGES;
   const threadMarkers = activeThread?.threadMarkers ?? EMPTY_THREAD_MARKERS;
@@ -5129,6 +5146,8 @@ export default function ChatView({
   const clearTranscriptAutoFollow = useCallback(() => {
     autoFollowThreadIdRef.current = null;
     animateNextAutoFollowScrollRef.current = false;
+    // A user scroll gesture takes over from any in-flight tail-anchor slide.
+    tailAnchorScrollInFlightRef.current = false;
   }, []);
   const transcriptMessageCount = useMemo(
     () => timelineEntries.filter((entry) => entry.kind === "message").length,
@@ -5251,6 +5270,10 @@ export default function ChatView({
     // pinning first would snap the viewport before the glide can ease it.
     if (animateNextAutoFollowScrollRef.current) return;
     if (transcriptGlideActiveRef.current) return;
+    // The tail-anchor slide owns the scroll after a send: it parks the sent
+    // message at the viewport top and the spacer keeps the end exact once it
+    // settles. Pinning to the bottom mid-slide would hard-jump past it.
+    if (tailAnchorScrollInFlightRef.current) return;
     if (!isAtEndRef.current) return;
     if (performance.now() < userScrollIntentUntilRef.current) return;
     const scrollContainer = legendListRef.current?.getScrollableNode?.();
@@ -5301,7 +5324,13 @@ export default function ChatView({
       resizeObserver.observe(contentNode);
     }
     let frameId: number | null = null;
+    // The tail-anchor slide parks a freshly sent message at the viewport top and
+    // owns the scroll until it settles. Both writers below pull toward the
+    // bottom, so they stand down; the armed follow survives and resumes on the
+    // next transcript signal, once the anchor has cleared the in-flight flag.
+    const tailAnchorOwnsScroll = tailAnchorScrollInFlightRef.current;
     if (
+      !tailAnchorOwnsScroll &&
       animateNextAutoFollowScrollRef.current &&
       !window.matchMedia("(prefers-reduced-motion: reduce)").matches
     ) {
@@ -5336,7 +5365,7 @@ export default function ChatView({
         frameId = window.requestAnimationFrame(runGlideFrame);
       };
       frameId = window.requestAnimationFrame(runGlideFrame);
-    } else {
+    } else if (!tailAnchorOwnsScroll) {
       animateNextAutoFollowScrollRef.current = false;
       pinTranscriptToBottom();
     }
@@ -8079,9 +8108,13 @@ export default function ChatView({
         source: "native",
       },
     ]);
-    // Mark the transcript as anchored before the optimistic row lands so the
-    // re-snap effect on row count change pulls us to the new tail.
+    // Mark the transcript as anchored before the optimistic row lands. The tail
+    // anchor sizes the spacer that lets this message sit at the viewport top,
+    // and its hook owns the slide; auto-follow stays armed for bookkeeping but
+    // pauses until the in-flight flag clears.
     armTranscriptAutoFollow(threadIdForSend, true);
+    tailAnchorScrollInFlightRef.current = true;
+    setTailAnchor({ threadId: threadIdForSend, messageId: messageIdForSend });
 
     setThreadError(threadIdForSend, null);
     if (expiredTerminalContextCount > 0) {
@@ -8311,13 +8344,17 @@ export default function ChatView({
         }),
       );
       turnStartSucceeded = true;
-      // Non-Codex steers interrupt the live turn before re-dispatching; hold
-      // queued auto-dispatch through that gap so it can't race the steer. The
-      // live session provider decides the interrupt path server-side, so the
-      // gate keys off it rather than the requested model selection.
+      // Steers on providers without native mid-turn steering interrupt the live
+      // turn before re-dispatching; hold queued auto-dispatch through that gap
+      // so it can't race the steer. The live session provider decides the
+      // interrupt path server-side, so the gate keys off it rather than the
+      // requested model selection.
       const liveProviderForSteerGate =
         activeThread?.session?.provider ?? selectedModelSelectionForSend.provider;
-      if (dispatchMode === "steer" && steerInterruptsLiveTurn(liveProviderForSteerGate)) {
+      if (
+        dispatchMode === "steer" &&
+        !providerSupportsNativeTurnSteering(liveProviderForSteerGate)
+      ) {
         setQueuedSteerGate({
           sawInterruptGap: false,
           gapStartedAt: null,
@@ -8753,6 +8790,8 @@ export default function ChatView({
       },
     ]);
     armTranscriptAutoFollow(threadIdForSend, true);
+    tailAnchorScrollInFlightRef.current = true;
+    setTailAnchor({ threadId: threadIdForSend, messageId: messageIdForSend });
 
     // Nested function so the `try` body holds no value blocks — see the comment on
     // `deleteEmptyTerminalThread` above for why React Compiler requires this shape.
@@ -8807,13 +8846,17 @@ export default function ChatView({
         ...(sourceProposedPlan ? { sourceProposedPlan } : {}),
         createdAt: messageCreatedAt,
       });
-      // Non-Codex steers interrupt the live turn before re-dispatching; hold
-      // queued auto-dispatch through that gap so it can't race the steer. The
-      // live session provider decides the interrupt path server-side, so the
-      // gate keys off it rather than the requested model selection.
+      // Steers on providers without native mid-turn steering interrupt the live
+      // turn before re-dispatching; hold queued auto-dispatch through that gap
+      // so it can't race the steer. The live session provider decides the
+      // interrupt path server-side, so the gate keys off it rather than the
+      // requested model selection.
       const livePlanProviderForSteerGate =
         activeThread?.session?.provider ?? modelSelectionForPlanDispatch.provider;
-      if (dispatchMode === "steer" && steerInterruptsLiveTurn(livePlanProviderForSteerGate)) {
+      if (
+        dispatchMode === "steer" &&
+        !providerSupportsNativeTurnSteering(livePlanProviderForSteerGate)
+      ) {
         setQueuedSteerGate({
           sawInterruptGap: false,
           gapStartedAt: null,
@@ -9334,6 +9377,7 @@ export default function ChatView({
     modelOptions: selectedProviderModelOptions,
     ...(selectedRuntimeModel ? { runtimeModel: selectedRuntimeModel } : {}),
     runtimeAgents: dynamicAgents,
+    statusLabels: composerTraitStatusLabels,
   });
   const composerFooterPlanInputsKey = [
     composerFooterModelLabel,
@@ -11036,9 +11080,11 @@ export default function ChatView({
                 onSteer={onSteerQueuedComposerTurn}
                 onRemove={removeQueuedComposerTurn}
                 onEdit={onEditQueuedComposerTurn}
-                interruptsLiveTurn={steerInterruptsLiveTurn(
-                  activeThread?.session?.provider ?? selectedProvider,
-                )}
+                interruptsLiveTurn={
+                  !providerSupportsNativeTurnSteering(
+                    activeThread?.session?.provider ?? selectedProvider,
+                  )
+                }
                 cwd={threadWorkspaceCwd ?? undefined}
                 attachedToPrevious={
                   showComposerLiveChangesHeader ||
@@ -11576,6 +11622,8 @@ export default function ChatView({
           showDiffToggle={!isEditorRail}
           diffOpen={resolvedDiffOpen}
           diffDisabledReason={diffDisabledReason}
+          rightDockOpen={rightDockOpen}
+          {...(onToggleRightDock ? { onToggleRightDock } : {})}
           environment={isEditorRail ? null : environmentHeaderState}
           surfaceMode={surfaceMode}
           chatLayoutAction={
@@ -11792,6 +11840,12 @@ export default function ChatView({
                     onTogglePinMessage={handleTogglePinMessageGuarded}
                     threadMarkers={threadMarkers}
                     enteringUserMessageIds={enteringUserMessageIds}
+                    tailAnchorMessageId={
+                      tailAnchor !== null && tailAnchor.threadId === activeThread.id
+                        ? tailAnchor.messageId
+                        : null
+                    }
+                    tailAnchorScrollInFlightRef={tailAnchorScrollInFlightRef}
                     crossTaskOrigin={crossTaskOrigin}
                     timelineEntries={timelineEntries}
                     turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}

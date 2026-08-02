@@ -70,9 +70,6 @@ export const DESKTOP_IPC_CHANNELS = {
     cancelElementPick: "desktop:browser-cancel-element-pick",
     elementPicked: "desktop:browser-element-picked",
     elementPickCancelled: "desktop:browser-element-pick-cancelled",
-    cdpProxyGetState: "desktop:browser-cdp-proxy-get-state",
-    cdpProxySetSettings: "desktop:browser-cdp-proxy-set-settings",
-    cdpProxyState: "desktop:browser-cdp-proxy-state",
     annotations: {
       start: "desktop:browser-annotations-start",
       cancel: "desktop:browser-annotations-cancel",

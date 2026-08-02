@@ -51,7 +51,7 @@ import {
 } from "@synara/shared/conversationEdit";
 import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@synara/shared/git";
 import { claudeSelectionRequiresRestart } from "@synara/shared/model";
-import { providerSupportsNativeSteer } from "@synara/shared/providerSteer";
+import { providerSupportsNativeTurnSteering } from "@synara/shared/providerMetadata";
 import {
   formatProviderDeliveryBlockDetail,
   PROVIDER_DELIVERY_BLOCK_SUMMARY,
@@ -1120,14 +1120,10 @@ const make = Effect.gen(function* () {
 
     // Only reuse projected session state when the runtime still has a live session to attach to.
     const activeSessionBeforeEnsure = yield* resolveActiveSession(threadId);
-    const existingSessionThreadId =
-      thread.session && thread.session.status !== "stopped" && activeSessionBeforeEnsure
-        ? thread.id
-        : null;
-    // `activeSessionBeforeEnsure` is already a conjunct of `existingSessionThreadId`, but
-    // TypeScript cannot narrow one const from another's truthiness. Testing it directly keeps
-    // the reuse branch's returned session non-optional for callers.
-    if (existingSessionThreadId && activeSessionBeforeEnsure) {
+    const reusableSession =
+      thread.session && thread.session.status !== "stopped" ? activeSessionBeforeEnsure : undefined;
+    if (reusableSession) {
+      const existingSessionThreadId = thread.id;
       const runtimeModeChanged = desiredRuntimeMode !== thread.session?.runtimeMode;
       const providerChanged =
         requestedModelSelection !== undefined &&
@@ -1166,7 +1162,7 @@ const make = Effect.gen(function* () {
       ) {
         return {
           activeSessionBeforeEnsure,
-          activeSession: activeSessionBeforeEnsure,
+          activeSession: reusableSession,
         };
       }
 
@@ -2158,19 +2154,19 @@ const make = Effect.gen(function* () {
       // The decider routes turn starts from the projected session, which can lag
       // the runtime: a message dispatched right as another turn begins (e.g. the
       // gap between a steer interrupt and the steered turn's start) would race a
-      // live provider turn. Codex steers ride the live turn natively; everything
-      // else re-queues and is promoted when the live turn settles.
+      // live provider turn. Steer-capable providers ride the live turn natively;
+      // everything else re-queues and is promoted when the live turn settles.
       const providerName = thread.session?.providerName ?? thread.modelSelection.provider;
       const liveTurnId = yield* resolveLiveProviderTurnId(event.payload.threadId);
       const hasLiveTurn = liveTurnId !== undefined;
       // Steering is only meaningful against a live turn. The projection can
       // lag the runtime in the other direction too (turn already settled but
       // still projected as running), so recheck live state and dispatch a
-      // settled codex "steer" as a normal queued turn — the native steer path
+      // settled "steer" as a normal queued turn — the native steer path
       // would skip the turn-start checkpoint.
       const isNativeSteer =
         event.payload.dispatchMode === "steer" &&
-        providerSupportsNativeSteer(providerName as ProviderKind) &&
+        providerSupportsNativeTurnSteering(providerName) &&
         hasLiveTurn;
       if (!isNativeSteer && hasLiveTurn) {
         yield* enqueueQueuedTurnStart(event);
@@ -2192,7 +2188,7 @@ const make = Effect.gen(function* () {
       // Surface the upcoming work immediately: provider session init can take
       // seconds (e.g. Cursor), and without an early status the thread reads as
       // idle until the runtime's first event. Mirrors the message-edit-resend
-      // path. Never touches a live session — a steer turn on a running Codex
+      // path. Never touches a live session — a steer turn on a running provider
       // session must keep its running state and activeTurnId. Keeps the existing
       // session's runtimeMode: ensureSessionForThread detects mode changes by
       // comparing against it, and adopting the requested mode here would mask

@@ -323,6 +323,7 @@ import {
   DISCLOSURE_INNER_CLASS,
 } from "~/lib/disclosureMotion";
 import { createClientPointMenuAnchor } from "~/lib/clientPointMenuAnchor";
+import { resolveThreadModelSummary } from "~/lib/threadModelSummary";
 import {
   canCreateThreadHandoff,
   resolveAvailableHandoffTargetProviders,
@@ -4162,6 +4163,7 @@ export default function Sidebar() {
           sourceProjectName={hoverMetadata.sourceProjectName}
           branch={hoverMetadata.branch}
           worktreeName={hoverMetadata.worktreeName}
+          model={resolveThreadModelSummary(thread.modelSelection, m.composer.modelPicker)}
         />
       </TooltipPopup>
     );

@@ -1,0 +1,26 @@
+advisors:
+  - name: default
+    model: anthropic/claude-fable-5:low
+    tools:
+      - read
+      - bash
+      - edit
+      - ast_grep
+      - ast_edit
+      - ask
+      - debug
+      - eval
+      - github
+      - glob
+      - grep
+      - lsp
+      - inspect_image
+      - browser
+      - computer
+      - checkpoint
+      - rewind
+      - task
+      - hub
+      - todo
+      - web_search
+      - write

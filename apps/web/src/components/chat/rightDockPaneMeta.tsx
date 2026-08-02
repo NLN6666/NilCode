@@ -34,6 +34,10 @@ export interface RightDockPaneMeta {
 /** Pane labels for the active locale; the glyphs below stay locale-free. */
 export type RightDockPaneLabels = Messages["chat"]["panes"]["kinds"];
 
+export interface RightDockLauncherItem extends RightDockPaneMeta {
+  kind: RightDockPaneKind;
+}
+
 const RIGHT_DOCK_PANE_ICONS: Record<RightDockPaneKind, LucideIcon> = {
   browser: GlobeIcon,
   diff: DiffIcon,
@@ -68,6 +72,51 @@ export function getRightDockPaneMeta(
 export const RIGHT_DOCK_ADD_MENU_KINDS: readonly RightDockPaneKind[] = RIGHT_DOCK_PANE_KINDS.filter(
   (kind) => kind !== "file" && kind !== "pullRequest",
 );
+
+// Empty-dock launchers prioritize the everyday workspace tools. Review only
+// appears when the selected diff scope contains changes, Git is gated by
+// repository discovery, and Explorer needs a concrete workspace. Context-only
+// file and pull-request panes continue to open from their owning surfaces.
+const RIGHT_DOCK_LAUNCHER_ORDER: readonly RightDockPaneKind[] = [
+  "diff",
+  "terminal",
+  "browser",
+  "explorer",
+  "sidechat",
+  "git",
+];
+
+/** Launcher names for the active locale; kinds absent here reuse their tab label. */
+export type RightDockLauncherLabels = Messages["chat"]["panes"]["launchers"];
+
+export function resolveRightDockLauncherItems(input: {
+  hasWorkspace: boolean;
+  hasGitRepository: boolean;
+  hasReview: boolean;
+  labels: RightDockPaneLabels;
+  launcherLabels: RightDockLauncherLabels;
+}): readonly RightDockLauncherItem[] {
+  return RIGHT_DOCK_LAUNCHER_ORDER.flatMap((kind) => {
+    if (kind === "diff" && !input.hasReview) {
+      return [];
+    }
+    if (kind === "git" && !input.hasGitRepository) {
+      return [];
+    }
+    if (kind === "explorer" && !input.hasWorkspace) {
+      return [];
+    }
+    const meta = getRightDockPaneMeta(kind, input.labels);
+    return [
+      {
+        kind,
+        Icon: meta.Icon,
+        label:
+          (input.launcherLabels as Partial<Record<RightDockPaneKind, string>>)[kind] ?? meta.label,
+      },
+    ];
+  });
+}
 
 // Resolves a tab label, preferring caller-provided per-pane overrides (e.g. the
 // embedded sidechat thread title) before falling back to the kind label.

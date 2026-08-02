@@ -622,45 +622,6 @@ export const settings = {
       copyFailedDescription: "Clipboard access failed.",
     },
   },
-  /** Desktop-only: the CDP endpoint that exposes the in-app browser to chrome-devtools-mcp. */
-  browserCdpProxy: {
-    title: "In-app browser access",
-    enable: {
-      title: "Expose the in-app browser",
-      description:
-        "Let chrome-devtools-mcp drive the browser panel of the thread you are viewing. The endpoint listens on 127.0.0.1 only and requires the token in the configuration below.",
-      ariaLabel: "Expose the in-app browser over CDP",
-    },
-    port: {
-      title: "Port",
-      description:
-        "Local port for the endpoint. Changing it restarts the endpoint, so copy the configuration again afterwards.",
-      ariaLabel: "In-app browser CDP port",
-    },
-    configuration: {
-      title: "MCP configuration",
-      description:
-        "Add this server to your agent's MCP configuration to give it the browser tools.",
-      copy: "Copy",
-      copied: "MCP configuration copied",
-      unavailable: "Turn the endpoint on to get its configuration.",
-    },
-    status: {
-      disabled: "Off",
-      starting: "Starting...",
-      running: (endpoint: string) => `Listening on ${endpoint}`,
-      failed: (message: string) => `Could not start: ${message}`,
-    },
-    toasts: {
-      updateFailedTitle: "Could not update the endpoint",
-      updateFailedDescription: "The desktop app rejected the change.",
-      invalidPortTitle: "Port not applied",
-      invalidPortDescription: (minimum: number, maximum: number) =>
-        `Enter a port between ${minimum} and ${maximum}.`,
-      copyFailedTitle: "Could not copy",
-      copyFailedDescription: "Clipboard access failed.",
-    },
-  },
   providers: {
     updates: {
       title: "Updates",
