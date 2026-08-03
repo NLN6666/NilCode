@@ -46,8 +46,8 @@ export const browser: Messages["browser"] = {
 
   attachments: {
     limit: (max) => `每条消息最多可附加 ${max} 个引用。`,
-    screenshotTooLarge: (name, limit) => `「${name}」超出 ${limit} 的附件大小限制。`,
-    annotatedScreenshotTooLarge: (limit) => `标注后的截图超出 ${limit} 的附件大小限制。`,
+    screenshotPreparationFailed: "无法处理该浏览器截图。",
+    annotatedScreenshotPreparationFailed: "无法处理标注后的截图。",
   },
 
   sharing: {

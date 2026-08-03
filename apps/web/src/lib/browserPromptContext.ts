@@ -1,11 +1,7 @@
-import {
-  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
-  type BrowserCaptureScreenshotResult,
-  type NativeApi,
-  type ThreadId,
-} from "@synara/contracts";
+import type { BrowserCaptureScreenshotResult, NativeApi, ThreadId } from "@synara/contracts";
 
 import type { ComposerImageAttachment } from "../composerDraftStore";
+import { prepareComposerImageAttachmentsFromFiles } from "./composerSend";
 
 const EXPLICIT_COMPUTER_USE_PATTERNS = [
   "computer use",
@@ -83,20 +79,19 @@ function fileFromBrowserScreenshot(screenshot: BrowserCaptureScreenshotResult): 
   });
 }
 
-export function composerImageFromBrowserScreenshot(
+export async function prepareComposerImageFromBrowserScreenshot(
   screenshot: BrowserCaptureScreenshotResult,
-): ComposerImageAttachment {
+): Promise<ComposerImageAttachment> {
   const file = fileFromBrowserScreenshot(screenshot);
-  const previewUrl = URL.createObjectURL(file);
-  return {
-    type: "image",
-    id: crypto.randomUUID(),
-    name: file.name,
-    mimeType: screenshot.mimeType,
-    sizeBytes: screenshot.sizeBytes,
-    previewUrl,
-    file,
-  };
+  const result = await prepareComposerImageAttachmentsFromFiles({
+    files: [file],
+    existingAttachmentCount: 0,
+  });
+  const image = result.images[0];
+  if (!image) {
+    throw new Error(result.error ?? "Browser screenshot could not be prepared.");
+  }
+  return image;
 }
 
 export function annotatedScreenshotAttachmentName(): string {
@@ -104,29 +99,32 @@ export function annotatedScreenshotAttachmentName(): string {
 }
 
 // Annotated captures are composited in the renderer, so they arrive as a Blob rather than a
-// BrowserCaptureScreenshotResult. Kept here beside the plain-screenshot builder so composer
-// image attachments are constructed in exactly one place.
-export function composerImageFromAnnotatedBlob(blob: Blob): ComposerImageAttachment {
+// BrowserCaptureScreenshotResult. Routed through the same preparation pass as plain captures
+// so an oversized composite is downscaled instead of refused.
+export async function prepareComposerImageFromAnnotatedBlob(
+  blob: Blob,
+): Promise<ComposerImageAttachment> {
   if (blob.size === 0) {
     throw new Error("Annotated browser screenshot is empty.");
   }
-  const mimeType = blob.type || "image/png";
-  const file = new File([blob], annotatedScreenshotAttachmentName(), { type: mimeType });
-  return {
-    type: "image",
-    id: crypto.randomUUID(),
-    name: file.name,
-    mimeType,
-    sizeBytes: file.size,
-    previewUrl: URL.createObjectURL(file),
-    file,
-  };
+  const file = new File([blob], annotatedScreenshotAttachmentName(), {
+    type: blob.type || "image/png",
+  });
+  const result = await prepareComposerImageAttachmentsFromFiles({
+    files: [file],
+    existingAttachmentCount: 0,
+  });
+  const image = result.images[0];
+  if (!image) {
+    throw new Error(result.error ?? "Annotated browser screenshot could not be prepared.");
+  }
+  return image;
 }
 
 export interface BrowserPromptAttachmentResolution {
   requested: boolean;
   image: ComposerImageAttachment | null;
-  reason?: "no-open-browser" | "no-active-tab" | "attachment-too-large";
+  reason?: "no-open-browser" | "no-active-tab" | "attachment-processing-failed";
 }
 
 export async function maybeResolveBrowserPromptAttachment(input: {
@@ -160,12 +158,12 @@ export async function maybeResolveBrowserPromptAttachment(input: {
     threadId: input.threadId,
     tabId: activeTab.id,
   });
-  if (screenshot.sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-    return { requested: true, image: null, reason: "attachment-too-large" };
+  try {
+    return {
+      requested: true,
+      image: await prepareComposerImageFromBrowserScreenshot(screenshot),
+    };
+  } catch {
+    return { requested: true, image: null, reason: "attachment-processing-failed" };
   }
-
-  return {
-    requested: true,
-    image: composerImageFromBrowserScreenshot(screenshot),
-  };
 }

@@ -40,6 +40,13 @@ export const sidebar = {
     studio: "Studio",
   },
 
+  /** App-switcher pill that swaps the sidebar's top-level surface. */
+  surfacePicker: {
+    ariaLabel: "Switch sidebar surface",
+    threads: { title: "Synara", description: "Build, debug, and ship" },
+    studio: { title: "Studio", description: "Open-ended agent work" },
+  },
+
   projects: {
     loading: "Loading projects",
     loadingEllipsis: "Loading projects...",

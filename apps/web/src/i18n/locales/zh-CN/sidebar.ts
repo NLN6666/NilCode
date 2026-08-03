@@ -41,6 +41,12 @@ export const sidebar: Sidebar = {
     studio: "工作室",
   },
 
+  surfacePicker: {
+    ariaLabel: "切换侧边栏界面",
+    threads: { title: "Synara", description: "构建、调试与交付" },
+    studio: { title: "工作室", description: "开放式智能体工作" },
+  },
+
   projects: {
     loading: "正在加载项目",
     loadingEllipsis: "正在加载项目…",

@@ -11,7 +11,6 @@ import { useQuery } from "@tanstack/react-query";
 import { IconPointer } from "@tabler/icons-react";
 import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
-  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type ServerLocalServerProcess,
   type ThreadBrowserState,
   type ThreadId,
@@ -44,7 +43,6 @@ import { isBrowserCopyLinkChord } from "@synara/shared/browserShortcuts";
 import { isElectron } from "~/env";
 import { readNativeApi } from "~/nativeApi";
 import type { DockPaneRuntimeMode } from "~/lib/dockPaneActivation";
-import { IMAGE_SIZE_LIMIT_LABEL } from "~/lib/composerSend";
 import { PANEL_RESIZE_OVERLAY_SYNC_EVENT } from "~/lib/panelResize";
 import { serverLocalServersQueryOptions } from "~/lib/serverReactQuery";
 import { cn, isMacPlatform } from "~/lib/utils";
@@ -57,14 +55,14 @@ import {
 import { useComposerDraftStore, type BrowserAnnotationDraft } from "../composerDraftStore";
 import { anchoredToastManager } from "./ui/toast";
 import {
-  composerImageFromAnnotatedBlob,
-  composerImageFromBrowserScreenshot,
-  screenshotAttachmentName,
+  prepareComposerImageFromAnnotatedBlob,
+  prepareComposerImageFromBrowserScreenshot,
 } from "../lib/browserPromptContext";
 import { createBrowserElementDraft } from "../lib/browserElementContext";
 import { BrowserAnnotationOverlay } from "./browser/BrowserAnnotationOverlay";
 import {
   browserAddressDisplayValue,
+  browserWebviewInitialUrl,
   buildBrowserAddressSuggestions,
   createBrowserPanelHideScheduler,
   createBrowserRendererLossHandler,
@@ -1027,7 +1025,10 @@ export function BrowserPanel({
     webview.addEventListener("render-process-gone", handleRendererLoss);
     webview.addEventListener("destroyed", handleRendererLoss);
     if (shouldLoadInitialUrl) {
-      webview.setAttribute("src", initialUrl.length > 0 ? initialUrl : BROWSER_BLANK_URL);
+      webview.setAttribute(
+        "src",
+        browserWebviewInitialUrl(initialUrl.length > 0 ? initialUrl : BROWSER_BLANK_URL),
+      );
     }
     attachVisibleWebview();
 
@@ -1393,22 +1394,23 @@ export function BrowserPanel({
 
     void runBrowserAction(() =>
       api.browser.captureScreenshot({ threadId: browserSurfaceId, tabId: activeTab.id }),
-    ).then((screenshot) => {
+    ).then(async (screenshot) => {
       if (!screenshot) {
         return;
       }
-      if (screenshot.sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-        setLocalError(
-          browserCopy.attachments.screenshotTooLarge(
-            screenshotAttachmentName(screenshot),
-            IMAGE_SIZE_LIMIT_LABEL,
-          ),
+      try {
+        const inserted = addComposerDraftImage(
+          threadId,
+          await prepareComposerImageFromBrowserScreenshot(screenshot),
         );
-        return;
+        if (!inserted) {
+          setLocalError(attachmentLimitMessage);
+          return;
+        }
+        setLocalError(null);
+      } catch {
+        setLocalError(browserCopy.attachments.screenshotPreparationFailed);
       }
-
-      addComposerDraftImage(threadId, composerImageFromBrowserScreenshot(screenshot));
-      setLocalError(null);
     });
   }, [
     activeTab,
@@ -1577,15 +1579,24 @@ export function BrowserPanel({
         setAnnotationError(attachmentLimitMessage);
         return;
       }
-      if (blob.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-        setAnnotationError(
-          browserCopy.attachments.annotatedScreenshotTooLarge(IMAGE_SIZE_LIMIT_LABEL),
-        );
-        return;
-      }
-      addComposerDraftImage(threadId, composerImageFromAnnotatedBlob(blob));
-      setLocalError(null);
-      exitInteractionMode();
+      // Oversized composites are downscaled by the preparation pass, so the
+      // annotated path refuses only what compression cannot rescue.
+      void (async () => {
+        try {
+          const inserted = addComposerDraftImage(
+            threadId,
+            await prepareComposerImageFromAnnotatedBlob(blob),
+          );
+          if (!inserted) {
+            setAnnotationError(attachmentLimitMessage);
+            return;
+          }
+          setLocalError(null);
+          exitInteractionMode();
+        } catch {
+          setAnnotationError(browserCopy.attachments.annotatedScreenshotPreparationFailed);
+        }
+      })();
     },
     [
       addComposerDraftImage,
@@ -1624,17 +1635,23 @@ export function BrowserPanel({
         setLocalError(attachmentLimitMessage);
         return;
       }
-      if (screenshot.sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-        setLocalError(
-          browserCopy.attachments.screenshotTooLarge(
-            screenshotAttachmentName(screenshot),
-            IMAGE_SIZE_LIMIT_LABEL,
-          ),
-        );
-        return;
-      }
-      addComposerDraftImage(threadId, composerImageFromBrowserScreenshot(screenshot));
-      setLocalError(null);
+      // The preparation pass downscales oversized captures, so an up-front size
+      // rejection would throw away a screenshot that still fits after compression.
+      void (async () => {
+        try {
+          const inserted = addComposerDraftImage(
+            threadId,
+            await prepareComposerImageFromBrowserScreenshot(screenshot),
+          );
+          if (!inserted) {
+            setLocalError(attachmentLimitMessage);
+            return;
+          }
+          setLocalError(null);
+        } catch {
+          setLocalError(browserCopy.attachments.screenshotPreparationFailed);
+        }
+      })();
     });
   }, [
     addComposerDraftBrowserElement,

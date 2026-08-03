@@ -34,6 +34,7 @@ export const workspace: Messages["workspace"] = {
     sendAsDraft: "作为草稿发送",
     createTask: "创建任务",
     creating: "正在创建…",
+    optimizing: "正在优化…",
     imagesOnly: "新建任务只能附加图片。",
     oneFileRejected: "那个文件没有被添加。",
     filesRejected: (count) => `有 ${count} 个文件没有被添加。`,

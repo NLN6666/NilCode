@@ -393,8 +393,8 @@ turnPreparationLayer("CodexAdapterLive turn input preparation", (it) => {
         interactionMode: "plan",
         attachments: [
           {
-            type: "image",
-            url: `data:image/png;base64,${Buffer.from(imageBytes).toString("base64")}`,
+            type: "localImage",
+            path: imagePath,
           },
         ],
       });

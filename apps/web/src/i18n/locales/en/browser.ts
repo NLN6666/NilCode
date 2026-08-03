@@ -51,10 +51,9 @@ export const browser = {
   /** Composer-attachment refusals surfaced by the panel (screenshot capture and annotation). */
   attachments: {
     limit: (max: number) => `You can attach up to ${max} references per message.`,
-    screenshotTooLarge: (name: string, limit: string) =>
-      `'${name}' exceeds the ${limit} attachment limit.`,
-    annotatedScreenshotTooLarge: (limit: string) =>
-      `The annotated screenshot exceeds the ${limit} attachment limit.`,
+    screenshotPreparationFailed: "The browser screenshot could not be prepared.",
+    annotatedScreenshotPreparationFailed:
+      "The annotated screenshot could not be prepared.",
   },
 
   /**

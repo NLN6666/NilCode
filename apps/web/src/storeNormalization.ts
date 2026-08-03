@@ -156,6 +156,7 @@ export function threadShellsEqual(left: ThreadShell | undefined, right: ThreadSh
     left.error === right.error &&
     left.createdAt === right.createdAt &&
     (left.archivedAt ?? null) === (right.archivedAt ?? null) &&
+    (left.settledAt ?? null) === (right.settledAt ?? null) &&
     left.updatedAt === right.updatedAt &&
     (left.isPinned ?? false) === (right.isPinned ?? false) &&
     left.envMode === right.envMode &&
@@ -1539,6 +1540,7 @@ export function normalizeThreadFromReadModel(
     previous.error === error &&
     previous.createdAt === incoming.createdAt &&
     (previous.archivedAt ?? null) === (incoming.archivedAt ?? null) &&
+    (previous.settledAt ?? null) === (incoming.settledAt ?? null) &&
     previous.updatedAt === incoming.updatedAt &&
     (previous.isPinned ?? false) === (incoming.isPinned ?? false) &&
     previous.latestTurn === latestTurn &&
@@ -1590,6 +1592,7 @@ export function normalizeThreadFromReadModel(
     error,
     createdAt: incoming.createdAt,
     archivedAt: incoming.archivedAt ?? null,
+    settledAt: incoming.settledAt ?? null,
     updatedAt: incoming.updatedAt,
     isPinned: incoming.isPinned ?? false,
     latestTurn,
@@ -1691,6 +1694,7 @@ export function normalizeThreadShellSnapshot(
     error,
     createdAt: incoming.createdAt,
     archivedAt: incoming.archivedAt ?? null,
+    settledAt: incoming.settledAt ?? null,
     updatedAt: incoming.updatedAt,
     isPinned: incoming.isPinned ?? false,
     envMode: incoming.envMode ?? "local",

@@ -42,6 +42,7 @@ describe("Sidebar.uiState", () => {
       dismissedThreadStatusKeyByThreadId: {},
       expandedSubagentParentThreadIds: [],
       lastThreadRoute: null,
+      activityViewEnabled: false,
     });
   });
 
@@ -66,6 +67,7 @@ describe("Sidebar.uiState", () => {
         threadId: "thread-123",
         splitViewId: "split-456",
       },
+      activityViewEnabled: true,
     });
 
     expect(readSidebarUiState()).toEqual({
@@ -85,6 +87,7 @@ describe("Sidebar.uiState", () => {
         threadId: "thread-123",
         splitViewId: "split-456",
       },
+      activityViewEnabled: true,
     });
   });
 
@@ -127,6 +130,7 @@ describe("Sidebar.uiState", () => {
       lastThreadRoute: {
         threadId: "thread-123",
       },
+      activityViewEnabled: false,
     });
   });
 
@@ -167,6 +171,7 @@ describe("Sidebar.uiState", () => {
       dismissedThreadStatusKeyByThreadId: {},
       expandedSubagentParentThreadIds: [],
       lastThreadRoute: null,
+      activityViewEnabled: false,
     });
   });
 });

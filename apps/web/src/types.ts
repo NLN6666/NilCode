@@ -235,6 +235,7 @@ export interface Thread extends ThreadWorkspaceState {
   error: string | null;
   createdAt: string;
   archivedAt?: string | null;
+  settledAt?: string | null;
   updatedAt?: string | undefined;
   isPinned?: boolean;
   pinnedMessages?: PinnedMessage[];
@@ -273,6 +274,7 @@ export interface ThreadShell extends ThreadWorkspaceState {
   error: string | null;
   createdAt: string;
   archivedAt?: string | null;
+  settledAt?: string | null;
   updatedAt?: string | undefined;
   isPinned?: boolean;
   // Per-thread workspace annotations carried through the normalized projection so
@@ -321,6 +323,7 @@ export interface SidebarThreadSummary {
   session: ThreadSession | null;
   createdAt: string;
   archivedAt?: string | null;
+  settledAt?: string | null;
   updatedAt?: string | undefined;
   isPinned?: boolean;
   latestTurn: OrchestrationLatestTurn | null;

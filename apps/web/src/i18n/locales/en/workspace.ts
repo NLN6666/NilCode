@@ -38,6 +38,7 @@ export const workspace = {
     sendAsDraft: "Send as draft",
     createTask: "Create task",
     creating: "Creating...",
+    optimizing: "Optimizing...",
     imagesOnly: "Only images can be attached to new tasks.",
     oneFileRejected: "That file was not added.",
     filesRejected: (count: number) => `${count} files were not added.`,
