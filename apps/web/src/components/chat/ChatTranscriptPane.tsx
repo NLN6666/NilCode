@@ -49,6 +49,8 @@ interface ChatTranscriptPaneProps {
   isRevertingCheckpoint: boolean;
   isWorking: boolean;
   followLiveOutput: boolean;
+  /** Whether the viewport is parked at the tail; gates growth-driven re-sticks. */
+  transcriptFollowsTail?: boolean | undefined;
   listRef: RefObject<LegendListRef | null>;
   timelineControllerRef?: RefObject<MessagesTimelineController | null>;
   pinnedMessageIds?: ReadonlySet<MessageId>;
@@ -110,6 +112,7 @@ export function ChatTranscriptPane({
   isRevertingCheckpoint,
   isWorking,
   followLiveOutput,
+  transcriptFollowsTail,
   listRef,
   timelineControllerRef,
   pinnedMessageIds,
@@ -234,6 +237,7 @@ export function ChatTranscriptPane({
               isRevertingCheckpoint={isRevertingCheckpoint}
               onImageExpand={onExpandTimelineImage}
               followLiveOutput={followLiveOutput}
+              transcriptFollowsTail={transcriptFollowsTail}
               onIsAtEndChange={onIsAtEndChange}
               onTrailHighlightsChange={activeTrailStore.set}
               onMessagesScroll={onMessagesScroll}

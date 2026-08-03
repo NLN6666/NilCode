@@ -24,7 +24,11 @@ import { type MessageId } from "@synara/contracts";
 import { type LegendListRef } from "@legendapp/list/react";
 import { useLayoutEffect, useRef, type RefObject } from "react";
 
-import { ANCHOR_SLIDE_DURATION_MS, anchorSlideOffsetPx } from "./transcriptScroll";
+import {
+  ANCHOR_SLIDE_DURATION_MS,
+  anchorSlideOffsetPx,
+  getTranscriptScrollContainer,
+} from "./transcriptScroll";
 
 // Absolute bound on the slide plus its hold, so a transcript that never stops
 // moving can never hold the auto-follow pause open.
@@ -71,11 +75,6 @@ interface UseTailAnchorScrollOptions {
   contentChangeSignal?: unknown;
   /** Normal sends slide; steering an already-streaming turn anchors immediately. */
   animateAnchorSlide?: boolean | undefined;
-}
-
-function getScrollContainer(listRef: RefObject<LegendListRef | null>): HTMLElement | null {
-  const node: unknown = listRef.current?.getScrollableNode?.();
-  return node instanceof HTMLElement ? node : null;
 }
 
 /**
@@ -220,7 +219,7 @@ export function useTailAnchorScroll({
       }
       const elapsedMs = now - startedAt;
 
-      const container = getScrollContainer(listRef);
+      const container = getTranscriptScrollContainer(listRef);
       if (container && topInsetPx === null) {
         topInsetPx = Number.parseFloat(window.getComputedStyle(container).paddingTop) || 0;
       }

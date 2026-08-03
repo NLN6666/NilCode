@@ -31,6 +31,31 @@ export function isScrollContainerNearBottom(
   return getScrollContainerDistanceFromBottom(position) <= threshold;
 }
 
+// Sub-pixel jitter from fractional layout must not read as a deliberate scroll.
+const SCROLL_UP_INTENT_EPSILON_PX = 2;
+
+/**
+ * Whether a scroll event represents the reader taking the viewport off the tail.
+ *
+ * Upward travel is the tell: transcript growth never produces it, and every
+ * tail-follow writer (pin, glide, anchor slide) only ever moves toward the bottom.
+ * Content *shrinking* — a settling row, the working row vanishing at turn end —
+ * does drag scrollTop down, but it leaves the viewport pinned at the end, so
+ * requiring the result to sit away from the tail separates a real reader scroll
+ * from that clamp.
+ *
+ * This is the only signal for gestures that emit no wheel/pointer event, such as
+ * keyboard paging or a jump-to-message.
+ */
+export function isScrollAwayFromTail(
+  position: ScrollPosition & { previousScrollTop: number },
+): boolean {
+  const { previousScrollTop, scrollTop } = position;
+  if (!Number.isFinite(previousScrollTop) || !Number.isFinite(scrollTop)) return false;
+  if (scrollTop >= previousScrollTop - SCROLL_UP_INTENT_EPSILON_PX) return false;
+  return !isScrollContainerNearBottom(position);
+}
+
 // The post-send glide eases toward the *live* bottom re-read every frame instead
 // of a target precomputed once: the virtualized list's estimated content height
 // oscillates while freshly appended rows get measured, and a fixed-target smooth

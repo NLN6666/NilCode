@@ -1377,6 +1377,14 @@ function installImmediateScrollToSpy(
   };
 }
 
+/** Lets timer-driven scroll work (glides, anchor settles, tail re-sticks) run to completion. */
+async function settleFor(ms: number): Promise<void> {
+  // Executor form, not `Promise.withResolvers`: this package's `lib` target predates it.
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 async function setViewport(viewport: ViewportSpec): Promise<void> {
   await page.viewport(viewport.width, viewport.height);
   await waitForLayout();
@@ -2258,55 +2266,372 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
-  it("re-sticks to the bottom after sending an optimistic user message", async () => {
+  it("keeps the viewport parked in scrollback across a send and the turn it starts", async () => {
     const restoreNativeApi = installDeterministicSendNativeApi();
+    let currentSnapshot = createSnapshotForTargetUser({
+      targetMessageId: "msg-user-send-parked" as MessageId,
+      targetText: "parked scrollback target",
+    });
     const mounted = await mountChatView({
       viewport: DEFAULT_VIEWPORT,
-      snapshot: createSnapshotForTargetUser({
-        targetMessageId: "msg-user-send-bottom-stick" as MessageId,
-        targetText: "bottom stick target",
-      }),
+      snapshot: currentSnapshot,
     });
-    let restoreScrollTo = () => {};
+    let patchedScrollContainer: HTMLElement | null = null;
+    let originalScrollTo: HTMLElement["scrollTo"] | null = null;
+
+    const syncActiveThread = (
+      update: (
+        thread: OrchestrationReadModel["threads"][number],
+      ) => OrchestrationReadModel["threads"][number],
+    ) => {
+      currentSnapshot = {
+        ...currentSnapshot,
+        snapshotSequence: currentSnapshot.snapshotSequence + 1,
+        threads: currentSnapshot.threads.map((thread) =>
+          thread.id === THREAD_ID ? update(thread) : thread,
+        ),
+        updatedAt: isoAt(currentSnapshot.snapshotSequence + 1_200),
+      };
+      fixture = { ...fixture, snapshot: currentSnapshot };
+      useStore.getState().syncServerReadModel(currentSnapshot);
+    };
 
     try {
       const scrollContainer = await waitForElement(
         () => document.querySelector<HTMLElement>("[data-chat-scroll-container='true']"),
         "Unable to find message scroll container.",
       );
-      scrollContainer.scrollTop = 0;
-      scrollContainer.dispatchEvent(new Event("scroll"));
+      // Let the list finish its mount-time landing before taking the viewport over;
+      // parking mid-bootstrap is not the scenario under test.
+      await settleFor(600);
       await waitForLayout();
-      expect(getScrollContainerDistanceFromBottom(scrollContainer)).toBeGreaterThan(
-        AUTO_SCROLL_BOTTOM_THRESHOLD_PX,
+      // Park the viewport in history the way a user reading scrollback does: a real
+      // wheel gesture, so the transcript hands scroll ownership to the user instead
+      // of treating the jump as reflow noise from its own mount-time scroll-to-end.
+      await vi.waitFor(
+        () => {
+          scrollContainer.dispatchEvent(
+            new WheelEvent("wheel", { deltaY: -400, bubbles: true, cancelable: true }),
+          );
+          scrollContainer.scrollTop = 0;
+          scrollContainer.dispatchEvent(new Event("scroll", { bubbles: true }));
+          expect(getScrollContainerDistanceFromBottom(scrollContainer)).toBeGreaterThan(
+            AUTO_SCROLL_BOTTOM_THRESHOLD_PX,
+          );
+        },
+        { timeout: 8_000, interval: 32 },
       );
 
-      // Installed so any native smooth scroll resolves immediately; the send
-      // path itself drives the container frame by frame, so this spy is here for
-      // determinism rather than to observe the motion.
-      const scrollSpy = installImmediateScrollToSpy(scrollContainer);
-      restoreScrollTo = scrollSpy.restore;
+      // Any programmatic travel would show up here; the send must issue none.
+      const scrollToCalls: ScrollToOptions[] = [];
+      patchedScrollContainer = scrollContainer;
+      originalScrollTo = scrollContainer.scrollTo;
+      const passthroughScrollTo = scrollContainer.scrollTo.bind(scrollContainer);
+      scrollContainer.scrollTo = ((options?: ScrollToOptions | number, y?: number) => {
+        const normalized: ScrollToOptions =
+          typeof options === "object" && options !== null
+            ? options
+            : {
+                ...(typeof options === "number" ? { left: options } : {}),
+                ...(typeof y === "number" ? { top: y } : {}),
+              };
+        scrollToCalls.push(normalized);
+        passthroughScrollTo(normalized);
+      }) as typeof scrollContainer.scrollTo;
 
-      const prompt = "keep me pinned after send";
+      const prompt = "leave my scroll position alone";
       useComposerDraftStore.getState().setPrompt(THREAD_ID, prompt);
 
       const sendButton = await waitForSendButton();
       expect(sendButton.disabled).toBe(false);
       sendButton.click();
 
-      await vi.waitFor(
-        async () => {
-          expect(document.body.textContent).toContain(prompt);
-          expect(document.activeElement).toBe(await waitForComposerEditor());
-          const layout = await mounted.measureLayout();
-          expect(layout.scrollHeightPx).toBeGreaterThan(layout.scrollClientHeightPx);
-          expect(layout.distanceFromBottomPx).toBeLessThanOrEqual(AUTO_SCROLL_BOTTOM_THRESHOLD_PX);
+      const turnStartCommand = await vi.waitFor(
+        () => {
+          const command = wsRequests
+            .map(readDispatchedCommand)
+            .find((candidate) => candidate?.type === "thread.turn.start");
+          expect(command).toBeDefined();
+          return command!;
         },
         { timeout: 8_000, interval: 16 },
       );
-      expect(scrollContainer.scrollTop, "transcript never left the top").toBeGreaterThan(0);
+
+      // Outlast the post-send glide and the tail-anchor slide's settle window.
+      await settleFor(900);
+      expect(
+        scrollContainer.scrollTop,
+        `unexpected programmatic travel: ${JSON.stringify(scrollToCalls)}`,
+      ).toBeLessThanOrEqual(2);
+      expect(getScrollContainerDistanceFromBottom(scrollContainer)).toBeGreaterThan(
+        AUTO_SCROLL_BOTTOM_THRESHOLD_PX,
+      );
+      expect(scrollToCalls.some((call) => call.behavior === "smooth")).toBe(false);
+
+      // The turn now runs and completes underneath the parked viewport: streamed
+      // text, a tool row, then turn end. None of it may pull the user down.
+      const sentMessage = (turnStartCommand.message ?? null) as {
+        messageId?: string;
+        id?: string;
+      } | null;
+      const echoedMessageId = MessageId.makeUnsafe(
+        String(sentMessage?.messageId ?? sentMessage?.id ?? "msg-user-send-parked-echo"),
+      );
+      const activeTurnId = TurnId.makeUnsafe("turn-send-parked");
+      const assistantMessageId = MessageId.makeUnsafe("msg-assistant-send-parked");
+      syncActiveThread((thread) => ({
+        ...thread,
+        messages: [
+          ...thread.messages,
+          createUserMessage({ id: echoedMessageId, text: prompt, offsetSeconds: 600 }),
+          createAssistantMessage({
+            id: assistantMessageId,
+            text: `Streaming reply. ${"More streamed response text. ".repeat(40)}`,
+            offsetSeconds: 601,
+          }),
+        ],
+        activities: [
+          ...thread.activities,
+          {
+            id: EventId.makeUnsafe("activity-send-parked-tool"),
+            createdAt: isoAt(1_212),
+            kind: "tool.completed",
+            summary: "send parked tool activity",
+            tone: "tool",
+            turnId: activeTurnId,
+            payload: { itemType: "dynamic_tool_call", toolName: "send-parked-tool" },
+          },
+        ],
+        latestTurn: {
+          turnId: activeTurnId,
+          state: "running",
+          requestedAt: isoAt(1_210),
+          startedAt: isoAt(1_211),
+          completedAt: null,
+          assistantMessageId,
+        },
+        session: thread.session
+          ? { ...thread.session, status: "running", activeTurnId, updatedAt: isoAt(1_211) }
+          : null,
+        updatedAt: isoAt(1_212),
+      }));
+      await settleFor(300);
+
+      // Turn end — the moment the transcript used to bounce back to the bottom.
+      syncActiveThread((thread) => ({
+        ...thread,
+        latestTurn: thread.latestTurn
+          ? {
+              ...thread.latestTurn,
+              state: "completed",
+              completedAt: isoAt(1_213),
+            }
+          : null,
+        session: thread.session
+          ? { ...thread.session, status: "idle", activeTurnId: null, updatedAt: isoAt(1_213) }
+          : null,
+        updatedAt: isoAt(1_213),
+      }));
+      await settleFor(900);
+
+      expect(scrollContainer.scrollTop).toBeLessThanOrEqual(2);
+      expect(getScrollContainerDistanceFromBottom(scrollContainer)).toBeGreaterThan(
+        AUTO_SCROLL_BOTTOM_THRESHOLD_PX,
+      );
+      expect(scrollToCalls.some((call) => call.behavior === "smooth")).toBe(false);
+      scrollContainer.scrollTo = originalScrollTo;
     } finally {
-      restoreScrollTo();
+      if (patchedScrollContainer && originalScrollTo) {
+        patchedScrollContainer.scrollTo = originalScrollTo;
+      }
+      await mounted.cleanup();
+      restoreNativeApi();
+    }
+  });
+
+  it("releases the viewport when a wheel-less scroll abandons the tail of a turn the send armed", async () => {
+    const restoreNativeApi = installDeterministicSendNativeApi();
+    let currentSnapshot = createSnapshotForTargetUser({
+      targetMessageId: "msg-user-send-abandon" as MessageId,
+      targetText: "abandon after send target",
+    });
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: currentSnapshot,
+    });
+    let patchedScrollContainer: HTMLElement | null = null;
+    let originalScrollTo: HTMLElement["scrollTo"] | null = null;
+
+    const syncActiveThread = (
+      update: (
+        thread: OrchestrationReadModel["threads"][number],
+      ) => OrchestrationReadModel["threads"][number],
+    ) => {
+      currentSnapshot = {
+        ...currentSnapshot,
+        snapshotSequence: currentSnapshot.snapshotSequence + 1,
+        threads: currentSnapshot.threads.map((thread) =>
+          thread.id === THREAD_ID ? update(thread) : thread,
+        ),
+        updatedAt: isoAt(currentSnapshot.snapshotSequence + 1_200),
+      };
+      fixture = { ...fixture, snapshot: currentSnapshot };
+      useStore.getState().syncServerReadModel(currentSnapshot);
+    };
+
+    try {
+      const scrollContainer = await waitForElement(
+        () => document.querySelector<HTMLElement>("[data-chat-scroll-container='true']"),
+        "Unable to find message scroll container.",
+      );
+      await settleFor(600);
+      await waitForLayout();
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      scrollContainer.dispatchEvent(new Event("scroll", { bubbles: true }));
+      await waitForLayout();
+
+      // Sending from the bottom legitimately arms auto-follow and anchors the sent
+      // message — the state in which the transcript owns the viewport.
+      const prompt = "watch this reply, then let me read back";
+      useComposerDraftStore.getState().setPrompt(THREAD_ID, prompt);
+      const sendButton = await waitForSendButton();
+      expect(sendButton.disabled).toBe(false);
+      sendButton.click();
+
+      const turnStartCommand = await vi.waitFor(
+        () => {
+          const command = wsRequests
+            .map(readDispatchedCommand)
+            .find((candidate) => candidate?.type === "thread.turn.start");
+          expect(command).toBeDefined();
+          return command!;
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+      await settleFor(900);
+
+      const sentMessage = (turnStartCommand.message ?? null) as {
+        messageId?: string;
+        id?: string;
+      } | null;
+      const echoedMessageId = MessageId.makeUnsafe(
+        String(sentMessage?.messageId ?? sentMessage?.id ?? "msg-user-send-abandon-echo"),
+      );
+      const activeTurnId = TurnId.makeUnsafe("turn-send-abandon");
+      const assistantMessageId = MessageId.makeUnsafe("msg-assistant-send-abandon");
+      syncActiveThread((thread) => ({
+        ...thread,
+        messages: [
+          ...thread.messages,
+          createUserMessage({ id: echoedMessageId, text: prompt, offsetSeconds: 600 }),
+          {
+            ...createAssistantMessage({
+              id: assistantMessageId,
+              text: "Streaming reply before the reader scrolls away",
+              offsetSeconds: 601,
+            }),
+            streaming: true,
+          },
+        ],
+        latestTurn: {
+          turnId: activeTurnId,
+          state: "running",
+          requestedAt: isoAt(1_210),
+          startedAt: isoAt(1_211),
+          completedAt: null,
+          assistantMessageId,
+        },
+        session: thread.session
+          ? { ...thread.session, status: "running", activeTurnId, updatedAt: isoAt(1_211) }
+          : null,
+        updatedAt: isoAt(1_211),
+      }));
+      await settleFor(300);
+
+      // Mid-turn, the reader scrolls back through history *without* a wheel event —
+      // keyboard paging and jump-to-message land here. Those never reach
+      // `noteUserScrollIntent`, so the turn stays armed and only the transcript's own
+      // geometry check can stop the armed follow from reclaiming the viewport.
+      const scrollToCalls: ScrollToOptions[] = [];
+      patchedScrollContainer = scrollContainer;
+      originalScrollTo = scrollContainer.scrollTo;
+      const passthroughScrollTo = scrollContainer.scrollTo.bind(scrollContainer);
+      scrollContainer.scrollTo = ((options?: ScrollToOptions | number, y?: number) => {
+        const normalized: ScrollToOptions =
+          typeof options === "object" && options !== null
+            ? options
+            : {
+                ...(typeof options === "number" ? { left: options } : {}),
+                ...(typeof y === "number" ? { top: y } : {}),
+              };
+        scrollToCalls.push(normalized);
+        passthroughScrollTo(normalized);
+      }) as typeof scrollContainer.scrollTo;
+
+      await vi.waitFor(
+        () => {
+          scrollContainer.scrollTop = 0;
+          scrollContainer.dispatchEvent(new Event("scroll", { bubbles: true }));
+          expect(getScrollContainerDistanceFromBottom(scrollContainer)).toBeGreaterThan(
+            AUTO_SCROLL_BOTTOM_THRESHOLD_PX,
+          );
+        },
+        { timeout: 8_000, interval: 32 },
+      );
+      const parkedScrollTop = scrollContainer.scrollTop;
+      scrollToCalls.length = 0;
+
+      // More streamed output, then the turn ends. Neither may reclaim the viewport.
+      syncActiveThread((thread) => ({
+        ...thread,
+        messages: thread.messages.map((message) =>
+          message.id === assistantMessageId
+            ? {
+                ...message,
+                text: `${message.text} ${"and a good deal more streamed output. ".repeat(20)}`,
+                updatedAt: isoAt(1_212),
+              }
+            : message,
+        ),
+        updatedAt: isoAt(1_212),
+      }));
+      await settleFor(300);
+
+      syncActiveThread((thread) => ({
+        ...thread,
+        messages: thread.messages.map((message) =>
+          message.id === assistantMessageId
+            ? {
+                ...message,
+                streaming: false,
+                completedAt: isoAt(1_213),
+                updatedAt: isoAt(1_213),
+              }
+            : message,
+        ),
+        latestTurn: thread.latestTurn
+          ? { ...thread.latestTurn, state: "completed", completedAt: isoAt(1_213) }
+          : null,
+        session: thread.session
+          ? { ...thread.session, status: "idle", activeTurnId: null, updatedAt: isoAt(1_213) }
+          : null,
+        updatedAt: isoAt(1_213),
+      }));
+      await settleFor(900);
+
+      expect(
+        scrollToCalls,
+        `turn end must not reclaim the viewport: ${JSON.stringify(scrollToCalls)}`,
+      ).toHaveLength(0);
+      expect(Math.abs(scrollContainer.scrollTop - parkedScrollTop)).toBeLessThanOrEqual(1);
+      expect(getScrollContainerDistanceFromBottom(scrollContainer)).toBeGreaterThan(
+        AUTO_SCROLL_BOTTOM_THRESHOLD_PX,
+      );
+      scrollContainer.scrollTo = originalScrollTo;
+    } finally {
+      if (patchedScrollContainer && originalScrollTo) {
+        patchedScrollContainer.scrollTo = originalScrollTo;
+      }
       await mounted.cleanup();
       restoreNativeApi();
     }
@@ -2941,10 +3266,14 @@ describe("ChatView timeline estimator parity (full app)", () => {
         ),
         updatedAt: isoAt(1_208),
       }));
-      await vi.waitFor(() => expect(scrollSpy.calls.length).toBeGreaterThan(0), {
-        timeout: 4_000,
-        interval: 16,
-      });
+      // Turn completion is not live output, so the list's end-stick is off by
+      // design and the tail is held by the transcript's own pin — a direct
+      // `scrollTop` write, deliberately not a queued list scroll (see
+      // `pinTranscriptToEnd`). Assert the contract the reader can see, not which
+      // API kept it: the completing row changes height, and the viewport must end
+      // up flush with the tail rather than drifting off it.
+      await settleFor(300);
+      expect(getScrollContainerDistanceFromBottom(scrollContainer)).toBeLessThanOrEqual(1);
     } finally {
       restoreScrollTo();
       await mounted.cleanup();

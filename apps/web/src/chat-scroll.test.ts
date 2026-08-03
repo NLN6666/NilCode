@@ -8,6 +8,7 @@ import {
   USER_SCROLL_INTENT_WINDOW_MS,
   computeAutoFollowGlideStep,
   getScrollContainerDistanceFromBottom,
+  isScrollAwayFromTail,
   isScrollContainerNearBottom,
   resolveAutoFollowGlidePhase,
   shouldIgnoreListAtEndReport,
@@ -97,6 +98,65 @@ describe("isScrollContainerNearBottom", () => {
       ),
     ).toBe(true);
     expect(AUTO_SCROLL_BOTTOM_THRESHOLD_PX).toBe(64);
+  });
+});
+
+describe("isScrollAwayFromTail", () => {
+  it("reads upward travel that lands off the tail as the reader taking the viewport", () => {
+    expect(
+      isScrollAwayFromTail({
+        previousScrollTop: 600,
+        scrollTop: 0,
+        clientHeight: 400,
+        scrollHeight: 1_000,
+      }),
+    ).toBe(true);
+  });
+
+  it("ignores downward travel, which only transcript follow produces", () => {
+    expect(
+      isScrollAwayFromTail({
+        previousScrollTop: 0,
+        scrollTop: 600,
+        clientHeight: 400,
+        scrollHeight: 1_000,
+      }),
+    ).toBe(false);
+  });
+
+  it("ignores the downward clamp from content shrinking at the tail", () => {
+    // The working row disappears at turn end: scrollHeight drops, the browser
+    // clamps scrollTop down, but the viewport is still parked at the end.
+    expect(
+      isScrollAwayFromTail({
+        previousScrollTop: 700,
+        scrollTop: 600,
+        clientHeight: 400,
+        scrollHeight: 1_000,
+      }),
+    ).toBe(false);
+  });
+
+  it("ignores sub-pixel jitter", () => {
+    expect(
+      isScrollAwayFromTail({
+        previousScrollTop: 300.9,
+        scrollTop: 300,
+        clientHeight: 400,
+        scrollHeight: 1_000,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false for a non-finite previous position", () => {
+    expect(
+      isScrollAwayFromTail({
+        previousScrollTop: Number.NaN,
+        scrollTop: 0,
+        clientHeight: 400,
+        scrollHeight: 1_000,
+      }),
+    ).toBe(false);
   });
 });
 

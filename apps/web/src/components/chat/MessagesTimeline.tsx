@@ -106,6 +106,7 @@ import {
 } from "./MessagesTimeline.logic";
 import { summarizeToolCallGroup } from "./toolCallGroup.logic";
 import { ToolCallGroupSummaryRow } from "./ToolCallGroupSummaryRow";
+
 import { useTailAnchorScroll } from "./useTailAnchorScroll";
 import {
   deriveDisplayedUserMessageState,
@@ -166,6 +167,7 @@ const MAX_VISIBLE_CHANGED_FILES = 5;
 // The composer overlaps the transcript by design, so the list needs extra tail
 // space beyond the overlap to keep final cards from sitting flush against it.
 const BOTTOM_CONTENT_INSET_PX = 64;
+
 const MESSAGE_HOVER_REVEAL_CLASS_NAME =
   "opacity-0 transition-opacity pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto";
 // How long a jumped-to message keeps its highlight tint before fading back out.
@@ -185,6 +187,15 @@ const EMPTY_MESSAGE_MARKERS: readonly ThreadMarker[] = [];
 const EMPTY_THREAD_MARKERS_BY_MESSAGE_ID = new Map<MessageId, readonly ThreadMarker[]>();
 const EMPTY_MESSAGE_ID_SET: ReadonlySet<MessageId> = new Set();
 
+// Asking the list to scroll, rather than writing `scrollTop` ourselves: a full-height
+// landing happens while the list is still assigning positions, and a raw write leaves
+// its reserve math to correct itself a few hundred milliseconds later — which surfaces
+// on top of a send as the anchored message drifting off its coordinate. Ownership is
+// enforced at the call sites instead, which is what the queue cannot do for us.
+function scrollLegendListToEnd(listRef: RefObject<LegendListRef | null>): void {
+  void listRef.current?.scrollToEnd?.({ animated: false });
+}
+
 // Imperative LegendList access goes through these module-level helpers instead of
 // inline `ref.current` reads. The timeline's list ref is `listRef ?? fallbackListRef`,
 // which React Compiler cannot recognize as a ref, so an inline `.current` read makes it
@@ -192,10 +203,6 @@ const EMPTY_MESSAGE_ID_SET: ReadonlySet<MessageId> = new Set();
 // component bails out with "Existing memoization could not be preserved". Behind an
 // opaque module-level call the inferred dependency is the ref object itself, matching the
 // hand-written dep arrays. See MessagesTimeline.compiler.test.ts.
-function scrollLegendListToEnd(listRef: RefObject<LegendListRef | null>): void {
-  void listRef.current?.scrollToEnd?.({ animated: false });
-}
-
 function scrollLegendListToIndex(
   listRef: RefObject<LegendListRef | null>,
   params: Parameters<LegendListRef["scrollToIndex"]>[0],
@@ -371,6 +378,13 @@ interface MessagesTimelineProps {
   /** Transient "New worktree" setup progress; rendered as an ephemeral step card at the tail. */
   worktreeSetup?: WorktreeSetupSnapshot | null;
   followLiveOutput?: boolean;
+  /**
+   * Whether the viewport is currently parked at the transcript tail. Growth-driven
+   * re-sticks (late image layout, expanding the tail turn's file list) only run while
+   * this holds, so a user reading scrollback is never pulled back to the bottom.
+   * Defaults to `true` for hosts that always render a tail-following transcript.
+   */
+  transcriptFollowsTail?: boolean | undefined;
   emptyStateContent?: ReactNode;
   listRef?: RefObject<LegendListRef | null>;
   /** Receives the scroll-to-message controller so the Environment panel can jump to a pin. */
@@ -448,6 +462,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   activeTurnStartedAt,
   worktreeSetup: worktreeSetupProp,
   followLiveOutput: followLiveOutputProp,
+  transcriptFollowsTail: transcriptFollowsTailProp,
   listRef,
   controllerRef,
   pinnedMessageIds,
@@ -501,6 +516,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // memoization for the whole transcript. See MessagesTimeline.compiler.test.ts.
   const worktreeSetup = worktreeSetupProp ?? null;
   const followLiveOutput = followLiveOutputProp ?? false;
+  const transcriptFollowsTail = transcriptFollowsTailProp ?? true;
   const threadMarkers = threadMarkersProp ?? EMPTY_MESSAGE_MARKERS;
   const enteringUserMessageIds = enteringUserMessageIdsProp ?? EMPTY_MESSAGE_ID_SET;
   const tailAnchorMessageId = tailAnchorMessageIdProp ?? null;
@@ -888,6 +904,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   }, [rows]);
   const tailScrollFrameRef = useRef<number | null>(null);
   const tailScrollTimeoutsRef = useRef<number[]>([]);
+  // Read at every retry instead of captured in the closure: the retries outlive
+  // the render that scheduled them, and a reader who scrolls into scrollback
+  // mid-schedule must cancel the rest of it.
+  const transcriptFollowsTailRef = useRef(transcriptFollowsTail);
+  const tailAnchorActiveRef = useRef(tailAnchorMessageId !== null);
+  useLayoutEffect(() => {
+    transcriptFollowsTailRef.current = transcriptFollowsTail;
+    tailAnchorActiveRef.current = tailAnchorMessageId !== null;
+  }, [tailAnchorMessageId, transcriptFollowsTail]);
   const clearTailExpansionScrollTimers = useCallback(() => {
     if (tailScrollFrameRef.current !== null) {
       window.cancelAnimationFrame(tailScrollFrameRef.current);
@@ -898,20 +923,50 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     tailScrollTimeoutsRef.current = [];
   }, []);
+  /**
+   * Re-stick the viewport to the live edge across a burst of layout settling (a late
+   * image taking its space, an expanding file list), then stop. Every retry re-reads
+   * ownership before asking the list to scroll, because the retries outlive the render
+   * that scheduled them: the reader may have taken the viewport since, or a send may
+   * have handed it to the tail anchor. Ownership has to be enforced here — the list's
+   * scroll queue dispatches a request whenever it stops settling, and unconditionally
+   * once its 800ms timeout expires, so a request already made cannot be revoked.
+   */
   const scrollTailExpansionToEnd = useCallback(() => {
     clearTailExpansionScrollTimers();
-    const scrollToEnd = () => {
+    // Growth at the tail (a late image taking its space, an expanding file list)
+    // re-sticks only for a viewport that is already following the tail. A user
+    // parked in scrollback keeps their position.
+    if (!transcriptFollowsTailRef.current || tailAnchorActiveRef.current) {
+      return;
+    }
+    const restickToEnd = () => {
+      if (!transcriptFollowsTailRef.current) {
+        clearTailExpansionScrollTimers();
+        return;
+      }
+      // A tail anchor owns the viewport: the sent message is held at the top by
+      // `useTailAnchorScroll` and the native end-space reserve, so pinning to the
+      // bottom underneath it jumps past the anchor and then fights the reserve as
+      // it recomputes — visible as the anchor bouncing on its way up. Anchor
+      // *presence* is the gate, not the in-flight flag: a re-stick scheduled a moment
+      // before a send must not land just after it, and the retries outlive the
+      // render that scheduled them.
+      if (tailAnchorActiveRef.current || tailAnchorScrollInFlightRef?.current) {
+        clearTailExpansionScrollTimers();
+        return;
+      }
       scrollLegendListToEnd(resolvedListRef);
     };
     tailScrollFrameRef.current = window.requestAnimationFrame(() => {
       tailScrollFrameRef.current = null;
-      scrollToEnd();
+      restickToEnd();
     });
     for (const delay of [80, 180, 260]) {
-      const timeoutId = window.setTimeout(scrollToEnd, delay);
+      const timeoutId = window.setTimeout(restickToEnd, delay);
       tailScrollTimeoutsRef.current.push(timeoutId);
     }
-  }, [clearTailExpansionScrollTimers, resolvedListRef]);
+  }, [clearTailExpansionScrollTimers, resolvedListRef, tailAnchorScrollInFlightRef]);
   useEffect(() => clearTailExpansionScrollTimers, [clearTailExpansionScrollTimers]);
   const ignoreTimelineImageLoad = useCallback(() => {}, []);
   const latestEditableUserMessageId = useMemo(() => {
@@ -922,6 +977,40 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     });
     return editTarget.editable ? (editTarget.messageId as MessageId) : null;
   }, [activeTurnId, rows]);
+  const messageRowCount = useMemo(
+    () => rows.reduce((total, row) => (row.kind === "message" ? total + 1 : total), 0),
+    [rows],
+  );
+  // `initialScrollAtEnd` is standing permission, not a one-time action: LegendList
+  // derives its target from the *last row index*, so every appended row re-arms a
+  // bootstrap scroll for as long as the prop stays true. That scroll is dispatched
+  // whenever the list's reveal converges — potentially long after the row that
+  // armed it, and from inside the list, where none of the transcript's ownership
+  // guards apply. Left on, an approval request or a tool row is enough to snap a
+  // reader out of scrollback.
+  //
+  // So the permission is withdrawn as soon as a row that is not a message arrives —
+  // an approval request, a work or tool row, a setup card. That is the same rule the
+  // rest of the transcript follows: chrome is not new content and must never trigger
+  // the auto-stick path. Withdrawing on chrome rather than on any change matters for
+  // timing as much as for policy: chrome accompanies a send, so the transition lands
+  // in the same commit that sets `tailAnchorMessageId` and the list sees one
+  // coordinated change, instead of losing its preserved bottom-padding target while a
+  // thread is merely hydrating — which shifts content under the next anchor slide.
+  // The list is remounted per thread (`key={activeThreadId}` in ChatTranscriptPane),
+  // so each opened thread gets its own window.
+  const chromeRowCount = rows.length - messageRowCount;
+  const mountedChromeRowCountRef = useRef(chromeRowCount);
+  const [withinBootstrapScrollWindow, setWithinBootstrapScrollWindow] = useState(true);
+  useEffect(() => {
+    if (chromeRowCount > mountedChromeRowCountRef.current) {
+      setWithinBootstrapScrollWindow(false);
+    }
+  }, [chromeRowCount]);
+  // Seeded with the mounted row count so this fires only for rows arriving after
+  // mount. A thread whose snapshot is already loaded is landed by LegendList's
+  // bootstrap, which converges within a few frames of mount — pinning on top of
+  // that only adds a second writer during the window a send may also be starting.
   const previousRowCountRef = useRef(rows.length);
   useEffect(() => {
     const previousRowCount = previousRowCountRef.current;
@@ -2183,7 +2272,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         // LegendList caches rendered rows, so every local expansion map that changes row content
         // has to be surfaced through extraData.
         extraData={timelineExtraData}
-        initialScrollAtEnd={tailAnchorMessageId === null}
+        initialScrollAtEnd={withinBootstrapScrollWindow && tailAnchorMessageId === null}
         {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
         maintainScrollAtEnd={followLiveOutput && !tailAnchorSlideInFlight}
         maintainScrollAtEndThreshold={0.1}

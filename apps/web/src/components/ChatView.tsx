@@ -136,6 +136,7 @@ import {
   USER_SCROLL_INTENT_WINDOW_MS,
   computeAutoFollowGlideStep,
   getScrollContainerDistanceFromBottom,
+  isScrollAwayFromTail,
   isScrollContainerNearBottom,
   resolveAutoFollowGlidePhase,
   shouldIgnoreListAtEndReport,
@@ -489,6 +490,7 @@ import {
   updateInputFromForm,
 } from "../routes/-automations.shared";
 import { ChatTranscriptPane } from "./chat/ChatTranscriptPane";
+import { pinTranscriptToEnd } from "./chat/transcriptScroll";
 import { ThreadDetailHydrationState } from "./chat/ThreadDetailHydrationState";
 import type { MessagesTimelineController } from "./chat/MessagesTimeline";
 import { buildTurnDiffSummaryByAssistantMessageId } from "./chat/MessagesTimeline.logic";
@@ -5134,6 +5136,9 @@ export default function ChatView({
   const programmaticScrollUntilRef = useRef(0);
   // Set by real scroll gestures so they outrank the programmatic guard above.
   const userScrollIntentUntilRef = useRef(0);
+  // Previous transcript scroll position, so a scroll event can be classified by
+  // direction (see onMessagesScrollBase).
+  const lastTranscriptScrollTopRef = useRef(0);
   // Smooth only the first auto-follow after a send; live stream re-sticks stay cheap.
   const animateNextAutoFollowScrollRef = useRef(false);
   // While the send glide owns the viewport the resize pin stays hands-off, so
@@ -5149,25 +5154,70 @@ export default function ChatView({
     programmaticScrollUntilRef.current = performance.now() + 200;
     legendListRef.current?.scrollToEnd?.({ animated });
   }, []);
-  const armTranscriptAutoFollow = useCallback(
-    (targetThreadId: ThreadId, animated = false) => {
-      autoFollowThreadIdRef.current = targetThreadId;
-      animateNextAutoFollowScrollRef.current = animated;
-      // Sending is an explicit request to watch the reply, so it revokes any earlier
-      // gesture that had parked the viewport away from the tail.
-      userScrollIntentUntilRef.current = 0;
-      setTranscriptAtEnd(true);
-      showScrollDebouncer.current.cancel();
-      setShowScrollToBottom(false);
-    },
-    [setTranscriptAtEnd],
-  );
+  // The viewport belongs to the user, so its live geometry — not the list's cached
+  // at-end report, which lags a scroll gesture by a frame and can stay stale-true —
+  // decides whether a send is allowed to follow the tail. Chrome resizes that
+  // temporarily push the viewport off-bottom re-stick themselves before the next
+  // send (see the composer ResizeObserver below).
+  const isTranscriptFollowingTail = useCallback(() => {
+    const scrollContainer = legendListRef.current?.getScrollableNode?.();
+    if (!(scrollContainer instanceof HTMLElement)) return isAtEndRef.current;
+    return isScrollContainerNearBottom({
+      scrollTop: scrollContainer.scrollTop,
+      clientHeight: scrollContainer.clientHeight,
+      scrollHeight: scrollContainer.scrollHeight,
+    });
+  }, []);
   const clearTranscriptAutoFollow = useCallback(() => {
     autoFollowThreadIdRef.current = null;
     animateNextAutoFollowScrollRef.current = false;
     // A user scroll gesture takes over from any in-flight tail-anchor slide.
     tailAnchorScrollInFlightRef.current = false;
   }, []);
+  /**
+   * Arms tail-follow for the turn a send is about to start. Returns whether the
+   * transcript will actually follow: a user parked in scrollback keeps their
+   * position, so sending never yanks the viewport to the bottom — it only leaves
+   * the jump-to-bottom affordance visible.
+   */
+  const armTranscriptAutoFollow = useCallback(
+    (targetThreadId: ThreadId, animated = false): boolean => {
+      if (!isTranscriptFollowingTail()) {
+        clearTranscriptAutoFollow();
+        setTranscriptAtEnd(false);
+        showScrollDebouncer.current.maybeExecute();
+        return false;
+      }
+      autoFollowThreadIdRef.current = targetThreadId;
+      animateNextAutoFollowScrollRef.current = animated;
+      // The viewport is already at the tail, so no earlier gesture is still parking
+      // it away from the bottom; drop the stale suppression window.
+      userScrollIntentUntilRef.current = 0;
+      setTranscriptAtEnd(true);
+      showScrollDebouncer.current.cancel();
+      setShowScrollToBottom(false);
+      return true;
+    },
+    [clearTranscriptAutoFollow, isTranscriptFollowingTail, setTranscriptAtEnd],
+  );
+  /**
+   * Send-time viewport handoff. When the transcript is following the tail the sent
+   * message is anchored at the viewport top and its slide owns the scroll; when the
+   * user is parked in scrollback nothing moves and any stale anchor reserve is
+   * dropped so the list preserves their content position while the reply streams in.
+   */
+  const anchorTranscriptForSend = useCallback(
+    (targetThreadId: ThreadId, anchorMessageId: MessageId) => {
+      if (!armTranscriptAutoFollow(targetThreadId, true)) {
+        tailAnchorScrollInFlightRef.current = false;
+        setTailAnchor(null);
+        return;
+      }
+      tailAnchorScrollInFlightRef.current = true;
+      setTailAnchor({ threadId: targetThreadId, messageId: anchorMessageId });
+    },
+    [armTranscriptAutoFollow, setTailAnchor],
+  );
   const transcriptMessageCount = useMemo(
     () => timelineEntries.filter((entry) => entry.kind === "message").length,
     [timelineEntries],
@@ -5272,7 +5322,30 @@ export default function ChatView({
     noteUserScrollIntent();
   }, [noteUserScrollIntent]);
   const onMessagesPointerUpBase = useCallback(() => {}, []);
-  const onMessagesScrollBase = useCallback(() => {}, []);
+  // The only seam that catches a reader leaving the tail without a wheel, touch or
+  // pointer event — keyboard paging and jump-to-message both land here. Without it
+  // the list's `isAtEnd: false` report is discarded as reflow noise (streaming keeps
+  // the programmatic-scroll guard armed), `isAtEndRef` stays stale-true, and the next
+  // commit pins the viewport back to the bottom.
+  const onMessagesScrollBase = useCallback(() => {
+    const scrollContainer = legendListRef.current?.getScrollableNode?.();
+    if (!(scrollContainer instanceof HTMLElement)) return;
+    const previousScrollTop = lastTranscriptScrollTopRef.current;
+    lastTranscriptScrollTopRef.current = scrollContainer.scrollTop;
+    if (
+      !isScrollAwayFromTail({
+        previousScrollTop,
+        scrollTop: scrollContainer.scrollTop,
+        clientHeight: scrollContainer.clientHeight,
+        scrollHeight: scrollContainer.scrollHeight,
+      })
+    ) {
+      return;
+    }
+    noteUserScrollIntent();
+    setTranscriptAtEnd(false);
+    showScrollDebouncer.current.maybeExecute();
+  }, [noteUserScrollIntent, setTranscriptAtEnd]);
   const onMessagesTouchEndBase = useCallback(() => {}, []);
   const onMessagesTouchMoveBase = useCallback(() => {
     noteUserScrollIntent();
@@ -5318,8 +5391,15 @@ export default function ChatView({
   // clamped back when the measurement lands — the visible send bounce. The
   // glide therefore eases toward the live bottom re-read every frame.
   useLayoutEffect(() => {
+    // An armed turn may re-stick even when the list reports "not at end", because a
+    // freshly appended row reads as off-bottom for a frame. It must not outrank a
+    // viewport the user actually left: gestures that miss `noteUserScrollIntent`
+    // (keyboard paging, for one) leave the arm set, and without this the turn's last
+    // transcript signal drags the reader back down. Live geometry breaks the tie.
     const shouldFollowPendingTurn =
-      activeThread?.id !== undefined && autoFollowThreadIdRef.current === activeThread.id;
+      activeThread?.id !== undefined &&
+      autoFollowThreadIdRef.current === activeThread.id &&
+      isTranscriptFollowingTail();
     if (!isAtEndRef.current && !shouldFollowPendingTurn) {
       return;
     }
@@ -5399,7 +5479,12 @@ export default function ChatView({
         window.cancelAnimationFrame(frameId);
       }
     };
-  }, [activeThread?.id, pinTranscriptToBottom, transcriptAutoFollowSignal]);
+  }, [
+    activeThread?.id,
+    isTranscriptFollowingTail,
+    pinTranscriptToBottom,
+    transcriptAutoFollowSignal,
+  ]);
   const {
     pendingTranscriptSelectionAction,
     commitTranscriptAssistantSelection,
@@ -5631,7 +5716,17 @@ export default function ChatView({
       }
       pendingScrollTimeout = window.setTimeout(() => {
         pendingScrollTimeout = null;
-        scrollToEnd(false);
+        // Re-stick by writing scrollTop, not through the list's scroll queue: a
+        // queued request is dispatched whenever the list stops settling (and
+        // unconditionally once its 800ms timeout expires), so it can land well
+        // after the resize that justified it and after the reader has taken the
+        // viewport. `wasNearEndBeforeResize` was measured a tick ago, so the one
+        // thing that can have changed since is a real gesture.
+        if (performance.now() < userScrollIntentUntilRef.current) return;
+        const node = legendListRef.current?.getScrollableNode?.();
+        if (!(node instanceof HTMLElement)) return;
+        programmaticScrollUntilRef.current = performance.now() + 200;
+        pinTranscriptToEnd(node);
       }, 0);
     });
 
@@ -5642,13 +5737,7 @@ export default function ChatView({
         window.clearTimeout(pendingScrollTimeout);
       }
     };
-  }, [
-    activeThread?.id,
-    isInactiveSplitPane,
-    scrollToEnd,
-    secondaryChromeReady,
-    shouldRenderChatPaneContent,
-  ]);
+  }, [activeThread?.id, isInactiveSplitPane, secondaryChromeReady, shouldRenderChatPaneContent]);
 
   useEffect(() => {
     isAtEndRef.current = true;
@@ -7620,7 +7709,8 @@ export default function ChatView({
           promptRef.current = leftover;
           setComposerDraftPrompt(activeThread.id, leftover);
           setComposerTrigger(null);
-          // Bring the new question into view even if the user had scrolled up.
+          // Follow the new question only when the transcript is already at the tail;
+          // a user reading scrollback keeps their position.
           armTranscriptAutoFollow(activeThread.id, true);
           setPendingAutomationConversation({
             threadId: activeThread.id,
@@ -8124,10 +8214,9 @@ export default function ChatView({
     // Mark the transcript as anchored before the optimistic row lands. The tail
     // anchor sizes the spacer that lets this message sit at the viewport top,
     // and its hook owns the slide; auto-follow stays armed for bookkeeping but
-    // pauses until the in-flight flag clears.
-    armTranscriptAutoFollow(threadIdForSend, true);
-    tailAnchorScrollInFlightRef.current = true;
-    setTailAnchor({ threadId: threadIdForSend, messageId: messageIdForSend });
+    // pauses until the in-flight flag clears. A user reading scrollback keeps
+    // their position instead — see anchorTranscriptForSend.
+    anchorTranscriptForSend(threadIdForSend, messageIdForSend);
 
     setThreadError(threadIdForSend, null);
     if (expiredTerminalContextCount > 0) {
@@ -8802,9 +8891,7 @@ export default function ChatView({
         source: "native",
       },
     ]);
-    armTranscriptAutoFollow(threadIdForSend, true);
-    tailAnchorScrollInFlightRef.current = true;
-    setTailAnchor({ threadId: threadIdForSend, messageId: messageIdForSend });
+    anchorTranscriptForSend(threadIdForSend, messageIdForSend);
 
     // Nested function so the `try` body holds no value blocks — see the comment on
     // `deleteEmptyTerminalThread` above for why React Compiler requires this shape.
@@ -11903,6 +11990,7 @@ export default function ChatView({
                     isRevertingCheckpoint={isRevertingCheckpoint}
                     onExpandTimelineImage={onExpandTimelineImage}
                     followLiveOutput={hasStreamingAssistantText && transcriptFollowsTail}
+                    transcriptFollowsTail={transcriptFollowsTail}
                     onIsAtEndChange={onIsAtEndChange}
                     markdownCwd={threadWorkspaceCwd ?? undefined}
                     resolvedTheme={resolvedTheme}
