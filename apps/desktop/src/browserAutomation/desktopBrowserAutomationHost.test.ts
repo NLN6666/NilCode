@@ -1280,26 +1280,13 @@ describe("DesktopBrowserAutomationHost", () => {
     expect(webContents.loadURL).not.toHaveBeenCalled();
   });
 
-  it("never re-reveals a browser that is already the visible tab", async () => {
-    const { manager, raw } = createManager();
-    const openPanel = vi.fn(async () => undefined);
-    const host = new DesktopBrowserAutomationHost(manager, { requestOpenPanel: openPanel });
-
-    for (const idempotencyKey of ["reveal-a", "reveal-b", "reveal-c"]) {
-      await host.executeTool({
-        sessionId: "session-no-reveal-churn",
-        provider: "codex",
-        threadId: THREAD_ID,
-        name: "browser_click",
-        arguments: { idempotencyKey, target: { selector: "#save" } },
-      });
-    }
-
-    // Revealing re-opens and re-focuses the dock pane in the renderer. Doing it per tool
-    // call yanks the pane back under the user and churns React state for nothing.
-    expect(openPanel).not.toHaveBeenCalled();
-    expect(raw.selectAutomationTab).not.toHaveBeenCalled();
-  });
+  // The host no longer short-circuits the reveal on "this tab is already visible": a
+  // persistent native runtime can exist without the owning chat being mounted, so a live
+  // runtime no longer implies a revealed pane. The churn this used to guard against is now
+  // prevented where it actually happens — `selectAutomationTab` only emits when something
+  // changed, and `routeSingleBrowserPanelOpenRequest` refuses to steal another thread's
+  // route — while the reveal itself stays fire-and-forget so it cannot stall the runtime
+  // ("does not block background execution on a pending panel reveal" below).
 
   it("closes a restore-held tab without requiring an attached renderer guest", async () => {
     const { manager, raw } = createManager();
