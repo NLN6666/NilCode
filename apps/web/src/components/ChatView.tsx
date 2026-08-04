@@ -183,7 +183,7 @@ import {
 } from "../lib/automationDraft";
 import { dispatchThreadRename } from "../lib/threadRename";
 import { useHandleNewChat } from "../hooks/useHandleNewChat";
-import { useComposerDropzone } from "../hooks/useComposerDropzone";
+import { splitComposerDropzoneFiles, useComposerDropzone } from "../hooks/useComposerDropzone";
 import { useComposerImageIntake } from "../hooks/useComposerImageIntake";
 import { useDiffRouteSearch } from "../hooks/useDiffRouteSearch";
 import {
@@ -2642,12 +2642,30 @@ export default function ChatView({
     return () => window.clearTimeout(settle);
   }, [agentActivityTimelineState.detailById, openAgentActivityId]);
   const pendingApprovals = useMemo(
-    () => derivePendingApprovals(threadActivities, activeThread?.pendingInteractions),
-    [activeThread?.pendingInteractions, threadActivities],
+    () =>
+      derivePendingApprovals(threadActivities, activeThread?.pendingInteractions, {
+        authoritativeHasPending: activeThread?.hasPendingApprovals,
+        latestTurnId: activeThread?.latestTurn?.turnId,
+      }),
+    [
+      activeThread?.hasPendingApprovals,
+      activeThread?.latestTurn?.turnId,
+      activeThread?.pendingInteractions,
+      threadActivities,
+    ],
   );
   const pendingUserInputs = useMemo(
-    () => derivePendingUserInputs(threadActivities, activeThread?.pendingInteractions),
-    [activeThread?.pendingInteractions, threadActivities],
+    () =>
+      derivePendingUserInputs(threadActivities, activeThread?.pendingInteractions, {
+        authoritativeHasPending: activeThread?.hasPendingUserInput,
+        latestTurnId: activeThread?.latestTurn?.turnId,
+      }),
+    [
+      activeThread?.hasPendingUserInput,
+      activeThread?.latestTurn?.turnId,
+      activeThread?.pendingInteractions,
+      threadActivities,
+    ],
   );
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const activePendingUserInputKey = activePendingUserInput
@@ -6800,6 +6818,19 @@ export default function ChatView({
     [activeThreadId, addComposerFilesToDraft, pendingUserInputs.length, setThreadError],
   );
 
+  const addComposerAttachments = useCallback(
+    (files: readonly File[]) => {
+      const { imageFiles, genericFiles } = splitComposerDropzoneFiles(files);
+      if (imageFiles.length > 0) {
+        addComposerImages(imageFiles);
+      }
+      if (genericFiles.length > 0) {
+        addComposerFiles(genericFiles);
+      }
+    },
+    [addComposerFiles, addComposerImages],
+  );
+
   const removeComposerFile = (fileId: string) => {
     discardPromptHistoryNavigationForComposerMutation();
     removeComposerDraftFile(threadId, fileId);
@@ -10894,7 +10925,7 @@ export default function ChatView({
         interactionMode={interactionMode}
         supportsFastMode={composerTraitSelection.caps.supportsFastMode}
         fastModeEnabled={composerTraitSelection.fastModeEnabled}
-        onAddPhotos={addComposerImages}
+        onAddAttachments={addComposerAttachments}
         onToggleFastMode={toggleFastMode}
         onSetPlanMode={setPlanMode}
       />
@@ -11501,14 +11532,8 @@ export default function ChatView({
                           isTranscribing={isVoiceTranscribing}
                           durationLabel={voiceRecordingDurationLabel}
                           waveformLevels={voiceWaveformLevels}
-                          onCancel={() => {
-                            if (isVoiceRecording) {
-                              void submitComposerVoiceRecording();
-                              return;
-                            }
-                            cancelComposerVoiceRecording();
-                          }}
-                          onSubmit={() => {
+                          onDiscard={cancelComposerVoiceRecording}
+                          onStop={() => {
                             void submitComposerVoiceRecording();
                           }}
                         />

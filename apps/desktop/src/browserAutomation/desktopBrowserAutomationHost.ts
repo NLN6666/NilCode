@@ -76,12 +76,6 @@ const IDEMPOTENCY_TTL_MS = 15 * 60_000;
 const MAX_IDEMPOTENCY_TOMBSTONES = 4_096;
 const IDEMPOTENCY_TOMBSTONE_TTL_MS = 24 * 60 * 60_000;
 const MAX_SESSION_SNAPSHOTS = 256;
-const VISIBLE_RUNTIME_POLL_MS = 50;
-// The tool's own 10–30 second deadline remains authoritative. This secondary
-// ceiling only prevents an accidentally unbounded wait if the host is ever
-// called without that outer guard; it must not preempt a healthy slow renderer
-// mount and manufacture BrowserHostUnavailable midway through browser_open.
-const DEFAULT_VISIBLE_RUNTIME_TIMEOUT_MS = 30_000;
 const WINDOW_OPEN_RECONCILIATION_TIMEOUT_MS = 2_000;
 const WINDOW_OPEN_EVENT_LOOP_GRACE_MS = 16;
 
@@ -98,7 +92,6 @@ export interface BrowserAutomationToolRequest {
 
 export interface DesktopBrowserAutomationHostOptions {
   readonly requestOpenPanel?: (threadId: ThreadId) => void | Promise<void>;
-  readonly visibleRuntimeTimeoutMs?: number;
 }
 
 interface SessionAffinity {
@@ -319,15 +312,12 @@ export class DesktopBrowserAutomationHost {
   private readonly snapshotBySession = new Map<string, BrowserSnapshotHandle>();
   private readonly diagnostics = new BrowserDiagnosticsStore();
   private readonly requestOpenPanel: ((threadId: ThreadId) => void | Promise<void>) | undefined;
-  private readonly visibleRuntimeTimeoutMs: number;
 
   constructor(
     private readonly browserManager: DesktopBrowserManager,
     options: DesktopBrowserAutomationHostOptions = {},
   ) {
     this.requestOpenPanel = options.requestOpenPanel;
-    this.visibleRuntimeTimeoutMs =
-      options.visibleRuntimeTimeoutMs ?? DEFAULT_VISIBLE_RUNTIME_TIMEOUT_MS;
   }
 
   async executeTool(request: BrowserAutomationToolRequest): Promise<unknown> {
@@ -770,37 +760,32 @@ export class DesktopBrowserAutomationHost {
     return tabId;
   }
 
-  private async resolveVisibleRuntime(
+  private async resolveAutomationRuntime(
     affinity: SessionAffinity,
     tabId: string,
     signal: AbortSignal,
     reveal: boolean,
+    restore = true,
   ): Promise<BrowserAutomationVisibleRuntime> {
     throwIfAborted(signal);
-    const observeVisibleRuntime = async (): Promise<BrowserAutomationVisibleRuntime | null> => {
-      try {
-        const runtime = this.browserManager.getVisibleAutomationRuntime({
-          threadId: affinity.threadId,
-          tabId,
-        });
-        throwIfAborted(signal);
-        await this.diagnostics.observe(runtime, signal);
-        return runtime;
-      } catch {
-        throwIfAborted(signal);
-        return null;
-      }
-    };
 
-    // Revealing an already-visible browser is not free: it re-opens and re-focuses the dock
-    // pane in the renderer on every single tool call, yanking the pane back under the user
-    // and churning React state for no gain. Only pay for the reveal when the tab is not
-    // already the visible one.
-    const visible = await observeVisibleRuntime();
-    if (visible) {
-      return visible;
-    }
-    if (!reveal) {
+    this.browserManager.selectAutomationTab({ threadId: affinity.threadId, tabId });
+    throwIfAborted(signal);
+    if (reveal) this.requestPanelReveal(affinity.threadId);
+    throwIfAborted(signal);
+    try {
+      const runtime = await raceWithSignal(
+        this.browserManager.getAutomationRuntime(
+          { threadId: affinity.threadId, tabId },
+          { restore },
+        ),
+        signal,
+      );
+      throwIfAborted(signal);
+      await this.diagnostics.observe(runtime, signal);
+      return runtime;
+    } catch {
+      throwIfAborted(signal);
       browserHostError({
         code: "BrowserHostUnavailable",
         retryable: true,
@@ -809,27 +794,18 @@ export class DesktopBrowserAutomationHost {
         tabId: tabId as BrowserTabId,
       });
     }
-    this.browserManager.selectAutomationTab({ threadId: affinity.threadId, tabId });
-    throwIfAborted(signal);
-    if (this.requestOpenPanel) {
-      await raceWithSignal(Promise.resolve(this.requestOpenPanel(affinity.threadId)), signal);
+  }
+
+  private requestPanelReveal(threadId: ThreadId): void {
+    if (!this.requestOpenPanel) return;
+    // Revealing is opportunistic UI feedback, not a prerequisite for browser
+    // execution. The renderer opens the panel only when this thread is already
+    // active; a slow/backgrounded UI must never stall the agent runtime.
+    try {
+      void Promise.resolve(this.requestOpenPanel(threadId)).catch(() => undefined);
+    } catch {
+      // The persistent native runtime remains usable when the shell cannot reveal it.
     }
-    throwIfAborted(signal);
-    const deadline = performance.now() + this.visibleRuntimeTimeoutMs;
-    do {
-      const runtime = await observeVisibleRuntime();
-      if (runtime) {
-        return runtime;
-      }
-      await sleep(VISIBLE_RUNTIME_POLL_MS, signal);
-    } while (performance.now() <= deadline);
-    browserHostError({
-      code: "BrowserHostUnavailable",
-      retryable: true,
-      phase: "runtime",
-      effectMayHaveCommitted: false,
-      tabId: tabId as BrowserTabId,
-    });
   }
 
   private observeWindowOpen(runtime: BrowserAutomationVisibleRuntime): WindowOpenObservation {
@@ -1035,7 +1011,13 @@ export class DesktopBrowserAutomationHost {
         tabId: targetTabId,
         url,
       });
-      const runtime = await this.resolveVisibleRuntime(affinity, targetTabId, signal, true);
+      const runtime = await this.resolveAutomationRuntime(
+        affinity,
+        targetTabId,
+        signal,
+        true,
+        false,
+      );
       return uncorrelatedExecution(
         await this.withDialogs(runtime, signal, () =>
           this.navigate(runtime, navigateInput, url, signal),
@@ -1046,7 +1028,7 @@ export class DesktopBrowserAutomationHost {
     const historyDirection = browserHistoryDirection(request.name);
     if (historyDirection) {
       this.snapshotBySession.delete(request.sessionId);
-      const runtime = await this.resolveVisibleRuntime(affinity, targetTabId, signal, true);
+      const runtime = await this.resolveAutomationRuntime(affinity, targetTabId, signal, true);
       return uncorrelatedExecution(
         await this.withDialogs(runtime, signal, () =>
           navigateBrowserHistory(
@@ -1059,7 +1041,7 @@ export class DesktopBrowserAutomationHost {
       );
     }
 
-    const runtime = await this.resolveVisibleRuntime(affinity, targetTabId, signal, true);
+    const runtime = await this.resolveAutomationRuntime(affinity, targetTabId, signal, true);
     let snapshot = this.snapshotBySession.get(request.sessionId);
     if (
       snapshot &&
@@ -1338,7 +1320,7 @@ export class DesktopBrowserAutomationHost {
               // Keep the potentially slow diagnostics preflight outside the
               // visibility lease. The state is revalidated under that lease
               // immediately before any hidden mutation below.
-              await this.resolveVisibleRuntime(affinity, selected, signal, false);
+              await this.resolveAutomationRuntime(affinity, selected, signal, false);
             }
             const executeOpen = async (): Promise<BrowserOpenOutput> => {
               markActionStarted();
@@ -1367,15 +1349,8 @@ export class DesktopBrowserAutomationHost {
               }
               affinity.tabId = selected;
               if (!url) {
-                if (show) {
-                  if (this.requestOpenPanel) {
-                    await raceWithSignal(
-                      Promise.resolve(this.requestOpenPanel(affinity.threadId)),
-                      signal,
-                    );
-                  }
-                  throwIfAborted(signal);
-                }
+                if (show) this.requestPanelReveal(affinity.threadId);
+                throwIfAborted(signal);
                 const tab = prepared.tabs.find((candidate) => candidate.id === selected);
                 return {
                   tabId: selected as BrowserTabId,
@@ -1396,11 +1371,12 @@ export class DesktopBrowserAutomationHost {
                     tabId: selected,
                     url,
                   });
-                  const runtime = await this.resolveVisibleRuntime(
+                  const runtime = await this.resolveAutomationRuntime(
                     affinity,
                     selected,
                     signal,
                     show,
+                    false,
                   );
                   return this.withDialogs(runtime, signal, async () => {
                     const loaded = await this.navigateOrObserve(

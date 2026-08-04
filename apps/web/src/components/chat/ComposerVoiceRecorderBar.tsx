@@ -4,12 +4,11 @@
 // Depends on: live waveform samples and caller-owned record/cancel/send actions.
 
 import { useEffect, useRef, useState } from "react";
-import { FiArrowUp } from "react-icons/fi";
-import { IoStopSharp } from "react-icons/io5";
 
-import { Loader2Icon } from "~/lib/icons";
+import { Loader2Icon, XIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { useMessages } from "~/i18n/context";
+import { Button } from "../ui/button";
 
 interface ComposerVoiceRecorderBarProps {
   disabled?: boolean;
@@ -17,8 +16,8 @@ interface ComposerVoiceRecorderBarProps {
   isRecording: boolean;
   isTranscribing: boolean;
   waveformLevels: readonly number[];
-  onCancel: () => void;
-  onSubmit: () => void;
+  onDiscard: () => void;
+  onStop: () => void;
 }
 
 const BAR_WIDTH_PX = 2;
@@ -95,28 +94,30 @@ export function ComposerVoiceRecorderBar(props: ComposerVoiceRecorderBarProps) {
         className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-zinc-200/80 text-zinc-700 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white/10 dark:text-zinc-100 dark:hover:bg-white/15 sm:h-7 sm:w-7"
         aria-label={props.isTranscribing ? copy.transcribing : copy.cancel}
         disabled={props.disabled || props.isTranscribing}
-        onClick={props.onCancel}
+        onClick={props.onDiscard}
       >
         {props.isTranscribing ? (
           <Loader2Icon aria-hidden="true" className="size-3 animate-spin" />
         ) : (
-          <IoStopSharp aria-hidden="true" className="size-[11px]" />
+          <XIcon aria-hidden="true" className="size-3.5" />
         )}
       </button>
 
-      <button
+      <Button
         type="button"
-        className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-transform duration-150 hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 sm:h-7 sm:w-7"
+        variant="prominent"
+        size="icon-xs"
+        className="size-7 rounded-full sm:size-7"
         aria-label={props.isTranscribing ? copy.transcribing : copy.send}
         disabled={props.disabled || props.isTranscribing}
-        onClick={props.onSubmit}
+        onClick={props.onStop}
       >
         {props.isTranscribing ? (
           <Loader2Icon aria-hidden="true" className="size-3 animate-spin" />
         ) : (
-          <FiArrowUp aria-hidden="true" className="size-[13px]" strokeWidth={2.25} />
+          <span aria-hidden="true" className="block size-2 rounded-[1px] bg-current" />
         )}
-      </button>
+      </Button>
     </div>
   );
 }

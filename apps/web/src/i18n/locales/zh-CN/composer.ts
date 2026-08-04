@@ -6,7 +6,7 @@ import type { Messages } from "../en";
 export const composer: Messages["composer"] = {
   extras: {
     menu: "输入区更多操作",
-    addImage: "添加图片",
+    addFiles: "添加文件",
     planMode: "计划模式",
     fast: "快速",
     default: "默认",

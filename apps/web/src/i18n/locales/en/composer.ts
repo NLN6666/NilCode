@@ -7,7 +7,7 @@
 export const composer = {
   extras: {
     menu: "Composer extras",
-    addImage: "Add image",
+    addFiles: "Add files",
     planMode: "Plan mode",
     fast: "Fast",
     default: "Default",

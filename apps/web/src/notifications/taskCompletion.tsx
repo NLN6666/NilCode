@@ -23,6 +23,7 @@ import {
   buildInputNeededCopy,
   buildTaskCompletionCopy,
   collectCompletedThreadCandidates,
+  completedThreadNotificationKey,
   collectCompletedTerminalCandidates,
   collectInputNeededThreadCandidates,
   collectTerminalAttentionCandidates,
@@ -164,6 +165,7 @@ export function TaskCompletionNotifications() {
   // of re-renders (useRef(Date.now()) re-evaluates its argument every render).
   const [runtimeStartedAtMs] = useState(() => Date.now());
   const readyRef = useRef(false);
+  const notifiedCompletionKeysRef = useRef(new Set<string>());
 
   useEffect(() => {
     const onMenuAction = window.desktopBridge?.onMenuAction;
@@ -203,8 +205,10 @@ export function TaskCompletionNotifications() {
     const completions = collectCompletedThreadCandidates(
       previousThreadsRef.current,
       threads,
-    ).filter((candidate) =>
-      isNotificationRuntimeFreshTimestamp(candidate.completedAt, runtimeStartedAtMs),
+    ).filter(
+      (candidate) =>
+        isNotificationRuntimeFreshTimestamp(candidate.completedAt, runtimeStartedAtMs) &&
+        !notifiedCompletionKeysRef.current.has(completedThreadNotificationKey(candidate)),
     );
     const terminalCompletions = collectCompletedTerminalCandidates(
       previousTerminalStateRef.current,
@@ -237,6 +241,7 @@ export function TaskCompletionNotifications() {
       (window.desktopBridge ? true : !isWindowForeground());
 
     for (const completion of completions) {
+      notifiedCompletionKeysRef.current.add(completedThreadNotificationKey(completion));
       const copy = buildTaskCompletionCopy(completion);
       if (
         settings.enableTaskCompletionToasts &&
