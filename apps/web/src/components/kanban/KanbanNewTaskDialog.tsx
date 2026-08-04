@@ -659,11 +659,7 @@ export function KanbanNewTaskDialog({
                 {copy.sendAsDraft}
               </label>
               <Button size="sm" onClick={handleCreateRequest} disabled={!canCreate}>
-                {isCreating
-                  ? copy.creating
-                  : isPreparingImages
-                    ? copy.optimizing
-                    : copy.createTask}
+                {isCreating ? copy.creating : isPreparingImages ? copy.optimizing : copy.createTask}
               </Button>
             </div>
           </div>

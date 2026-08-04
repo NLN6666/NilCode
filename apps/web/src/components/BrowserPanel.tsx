@@ -1251,14 +1251,7 @@ export function BrowserPanel({
       burstFramesRemainingRef.current = 0;
       burstStableFramesRef.current = 0;
     };
-  }, [
-    api,
-    browserSurfaceId,
-    isAnnotating,
-    isLiveRuntime,
-    showLocalServersHome,
-    usesNativeRuntime,
-  ]);
+  }, [api, browserSurfaceId, isAnnotating, isLiveRuntime, showLocalServersHome, usesNativeRuntime]);
 
   const onSubmitAddress = useCallback(() => {
     if (!ensureLiveRuntime()) {

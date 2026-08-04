@@ -365,9 +365,10 @@ const hideVisibleRuntimeUntilRevealed = (raw: ReturnType<typeof createManager>["
     revealed = true;
     return select();
   }) as never);
-  raw.getVisibleAutomationRuntime.mockImplementation(((
-    input: { threadId: ThreadId; tabId: string },
-  ): unknown => {
+  raw.getVisibleAutomationRuntime.mockImplementation(((input: {
+    threadId: ThreadId;
+    tabId: string;
+  }): unknown => {
     if (!revealed) {
       throw new Error("The requested browser webview is not currently visible.");
     }

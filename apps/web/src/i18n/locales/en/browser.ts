@@ -52,8 +52,7 @@ export const browser = {
   attachments: {
     limit: (max: number) => `You can attach up to ${max} references per message.`,
     screenshotPreparationFailed: "The browser screenshot could not be prepared.",
-    annotatedScreenshotPreparationFailed:
-      "The annotated screenshot could not be prepared.",
+    annotatedScreenshotPreparationFailed: "The annotated screenshot could not be prepared.",
   },
 
   /**
