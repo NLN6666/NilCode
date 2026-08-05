@@ -65,8 +65,7 @@ export const dialogs = {
       suffix: " name or its GitHub URL.",
     },
     requirementDestinationTitle: "Destination",
-    requirementDestinationBody:
-      "Choose the parent folder where Synara should create the checkout.",
+    requirementDestinationBody: "Choose the parent folder where Synara should create the checkout.",
     requirementPrivateTitle: "Private access",
     requirementPrivateBody: {
       prefix: "Public repositories work immediately. For private repositories, run ",

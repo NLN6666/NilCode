@@ -44,7 +44,8 @@ export const dialogs: Messages["dialogs"] = {
     repositoryInvalid: "请输入 GitHub 仓库，格式为 owner/repository，或提供 GitHub.com 仓库网址。",
     serverTooOldForGitHub: "请先更新 Synara 服务器，然后再从 GitHub 添加项目。",
     chooseParentFolder: "请选择用于克隆该仓库的父文件夹。",
-    invalidDirectoryName: "请选择一个有效的文件夹名称，不能包含斜杠、保留设备名称，也不能以句点结尾。",
+    invalidDirectoryName:
+      "请选择一个有效的文件夹名称，不能包含斜杠、保留设备名称，也不能以句点结尾。",
     validatingRepository: "正在验证仓库",
     githubCloneCancelled: "已取消 GitHub 克隆，可以放心重试。",
     creationCancelled: "已取消创建项目。",

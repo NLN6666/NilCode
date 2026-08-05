@@ -203,7 +203,7 @@ export function CreateProjectDialog(props: {
       }
       setProvisionProgress(event.message);
     });
-  }, [props.open]);
+  }, [copy.projectAdded, props.open]);
 
   const applyPickedFolder = useCallback(
     (picked: string) => {
