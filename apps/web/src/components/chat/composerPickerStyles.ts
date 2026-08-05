@@ -3,7 +3,7 @@
 // Layer: UI styling helper
 // Exports: surface/option/radius tokens; open panels via ComposerPickerMenuPopup / ComposerPickerSelectPopup
 
-import { ELEVATED_HOVER_SURFACE_CLASS_NAME } from "~/surfaceStyles";
+import { ELEVATED_HOVER_SURFACE_CLASS_NAME, THIN_SCROLLBAR_CLASS_NAME } from "~/surfaceStyles";
 
 export { COMPOSER_PICKER_SIZE, type ComposerPickerSize } from "./composerPickerSize";
 
@@ -41,7 +41,7 @@ export const COMPOSER_PICKER_MODEL_LIST_MAX_HEIGHT_CLASS_NAME =
   "max-h-[min(var(--available-height,20rem),20rem)]";
 
 /** Scroll chrome for long model-provider lists. */
-export const COMPOSER_PICKER_MODEL_LIST_SCROLL_CLASS_NAME = "composer-picker-scroll";
+export const COMPOSER_PICKER_MODEL_LIST_SCROLL_CLASS_NAME = THIN_SCROLLBAR_CLASS_NAME;
 
 /** Corner radius for picker panel chrome and panel-level surfaces. */
 export const COMPOSER_PICKER_RADIUS_CLASS_NAME = "rounded-[0.65rem]";

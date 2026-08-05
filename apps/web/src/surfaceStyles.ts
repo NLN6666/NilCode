@@ -3,7 +3,7 @@
 //          filled material and the elevated hover treatment used by rows, chips, and menus.
 // Layer: UI styling
 // Exports: SOFT_SURFACE_FILL_CLASS_NAME, ELEVATED_HOVER_SURFACE_CLASS_NAME,
-//          ELEVATED_HOVER_SURFACE_RAISED_TEXT_CLASS_NAME
+//          ELEVATED_HOVER_SURFACE_RAISED_TEXT_CLASS_NAME, THIN_SCROLLBAR_CLASS_NAME
 
 /**
  * Faint filled surface — the fill behind `soft` inputs (search fields) and the
@@ -29,3 +29,12 @@ export const ELEVATED_HOVER_SURFACE_CLASS_NAME =
  * toolbar icon buttons).
  */
 export const ELEVATED_HOVER_SURFACE_RAISED_TEXT_CLASS_NAME = `${ELEVATED_HOVER_SURFACE_CLASS_NAME} hover:text-foreground`;
+
+/**
+ * Scroll chrome for panels that scroll inside themselves rather than with the page
+ * (picker submenu lists, the streaming reasoning panel). The app-wide scrollbar is
+ * sized for full surfaces and reads as heavy chrome inside a small box; this one is
+ * thin and tinted from `--foreground`, so it stays legible in both themes.
+ * Rules live in `index.css` under `.thin-scrollbar`.
+ */
+export const THIN_SCROLLBAR_CLASS_NAME = "thin-scrollbar";

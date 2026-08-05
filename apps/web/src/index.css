@@ -2834,24 +2834,25 @@ diffs-container {
   color: inherit;
 }
 
-/* Thin scrollbar for long model-provider lists inside picker submenus. */
-.composer-picker-scroll {
+/* Thin, themed scrollbar for internally scrolling panels — picker submenu lists,
+   the streaming reasoning panel. Applied via THIN_SCROLLBAR_CLASS_NAME. */
+.thin-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--foreground) 13%, transparent) transparent;
 }
 
-.composer-picker-scroll::-webkit-scrollbar {
+.thin-scrollbar::-webkit-scrollbar {
   width: 10px;
 }
 
-.composer-picker-scroll::-webkit-scrollbar-thumb {
+.thin-scrollbar::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background-color: color-mix(in srgb, var(--foreground) 12%, transparent);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
-.composer-picker-scroll::-webkit-scrollbar-thumb:hover {
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: color-mix(in srgb, var(--foreground) 22%, transparent);
 }
 
