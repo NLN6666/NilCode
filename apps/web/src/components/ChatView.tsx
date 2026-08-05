@@ -44,7 +44,10 @@ import { resolveBrowserSurfaceId } from "@synara/shared/browserSurface";
 import { abortProjectPreview } from "~/lib/projectPreviewLauncher";
 import { providerSupportsNativeTurnSteering } from "@synara/shared/providerMetadata";
 import { getModelCapabilities, normalizeModelSlug } from "@synara/shared/model";
-import { resolveTailUserMessageEditTarget } from "@synara/shared/conversationEdit";
+import {
+  resolveLatestTailUserMessageEditTarget,
+  resolveTailUserMessageEditTarget,
+} from "@synara/shared/conversationEdit";
 import { threadExportBlockedReason } from "@synara/shared/threadExport";
 import { pendingRequestInstanceKey } from "@synara/shared/threadSummary";
 import {
@@ -395,6 +398,7 @@ import {
   type TerminalContextDraft,
   type TerminalContextSelection,
 } from "../lib/terminalContext";
+import { registerTerminalContextComposerTarget } from "../lib/terminalContextComposerRegistry";
 import {
   appendPastedTextsToPrompt,
   createPastedTextDraft,
@@ -2015,6 +2019,7 @@ export default function ChatView({
     openNewFullWidthTerminal,
     activateTerminal,
     closeTerminal,
+    handleTerminalSessionExited,
     closeActiveWorkspaceView,
   } = useChatTerminalController({
     threadId,
@@ -2932,6 +2937,24 @@ export default function ChatView({
   // progress, collapsing the newest answer into a closed "Worked for" disclosure.
   // The latest turn is the transcript's own notion of "current", so fall back to it.
   const activeTurnIdForTranscript = activeThread?.session?.activeTurnId ?? activeLatestTurnId;
+  // The edit affordance must mirror the exact policy the server decider applies:
+  // resolve the editable target from the raw sequence-ordered thread messages and
+  // the running-session turn id — never from the createdAt-sorted timeline rows,
+  // whose optimistic/filtered entries can surface the button on a message the
+  // validators then reject.
+  const editableUserMessageId = useMemo(() => {
+    if (!activeThread || !isServerThread) {
+      return null;
+    }
+    const editTarget = resolveLatestTailUserMessageEditTarget({
+      messages: activeThread.messages,
+      activeTurnId:
+        activeThread.session?.orchestrationStatus === "running"
+          ? (activeThread.session.activeTurnId ?? null)
+          : null,
+    });
+    return editTarget.editable ? (editTarget.messageId as MessageId) : null;
+  }, [activeThread, isServerThread]);
   // Defence in depth against a session stuck at "running" with no turn to
   // complete: nothing would ever drain the composer queue, so messages routed
   // into it would be swallowed. Server-side reconciliation settles these
@@ -4299,7 +4322,7 @@ export default function ChatView({
   });
   const addTerminalContextToDraft = useCallback(
     (selection: TerminalContextSelection) => {
-      if (!activeThread) {
+      if (!activeThreadId) {
         return;
       }
       discardPromptHistoryNavigationForComposerMutation();
@@ -4319,11 +4342,11 @@ export default function ChatView({
         insertion.cursor,
       );
       const inserted = insertComposerDraftTerminalContext(
-        activeThread.id,
+        activeThreadId,
         insertion.prompt,
         {
           id: randomUUID(),
-          threadId: activeThread.id,
+          threadId: activeThreadId,
           createdAt: new Date().toISOString(),
           ...selection,
         },
@@ -4340,13 +4363,31 @@ export default function ChatView({
       });
     },
     [
-      activeThread,
+      activeThreadId,
       composerCursor,
       composerTerminalContexts,
       discardPromptHistoryNavigationForComposerMutation,
       insertComposerDraftTerminalContext,
     ],
   );
+  // Terminal-only workspaces intentionally have no mounted composer. Do not
+  // publish a global-looking action with nowhere to insert the selection.
+  const canAddTerminalContextToChat = activeThread !== undefined && shouldRenderChatPaneContent;
+  // Keep the published capability stable while cursor and draft state change;
+  // dock terminals should not rerender for ordinary composer edits.
+  const addTerminalContextToDraftRef = useRef(addTerminalContextToDraft);
+  useLayoutEffect(() => {
+    addTerminalContextToDraftRef.current = addTerminalContextToDraft;
+  }, [addTerminalContextToDraft]);
+  const addRegisteredTerminalContextToDraft = useCallback((selection: TerminalContextSelection) => {
+    addTerminalContextToDraftRef.current(selection);
+  }, []);
+  useLayoutEffect(() => {
+    if (!canAddTerminalContextToChat) {
+      return;
+    }
+    return registerTerminalContextComposerTarget(paneScopeId, addRegisteredTerminalContextToDraft);
+  }, [addRegisteredTerminalContextToDraft, canAddTerminalContextToChat, paneScopeId]);
   // Collapse an oversized paste into an attachment card above the composer instead
   // of flooding the editor with raw text. The card holds the full content until the
   // user sends or clicks "Show in text field".
@@ -4466,6 +4507,7 @@ export default function ChatView({
       workspaceCloseShortcutLabel: closeWorkspaceShortcutLabel ?? undefined,
       onActiveTerminalChange: activateTerminal,
       onCloseTerminal: closeTerminal,
+      onTerminalSessionExited: handleTerminalSessionExited,
       onCloseTerminalGroup: (groupId: string) => {
         if (!activeThreadId) return;
         storeCloseTerminalGroup(activeThreadId, groupId);
@@ -4495,13 +4537,14 @@ export default function ChatView({
         if (!activeThreadId) return;
         storeSetTerminalActivity(activeThreadId, terminalId, activity);
       },
-      onAddTerminalContext: addTerminalContextToDraft,
+      ...(canAddTerminalContextToChat ? { onAddTerminalContext: addTerminalContextToDraft } : {}),
     }),
     [
       activeProject?.cwd,
       activateTerminal,
       addTerminalContextToDraft,
       closeTerminal,
+      handleTerminalSessionExited,
       closeTerminalShortcutLabel,
       closeWorkspaceShortcutLabel,
       createNewTerminal,
@@ -4535,6 +4578,7 @@ export default function ChatView({
       toggleRightDock,
       rightDockOpen,
       hasRightDockPanes,
+      canAddTerminalContextToChat,
     ],
   );
   const { startPreview: startScriptPreview } = useProjectScriptPreview({
@@ -12003,6 +12047,7 @@ export default function ChatView({
                     }
                     tailAnchorScrollInFlightRef={tailAnchorScrollInFlightRef}
                     crossTaskOrigin={crossTaskOrigin}
+                    isTemporaryThread={isThreadTemporary}
                     timelineEntries={timelineEntries}
                     turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
                     onOpenTurnDiff={onOpenTurnDiff}
@@ -12012,6 +12057,7 @@ export default function ChatView({
                     onRevertUserMessage={onRevertUserMessage}
                     onUndoTurnFiles={onUndoTurnFiles}
                     onEditUserMessage={onEditUserMessage}
+                    editableUserMessageId={editableUserMessageId}
                     isRevertingCheckpoint={isRevertingCheckpoint}
                     onExpandTimelineImage={onExpandTimelineImage}
                     followLiveOutput={hasStreamingAssistantText && transcriptFollowsTail}

@@ -4,7 +4,9 @@
 // Layer: Web UI dialog
 // Exports: CreateProjectDialog, CreateProjectSubmitValue
 
-import { type SpaceId } from "@synara/contracts";
+import { type GitHubProjectProvisionProgressEvent, type SpaceId } from "@synara/contracts";
+import { parseGitHubRepositoryInput } from "@synara/shared/githubRepository";
+import { normalizeProjectDirectoryName } from "@synara/shared/projectDirectoryName";
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { isElectron } from "../env";
@@ -15,11 +17,20 @@ import {
 import { VOID_SPACE_KEY, spaceKey, toSpaceIconName } from "../lib/spaceGrouping";
 import { createSpace } from "../lib/spaces";
 import { readNativeApi } from "../nativeApi";
+import { randomUUID } from "../lib/utils";
+import { joinProjectPath } from "../lib/projectPaths";
 import type { Space } from "../types";
 import { useVoidSpace } from "../voidSpaceStore";
 import { cn } from "~/lib/utils";
+import { useMessages } from "~/i18n/context";
+import { dialogs as defaultDialogCopy } from "~/i18n/locales/en/dialogs";
 
 import { FolderClosed } from "./FolderClosed";
+import {
+  CreateGitHubProjectFields,
+  PROJECT_DIALOG_FIELD_CONTROL_CLASS_NAME,
+} from "./CreateGitHubProjectFields";
+import { ProjectSourceSegmentedPicker } from "./ProjectSourceSegmentedPicker";
 import { describeAddProjectError } from "./Sidebar.logic";
 import { SpaceEditorDialog, type SpaceEditorValue } from "./SpaceEditorDialog";
 import { SpaceIcon } from "./SpaceIcon";
@@ -37,13 +48,9 @@ import { ComposerPickerSelectPopup } from "./chat/ComposerPickerMenuPopup";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/input-group";
 import { Select, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { CentralIcon } from "~/lib/central-icons";
-import { useMessages } from "~/i18n/context";
-import { dialogs as defaultDialogCopy } from "~/i18n/locales/en/dialogs";
 
 // Inputs share one fixed height + radius so every control in the dialog reads
 // as the same size (mirrors EditProfileDialog's field styling).
-const fieldControlClassName = "h-9 rounded-lg border-foreground/12";
-
 function isFileDrag(event: globalThis.DragEvent): boolean {
   return Array.from(event.dataTransfer?.types ?? []).includes("Files");
 }
@@ -64,7 +71,8 @@ function resolveDroppedFolder(dataTransfer: DataTransfer): DroppedFolderResult |
   return { path: absolutePath };
 }
 
-export interface CreateProjectSubmitValue {
+interface CreateLocalProjectSubmitValue {
+  readonly source: "local";
   readonly workspaceRoot: string;
   /** Destination Space; `null` is Void (unassigned). */
   readonly spaceId: SpaceId | null;
@@ -72,15 +80,40 @@ export interface CreateProjectSubmitValue {
   readonly createIfMissing: boolean;
 }
 
+interface CreateGitHubProjectSubmitValue {
+  readonly source: "github";
+  readonly operationId: string;
+  readonly repository: string;
+  readonly destinationParent: string;
+  readonly directoryName: string;
+  readonly spaceId: SpaceId | null;
+}
+
+export type CreateProjectSubmitValue =
+  | CreateLocalProjectSubmitValue
+  | CreateGitHubProjectSubmitValue;
+
+export interface CreateProjectSubmitOptions {
+  readonly signal: AbortSignal;
+}
+
 export function CreateProjectDialog(props: {
   open: boolean;
+  githubProvisioningAvailable: boolean;
   spaces: ReadonlyArray<Space>;
   activeSpaceId: SpaceId | null;
+  defaultCloneParent: string;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (value: CreateProjectSubmitValue) => Promise<void>;
+  onSubmit: (value: CreateProjectSubmitValue, options: CreateProjectSubmitOptions) => Promise<void>;
 }) {
   const copy = useMessages().dialogs.createProject;
+  const [source, setSource] = useState<"local" | "github">("local");
   const [path, setPath] = useState("");
+  const [repositoryInput, setRepositoryInput] = useState("");
+  const [destinationParent, setDestinationParent] = useState("");
+  const [directoryName, setDirectoryName] = useState("");
+  const [directoryNameEdited, setDirectoryNameEdited] = useState(false);
+  const [provisionProgress, setProvisionProgress] = useState<string | null>(null);
   /**
    * The last path delivered verbatim by the native picker or an OS drop. Those
    * folders exist by construction, so only hand-typed (or hand-edited) paths
@@ -100,8 +133,13 @@ export function CreateProjectDialog(props: {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const openedRef = useRef(false);
+  const submitAbortRef = useRef<AbortController | null>(null);
+  const activeOperationIdRef = useRef<string | null>(null);
   const fieldId = useId();
   const pathInputId = `${fieldId}-path`;
+  const repositoryInputId = `${fieldId}-repository`;
+  const destinationParentInputId = `${fieldId}-destination-parent`;
+  const directoryNameInputId = `${fieldId}-directory-name`;
   const submitButtonId = `${fieldId}-submit`;
   const sourceFolderLabelId = `${fieldId}-source-folder`;
   const spaceLabelId = `${fieldId}-space`;
@@ -112,7 +150,15 @@ export function CreateProjectDialog(props: {
     if (props.open === openedRef.current) return;
     openedRef.current = props.open;
     if (!props.open) return;
+    setSource("local");
     setPath("");
+    setRepositoryInput("");
+    setDestinationParent(props.defaultCloneParent);
+    setDirectoryName("");
+    setDirectoryNameEdited(false);
+    setProvisionProgress(null);
+    submitAbortRef.current = null;
+    activeOperationIdRef.current = null;
     setPickedPath(null);
     setSelectedSpaceKey(spaceKey(props.activeSpaceId));
     setSpaceEditorOpen(false);
@@ -125,15 +171,39 @@ export function CreateProjectDialog(props: {
     // path field has to happen after that lands or it is immediately undone.
     const frame = requestAnimationFrame(() => document.getElementById(pathInputId)?.focus());
     return () => cancelAnimationFrame(frame);
-  }, [pathInputId, props.activeSpaceId, props.open]);
+  }, [pathInputId, props.activeSpaceId, props.defaultCloneParent, props.open]);
+
+  useEffect(() => {
+    if (!props.githubProvisioningAvailable && source === "github") {
+      setSource("local");
+    }
+  }, [props.githubProvisioningAvailable, source]);
 
   const trimmedPath = path.trim();
+  const parsedRepository = parseGitHubRepositoryInput(repositoryInput);
+  const trimmedDestinationParent = destinationParent.trim();
+  const trimmedDirectoryName = directoryName.trim();
+  const normalizedDirectoryName = normalizeProjectDirectoryName(directoryName);
   const formErrorMeaning = formError ? describeAddProjectError(formError) : null;
   const spaces =
     createdSpace && !props.spaces.some((space) => space.id === createdSpace.id)
       ? [...props.spaces, createdSpace]
       : props.spaces;
   const voidSpace = useVoidSpace();
+
+  useEffect(() => {
+    if (!props.open) return;
+    const api = readNativeApi();
+    if (!api) return;
+    return api.projects.onProvisionProgress((event: GitHubProjectProvisionProgressEvent) => {
+      if (event.operationId !== activeOperationIdRef.current) return;
+      if (event.kind === "completed") {
+        setProvisionProgress(copy.projectAdded);
+        return;
+      }
+      setProvisionProgress(event.message);
+    });
+  }, [props.open]);
 
   const applyPickedFolder = useCallback(
     (picked: string) => {
@@ -144,6 +214,15 @@ export function CreateProjectDialog(props: {
       requestAnimationFrame(() => document.getElementById(submitButtonId)?.focus());
     },
     [submitButtonId],
+  );
+
+  const applyDestinationParent = useCallback(
+    (picked: string) => {
+      setDestinationParent(picked);
+      setFormError(null);
+      requestAnimationFrame(() => document.getElementById(directoryNameInputId)?.focus());
+    },
+    [directoryNameInputId],
   );
 
   const handleBrowse = async () => {
@@ -157,7 +236,10 @@ export function CreateProjectDialog(props: {
     // No try/finally: the React Compiler skips optimizing components that use it.
     try {
       const picked = await api.dialogs.pickFolder();
-      if (picked) applyPickedFolder(picked);
+      if (picked) {
+        if (source === "github") applyDestinationParent(picked);
+        else applyPickedFolder(picked);
+      }
     } catch (error) {
       setFormError(error instanceof Error ? error.message : copy.pickerFailed);
     }
@@ -168,7 +250,7 @@ export function CreateProjectDialog(props: {
   // folder drop anywhere in the window (capture phase). A tiny drop zone is
   // easy to miss and a stray drop outside it would otherwise vanish silently.
   useEffect(() => {
-    if (!props.open || !isElectron) return;
+    if (!props.open || !isElectron || source !== "local") return;
     let dragDepth = 0;
     const handleDragEnter = (event: globalThis.DragEvent) => {
       if (!isFileDrag(event)) return;
@@ -209,27 +291,79 @@ export function CreateProjectDialog(props: {
       window.removeEventListener("dragleave", handleDragLeave, true);
       window.removeEventListener("drop", handleDrop, true);
     };
-  }, [applyPickedFolder, props.open]);
+  }, [applyPickedFolder, props.open, source]);
 
   const submit = async () => {
     if (submitting) return;
     // The confirm button stays enabled (and white) like the reference dialog;
     // an empty submit explains what is missing instead of being unclickable.
-    if (trimmedPath.length === 0) {
+    if (source === "local" && trimmedPath.length === 0) {
       setFormError(copy.typePathHint);
+      return;
+    }
+    if (source === "github" && !parsedRepository) {
+      setFormError(copy.repositoryInvalid);
+      return;
+    }
+    if (source === "github" && !props.githubProvisioningAvailable) {
+      setFormError(copy.serverTooOldForGitHub);
+      return;
+    }
+    if (source === "github" && trimmedDestinationParent.length === 0) {
+      setFormError(copy.chooseParentFolder);
+      return;
+    }
+    if (source === "github" && !normalizedDirectoryName) {
+      setFormError(copy.invalidDirectoryName);
       return;
     }
     setSubmitting(true);
     setFormError(null);
+    setProvisionProgress(source === "github" ? copy.validatingRepository : null);
+    const abortController = new AbortController();
+    submitAbortRef.current = abortController;
     try {
-      await props.onSubmit({
-        workspaceRoot: trimmedPath,
-        spaceId: spaces.find((space) => space.id === selectedSpaceKey)?.id ?? null,
-        createIfMissing: trimmedPath !== pickedPath,
-      });
+      const spaceId = spaces.find((space) => space.id === selectedSpaceKey)?.id ?? null;
+      if (source === "github") {
+        const operationId = randomUUID();
+        activeOperationIdRef.current = operationId;
+        await props.onSubmit(
+          {
+            source: "github",
+            operationId,
+            repository: parsedRepository ?? repositoryInput.trim(),
+            destinationParent: trimmedDestinationParent,
+            directoryName: normalizedDirectoryName ?? trimmedDirectoryName,
+            spaceId,
+          },
+          { signal: abortController.signal },
+        );
+      } else {
+        await props.onSubmit(
+          {
+            source: "local",
+            workspaceRoot: trimmedPath,
+            spaceId,
+            createIfMissing: trimmedPath !== pickedPath,
+          },
+          { signal: abortController.signal },
+        );
+      }
+      submitAbortRef.current = null;
       props.onOpenChange(false);
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : copy.addFailed);
+      submitAbortRef.current = null;
+      activeOperationIdRef.current = null;
+      setFormError(
+        abortController.signal.aborted
+          ? source === "github"
+            ? copy.githubCloneCancelled
+            : copy.creationCancelled
+          : error instanceof Error
+            ? error.message
+            : copy.addFailed,
+      );
+      setProvisionProgress(null);
       setSubmitting(false);
     }
   };
@@ -238,6 +372,11 @@ export function CreateProjectDialog(props: {
     if (event.key !== "Enter") return;
     event.preventDefault();
     void submit();
+  };
+
+  const handleOpenChange = (open: boolean) => {
+    if (!open) submitAbortRef.current?.abort();
+    props.onOpenChange(open);
   };
 
   // The space is created right away (same command the sidebar uses) and picked
@@ -266,75 +405,132 @@ export function CreateProjectDialog(props: {
     pickedPath !== null && trimmedPath === pickedPath
       ? (pickedPath.split(/[/\\]/).filter(Boolean).at(-1) ?? pickedPath)
       : null;
+  const finalClonePath = joinProjectPath(trimmedDestinationParent, trimmedDirectoryName);
 
   return (
-    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+    <Dialog open={props.open} onOpenChange={handleOpenChange}>
       <DialogPopup>
         <DialogHeader className="px-5 pt-5">
           <DialogTitle>{copy.title}</DialogTitle>
         </DialogHeader>
         <DialogPanel className="space-y-4 px-5">
-          <InputGroup className={cn(fieldControlClassName, "mt-4")}>
-            <InputGroupAddon className="w-10 self-stretch border-e border-foreground/12 ps-0">
-              <FolderClosed className="size-4 text-muted-foreground/70" aria-hidden="true" />
-            </InputGroupAddon>
-            <InputGroupInput
-              id={pathInputId}
-              value={path}
-              aria-label={copy.pathLabel}
-              aria-invalid={formError ? true : undefined}
-              {...(formError ? { "aria-describedby": errorId } : {})}
-              placeholder={copy.pathPlaceholder}
-              spellCheck={false}
-              autoCorrect="off"
-              autoCapitalize="off"
-              onChange={(event) => {
-                setPath(event.target.value);
+          <ProjectSourceSegmentedPicker
+            className="mt-4"
+            value={source}
+            disabled={submitting}
+            githubAvailable={props.githubProvisioningAvailable}
+            onValueChange={(nextSource) => {
+              setSource(nextSource);
+              setFormError(null);
+              setProvisionProgress(null);
+              requestAnimationFrame(() =>
+                document
+                  .getElementById(nextSource === "local" ? pathInputId : repositoryInputId)
+                  ?.focus(),
+              );
+            }}
+          />
+
+          {source === "local" ? (
+            <>
+              <InputGroup className={PROJECT_DIALOG_FIELD_CONTROL_CLASS_NAME}>
+                <InputGroupAddon className="w-10 self-stretch border-e border-foreground/12 ps-0">
+                  <FolderClosed className="size-4 text-muted-foreground/70" aria-hidden="true" />
+                </InputGroupAddon>
+                <InputGroupInput
+                  id={pathInputId}
+                  value={path}
+                  aria-label={copy.pathLabel}
+                  aria-invalid={formError ? true : undefined}
+                  {...(formError ? { "aria-describedby": errorId } : {})}
+                  placeholder={copy.pathPlaceholder}
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  onChange={(event) => {
+                    setPath(event.target.value);
+                    setFormError(null);
+                  }}
+                  onKeyDown={submitOnEnter}
+                />
+              </InputGroup>
+
+              {isElectron ? (
+                <div className="space-y-2">
+                  <span
+                    id={sourceFolderLabelId}
+                    className={cn(
+                      "block",
+                      dialogFieldLabelClassName,
+                      "text-[length:var(--app-font-size-ui,12px)] text-foreground",
+                    )}
+                  >
+                    {copy.sourceFolder}
+                  </span>
+                  <button
+                    type="button"
+                    aria-labelledby={sourceFolderLabelId}
+                    disabled={isPickingFolder || submitting}
+                    className={cn(
+                      "flex min-h-12 w-full cursor-pointer items-center gap-2.5 rounded-xl border border-foreground/12 px-3.5 text-start text-[length:var(--app-font-size-ui,12px)] text-[var(--color-text-foreground)] transition-colors outline-none hover:bg-foreground/4 focus-visible:border-foreground/30 disabled:opacity-50",
+                      isDropTarget &&
+                        "border-[color:var(--color-border-focus)] bg-foreground/6 text-[var(--color-text-foreground)]",
+                    )}
+                    onClick={() => void handleBrowse()}
+                  >
+                    <CentralIcon name="folder-add-left" className="size-4.5" aria-hidden="true" />
+                    {isPickingFolder ? (
+                      copy.openingPicker
+                    ) : pickedFolderName ? (
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">{pickedFolderName}</span>
+                        <span className="truncate text-[length:var(--app-font-size-ui-xs,10px)] text-muted-foreground/70">
+                          {pickedPath}
+                        </span>
+                      </span>
+                    ) : (
+                      copy.dropHere
+                    )}
+                  </button>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <CreateGitHubProjectFields
+              repositoryInputId={repositoryInputId}
+              destinationParentInputId={destinationParentInputId}
+              directoryNameInputId={directoryNameInputId}
+              errorId={errorId}
+              repositoryInput={repositoryInput}
+              destinationParent={destinationParent}
+              directoryName={directoryName}
+              finalClonePath={finalClonePath}
+              formError={formError}
+              provisionProgress={provisionProgress}
+              isElectron={isElectron}
+              isPickingFolder={isPickingFolder}
+              submitting={submitting}
+              onRepositoryChange={(nextInput) => {
+                setRepositoryInput(nextInput);
+                const nextRepository = parseGitHubRepositoryInput(nextInput);
+                if (nextRepository && !directoryNameEdited) {
+                  setDirectoryName(nextRepository.split("/").at(-1) ?? "");
+                }
                 setFormError(null);
               }}
-              onKeyDown={submitOnEnter}
+              onDestinationParentChange={(nextParent) => {
+                setDestinationParent(nextParent);
+                setFormError(null);
+              }}
+              onDirectoryNameChange={(nextName) => {
+                setDirectoryName(nextName);
+                setDirectoryNameEdited(true);
+                setFormError(null);
+              }}
+              onBrowse={() => void handleBrowse()}
+              onSubmitKeyDown={submitOnEnter}
             />
-          </InputGroup>
-
-          {isElectron ? (
-            <div className="space-y-2">
-              <span
-                id={sourceFolderLabelId}
-                className={cn(
-                  "block",
-                  dialogFieldLabelClassName,
-                  "text-[length:var(--app-font-size-ui,12px)] text-foreground",
-                )}
-              >
-                {copy.sourceFolder}
-              </span>
-              <button
-                type="button"
-                aria-labelledby={sourceFolderLabelId}
-                disabled={isPickingFolder || submitting}
-                className={cn(
-                  "flex min-h-12 w-full cursor-pointer items-center gap-2.5 rounded-xl border border-foreground/12 px-3.5 text-start text-[length:var(--app-font-size-ui,12px)] text-[var(--color-text-foreground)] transition-colors outline-none hover:bg-foreground/4 focus-visible:border-foreground/30 disabled:opacity-50",
-                  isDropTarget &&
-                    "border-[color:var(--color-border-focus)] bg-foreground/6 text-[var(--color-text-foreground)]",
-                )}
-                onClick={() => void handleBrowse()}
-              >
-                <CentralIcon name="folder-add-left" className="size-4.5" aria-hidden="true" />
-                {isPickingFolder ? (
-                  copy.openingPicker
-                ) : pickedFolderName ? (
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate">{pickedFolderName}</span>
-                    <span className="truncate text-[length:var(--app-font-size-ui-xs,10px)] text-muted-foreground/70">
-                      {pickedPath}
-                    </span>
-                  </span>
-                ) : (
-                  copy.dropHere
-                )}
-              </button>
-            </div>
-          ) : null}
+          )}
 
           <div className="space-y-2">
             <span
@@ -356,7 +552,7 @@ export function CreateProjectDialog(props: {
               >
                 <SelectTrigger
                   aria-labelledby={spaceLabelId}
-                  className={cn(fieldControlClassName, "min-w-0 flex-1")}
+                  className={cn(PROJECT_DIALOG_FIELD_CONTROL_CLASS_NAME, "min-w-0 flex-1")}
                 >
                   <SelectValue>
                     <span className="flex items-center gap-2">
@@ -390,7 +586,7 @@ export function CreateProjectDialog(props: {
                 size="icon"
                 aria-label={copy.newSpace}
                 disabled={submitting}
-                className={cn(fieldControlClassName, "w-9 shrink-0 sm:h-9")}
+                className={cn(PROJECT_DIALOG_FIELD_CONTROL_CLASS_NAME, "w-9 shrink-0 sm:h-9")}
                 onClick={() => setSpaceEditorOpen(true)}
               >
                 <CentralIcon name="plus-medium" className="size-4" aria-hidden="true" />
@@ -416,19 +612,25 @@ export function CreateProjectDialog(props: {
             variant="ghost"
             shape="capsule"
             className="px-4 text-[length:var(--app-font-size-ui-lg,13px)] sm:text-[length:var(--app-font-size-ui-lg,13px)]"
-            onClick={() => props.onOpenChange(false)}
-            disabled={submitting}
+            onClick={() => handleOpenChange(false)}
+            disabled={submitting && source === "local"}
           >
-            {copy.cancel}
+            {submitting && source === "github" ? copy.cancelClone : copy.cancel}
           </Button>
           <Button
             id={submitButtonId}
             variant="prominent"
-            className="px-4 text-[length:var(--app-font-size-ui-lg,13px)] sm:text-[length:var(--app-font-size-ui-lg,13px)]"
+            className="px-4 text-[length:var(--app-font-size-ui-lg,13px)] transition-opacity hover:scale-100 sm:text-[length:var(--app-font-size-ui-lg,13px)]"
             onClick={() => void submit()}
             disabled={submitting}
           >
-            {submitting ? copy.creating : copy.submit}
+            {submitting
+              ? source === "github"
+                ? copy.cloning
+                : copy.creating
+              : source === "github"
+                ? copy.cloneAndAdd
+                : copy.submit}
           </Button>
         </DialogFooter>
         <SpaceEditorDialog

@@ -11,7 +11,7 @@
 // Layer: Web chat/editor file-preview component
 // Exports: PdfFilePreview
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { basenameOfPath } from "~/file-icons";
 import { Loader2Icon, TriangleAlertIcon } from "~/lib/icons";
@@ -36,6 +36,8 @@ export function PdfFilePreview(props: {
   /** Pre-resolved target for the "Open in editor" control in the toolbar. */
   openInTarget: string | null;
   className?: string;
+  onPreviewReady?: (() => void) | undefined;
+  onPreviewError?: (() => void) | undefined;
 }) {
   const copy = useMessages().editor.pdf;
   const previewUrl = buildLocalImageUrl({
@@ -45,6 +47,14 @@ export function PdfFilePreview(props: {
   });
   const fileName = basenameOfPath(props.filePath);
   const doc = usePdfDocument(previewUrl);
+
+  useEffect(() => {
+    if (doc.status === "ready") {
+      props.onPreviewReady?.();
+    } else if (doc.status === "error") {
+      props.onPreviewError?.();
+    }
+  }, [doc.status, props.onPreviewError, props.onPreviewReady]);
 
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const containerSize = useContainerSize(scrollRoot);

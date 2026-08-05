@@ -109,6 +109,7 @@ export const chat = {
     loadingGit: "Loading Git...",
     loadingExplorer: "Loading explorer...",
     loadingFile: "Loading file...",
+    loadingSidechat: "Loading side chat...",
     loadingDiffViewer: "Loading diff viewer...",
     selectFileFromTree: "Select a file from the tree to view it.",
     clickFileToPreview: "Click a file in the chat to preview it here.",
@@ -119,7 +120,7 @@ export const chat = {
       explorer: "Explorer",
       file: "File",
       terminal: "Terminal",
-      sidechat: "Side",
+      sidechat: "Side chats",
       git: "Git",
       pullRequest: "Pull request",
       fallback: "Panel",
@@ -133,7 +134,7 @@ export const chat = {
     launchers: {
       diff: "Review",
       explorer: "Files",
-      sidechat: "Side chat",
+      sidechat: "Side chats",
       git: "Source control",
     },
 

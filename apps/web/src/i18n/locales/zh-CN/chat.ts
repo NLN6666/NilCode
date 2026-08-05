@@ -96,6 +96,7 @@ export const chat: Chat = {
     loadingGit: "正在加载 Git…",
     loadingExplorer: "正在加载资源管理器…",
     loadingFile: "正在加载文件…",
+    loadingSidechat: "正在加载侧边会话…",
     loadingDiffViewer: "正在加载差异查看器…",
     selectFileFromTree: "从文件树中选择一个文件查看。",
     clickFileToPreview: "在对话中点击一个文件，即可在这里预览。",

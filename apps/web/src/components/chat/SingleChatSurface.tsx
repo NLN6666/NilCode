@@ -12,6 +12,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 import { useAppSettings } from "../../appSettings";
@@ -39,6 +40,12 @@ import { canComposerHandlePanelWidth } from "../../lib/panelResize";
 import { projectListDirectoriesQueryOptions } from "../../lib/projectReactQuery";
 import { getSidechatCreator } from "../../lib/sidechatCreatorRegistry";
 import {
+  clearSidechatPaneRetention,
+  getSidechatPaneRetentionVersion,
+  sidechatPaneRetentionRemainingMs,
+  subscribeSidechatPaneRetention,
+} from "../../lib/sidechatCreation";
+import {
   prefetchWorkspaceFile,
   resolveDockFileOpenTarget,
   resolveWorkspaceFileOpenTarget,
@@ -49,6 +56,7 @@ import { resolveSubagentPresentationForThread } from "../../lib/subagentPresenta
 import { selectRightDockState, useRightDockStore } from "../../rightDockStore";
 import {
   resolveActivePane,
+  findMissingSidechatPaneIds,
   type RightDockPane,
   type RightDockPaneKind,
 } from "../../rightDockStore.logic";
@@ -224,6 +232,7 @@ export function SingleChatSurface(props: {
   });
   const availableDockPaneKinds = dockLauncherItems.map(({ kind }) => kind);
   const projects = useStore((store) => store.projects);
+  const threadsHydrated = useStore((store) => store.threadsHydrated);
   const { settings: appSettings } = useAppSettings();
   const { handleNewThread } = useHandleNewThread();
   const queryClient = useQueryClient();
@@ -569,6 +578,62 @@ export function SingleChatSurface(props: {
   // selector, which re-emits on every streaming token of any thread and would
   // otherwise re-render the entire chat surface + right dock + active pane.
   const threadSummaries = useStore(useMemo(() => createSidebarThreadSummariesSelector(), []));
+  const sidechatPaneRetentionVersion = useSyncExternalStore(
+    subscribeSidechatPaneRetention,
+    getSidechatPaneRetentionVersion,
+    getSidechatPaneRetentionVersion,
+  );
+  useEffect(() => {
+    if (!threadsHydrated) {
+      return;
+    }
+    const existingThreadIds = new Set(threadSummaries.map((thread) => thread.id));
+    for (const pane of dockState.panes) {
+      if (pane.kind === "sidechat" && pane.threadId && existingThreadIds.has(pane.threadId)) {
+        clearSidechatPaneRetention(pane.threadId);
+      }
+    }
+    const missingPaneIds = findMissingSidechatPaneIds(dockState, existingThreadIds);
+    if (missingPaneIds.length === 0) {
+      return;
+    }
+
+    const timerIds: number[] = [];
+    for (const paneId of missingPaneIds) {
+      const pane = dockState.panes.find((candidate) => candidate.id === paneId);
+      const remainingGraceMs = pane?.threadId ? sidechatPaneRetentionRemainingMs(pane.threadId) : 0;
+      if (remainingGraceMs === null) {
+        continue;
+      }
+      if (remainingGraceMs <= 0) {
+        if (pane?.threadId) {
+          clearSidechatPaneRetention(pane.threadId);
+        }
+        closePane(props.threadId, paneId);
+        continue;
+      }
+      timerIds.push(
+        window.setTimeout(() => {
+          if (pane?.threadId) {
+            clearSidechatPaneRetention(pane.threadId);
+          }
+          closePane(props.threadId, paneId);
+        }, remainingGraceMs),
+      );
+    }
+    return () => {
+      for (const timerId of timerIds) {
+        window.clearTimeout(timerId);
+      }
+    };
+  }, [
+    closePane,
+    dockState,
+    props.threadId,
+    sidechatPaneRetentionVersion,
+    threadSummaries,
+    threadsHydrated,
+  ]);
   const editorProjectOptions = projects.flatMap((project) =>
     project.kind === "project" ? [{ id: project.id, name: project.name }] : [],
   );
@@ -798,6 +863,9 @@ export function SingleChatSurface(props: {
       case "sidechat":
         if (!pane.threadId) {
           return <RightDockPanePlaceholder kind="sidechat" />;
+        }
+        if (!threadSummaries.some((thread) => thread.id === pane.threadId)) {
+          return <PanelStateMessage>{paneCopy.loadingSidechat}</PanelStateMessage>;
         }
         if (context.runtimeMode === "preview") {
           return null;

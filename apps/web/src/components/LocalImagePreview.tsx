@@ -38,6 +38,8 @@ export function useLocalImagePreview(input: {
   src: string;
   cwd: string | null | undefined;
   previewGrant?: string | null | undefined;
+  onPreviewReady?: (() => void) | undefined;
+  onPreviewError?: (() => void) | undefined;
 }): LocalImagePreviewState {
   const { src, cwd, previewGrant } = input;
   const previewUrl = buildLocalImageUrl({ src, cwd: cwd ?? undefined, grant: previewGrant });
@@ -77,8 +79,14 @@ export function useLocalImagePreview(input: {
     loading: "lazy",
     decoding: "async",
     draggable: false,
-    onLoad: () => settleLoad("ready"),
-    onError: () => settleLoad("error"),
+    onLoad: () => {
+      settleLoad("ready");
+      input.onPreviewReady?.();
+    },
+    onError: () => {
+      settleLoad("error");
+      input.onPreviewError?.();
+    },
   };
 
   return {
@@ -155,12 +163,16 @@ export function LocalImagePreview(props: {
   alt: string;
   className?: string;
   imageClassName?: string;
+  onPreviewReady?: (() => void) | undefined;
+  onPreviewError?: (() => void) | undefined;
 }) {
   const previewCopy = useMessages().editor.image;
   const { downloadUrl, downloadName, status, imgProps } = useLocalImagePreview({
     src: props.src,
     cwd: props.cwd,
     previewGrant: props.previewGrant,
+    onPreviewReady: props.onPreviewReady,
+    onPreviewError: props.onPreviewError,
   });
   const handleDownloadClick = useLocalImageDownloadClick({ downloadUrl, downloadName });
 

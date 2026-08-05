@@ -47,6 +47,7 @@ interface ChatTranscriptPaneProps {
   expandedWorkGroups?: Record<string, boolean>;
   hasMessages: boolean;
   isRevertingCheckpoint: boolean;
+  isTemporaryThread?: boolean;
   isWorking: boolean;
   followLiveOutput: boolean;
   /** Whether the viewport is parked at the tail; gates growth-driven re-sticks. */
@@ -84,6 +85,7 @@ interface ChatTranscriptPaneProps {
   onRevertUserMessage: (messageId: MessageId) => void;
   onUndoTurnFiles?: ComponentProps<typeof MessagesTimeline>["onUndoTurnFiles"];
   onEditUserMessage?: (messageId: MessageId, text: string) => boolean | Promise<boolean>;
+  editableUserMessageId?: MessageId | null;
   onScrollToBottom: () => void;
   onToggleWorkGroup?: (groupId: string) => void;
   resolvedTheme: "light" | "dark";
@@ -110,6 +112,7 @@ export function ChatTranscriptPane({
   expandedWorkGroups,
   hasMessages,
   isRevertingCheckpoint,
+  isTemporaryThread,
   isWorking,
   followLiveOutput,
   transcriptFollowsTail,
@@ -144,6 +147,7 @@ export function ChatTranscriptPane({
   onRevertUserMessage,
   onUndoTurnFiles,
   onEditUserMessage,
+  editableUserMessageId,
   onScrollToBottom,
   onToggleWorkGroup,
   resolvedTheme,
@@ -225,6 +229,7 @@ export function ChatTranscriptPane({
               tailAnchorMessageId={tailAnchorMessageId ?? null}
               {...(tailAnchorScrollInFlightRef ? { tailAnchorScrollInFlightRef } : {})}
               {...(crossTaskOrigin ? { crossTaskOrigin } : {})}
+              isTemporaryThread={isTemporaryThread ?? false}
               timelineEntries={timelineEntries}
               turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
               onOpenTurnDiff={onOpenTurnDiff}
@@ -234,6 +239,7 @@ export function ChatTranscriptPane({
               onRevertUserMessage={onRevertUserMessage}
               {...(onUndoTurnFiles ? { onUndoTurnFiles } : {})}
               {...(onEditUserMessage ? { onEditUserMessage } : {})}
+              editableUserMessageId={editableUserMessageId ?? null}
               isRevertingCheckpoint={isRevertingCheckpoint}
               onImageExpand={onExpandTimelineImage}
               followLiveOutput={followLiveOutput}

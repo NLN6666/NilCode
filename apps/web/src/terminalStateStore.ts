@@ -1069,6 +1069,26 @@ function closeThreadTerminal(state: ThreadTerminalState, terminalId: string): Th
   });
 }
 
+function closeThreadTerminalAndEnsureReplacement(
+  state: ThreadTerminalState,
+  terminalId: string,
+  replacementTerminalId: string,
+): ThreadTerminalState {
+  const normalized = normalizeThreadTerminalState(state);
+  if (!normalized.terminalIds.includes(terminalId)) {
+    return normalized;
+  }
+  if (normalized.terminalIds.length > 1) {
+    return closeThreadTerminal(normalized, terminalId);
+  }
+
+  const withReplacement = newThreadTerminal(normalized, replacementTerminalId);
+  if (!withReplacement.terminalIds.includes(replacementTerminalId)) {
+    return normalized;
+  }
+  return closeThreadTerminal(withReplacement, terminalId);
+}
+
 function closeThreadTerminalGroup(
   state: ThreadTerminalState,
   groupId: string,
@@ -1300,6 +1320,11 @@ interface TerminalStateStoreState {
   closeWorkspaceChat: (threadId: ThreadId) => void;
   setActiveTerminal: (threadId: ThreadId, terminalId: string) => void;
   closeTerminal: (threadId: ThreadId, terminalId: string) => void;
+  closeTerminalAndEnsureReplacement: (
+    threadId: ThreadId,
+    terminalId: string,
+    replacementTerminalId: string,
+  ) => void;
   closeTerminalGroup: (threadId: ThreadId, groupId: string) => void;
   resizeTerminalSplit: (
     threadId: ThreadId,
@@ -1408,6 +1433,10 @@ export const useTerminalStateStore = create<TerminalStateStoreState>()(
           updateTerminal(threadId, (state) => setThreadActiveTerminal(state, terminalId)),
         closeTerminal: (threadId, terminalId) =>
           updateTerminal(threadId, (state) => closeThreadTerminal(state, terminalId)),
+        closeTerminalAndEnsureReplacement: (threadId, terminalId, replacementTerminalId) =>
+          updateTerminal(threadId, (state) =>
+            closeThreadTerminalAndEnsureReplacement(state, terminalId, replacementTerminalId),
+          ),
         closeTerminalGroup: (threadId, groupId) =>
           updateTerminal(threadId, (state) => closeThreadTerminalGroup(state, groupId)),
         resizeTerminalSplit: (threadId, groupId, splitId, weights) =>

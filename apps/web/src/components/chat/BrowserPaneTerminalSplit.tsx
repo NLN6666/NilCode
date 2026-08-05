@@ -224,6 +224,7 @@ export function BrowserPaneTerminalSplit(props: {
               onMoveTerminalToGroup={terminal.moveTerminalToNewGroup}
               onActiveTerminalChange={terminal.activateTerminal}
               onCloseTerminal={terminal.closeTerminal}
+              onTerminalSessionExited={terminal.handleTerminalSessionExited}
               onCloseTerminalGroup={terminal.closeTerminalGroup}
               onHeightChange={terminal.setTerminalHeight}
               onResizeTerminalSplit={terminal.resizeTerminalSplit}

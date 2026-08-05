@@ -10,7 +10,6 @@ import {
   type ThreadMarker,
   type TurnId,
 } from "@synara/contracts";
-import { resolveLatestTailUserMessageEditTarget } from "@synara/shared/conversationEdit";
 import { pluralize } from "@synara/shared/text";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import {
@@ -136,6 +135,7 @@ import {
   getChatTranscriptUserMessageTextStyle,
   USER_MESSAGE_BUBBLE_RADIUS_CLASS_NAME,
   USER_MESSAGE_BUBBLE_SHELL_CHROME_CLASS_NAME,
+  userMessageBubbleBorderClassName,
 } from "./chatTypography";
 import { DisclosureChevron } from "../ui/DisclosureChevron";
 import { CollapseRail } from "../ui/CollapseRail";
@@ -412,6 +412,8 @@ interface MessagesTimelineProps {
   tailAnchorScrollInFlightRef?: RefObject<boolean> | undefined;
   /** Provenance for a conversation created from another Synara task. */
   crossTaskOrigin?: CrossTaskOrigin | null;
+  /** Marks the transcript as a temporary chat so user bubbles render the dashed primary outline. */
+  isTemporaryThread?: boolean;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
   turnDiffSummaryByAssistantMessageId: Map<MessageId, TurnDiffSummary>;
   nowIso?: string;
@@ -426,6 +428,14 @@ interface MessagesTimelineProps {
   onRevertUserMessage: (messageId: MessageId) => void;
   onUndoTurnFiles?: (turnCounts: readonly number[]) => void;
   onEditUserMessage?: (messageId: MessageId, text: string) => boolean | Promise<boolean>;
+  /**
+   * The user message the edit affordance may target, resolved by the owner from
+   * the raw thread messages (the same list the server-side edit policy
+   * validates). The timeline must not re-derive this from its own rows: they are
+   * createdAt-sorted and include optimistic/filtered entries, so a row-derived
+   * target can point at a message the server rejects.
+   */
+  editableUserMessageId?: MessageId | null;
   activeTurnId?: TurnId | null;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
@@ -473,6 +483,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   tailAnchorMessageId: tailAnchorMessageIdProp,
   tailAnchorScrollInFlightRef,
   crossTaskOrigin: crossTaskOriginProp,
+  isTemporaryThread: isTemporaryThreadProp,
   timelineEntries,
   turnDiffSummaryByAssistantMessageId,
   nowIso,
@@ -486,6 +497,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onRevertUserMessage,
   onUndoTurnFiles,
   onEditUserMessage,
+  editableUserMessageId,
   activeTurnId,
   isRevertingCheckpoint,
   onImageExpand,
@@ -520,6 +532,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const threadMarkers = threadMarkersProp ?? EMPTY_MESSAGE_MARKERS;
   const enteringUserMessageIds = enteringUserMessageIdsProp ?? EMPTY_MESSAGE_ID_SET;
   const tailAnchorMessageId = tailAnchorMessageIdProp ?? null;
+  const isTemporaryThread = isTemporaryThreadProp ?? false;
+  const userMessageBubbleBorderClass = userMessageBubbleBorderClassName(isTemporaryThread);
   // The timeline remounts per thread (and when the agent-activity detail view
   // closes), but the anchor lives above it and survives those remounts. An
   // anchor that is already set at mount time therefore describes a slide that
@@ -981,14 +995,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   }, [clearTailExpansionScrollTimers, resolvedListRef, tailAnchorScrollInFlightRef]);
   useEffect(() => clearTailExpansionScrollTimers, [clearTailExpansionScrollTimers]);
   const ignoreTimelineImageLoad = useCallback(() => {}, []);
-  const latestEditableUserMessageId = useMemo(() => {
-    const messages = rows.flatMap((row) => (row.kind === "message" ? [row.message] : []));
-    const editTarget = resolveLatestTailUserMessageEditTarget({
-      messages,
-      activeTurnId,
-    });
-    return editTarget.editable ? (editTarget.messageId as MessageId) : null;
-  }, [activeTurnId, rows]);
+  const latestEditableUserMessageId = editableUserMessageId ?? null;
   const messageRowCount = useMemo(
     () => rows.reduce((total, row) => (row.kind === "message" ? total + 1 : total), 0),
     [rows],
@@ -1445,6 +1452,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       disabled={isSubmittingThisEdit || isRevertingCheckpoint}
                       allowEmpty={renderedBrowserAnnotations.length > 0}
                       chatTypographyStyle={userMessageTypographyStyle}
+                      borderClassName={userMessageBubbleBorderClass}
                       onCancel={cancelUserMessageEdit}
                       onSubmit={(text) =>
                         void submitUserMessageEdit(
@@ -1459,6 +1467,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       className={cn(
                         "w-max max-w-full min-w-0 self-end bg-[var(--app-user-message-background)]",
                         USER_MESSAGE_BUBBLE_RADIUS_CLASS_NAME,
+                        userMessageBubbleBorderClass,
                         bubbleIsChipOnly
                           ? "py-0.5 px-3"
                           : USER_MESSAGE_BUBBLE_SHELL_CHROME_CLASS_NAME,
@@ -2873,6 +2882,7 @@ const UserMessageEditForm = memo(function UserMessageEditForm(props: {
   disabled: boolean;
   allowEmpty: boolean;
   chatTypographyStyle: CSSProperties;
+  borderClassName: string;
   onCancel: () => void;
   onSubmit: (value: string) => void;
 }) {
@@ -2922,6 +2932,7 @@ const UserMessageEditForm = memo(function UserMessageEditForm(props: {
       className={cn(
         "w-full bg-[var(--app-user-message-background)]",
         USER_MESSAGE_BUBBLE_RADIUS_CLASS_NAME,
+        props.borderClassName,
         USER_MESSAGE_BUBBLE_SHELL_CHROME_CLASS_NAME,
       )}
       onSubmit={(event) => {
