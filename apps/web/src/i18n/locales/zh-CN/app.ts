@@ -31,16 +31,16 @@ export const app: Messages["app"] = {
   },
 
   maintenance: {
-    archivingTitle: "正在归档旧会话…",
+    archivingTitle: "正在归档旧对话…",
     preparing: "正在准备后台维护。",
-    archivedOfTotal: (archived, total) => `已归档 ${archived} / ${total} 个会话。`,
-    archivedCount: (archived) => `已归档 ${archived} 个会话。`,
-    pausedTitle: "会话维护已暂停",
-    pausedDescription: "稍后会重试处理这些旧会话。",
-    archivedTitle: "旧会话已归档",
+    archivedOfTotal: (archived, total) => `已归档 ${archived} / ${total} 个对话。`,
+    archivedCount: (archived) => `已归档 ${archived} 个对话。`,
+    pausedTitle: "对话维护已暂停",
+    pausedDescription: "稍后会重试处理这些旧对话。",
+    archivedTitle: "旧对话已归档",
     archivedDescription: (archived) =>
-      `${archived} 个旧会话已移至「设置 → 已归档会话」，可以在那里还原。`,
-    archivedNone: "没有需要归档的旧会话。",
+      `${archived} 个旧对话已移至「设置 → 已归档对话」，可以在那里还原。`,
+    archivedNone: "没有需要归档的旧对话。",
   },
 
   ui: {
