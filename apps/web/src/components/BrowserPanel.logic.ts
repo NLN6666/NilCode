@@ -128,6 +128,29 @@ export function createBrowserPanelHideScheduler(
   return { cancel, schedule };
 }
 
+/**
+ * Electron guest surfaces can paint above React portals regardless of CSS
+ * z-index. Hide the guest while browser-owned chrome or another app overlay is
+ * open so that the DOM surface remains the topmost interactive layer.
+ *
+ * Annotating is the same problem from the other direction: the page is replaced
+ * by a frozen screenshot rendered in the DOM, so the guest has to get out of the
+ * way for the duration.
+ */
+export function shouldOccludeBrowserWebview(input: {
+  showLocalServersHome: boolean;
+  browserActionsMenuOpen: boolean;
+  isAnnotating: boolean;
+  hasObscuringOverlay: boolean;
+}): boolean {
+  return (
+    input.showLocalServersHome ||
+    input.browserActionsMenuOpen ||
+    input.isAnnotating ||
+    input.hasObscuringOverlay
+  );
+}
+
 interface ResolveBrowserAddressSyncInput {
   activeTabId: string | null;
   previousActiveTabId: string | null;

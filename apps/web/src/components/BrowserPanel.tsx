@@ -72,6 +72,7 @@ import {
   resolveBrowserChromeStatus,
   resolveBrowserAddressSync,
   resolveNextInteractionMode,
+  shouldOccludeBrowserWebview,
   type BrowserAddressSuggestion,
   type BrowserPanelInteractionMode,
 } from "./BrowserPanel.logic";
@@ -660,6 +661,7 @@ export function BrowserPanel({
   const isPicking = interactionMode === "picking";
   const isAnnotating = interactionMode === "annotating";
   const [browserRendererGeneration, setBrowserRendererGeneration] = useState(0);
+  const [browserActionsMenuOpen, setBrowserActionsMenuOpen] = useState(false);
   const runtimeReady = isLiveRuntime ? workspaceReady : true;
   const activeTab =
     threadBrowserState?.tabs.find((tab) => tab.id === threadBrowserState.activeTabId) ??
@@ -1106,10 +1108,12 @@ export function BrowserPanel({
       // While the local-servers home is up, force the browser surface hidden instead of
       // trusting the obscuring-overlay heuristic. The native/inline webview otherwise paints
       // about:blank white over our dark DOM home — the "always white" empty state.
-      // Annotating replaces the page with a frozen screenshot rendered in the DOM, so the
-      // native/inline browser surface has to get out of the way for the duration.
-      const obscuredByOverlay =
-        showLocalServersHome || isAnnotating || hasNativeBrowserObscuringOverlay(element);
+      const obscuredByOverlay = shouldOccludeBrowserWebview({
+        showLocalServersHome,
+        browserActionsMenuOpen,
+        isAnnotating,
+        hasObscuringOverlay: hasNativeBrowserObscuringOverlay(element),
+      });
       lastOverlayObscuredRef.current = obscuredByOverlay;
       setBrowserWebviewOverlayOcclusion(browserWebviewRef.current, obscuredByOverlay);
       const rect = element.getBoundingClientRect();
@@ -1251,7 +1255,15 @@ export function BrowserPanel({
       burstFramesRemainingRef.current = 0;
       burstStableFramesRef.current = 0;
     };
-  }, [api, browserSurfaceId, isAnnotating, isLiveRuntime, showLocalServersHome, usesNativeRuntime]);
+  }, [
+    api,
+    browserActionsMenuOpen,
+    browserSurfaceId,
+    isAnnotating,
+    isLiveRuntime,
+    showLocalServersHome,
+    usesNativeRuntime,
+  ]);
 
   const onSubmitAddress = useCallback(() => {
     if (!ensureLiveRuntime()) {
@@ -2081,7 +2093,7 @@ export function BrowserPanel({
           <LinkIcon className="size-3.5" />
           <span className="sr-only">{browserCopy.actions.copyLink}</span>
         </Button>
-        <Menu modal={false}>
+        <Menu modal={false} open={browserActionsMenuOpen} onOpenChange={setBrowserActionsMenuOpen}>
           <MenuTrigger
             render={
               <Button
