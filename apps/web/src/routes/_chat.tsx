@@ -13,6 +13,7 @@ import { RecentViewSwitcher } from "../components/RecentViewSwitcher";
 import { shouldRenderTerminalWorkspace } from "../components/ChatView.logic";
 import ThreadSidebar from "../components/Sidebar";
 import { isElectron } from "../env";
+import { useMessages } from "../i18n/context";
 import { useHandleNewChat } from "../hooks/useHandleNewChat";
 import { useHandleNewStudioChat } from "../hooks/useHandleNewStudioChat";
 import { useTemporaryThreadLifecycle } from "../hooks/useTemporaryThreadLifecycle";
@@ -73,6 +74,7 @@ type MaintenanceToastId = ReturnType<typeof toastManager.add>;
 
 function ThreadRetentionMaintenanceToast() {
   const toastIdRef = useRef<MaintenanceToastId | null>(null);
+  const maintenanceCopy = useMessages().app.maintenance;
 
   useEffect(() => {
     return onServerMaintenanceUpdated((event) => {
@@ -93,8 +95,8 @@ function ThreadRetentionMaintenanceToast() {
       if (state === "started") {
         toastIdRef.current = toastManager.add({
           type: "loading",
-          title: "Archiving old chats...",
-          description: "Preparing background maintenance.",
+          title: maintenanceCopy.archivingTitle,
+          description: maintenanceCopy.preparing,
           timeout: 0,
           data: { allowCrossThreadVisibility: true },
         });
@@ -106,18 +108,18 @@ function ThreadRetentionMaintenanceToast() {
           toastIdRef.current ??
           toastManager.add({
             type: "loading",
-            title: "Archiving old chats...",
+            title: maintenanceCopy.archivingTitle,
             timeout: 0,
             data: { allowCrossThreadVisibility: true },
           });
         toastIdRef.current = toastId;
         toastManager.update(toastId, {
           type: "loading",
-          title: "Archiving old chats...",
+          title: maintenanceCopy.archivingTitle,
           description:
             totalCount && totalCount > 0
-              ? `${archivedCount ?? 0} of ${totalCount} chats archived.`
-              : `${archivedCount ?? 0} chats archived.`,
+              ? maintenanceCopy.archivedOfTotal(archivedCount ?? 0, totalCount)
+              : maintenanceCopy.archivedCount(archivedCount ?? 0),
           timeout: 0,
           data: { allowCrossThreadVisibility: true },
         });
@@ -130,8 +132,8 @@ function ThreadRetentionMaintenanceToast() {
         if (toastId) {
           toastManager.update(toastId, {
             type: "warning",
-            title: "Chat maintenance paused",
-            description: error ?? "Old chats will be retried later.",
+            title: maintenanceCopy.pausedTitle,
+            description: error ?? maintenanceCopy.pausedDescription,
             timeout: 6000,
             data: { allowCrossThreadVisibility: true },
           });
@@ -139,8 +141,8 @@ function ThreadRetentionMaintenanceToast() {
         }
         toastManager.add({
           type: "warning",
-          title: "Chat maintenance paused",
-          description: error ?? "Old chats will be retried later.",
+          title: maintenanceCopy.pausedTitle,
+          description: error ?? maintenanceCopy.pausedDescription,
           timeout: 6000,
           data: { allowCrossThreadVisibility: true },
         });
@@ -152,16 +154,16 @@ function ThreadRetentionMaintenanceToast() {
       if (!toastId) return;
       toastManager.update(toastId, {
         type: "success",
-        title: "Old chats archived",
+        title: maintenanceCopy.archivedTitle,
         description:
           archivedCount && archivedCount > 0
-            ? `${archivedCount} old chats moved to Settings → Archived, where you can restore them.`
-            : "No old chats needed archiving.",
+            ? maintenanceCopy.archivedDescription(archivedCount)
+            : maintenanceCopy.archivedNone,
         timeout: 3500,
         data: { allowCrossThreadVisibility: true },
       });
     });
-  }, []);
+  }, [maintenanceCopy]);
 
   return null;
 }

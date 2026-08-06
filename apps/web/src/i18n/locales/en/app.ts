@@ -4,6 +4,8 @@
 //
 // Not `as const`: see locales/en/settings.ts for why literal types would break translations.
 
+import { pluralize } from "@synara/shared/text";
+
 export const app = {
   nav: {
     back: "Back",
@@ -29,6 +31,21 @@ export const app = {
     undo: "Undo",
     orViewArchivedIn: "or view archived chats in",
     settings: "Settings",
+  },
+
+  /** Background thread-retention sweep, surfaced as a single long-lived toast. */
+  maintenance: {
+    archivingTitle: "Archiving old chats...",
+    preparing: "Preparing background maintenance.",
+    archivedOfTotal: (archived: number, total: number) => `${archived} of ${total} chats archived.`,
+    archivedCount: (archived: number) => `${archived} ${pluralize(archived, "chat")} archived.`,
+    pausedTitle: "Chat maintenance paused",
+    pausedDescription: "Old chats will be retried later.",
+    archivedTitle: "Old chats archived",
+    /** The destination is Settings → Archived, where the sweep's chats can be restored. */
+    archivedDescription: (archived: number) =>
+      `${archived} old ${pluralize(archived, "chat")} moved to Settings → Archived, where you can restore them.`,
+    archivedNone: "No old chats needed archiving.",
   },
 
   ui: {

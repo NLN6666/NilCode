@@ -30,6 +30,19 @@ export const app: Messages["app"] = {
     settings: "设置",
   },
 
+  maintenance: {
+    archivingTitle: "正在归档旧会话…",
+    preparing: "正在准备后台维护。",
+    archivedOfTotal: (archived, total) => `已归档 ${archived} / ${total} 个会话。`,
+    archivedCount: (archived) => `已归档 ${archived} 个会话。`,
+    pausedTitle: "会话维护已暂停",
+    pausedDescription: "稍后会重试处理这些旧会话。",
+    archivedTitle: "旧会话已归档",
+    archivedDescription: (archived) =>
+      `${archived} 个旧会话已移至「设置 → 已归档会话」，可以在那里还原。`,
+    archivedNone: "没有需要归档的旧会话。",
+  },
+
   ui: {
     close: "关闭",
     remove: "移除",
