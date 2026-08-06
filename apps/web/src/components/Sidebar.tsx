@@ -229,6 +229,7 @@ import {
   subscribeSidebarUiState,
 } from "./Sidebar.uiState";
 import { useRightDockStore } from "../rightDockStore";
+import { openThreadInHostDock } from "../lib/dockThreadOpener";
 import {
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
@@ -288,6 +289,7 @@ import {
   buildProjectThreadTree,
   derivePinnedProjectIdsForSidebar,
   deriveSidebarProjectData,
+  collectParentThreadIdsWithRunningSubagents,
   createSidebarThreadHoverAnchorId,
   findWorkspaceRootMatch,
   getPinnedThreadsForSidebar,
@@ -312,6 +314,7 @@ import {
   resolveProjectStatusIndicator,
   resolveSettingsBackTarget,
   type SettingsBackTarget,
+  resolveAutoCollapsedSubagentParentThreadIds,
   resolveSidebarNewThreadEnvMode,
   resolveThreadHoverCardMetadata,
   resolveThreadProjectLabel,
@@ -3988,8 +3991,6 @@ export default function Sidebar() {
     return () => window.clearTimeout(settle);
   }, [isOnSettings, routeSearch.splitViewId, routeThreadId]);
 
-  const openDockPane = useRightDockStore((store) => store.openPane);
-
   const toggleSubagentExpansion = useCallback((threadId: ThreadId) => {
     setExpandedSubagentParentThreadIds((current) => {
       const next = new Set(current);
@@ -4000,19 +4001,58 @@ export default function Sidebar() {
     });
   }, []);
 
+  // A subagent group folds itself back up once the fan-out it was opened for is
+  // over, so a finished run stops taking up the tree. Keyed on the running →
+  // settled transition: reacting to "nothing is running" alone would slam shut
+  // any long-finished group the user deliberately expanded.
+  const parentThreadIdsWithRunningSubagents = useMemo(
+    () =>
+      collectParentThreadIdsWithRunningSubagents(
+        Object.values(sidebarThreadSummaryById).filter(
+          (thread): thread is SidebarThreadSummary => thread !== undefined,
+        ),
+      ),
+    [sidebarThreadSummaryById],
+  );
+  const previousParentThreadIdsWithRunningSubagentsRef = useRef(
+    parentThreadIdsWithRunningSubagents,
+  );
+  useEffect(() => {
+    const previous = previousParentThreadIdsWithRunningSubagentsRef.current;
+    previousParentThreadIdsWithRunningSubagentsRef.current = parentThreadIdsWithRunningSubagents;
+    if (previous.size === 0) {
+      return;
+    }
+    setExpandedSubagentParentThreadIds((current) => {
+      const collapsedParentThreadIds = resolveAutoCollapsedSubagentParentThreadIds({
+        expandedParentThreadIds: current,
+        previousParentThreadIdsWithRunningSubagents: previous,
+        parentThreadIdsWithRunningSubagents,
+      });
+      if (collapsedParentThreadIds.length === 0) {
+        return current;
+      }
+      const next = new Set(current);
+      for (const parentThreadId of collapsedParentThreadIds) {
+        next.delete(parentThreadId);
+      }
+      return next;
+    });
+  }, [parentThreadIdsWithRunningSubagents]);
+
   // A subagent is a detail of the conversation that spawned it, so activating one
   // opens its transcript beside that parent in the right dock instead of replacing
   // the main view — which is what makes a running fan-out watchable.
   const activateSidebarThread = useCallback(
     (threadId: ThreadId, parentThreadId: ThreadId | null) => {
       if (parentThreadId) {
-        openDockPane(parentThreadId, { kind: "sidechat", threadId });
+        openThreadInHostDock({ hostThreadId: parentThreadId, threadId });
         activateThreadFromSidebarIntent(parentThreadId);
         return;
       }
       activateThreadFromSidebarIntent(threadId);
     },
-    [activateThreadFromSidebarIntent, openDockPane],
+    [activateThreadFromSidebarIntent],
   );
 
   const handleThreadClick = useCallback(

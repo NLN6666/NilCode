@@ -32,7 +32,7 @@ describe("RIGHT_DOCK_PANE_KINDS (single source of truth)", () => {
 
   it("derives singletons as every kind except the multi-instance ones", () => {
     for (const kind of RIGHT_DOCK_PANE_KINDS) {
-      expect(SINGLETON_PANE_KINDS.has(kind)).toBe(kind !== "file");
+      expect(SINGLETON_PANE_KINDS.has(kind)).toBe(kind !== "file" && kind !== "sidechat");
     }
   });
 });
@@ -159,7 +159,7 @@ describe("sanitizeRightDockThreadState", () => {
     });
   });
 
-  it("migrates multiple persisted sidechat tabs into one active destination", () => {
+  it("keeps one persisted sidechat tab per embedded thread", () => {
     const state = sanitizeRightDockThreadState({
       open: true,
       activePaneId: "side-b",
@@ -169,29 +169,77 @@ describe("sanitizeRightDockThreadState", () => {
       ],
     });
 
-    expect(state.panes).toHaveLength(1);
-    expect(state.panes[0]?.id).toBe("side-b");
-    expect(state.panes[0]?.threadId).toBe("thread-b");
+    expect(state.panes.map((pane) => pane.id)).toEqual(["side-a", "side-b"]);
     expect(state.activePaneId).toBe("side-b");
+  });
+
+  it("drops duplicate persisted sidechat tabs onto the same thread", () => {
+    const state = sanitizeRightDockThreadState({
+      open: true,
+      activePaneId: "side-duplicate",
+      panes: [
+        { id: "side-original", kind: "sidechat", threadId: "thread-a" },
+        { id: "side-duplicate", kind: "sidechat", threadId: "thread-a" },
+      ],
+    });
+
+    expect(state.panes.map((pane) => pane.id)).toEqual(["side-duplicate"]);
+    expect(state.activePaneId).toBe("side-duplicate");
   });
 });
 
 describe("sidechat pane", () => {
-  it("reuses the singleton destination and switches its embedded thread", () => {
+  it("opens a second tab for a different embedded thread", () => {
     const first = openPaneInState(createDefaultRightDockState(), {
-      paneId: "side-pane",
+      paneId: "side-a",
       kind: "sidechat",
       threadId: ThreadId.makeUnsafe("thread-a"),
     });
-    const switched = openPaneInState(first, {
-      paneId: "ignored",
+    const second = openPaneInState(first, {
+      paneId: "side-b",
       kind: "sidechat",
       threadId: ThreadId.makeUnsafe("thread-b"),
     });
 
-    expect(switched.panes).toHaveLength(1);
-    expect(switched.activePaneId).toBe("side-pane");
-    expect(switched.panes[0]?.threadId).toBe("thread-b");
+    expect(second.panes.map((pane) => pane.threadId)).toEqual(["thread-a", "thread-b"]);
+    expect(second.activePaneId).toBe("side-b");
+  });
+
+  it("focuses the existing tab when the same thread is reopened", () => {
+    const first = openPaneInState(createDefaultRightDockState(), {
+      paneId: "side-a",
+      kind: "sidechat",
+      threadId: ThreadId.makeUnsafe("thread-a"),
+    });
+    const second = openPaneInState(first, {
+      paneId: "side-b",
+      kind: "sidechat",
+      threadId: ThreadId.makeUnsafe("thread-b"),
+    });
+    const reopened = openPaneInState(second, {
+      paneId: "ignored",
+      kind: "sidechat",
+      threadId: ThreadId.makeUnsafe("thread-a"),
+    });
+
+    expect(reopened.panes).toHaveLength(2);
+    expect(reopened.activePaneId).toBe("side-a");
+  });
+
+  it("falls back to a neighboring tab when the active sidechat is closed", () => {
+    const withTwoTabs = openPaneInState(
+      openPaneInState(createDefaultRightDockState(), {
+        paneId: "side-a",
+        kind: "sidechat",
+        threadId: ThreadId.makeUnsafe("thread-a"),
+      }),
+      { paneId: "side-b", kind: "sidechat", threadId: ThreadId.makeUnsafe("thread-b") },
+    );
+
+    const closed = closePaneInState(withTwoTabs, "side-b");
+
+    expect(closed.panes.map((pane) => pane.id)).toEqual(["side-a"]);
+    expect(closed.activePaneId).toBe("side-a");
   });
 
   it("finds sidechat panes whose backing thread no longer exists", () => {

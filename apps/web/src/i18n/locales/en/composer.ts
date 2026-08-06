@@ -158,6 +158,10 @@ export const composer = {
     stopAllTitle: "Stop all running subagents",
     runInBackground: "Run in background (ctrl+b)",
     stop: "Stop subagent",
+    /** Collapsed roster of subagents whose run is over. */
+    settledGroup: (count: number) => `${count} done`,
+    showSettled: "Show finished subagents",
+    hideSettled: "Hide finished subagents",
   },
 
   queued: {

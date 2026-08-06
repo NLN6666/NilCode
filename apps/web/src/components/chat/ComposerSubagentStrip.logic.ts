@@ -138,6 +138,49 @@ function collectStripItems(
   );
 }
 
+// Terminal states: the run is over and nothing more will happen on this row.
+// `queued`/`idle` stay in the live list — they are still ahead of the user.
+const SETTLED_SUBAGENT_STATUS_KINDS: ReadonlySet<SubagentStatusKind> = new Set<SubagentStatusKind>([
+  "completed",
+  "failed",
+  "stopped",
+]);
+
+export interface ComposerSubagentStripPartition {
+  parentRow: ComposerSubagentStripParentItem | null;
+  liveRows: ComposerSubagentStripItem[];
+  settledRows: ComposerSubagentStripItem[];
+}
+
+/**
+ * Splits strip rows into the ones still worth watching and the ones that are
+ * done. Finished agents pile up fast during a fan-out, so the strip files them
+ * behind one "N done" line instead of pushing the live rows off screen.
+ *
+ * The row for the subagent currently open stays in the live list regardless of
+ * status: it is the tab the user is looking at, and hiding it mid-read reads as
+ * the UI losing their place.
+ */
+export function partitionComposerSubagentStripRows(
+  rows: ReadonlyArray<ComposerSubagentStripRow>,
+): ComposerSubagentStripPartition {
+  let parentRow: ComposerSubagentStripParentItem | null = null;
+  const liveRows: ComposerSubagentStripItem[] = [];
+  const settledRows: ComposerSubagentStripItem[] = [];
+
+  for (const row of rows) {
+    if (row.kind === "parent") {
+      parentRow = row;
+      continue;
+    }
+    const isSettled =
+      !row.isViewed && row.statusKind !== null && SETTLED_SUBAGENT_STATUS_KINDS.has(row.statusKind);
+    (isSettled ? settledRows : liveRows).push(row);
+  }
+
+  return { parentRow, liveRows, settledRows };
+}
+
 // Rows the header stop-all control targets: running subagent rows only.
 export function collectRunningSubagentStripItems(
   rows: ReadonlyArray<ComposerSubagentStripRow>,

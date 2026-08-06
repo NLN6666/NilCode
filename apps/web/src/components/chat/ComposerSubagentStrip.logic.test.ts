@@ -20,6 +20,7 @@ import {
   collectForegroundRunningSubagentStripItems,
   collectRunningSubagentStripItems,
   deriveComposerSubagentStripItems,
+  partitionComposerSubagentStripRows,
   type ComposerSubagentStripItem,
   type ComposerSubagentStripRow,
 } from "./ComposerSubagentStrip.logic";
@@ -745,5 +746,63 @@ describe("collectForegroundRunningSubagentStripItems", () => {
 
     const foreground = collectForegroundRunningSubagentStripItems(rows);
     expect(foreground.map((item) => item.primaryLabel)).toEqual(["Ada"]);
+  });
+});
+
+describe("partitionComposerSubagentStripRows", () => {
+  function rowsFor(
+    subagents: WorkLogSubagent[],
+    options?: { viewedThreadId?: string },
+  ): ComposerSubagentStripRow[] {
+    return deriveComposerSubagentStripItems({
+      workEntries: [workEntry({ id: "entry-1", turnId: "turn-1", subagents })],
+      liveTurnId: TurnId.makeUnsafe("turn-1"),
+      parentRow: { threadId: ThreadId.makeUnsafe("thread-1"), label: "Main thread" },
+      ...(options?.viewedThreadId
+        ? { viewedThreadId: ThreadId.makeUnsafe(options.viewedThreadId) }
+        : {}),
+    });
+  }
+
+  it("files terminal rows behind the settled group and keeps the parent row out of both", () => {
+    const partition = partitionComposerSubagentStripRows(
+      rowsFor([
+        subagent({ threadId: "sub-run", nickname: "Ada", rawStatus: "running", isActive: true }),
+        subagent({ threadId: "sub-done", nickname: "Blue", rawStatus: "completed" }),
+        subagent({ threadId: "sub-fail", nickname: "Cleo", rawStatus: "failed" }),
+        subagent({ threadId: "sub-stop", nickname: "Dot", rawStatus: "stopped" }),
+      ]),
+    );
+
+    expect(partition.parentRow?.kind).toBe("parent");
+    expect(partition.liveRows.map((item) => item.primaryLabel)).toEqual(["Ada"]);
+    expect(partition.settledRows.map((item) => item.primaryLabel)).toEqual(["Blue", "Cleo", "Dot"]);
+  });
+
+  it("keeps queued rows in the live list — they are still ahead of the user", () => {
+    const partition = partitionComposerSubagentStripRows(
+      rowsFor([
+        subagent({ threadId: "sub-run", nickname: "Ada", rawStatus: "running", isActive: true }),
+        subagent({ threadId: "sub-queued", nickname: "Blue", rawStatus: "queued" }),
+      ]),
+    );
+
+    expect(partition.liveRows.map((item) => item.primaryLabel)).toEqual(["Ada", "Blue"]);
+    expect(partition.settledRows).toEqual([]);
+  });
+
+  it("never hides the subagent currently open, even once it finishes", () => {
+    const partition = partitionComposerSubagentStripRows(
+      rowsFor(
+        [
+          subagent({ threadId: "sub-run", nickname: "Ada", rawStatus: "running", isActive: true }),
+          subagent({ threadId: "sub-viewed", nickname: "Blue", rawStatus: "completed" }),
+        ],
+        { viewedThreadId: "sub-viewed" },
+      ),
+    );
+
+    expect(partition.liveRows.map((item) => item.primaryLabel)).toEqual(["Ada", "Blue"]);
+    expect(partition.settledRows).toEqual([]);
   });
 });

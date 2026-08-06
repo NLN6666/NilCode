@@ -387,6 +387,16 @@ export function subagentStatusTextToneClassName(
   }
 }
 
+// Inside a "finished" roster a successful run carries no information — grey it
+// out so the eye lands on the runs that failed or were stopped, which still do.
+export function settledSubagentStatusDotClassName(
+  statusKind: SubagentStatusKind | null | undefined,
+): string {
+  return statusKind === "completed"
+    ? "bg-muted-foreground/25"
+    : subagentStatusDotClassName(statusKind);
+}
+
 export function subagentStatusDotClassName(
   statusKind: SubagentStatusKind | null | undefined,
 ): string {

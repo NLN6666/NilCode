@@ -11,9 +11,21 @@ export const SINGLE_CHAT_PANE_SCOPE_ID = "single";
 /** The chat pane docked inside the editor workspace view. */
 export const EDITOR_CHAT_PANE_SCOPE_ID = "editor-chat";
 
+const DOCK_SIDECHAT_PANE_SCOPE_PREFIX = "dock-sidechat:";
+
 /** A sidechat thread hosted as a right-dock pane. */
 export function dockSidechatPaneScopeId(paneId: string): string {
-  return `dock-sidechat:${paneId}`;
+  return `${DOCK_SIDECHAT_PANE_SCOPE_PREFIX}${paneId}`;
+}
+
+/**
+ * Whether a chat pane is itself embedded in a right dock. Dock panes report
+ * `surfaceMode: "split"` (they render the compact surface), so this is the only
+ * reliable way to tell "embedded in a dock, which therefore exists" apart from
+ * "a real split-view pane, which has no dock at all".
+ */
+export function isDockSidechatPaneScopeId(paneScopeId: string): boolean {
+  return paneScopeId.startsWith(DOCK_SIDECHAT_PANE_SCOPE_PREFIX);
 }
 
 /** A chat pane inside a split view. */

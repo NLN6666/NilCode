@@ -9,6 +9,7 @@ import { pluralize } from "@synara/shared/text";
 
 import { createThreadSelector } from "../storeSelectors";
 import { useStore } from "../store";
+import { isThreadActivelyWorking } from "./Sidebar.logic";
 import { resolveSubagentPresentationForThread } from "../lib/subagentPresentation";
 import { resolveThreadHandoffBadgeLabel } from "../lib/threadHandoff";
 import { SIDEBAR_ROW_LABEL_TEXT_CLASS_NAME } from "../sidebarRowStyles";
@@ -112,6 +113,7 @@ function renderSubagentLabel(input: {
   thread: SidebarThreadSummary;
   threads?: Parameters<typeof resolveSubagentPresentationForThread>[0]["threads"];
   roleClassName?: string | undefined;
+  settled: boolean;
 }) {
   const presentation = resolveSubagentPresentationForThread({
     thread: {
@@ -132,7 +134,10 @@ function renderSubagentLabel(input: {
 
   return (
     <span className="min-w-0 truncate">
-      <span className="font-medium" style={{ color: presentation.accentColor }}>
+      <span
+        className={cn("font-medium", input.settled && "text-muted-foreground/50")}
+        style={input.settled ? undefined : { color: presentation.accentColor }}
+      >
         {presentation.nickname ?? presentation.primaryLabel}
       </span>
       {supportingLabel ? (
@@ -147,9 +152,11 @@ function renderSubagentLabel(input: {
 function SidebarSubagentLabel({
   thread,
   roleClassName,
+  settled,
 }: {
   thread: SidebarThreadSummary;
   roleClassName?: string | undefined;
+  settled: boolean;
 }) {
   const selectParentThread = useMemo(
     () => createThreadSelector(thread.parentThreadId ?? null),
@@ -161,6 +168,7 @@ function SidebarSubagentLabel({
     thread,
     threads: parentThread ? [parentThread] : undefined,
     roleClassName,
+    settled,
   });
 }
 
@@ -202,6 +210,9 @@ export function SidebarThreadRowContent({
         })
       : null;
   const showThreadProviderAvatar = !isGenericChatThreadTitle(thread.title);
+  // A finished subagent is history — drop its accent so the eye lands on the ones
+  // still working. The row currently open keeps its color so it stays findable.
+  const isSettledSubagent = isSubagentThread && !isActive && !isThreadActivelyWorking(thread);
 
   return (
     <>
@@ -214,8 +225,11 @@ export function SidebarThreadRowContent({
           <span className="absolute left-1.5 top-0 bottom-0 w-px rounded-full bg-border/35" />
           <span className="absolute left-1.5 top-1/2 h-px w-2 -translate-y-1/2 bg-border/35" />
           <BotIcon
-            className="absolute right-0 top-1/2 size-3.5 -translate-y-1/2"
-            style={{ color: subagentPresentation?.accentColor }}
+            className={cn(
+              "absolute right-0 top-1/2 size-3.5 -translate-y-1/2",
+              isSettledSubagent && "text-muted-foreground/35",
+            )}
+            style={isSettledSubagent ? undefined : { color: subagentPresentation?.accentColor }}
           />
         </span>
       ) : terminalEntryPoint ? (
@@ -247,6 +261,7 @@ export function SidebarThreadRowContent({
             <SidebarSubagentLabel
               thread={thread}
               roleClassName={variant === "standard" ? "text-muted-foreground/42" : undefined}
+              settled={isSettledSubagent}
             />
           ) : (
             thread.title

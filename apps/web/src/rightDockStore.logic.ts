@@ -47,9 +47,10 @@ export interface RightDockThreadState {
   activePaneId: string | null;
 }
 
-// File previews are the only multi-instance dock kind. Side chats share one
-// destination and switch the embedded thread inside it.
-const MULTI_INSTANCE_PANE_KINDS: ReadonlySet<RightDockPaneKind> = new Set(["file"]);
+// File previews and embedded threads are the multi-instance dock kinds: each
+// previewed file and each embedded thread (side chat or subagent) gets its own
+// tab, reused when the same content is opened again.
+const MULTI_INSTANCE_PANE_KINDS: ReadonlySet<RightDockPaneKind> = new Set(["file", "sidechat"]);
 
 // Kinds that can only ever have one instance per host thread, derived as
 // "every kind that is not multi-instance" so the two sets can never drift.
@@ -113,6 +114,21 @@ function sanitizePersistedPane(value: unknown): RightDockPane | null {
   };
 }
 
+// The identity a persisted pane is deduplicated on during rehydrate. Singleton
+// kinds collapse to one pane per kind; sidechat panes collapse per embedded
+// thread, so a stale record can never restore two tabs onto the same thread.
+// Everything else (file previews) is free to repeat — `openPaneInState` already
+// reuses a matching tab at open time.
+function persistedPaneIdentity(pane: RightDockPane): string | null {
+  if (isSingletonPaneKind(pane.kind)) {
+    return pane.kind;
+  }
+  if (pane.kind === "sidechat") {
+    return `sidechat:${pane.threadId ?? ""}`;
+  }
+  return null;
+}
+
 export function sanitizeRightDockThreadState(value: unknown): RightDockThreadState {
   if (!isPlainObject(value)) {
     return createDefaultRightDockState();
@@ -125,19 +141,20 @@ export function sanitizeRightDockThreadState(value: unknown): RightDockThreadSta
     : [];
   const persistedActivePaneId =
     typeof candidate.activePaneId === "string" ? candidate.activePaneId : null;
-  const keptSingletonPaneIdByKind = new Map<RightDockPaneKind, string>();
+  const keptPaneIdByIdentity = new Map<string, string>();
   for (const pane of sanitizedPanes) {
-    if (
-      isSingletonPaneKind(pane.kind) &&
-      (pane.id === persistedActivePaneId || !keptSingletonPaneIdByKind.has(pane.kind))
-    ) {
-      keptSingletonPaneIdByKind.set(pane.kind, pane.id);
+    const identity = persistedPaneIdentity(pane);
+    if (identity === null) {
+      continue;
+    }
+    if (pane.id === persistedActivePaneId || !keptPaneIdByIdentity.has(identity)) {
+      keptPaneIdByIdentity.set(identity, pane.id);
     }
   }
-  const panes = sanitizedPanes.filter(
-    (pane) =>
-      !isSingletonPaneKind(pane.kind) || keptSingletonPaneIdByKind.get(pane.kind) === pane.id,
-  );
+  const panes = sanitizedPanes.filter((pane) => {
+    const identity = persistedPaneIdentity(pane);
+    return identity === null || keptPaneIdByIdentity.get(identity) === pane.id;
+  });
   const activePaneId =
     persistedActivePaneId && panes.some((pane) => pane.id === persistedActivePaneId)
       ? persistedActivePaneId
@@ -189,9 +206,6 @@ function createPane(input: OpenPaneInput): RightDockPane {
 // overwrite content metadata when the caller explicitly targets new content,
 // so a bare re-open/toggle keeps the pane focused on what it currently shows.
 function singletonPaneReopenPatch(input: OpenPaneInput): Partial<RightDockPane> | null {
-  if (input.kind === "sidechat" && input.threadId !== undefined) {
-    return { threadId: input.threadId ?? null };
-  }
   if (
     input.kind === "diff" &&
     (input.diffTurnId !== undefined || input.diffFilePath !== undefined)
@@ -215,8 +229,9 @@ function singletonPaneReopenPatch(input: OpenPaneInput): Partial<RightDockPane> 
   return null;
 }
 
-// Multi-instance file panes reuse an existing pane when it already shows the
-// requested path, so re-clicking a file focuses its tab instead of duplicating it.
+// Multi-instance panes reuse an existing pane when it already shows the requested
+// content, so re-clicking the same file or the same subagent focuses its tab
+// instead of duplicating it; a different one opens alongside as a new tab.
 function findMatchingMultiInstancePane(
   state: RightDockThreadState,
   input: OpenPaneInput,
@@ -224,6 +239,10 @@ function findMatchingMultiInstancePane(
   if (input.kind === "file") {
     const filePath = input.filePath ?? null;
     return state.panes.find((pane) => pane.kind === "file" && pane.filePath === filePath);
+  }
+  if (input.kind === "sidechat") {
+    const threadId = input.threadId ?? null;
+    return state.panes.find((pane) => pane.kind === "sidechat" && pane.threadId === threadId);
   }
   return undefined;
 }

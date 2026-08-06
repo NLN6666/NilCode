@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildProjectThreadTree,
+  collectParentThreadIdsWithRunningSubagents,
   createSidebarThreadHoverAnchorId,
+  resolveAutoCollapsedSubagentParentThreadIds,
   derivePinnedProjectIdsForSidebar,
   derivePinnedThreadIdsForSidebar,
   deriveSidebarProjectData,
@@ -1765,6 +1767,70 @@ function makeSidebarThreadSummary(
     ...overrides,
   };
 }
+
+describe("subagent group auto-collapse", () => {
+  const parentThreadId = ThreadId.makeUnsafe("thread-parent");
+
+  function subagentSummary(id: string, working: boolean): SidebarThreadSummary {
+    return makeSidebarThreadSummary({
+      id: ThreadId.makeUnsafe(id),
+      parentThreadId,
+      hasLiveTailWork: working,
+    });
+  }
+
+  it("collects the parents of every working subagent", () => {
+    const parents = collectParentThreadIdsWithRunningSubagents([
+      makeSidebarThreadSummary({ id: parentThreadId, hasLiveTailWork: true }),
+      subagentSummary("thread-child-running", true),
+      subagentSummary("thread-child-done", false),
+    ]);
+
+    expect([...parents]).toEqual([parentThreadId]);
+  });
+
+  it("collapses an expanded group once its last subagent settles", () => {
+    expect(
+      resolveAutoCollapsedSubagentParentThreadIds({
+        expandedParentThreadIds: new Set([parentThreadId]),
+        previousParentThreadIdsWithRunningSubagents: new Set([parentThreadId]),
+        parentThreadIdsWithRunningSubagents: new Set(),
+      }),
+    ).toEqual([parentThreadId]);
+  });
+
+  it("keeps the group open while any subagent is still working", () => {
+    expect(
+      resolveAutoCollapsedSubagentParentThreadIds({
+        expandedParentThreadIds: new Set([parentThreadId]),
+        previousParentThreadIdsWithRunningSubagents: new Set([parentThreadId]),
+        parentThreadIdsWithRunningSubagents: new Set([parentThreadId]),
+      }),
+    ).toEqual([]);
+  });
+
+  it("leaves a long-settled group the user just expanded alone", () => {
+    // No running→settled transition happened, so nothing may close: reacting to
+    // "nothing is running" alone would slam the group shut as it opened.
+    expect(
+      resolveAutoCollapsedSubagentParentThreadIds({
+        expandedParentThreadIds: new Set([parentThreadId]),
+        previousParentThreadIdsWithRunningSubagents: new Set(),
+        parentThreadIdsWithRunningSubagents: new Set(),
+      }),
+    ).toEqual([]);
+  });
+
+  it("ignores parents the user never expanded", () => {
+    expect(
+      resolveAutoCollapsedSubagentParentThreadIds({
+        expandedParentThreadIds: new Set(),
+        previousParentThreadIdsWithRunningSubagents: new Set([parentThreadId]),
+        parentThreadIdsWithRunningSubagents: new Set(),
+      }),
+    ).toEqual([]);
+  });
+});
 
 describe("partitionSidebarThreadsByProjectIds", () => {
   it("splits Studio threads from the regular Threads surface by project id", () => {

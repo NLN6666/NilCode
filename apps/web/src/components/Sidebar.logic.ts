@@ -856,6 +856,49 @@ function collectActiveThreadAncestorIds<
   return ancestorIds;
 }
 
+type SubagentActivityThread = Pick<
+  SidebarThreadSummary,
+  "id" | "parentThreadId" | "hasLiveTailWork" | "session" | "latestTurn"
+>;
+
+/** Parent thread ids that currently have at least one subagent child working. */
+export function collectParentThreadIdsWithRunningSubagents(
+  threads: readonly SubagentActivityThread[],
+): ReadonlySet<ThreadId> {
+  const parentThreadIds = new Set<ThreadId>();
+  for (const thread of threads) {
+    if (thread.parentThreadId && isThreadActivelyWorking(thread)) {
+      parentThreadIds.add(thread.parentThreadId);
+    }
+  }
+  return parentThreadIds;
+}
+
+/**
+ * Expanded subagent groups whose last running child just finished, so the tree
+ * can fold them back up on its own.
+ *
+ * The transition — not the current state — is what triggers the collapse. Acting
+ * on "no child is running" alone would slam shut any long-finished group the
+ * user deliberately expanded, one render after they opened it.
+ */
+export function resolveAutoCollapsedSubagentParentThreadIds(input: {
+  expandedParentThreadIds: ReadonlySet<ThreadId>;
+  previousParentThreadIdsWithRunningSubagents: ReadonlySet<ThreadId>;
+  parentThreadIdsWithRunningSubagents: ReadonlySet<ThreadId>;
+}): readonly ThreadId[] {
+  const collapsed: ThreadId[] = [];
+  for (const parentThreadId of input.previousParentThreadIdsWithRunningSubagents) {
+    if (
+      !input.parentThreadIdsWithRunningSubagents.has(parentThreadId) &&
+      input.expandedParentThreadIds.has(parentThreadId)
+    ) {
+      collapsed.push(parentThreadId);
+    }
+  }
+  return collapsed;
+}
+
 // Build the project-local parent/child thread tree while preserving sort order from the input list.
 export function buildProjectThreadTree<
   T extends Pick<SidebarThreadSummary, "id" | "parentThreadId">,

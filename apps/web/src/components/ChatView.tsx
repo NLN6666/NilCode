@@ -109,7 +109,8 @@ const TERMINAL_INTERRUPT_SEQUENCE = "\u0003";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import { serverConfigQueryOptions, serverQueryKeys } from "~/lib/serverReactQuery";
 import { useRefreshProviderStatusesNow } from "~/hooks/useProviderStatusRefresh";
-import { SINGLE_CHAT_PANE_SCOPE_ID } from "~/lib/chatPaneScope";
+import { isDockSidechatPaneScopeId, SINGLE_CHAT_PANE_SCOPE_ID } from "~/lib/chatPaneScope";
+import { openThreadInHostDock, resolveSubagentDockHostThreadId } from "~/lib/dockThreadOpener";
 import {
   COLOR_PREVIEW_MENTION_INSERT_TEXT,
   composerMentionPathNeedsQuoting,
@@ -10761,6 +10762,41 @@ export default function ChatView({
     },
     [isEditorRail, navigate],
   );
+  // A subagent is a detail of the conversation that spawned it, so opening one
+  // from the strip docks its transcript beside that parent — the same
+  // destination the sidebar tree uses — instead of replacing the main view.
+  // Split-view panes have no dock of their own, so they keep navigating.
+  const isEmbeddedInHostDock = isDockSidechatPaneScopeId(paneScopeId);
+  const canDockSubagentThreads = surfaceMode === "single" || isEmbeddedInHostDock;
+  const subagentDockHostThreadId = resolveSubagentDockHostThreadId({
+    id: threadId,
+    parentThreadId: activeThread?.parentThreadId ?? null,
+  });
+  const onOpenSubagentThread = useCallback(
+    (nextThreadId: ThreadId) => {
+      if (!canDockSubagentThreads) {
+        onNavigateToThread(nextThreadId);
+        return;
+      }
+      openThreadInHostDock({
+        hostThreadId: subagentDockHostThreadId,
+        threadId: nextThreadId,
+      });
+      // Reached from a subagent opened as a full page: the dock we just wrote to
+      // belongs to the parent, so move the route there to make the tab visible.
+      // Already-embedded panes are inside that dock and must not navigate.
+      if (!isEmbeddedInHostDock && subagentDockHostThreadId !== threadId) {
+        onNavigateToThread(subagentDockHostThreadId);
+      }
+    },
+    [
+      canDockSubagentThreads,
+      isEmbeddedInHostDock,
+      onNavigateToThread,
+      subagentDockHostThreadId,
+      threadId,
+    ],
+  );
   const onOpenAutomation = useCallback(
     (automationId: string) => {
       void navigate({
@@ -11257,6 +11293,7 @@ export default function ChatView({
                   compact={subagentStripCompact}
                   onCompactChange={setSubagentStripCompact}
                   onOpenThread={onNavigateToThread}
+                  onOpenSubagentThread={onOpenSubagentThread}
                   onBackgroundItem={onBackgroundSubagentStripItem}
                   onStopItem={onStopSubagentStripItem}
                   onStopAll={onStopAllSubagentStripItems}

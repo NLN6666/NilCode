@@ -137,6 +137,9 @@ export const composer: Messages["composer"] = {
     stopAllTitle: "停止所有运行中的子智能体",
     runInBackground: "转到后台运行（ctrl+b）",
     stop: "停止子智能体",
+    settledGroup: (count: number) => `已完成 ${count} 个`,
+    showSettled: "展开已结束的子智能体",
+    hideSettled: "收起已结束的子智能体",
   },
 
   queued: {
