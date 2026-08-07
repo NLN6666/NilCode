@@ -3,6 +3,7 @@
 // Layer: Web utility tests
 // Exports: Vitest suites for providerUpdates.ts
 
+import { DEFAULT_ADVISOR_SETTINGS } from "@synara/contracts";
 import type { ProviderKind, ServerProviderStatus, ServerSettings } from "@synara/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -77,6 +78,7 @@ function serverSettings(overrides: Partial<ServerSettings["providers"]> = {}): S
       pi: { ...provider, binaryPath: "pi", agentDir: "" },
       ...overrides,
     },
+    advisor: DEFAULT_ADVISOR_SETTINGS,
     skills: { disabled: [] },
     network: { proxy: { mode: "env", url: "", noProxy: "" } },
   };

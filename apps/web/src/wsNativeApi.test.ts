@@ -22,6 +22,7 @@ import {
   WS_METHODS,
   type WsPush,
   type ServerProviderStatus,
+  DEFAULT_ADVISOR_SETTINGS,
 } from "@synara/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -327,6 +328,7 @@ describe("wsNativeApi", () => {
           },
           pi: { enabled: true, binaryPath: "pi", agentDir: "", customModels: [] },
         },
+        advisor: DEFAULT_ADVISOR_SETTINGS,
         skills: { disabled: [] },
         network: { proxy: { mode: "env", url: "", noProxy: "" } },
       },
