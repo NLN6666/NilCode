@@ -50,6 +50,14 @@ Focused issues and PRs are welcome, especially bug fixes, reliability fixes, and
 
 ## Acknowledgements
 
+Advisor mode — a second model that watches the main model's turn and steers it when it drifts — is modelled on the advisor/watchdog in [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT). Its design solved several problems well ahead of us, and we adopted its answers rather than rediscovering them:
+
+- **Severity-graded delivery** (`nit` / `concern` / `blocker`), so that most advice rides along at the next turn boundary instead of interrupting.
+- **Interrupt immunity** — after an interrupt lands, the next few primary turns downgrade to non-interrupting asides, which is what stops the advisor and the main model from pulling against each other.
+- **Quarantining unsafe advisor output**, on the recognition that an advisor is a prompt-injection path: untrusted text the main model reads can otherwise be relayed back as an instruction.
+
+Thanks to [@can1357](https://github.com/can1357) and to Mario Zechner ([@badlogic](https://github.com/badlogic)), whose pi-mono OMP builds on.
+
 The Simplified Chinese translation builds on prior community localization work:
 
 - [tttnny/synara-chinese-localization](https://github.com/tttnny/synara-chinese-localization) — a zh-CN phrase corpus whose terminology choices the built-in translation follows.

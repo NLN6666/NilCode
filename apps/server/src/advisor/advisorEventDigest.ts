@@ -15,6 +15,15 @@
 // Input is a structural subset of OrchestrationThreadActivity rather than the
 // contract type, so this stays a pure string function with no schema dependency.
 
+/**
+ * Activity kind carrying the advisor's own advice.
+ *
+ * `OrchestrationThreadActivity.kind` is a free string (existing values look like
+ * `task.progress`, `turn.steered`), so adding one costs no schema compatibility
+ * - unlike `tone`, which is a literal union and stays "info".
+ */
+export const ADVISOR_ACTIVITY_KIND = "advisor.advice";
+
 export const ADVISOR_DIGEST_MAX_CHARS = 200;
 
 const TRUNCATION_MARKER = "…";
@@ -35,6 +44,13 @@ export interface AdvisorDigestInput {
 
 /** Returns null when the activity is not worth a line of advisor context. */
 export function digestActivity(activity: AdvisorDigestInput): string | null {
+  // Self-excitation cut: the advisor's own advice is visible as an activity, and
+  // feeding it back would have the advisor comment on its own words forever.
+  // The model's *reaction* to advice still feeds through, which is how the
+  // advisor learns whether it was heeded.
+  if (activity.kind === ADVISOR_ACTIVITY_KIND) {
+    return null;
+  }
   if (HOUSEKEEPING_KINDS.has(activity.kind)) {
     return null;
   }

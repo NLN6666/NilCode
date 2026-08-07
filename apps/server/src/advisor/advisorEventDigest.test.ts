@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ADVISOR_ACTIVITY_KIND,
   ADVISOR_DIGEST_MAX_CHARS,
   type AdvisorDigestInput,
   digestActivity,
@@ -79,5 +80,24 @@ describe("digestActivity", () => {
 
   it("drops an activity whose summary is blank", () => {
     expect(digestActivity(activity({ summary: "   " }))).toBeNull();
+  });
+
+  // The self-excitation cut.
+  //
+  // Steering the thread's own turn produces no activity at all
+  // (providerRuntimeActivityProjection.ts: `turn.steered` returns [] when
+  // target === "turn"), so a steer cannot loop. What does loop is the activity
+  // the advisor appends to make its own advice visible: feed that back and the
+  // advisor comments on its own words forever.
+  it("drops the activity carrying the advisor's own advice", () => {
+    expect(digestActivity(activity({ kind: ADVISOR_ACTIVITY_KIND }))).toBeNull();
+  });
+
+  // The model's reaction to advice must still feed through - that is how the
+  // advisor learns whether it was heeded.
+  it("keeps activity the model produced after being advised", () => {
+    expect(digestActivity(activity({ kind: "tool.updated", summary: "Edit shared/text.ts" }))).toBe(
+      "[tool.updated] Edit shared/text.ts",
+    );
   });
 });
