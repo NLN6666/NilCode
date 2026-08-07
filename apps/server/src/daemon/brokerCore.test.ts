@@ -411,7 +411,12 @@ describe("list and describe", () => {
     await core.start(simpleSpec());
     await core.start(decodeSpec({ name: "web", application: "node" }));
 
-    expect(core.list().map((entry) => entry.name).sort()).toEqual(["mc", "web"]);
+    expect(
+      core
+        .list()
+        .map((entry) => entry.name)
+        .sort(),
+    ).toEqual(["mc", "web"]);
   });
 
   it("raises a typed error for an unknown name", () => {

@@ -339,7 +339,10 @@ class ReclaimedHandle extends BaseHandle {
   }
 
   private checkLiveness(): void {
-    const liveness = resolveIdentityLiveness(this.identity, this.readIdentities([this.identity.pid]));
+    const liveness = resolveIdentityLiveness(
+      this.identity,
+      this.readIdentities([this.identity.pid]),
+    );
     if (liveness !== "exited") return;
     void this.tail
       .drain((chunk) => this.emitOutput(chunk))
@@ -363,7 +366,9 @@ function signalName(signal: number | null): string | null {
 }
 
 function resolveEnv(spec: DaemonSpec): NodeJS.ProcessEnv {
-  return spec.env === undefined ? globalThis.process.env : { ...globalThis.process.env, ...spec.env };
+  return spec.env === undefined
+    ? globalThis.process.env
+    : { ...globalThis.process.env, ...spec.env };
 }
 
 export function createDaemonLauncher(
@@ -390,7 +395,7 @@ export function createDaemonLauncher(
         // the previous run's output into this run's readiness probe.
         await log.refreshFromDisk();
         const tail = new LogTailer(log, await currentFileSize(log));
-        const child = deps.spawnChild(spec.application, [...spec.args], {
+        const child = deps.spawnChild(spec.application, [...(spec.args ?? [])], {
           cwd,
           env,
           ...daemonSpawnOptions({ detached: true, platform: deps.platform, logFd: log.fd }),
@@ -401,7 +406,7 @@ export function createDaemonLauncher(
 
       if (spec.pty) {
         const pty = await deps.loadPty();
-        const ptyProcess = pty.spawn(spec.application, [...spec.args], {
+        const ptyProcess = pty.spawn(spec.application, [...(spec.args ?? [])], {
           cwd,
           env: env as Record<string, string>,
           cols: 120,
@@ -411,7 +416,7 @@ export function createDaemonLauncher(
         return new PtyHandle(ptyProcess, deps.killer);
       }
 
-      const child = deps.spawnChild(spec.application, [...spec.args], {
+      const child = deps.spawnChild(spec.application, [...(spec.args ?? [])], {
         cwd,
         env,
         stdio: ["pipe", "pipe", "pipe"],

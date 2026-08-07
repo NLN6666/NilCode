@@ -216,9 +216,7 @@ describe("reclaimDetached", () => {
   it("does not adopt a pid that now belongs to something else", async () => {
     // The whole reason identity is persisted: pid 4242 has been recycled.
     await seedPersisted();
-    const core = makeCore(
-      new Map([[4_242, { ...LIVE_IDENTITY, commandLine: "notepad.exe" }]]),
-    );
+    const core = makeCore(new Map([[4_242, { ...LIVE_IDENTITY, commandLine: "notepad.exe" }]]));
 
     expect(await core.reclaimDetached()).toEqual([]);
     expect(() => core.describe("mc")).toThrow();

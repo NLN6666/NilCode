@@ -10,10 +10,10 @@
 
 **实测：** Node v24 / Windows 11，子进程每 300ms 向日志文件追加一行，父进程 400ms 后 `process.exit(0)`，3 秒后统计行数。
 
-| spawn 选项 | 行数 |
-|---|---|
-| `detached: false` + `unref()` | 1 |
-| `detached: true` + `unref()` + `windowsHide: true` | 58 |
+| spawn 选项                                         | 行数 |
+| -------------------------------------------------- | ---- |
+| `detached: false` + `unref()`                      | 1    |
+| `detached: true` + `unref()` + `windowsHide: true` | 58   |
 
 **结论：** 全平台使用 `detached: true`；Windows 上加 `windowsHide: true` 防止弹控制台窗口。
 
@@ -90,3 +90,52 @@ Windows 盘符前缀问题。`git log --name-only 6373224d..HEAD | grep -c login
 `sliceHistorySince` 首版两端都用"向前对齐到下一个字符起始"，导致 `maxBytes` 截断时**超出**上限（要 7 字节却返回了 9 字节）。
 
 **正确做法：** 起始偏移向前跳过残续字节；结束偏移向后退回上一个字符边界（因为它受 `maxBytes` 约束，向上取整会超额）。测试 `backs off to a character boundary when maxBytes truncates` 固化了该行为。
+
+---
+
+## 10. effect-smol 的 `Effect.gen` / `Effect.suspend` 不捕获同步 throw
+
+`daemonTools.ts` 里参数解析抛 `ToolInputError`，下面两种写法都**捕不到**：
+
+```ts
+Effect.suspend(() => handler(args)).pipe(Effect.catch(...))               // 捕不到
+Effect.gen(function* () { yield* handler(args) }).pipe(Effect.catch(...)) // 也捕不到
+```
+
+同步 throw 变成 **defect**，而 `Effect.catch` 只接错误通道，defect 直接穿透，整个 JSON-RPC 请求失败 —— Agent 只知道"炸了"，不知道是自己参数写错。
+
+**正确写法：**
+
+```ts
+Effect.try({ try: () => handler(args), catch: (error) => error }).pipe(
+  Effect.flatMap((effect) => effect),
+  Effect.map(mcpToolResultJson),
+  Effect.catch((error) => Effect.succeed(mcpToolResultError(errorText(error)))),
+)
+```
+
+**同一模式在 `agentGateway/automationTools.ts` 也存在**（`Effect.gen` 内 `readStringArg(..., {required:true})` + 尾部 `Effect.catch`），属既有代码，本次未改。若要修，须先补一条"缺参数返回 `isError` 而非整个请求失败"的测试。
+
+---
+
+## 11. 进程句柄的监听器必须缓冲
+
+`brokerCore` 是在 `await launcher.launch(...)` **之后**才 `onExit` / `onOutput`。秒退的进程（例如可执行文件不存在）在这个窗口里就死了，`settle()` 打进空处，守护进程**永远卡在 `starting`**。
+
+测试 `delivers an exit that happened before the listener was attached` 的失败症状不是断言不符，是**超时挂死**。
+
+**解法：** `BaseHandle` 里用 `pendingOutput` / `pendingExit` 缓冲，`onOutput` / `onExit` 注册时立即回放。
+
+---
+
+## 12. detached 子进程自己写日志，broker 不能再 append
+
+detached 的 stdout/stderr 直接指向 `output.log` 的 fd。若 broker 把 tailer 回放的内容再 `log.append()` 一遍，**每行都会翻倍**。
+
+`DaemonProcessHandle.writesOwnLog` 标记这类句柄；且该标记必须在 `launch` 时**捕进闭包**，不能在回调里读 `record.process?.writesOwnLog` —— `settle()` 会把 `record.process` 置空，退出后最后一次 flush 就会漏判成"要 append"。
+
+---
+
+## 13. reclaim 时不能轮转日志
+
+`DaemonLog.open` 默认把 `output.log` 移成 `output.prev.log`。认领一个还活着的 detached 守护进程时这样做，会让它继续往一个**已被改名、没人读**的 fd 里写。故 reclaim 必须走 `DaemonLog.open(dir, { reuseExisting: true })`。

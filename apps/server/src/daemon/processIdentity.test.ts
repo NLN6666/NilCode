@@ -133,9 +133,7 @@ describe("parseWindowsIdentities", () => {
 
   it("tolerates a null command line", () => {
     // Real observed shape: protected system processes report CommandLine as null.
-    const json = JSON.stringify([
-      { ProcessId: 9, CreationDate: "/Date(1)/", CommandLine: null },
-    ]);
+    const json = JSON.stringify([{ ProcessId: 9, CreationDate: "/Date(1)/", CommandLine: null }]);
 
     expect(parseWindowsIdentities(json)?.get(9)?.commandLine).toBe("");
   });

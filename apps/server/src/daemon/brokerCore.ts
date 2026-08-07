@@ -54,11 +54,7 @@ export interface DaemonProcessHandle {
 }
 
 export interface DaemonLauncher {
-  launch(input: {
-    spec: DaemonSpec;
-    dir: string;
-    log: DaemonLog;
-  }): Promise<DaemonProcessHandle>;
+  launch(input: { spec: DaemonSpec; dir: string; log: DaemonLog }): Promise<DaemonProcessHandle>;
 
   /** Re-adopt a detached process recorded by a previous server run. */
   reclaim(input: {
@@ -99,8 +95,15 @@ interface ManagedDaemon {
   waiters: Waiter[];
 }
 
+/**
+ * The snapshot as the broker holds it: writable, and with every field present.
+ *
+ * `DaemonSnapshot` marks defaulted fields optional because decoding fills them in. The
+ * broker is the thing doing the filling, so it works with the resolved shape — which
+ * stays assignable back to `DaemonSnapshot`.
+ */
 type MutableSnapshot = {
-  -readonly [K in keyof DaemonSnapshot]: DaemonSnapshot[K];
+  -readonly [K in keyof DaemonSnapshot]-?: Exclude<DaemonSnapshot[K], undefined>;
 };
 
 const TERMINAL_STATES: ReadonlySet<DaemonState> = new Set(["exited", "failed"]);
@@ -131,7 +134,13 @@ export interface BrokerCore {
     follow: boolean;
     cursor: number;
     timeoutMs: number;
-  }): Promise<{ snapshot: DaemonSnapshot; content: string; nextCursor: number; droppedBytes: number; truncated: boolean }>;
+  }): Promise<{
+    snapshot: DaemonSnapshot;
+    content: string;
+    nextCursor: number;
+    droppedBytes: number;
+    truncated: boolean;
+  }>;
   send(input: {
     name: string;
     text: string | null;
