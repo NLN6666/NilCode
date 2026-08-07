@@ -187,6 +187,9 @@ export const composer = {
     progress: (index: number, total: number) => `${index} of ${total}`,
     selectMultiple: "Select one or more.",
     cancel: "Cancel",
+    /** Composer submit button: advances to the next question, or sends the answers. */
+    submit: "Submit answers",
+    submitting: "Submitting...",
   },
 
   pendingApproval: {
@@ -245,6 +248,8 @@ export const composer = {
     unnamedItem: "item",
     remove: "Remove attachment",
     removeSelections: "Remove selections",
+    removeComments: "Remove comments",
+    commentCount: (count: number) => `${count} ${count === 1 ? "comment" : "comments"}`,
     unknownType: "Unknown type",
     /** Fallback name for an AppSnap capture whose source app did not report one. */
     capturedApp: "Captured app",

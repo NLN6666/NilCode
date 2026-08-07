@@ -313,6 +313,13 @@ export const chat = {
   lineComment: {
     localComment: "Local comment",
     commentOn: (line: string) => `Comment on ${line}`,
+    /**
+     * Display-only line range. The `<file_comments>` prompt block keeps its own
+     * English form (see `serializeFileCommentRange`) because it is parsed back out
+     * by FILE_COMMENT_HEADER_PATTERN — never feed this into the prompt.
+     */
+    range: (startLine: number, endLine: number) =>
+      startLine === endLine ? `line ${startLine}` : `lines ${startLine}-${endLine}`,
     placeholder: "Request change",
     cancel: "Cancel",
     submit: "Comment",

@@ -111,6 +111,8 @@ export const pullRequests: Messages["pullRequests"] = {
     accountHint: "以你的 GitHub 账号发表评论",
     placeholder: "写下评论",
     post: "发表评论",
+    postFailedTitle: "无法发表评论",
+    postFailedDescription: "GitHub CLI 发表评论失败。",
   },
 
   filters: {

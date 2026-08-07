@@ -33,7 +33,7 @@ import { basenameOfPath } from "~/file-icons";
 import { useTheme } from "~/hooks/useTheme";
 import { getSelectionWithin, type ChatFileReference } from "~/lib/chatReferences";
 import { resolveDiffThemeName, type DiffThemeName } from "~/lib/diffRendering";
-import { formatFileCommentRange, type FileCommentSelection } from "~/lib/fileComments";
+import { type FileCommentSelection } from "~/lib/fileComments";
 import { showFileReferenceContextMenu } from "~/lib/fileReferenceContextMenu";
 import { PlusIcon } from "~/lib/icons";
 import { toggleMarkdownTaskMarker } from "~/lib/markdownTaskList";
@@ -306,6 +306,7 @@ export interface WorkspaceFilePreviewProps {
 
 export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
   const previewCopy = useMessages().editor.filePreview;
+  const lineCommentCopy = useMessages().chat.lineComment;
   const { resolvedTheme } = useTheme();
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
   const contentsRef = useRef<HTMLDivElement>(null);
@@ -721,10 +722,10 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
                 aria-hidden="true"
               />
               <FileLineCommentBox
-                lineLabel={formatFileCommentRange({
-                  startLine: activeCommentLine.lineNumber,
-                  endLine: activeCommentLine.lineNumber,
-                })}
+                lineLabel={lineCommentCopy.range(
+                  activeCommentLine.lineNumber,
+                  activeCommentLine.lineNumber,
+                )}
                 top={activeCommentLine.top + activeCommentLine.height}
                 left={activeCommentLine.left}
                 width={Math.max(

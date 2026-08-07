@@ -6,9 +6,9 @@ import {
   createFileCommentDraft,
   extractTrailingFileComments,
   FILE_COMMENT_TEXT_MAX_CHARS,
-  formatFileCommentLabel,
+  serializeFileCommentLabel,
   formatFileCommentPreview,
-  formatFileCommentRange,
+  serializeFileCommentRange,
   formatFileCommentTitleSeed,
   getFileCommentValidationError,
   normalizeFileCommentSelection,
@@ -85,9 +85,9 @@ describe("fileComments", () => {
   });
 
   it("formats ranges, labels, previews, and title seeds", () => {
-    expect(formatFileCommentRange({ startLine: 5, endLine: 5 })).toBe("line 5");
-    expect(formatFileCommentRange({ startLine: 3, endLine: 7 })).toBe("lines 3-7");
-    expect(formatFileCommentLabel({ path: "a/b.ts", startLine: 3, endLine: 7 })).toBe(
+    expect(serializeFileCommentRange({ startLine: 5, endLine: 5 })).toBe("line 5");
+    expect(serializeFileCommentRange({ startLine: 3, endLine: 7 })).toBe("lines 3-7");
+    expect(serializeFileCommentLabel({ path: "a/b.ts", startLine: 3, endLine: 7 })).toBe(
       "a/b.ts lines 3-7",
     );
     expect(formatFileCommentPreview("first line\nsecond line")).toBe("first line");

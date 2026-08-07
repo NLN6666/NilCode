@@ -105,6 +105,12 @@ function ComposerPendingUserInputCard({
     if (activeQuestion?.multiSelect) {
       return;
     }
+    // Advancing off the last question submits the whole prompt, so that step always
+    // needs an explicit Submit click — auto-advancing there would fire the response
+    // the instant an option is clicked (and single-question prompts are all "last").
+    if (progress.isLastQuestion) {
+      return;
+    }
     if (autoAdvanceTimerRef.current !== null) {
       window.clearTimeout(autoAdvanceTimerRef.current);
     }
@@ -115,8 +121,8 @@ function ComposerPendingUserInputCard({
   };
   const handleEffectOptionSelection = useEffectEvent(handleOptionSelection);
 
-  // Keyboard shortcut: digits toggle options for multi-select prompts and preserve
-  // the current auto-advance behavior for single-select questions.
+  // Keyboard shortcut: digits toggle options, and single-select questions auto-advance
+  // to the next question — except on the last one, which waits for an explicit submit.
   useEffect(() => {
     if (!activeQuestion || isResponding) return;
     const handler = (event: globalThis.KeyboardEvent) => {

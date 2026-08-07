@@ -95,18 +95,25 @@ export function createFileCommentDraft(selection: FileCommentSelection): FileCom
   };
 }
 
-export function formatFileCommentRange(selection: { startLine: number; endLine: number }): string {
+// Serialization, NOT display. These two feed the <file_comments> prompt block and
+// are read back by FILE_COMMENT_HEADER_PATTERN, so their English wording is part of
+// the wire format — translating them breaks round-tripping. UI surfaces must use the
+// localized `chat.lineComment.range` copy instead.
+export function serializeFileCommentRange(selection: {
+  startLine: number;
+  endLine: number;
+}): string {
   return selection.startLine === selection.endLine
     ? `line ${selection.startLine}`
     : `lines ${selection.startLine}-${selection.endLine}`;
 }
 
-export function formatFileCommentLabel(selection: {
+export function serializeFileCommentLabel(selection: {
   path: string;
   startLine: number;
   endLine: number;
 }): string {
-  return `${selection.path} ${formatFileCommentRange(selection)}`;
+  return `${selection.path} ${serializeFileCommentRange(selection)}`;
 }
 
 export function formatFileCommentPreview(text: string): string {
@@ -137,7 +144,7 @@ export function buildFileCommentsPromptBlock(
   const lines: string[] = [];
   for (let index = 0; index < normalizedComments.length; index += 1) {
     const comment = normalizedComments[index]!;
-    lines.push(`- ${formatFileCommentLabel(comment)}:`);
+    lines.push(`- ${serializeFileCommentLabel(comment)}:`);
     for (const line of comment.text.split("\n")) {
       lines.push(`  ${line}`);
     }

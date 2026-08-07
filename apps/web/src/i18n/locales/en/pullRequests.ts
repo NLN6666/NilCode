@@ -115,6 +115,9 @@ export const pullRequests = {
     accountHint: "Commenting as your GitHub account",
     placeholder: "Leave a comment",
     post: "Post comment",
+    postFailedTitle: "Could not post comment",
+    /** Fallback when the failure carries no message of its own. */
+    postFailedDescription: "GitHub CLI comment failed.",
   },
 
   filters: {

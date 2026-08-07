@@ -276,6 +276,8 @@ export const chat: Chat = {
   lineComment: {
     localComment: "本地批注",
     commentOn: (line) => `批注 ${line}`,
+    range: (startLine, endLine) =>
+      startLine === endLine ? `第 ${startLine} 行` : `第 ${startLine}-${endLine} 行`,
     placeholder: "提出修改建议",
     cancel: "取消",
     submit: "提交批注",
