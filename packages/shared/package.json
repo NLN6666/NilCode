@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./backgroundServiceSession": {
+      "types": "./src/backgroundServiceSession.ts",
+      "import": "./src/backgroundServiceSession.ts"
+    },
     "./model": {
       "types": "./src/model.ts",
       "import": "./src/model.ts"
