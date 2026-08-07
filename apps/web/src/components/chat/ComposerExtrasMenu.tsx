@@ -3,11 +3,12 @@
 // Layer: Chat composer presentation
 // Depends on: shared menu primitives, icon buttons, and caller-owned composer state callbacks.
 
-import { type ProviderInteractionMode } from "@synara/contracts";
+import { type AdvisorThreadOverride, type ProviderInteractionMode } from "@synara/contracts";
 import { useId, useRef, type ChangeEvent } from "react";
 import { GoTasklist } from "react-icons/go";
 
 import { PaperclipIcon, PlusIcon } from "~/lib/icons";
+import { advisorOverrideValue, parseAdvisorOverrideValue } from "./advisorOverride.logic";
 import { ComposerPickerMenuPopup, ComposerPickerMenuSubPopup } from "./ComposerPickerMenuPopup";
 import { Button } from "../ui/button";
 import {
@@ -27,9 +28,12 @@ export const ComposerExtrasMenu = function ComposerExtrasMenu(props: {
   interactionMode: ProviderInteractionMode;
   supportsFastMode: boolean;
   fastModeEnabled: boolean;
+  /** null means this thread follows the global advisor setting. */
+  advisorOverride: AdvisorThreadOverride;
   onAddAttachments: (files: File[]) => void;
   onToggleFastMode: () => void;
   onSetPlanMode: (enabled: boolean) => void;
+  onSetAdvisorOverride: (advisorEnabled: AdvisorThreadOverride) => void;
 }) {
   const copy = useMessages().composer.extras;
   const inputId = useId();
@@ -91,6 +95,25 @@ export const ComposerExtrasMenu = function ComposerExtrasMenu(props: {
               {copy.planMode}
             </span>
           </MenuCheckboxItem>
+
+          <MenuSeparator />
+          <MenuSub>
+            <MenuSubTrigger>{copy.advisor.title}</MenuSubTrigger>
+            <ComposerPickerMenuSubPopup>
+              <MenuRadioGroup
+                value={advisorOverrideValue(props.advisorOverride)}
+                onValueChange={(value) => {
+                  const parsed = parseAdvisorOverrideValue(String(value));
+                  if (parsed === null) return;
+                  props.onSetAdvisorOverride(parsed.advisorEnabled);
+                }}
+              >
+                <MenuRadioItem value="default">{copy.advisor.followDefault}</MenuRadioItem>
+                <MenuRadioItem value="on">{copy.advisor.on}</MenuRadioItem>
+                <MenuRadioItem value="off">{copy.advisor.off}</MenuRadioItem>
+              </MenuRadioGroup>
+            </ComposerPickerMenuSubPopup>
+          </MenuSub>
 
           {props.supportsFastMode ? (
             <>

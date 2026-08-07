@@ -1593,6 +1593,7 @@ export function normalizeThreadFromReadModel(
     createdAt: incoming.createdAt,
     archivedAt: incoming.archivedAt ?? null,
     settledAt: incoming.settledAt ?? null,
+    advisorEnabled: incoming.advisorEnabled ?? null,
     updatedAt: incoming.updatedAt,
     isPinned: incoming.isPinned ?? false,
     latestTurn,

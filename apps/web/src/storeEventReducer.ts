@@ -954,6 +954,9 @@ function applyOrchestrationEvent(
             ...(event.payload.settledAt !== undefined
               ? { settledAt: event.payload.settledAt }
               : {}),
+            ...(event.payload.advisorEnabled !== undefined
+              ? { advisorEnabled: event.payload.advisorEnabled }
+              : {}),
             ...(event.payload.parentThreadId !== undefined
               ? { parentThreadId: event.payload.parentThreadId }
               : {}),

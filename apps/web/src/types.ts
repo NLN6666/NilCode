@@ -236,6 +236,8 @@ export interface Thread extends ThreadWorkspaceState {
   createdAt: string;
   archivedAt?: string | null;
   settledAt?: string | null;
+  /** null means this thread follows the global advisor setting. */
+  advisorEnabled?: boolean | null;
   updatedAt?: string | undefined;
   isPinned?: boolean;
   pinnedMessages?: PinnedMessage[];
