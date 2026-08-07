@@ -414,6 +414,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           updatedAt: "2026-02-24T00:00:03.000Z",
           archivedAt: null,
           settledAt: null,
+          advisorEnabled: null,
           deletedAt: null,
           handoff: null,
           messages: [
@@ -1710,6 +1711,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           updatedAt: "2026-03-03T00:00:03.000Z",
           archivedAt: null,
           settledAt: null,
+          advisorEnabled: null,
           handoff: null,
           session: {
             threadId: ThreadId.makeUnsafe("thread-shell"),

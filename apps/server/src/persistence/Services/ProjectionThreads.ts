@@ -9,6 +9,7 @@
 import {
   IsoDateTime,
   ModelSelection,
+  AdvisorThreadOverride,
   NonNegativeInt,
   OrchestrationThreadPullRequest,
   ThreadNotes,
@@ -80,6 +81,9 @@ export const ProjectionThread = Schema.Struct({
     Schema.withDecodingDefault(() => null),
   ),
   settledAt: Schema.optional(Schema.NullOr(IsoDateTime)).pipe(
+    Schema.withDecodingDefault(() => null),
+  ),
+  advisorEnabled: Schema.optional(AdvisorThreadOverride).pipe(
     Schema.withDecodingDefault(() => null),
   ),
   deletedAt: Schema.NullOr(IsoDateTime),

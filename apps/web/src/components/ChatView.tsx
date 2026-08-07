@@ -38,6 +38,7 @@ import {
   OrchestrationThreadActivity,
   ProviderInteractionMode,
   RuntimeMode,
+  type AdvisorThreadOverride,
 } from "@synara/contracts";
 import { automationRequiresTargetThread } from "@synara/shared/automationMode";
 import { resolveBrowserSurfaceId } from "@synara/shared/browserSurface";
@@ -5153,6 +5154,22 @@ export default function ChatView({
       handleInteractionModeChange(enabled ? "plan" : "default");
     },
     [handleInteractionModeChange],
+  );
+  // null clears the override so the thread tracks the global setting again. It
+  // has to be sent explicitly: an absent field means "leave it alone".
+  const setAdvisorOverride = useCallback(
+    (advisorEnabled: AdvisorThreadOverride) => {
+      if (!serverThread) return;
+      const api = readNativeApi();
+      if (!api) return;
+      void api.orchestration.dispatchCommand({
+        type: "thread.meta.update",
+        commandId: newCommandId(),
+        threadId: serverThread.id,
+        advisorEnabled,
+      });
+    },
+    [serverThread],
   );
   const persistThreadSettingsForNextTurn = useCallback(
     async (input: {
@@ -11018,9 +11035,11 @@ export default function ChatView({
         interactionMode={interactionMode}
         supportsFastMode={composerTraitSelection.caps.supportsFastMode}
         fastModeEnabled={composerTraitSelection.fastModeEnabled}
+        advisorOverride={serverThread?.advisorEnabled ?? null}
         onAddAttachments={addComposerAttachments}
         onToggleFastMode={toggleFastMode}
         onSetPlanMode={setPlanMode}
+        onSetAdvisorOverride={setAdvisorOverride}
       />
       {!isVoiceRecording && !isVoiceTranscribing ? (
         <RuntimeUsageControls

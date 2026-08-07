@@ -106,6 +106,7 @@ import Migration0087 from "./Migrations/087_DropUnusedOrchestrationEventIndexes.
 import Migration0088 from "./Migrations/088_ProjectionProjectsBrowserSharing.ts";
 import Migration0089 from "./Migrations/089_ProjectionThreadsSettledAt.ts";
 import Migration0090 from "./Migrations/090_RecoverRetentionHiddenThreads.ts";
+import Migration0091 from "./Migrations/091_ProjectionThreadsAdvisorEnabled.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -211,6 +212,7 @@ export const migrationEntries = [
   [88, "ProjectionProjectsBrowserSharing", Migration0088],
   [89, "ProjectionThreadsSettledAt", Migration0089],
   [90, "RecoverRetentionHiddenThreads", Migration0090],
+  [91, "ProjectionThreadsAdvisorEnabled", Migration0091],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>

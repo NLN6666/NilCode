@@ -30,6 +30,7 @@ export * from "./launchConfig";
 export * from "./server";
 export * from "./stats";
 export * from "./settings";
+export * from "./advisor";
 export * from "./git";
 export * from "./githubProjectProvisioning";
 export * from "./pullRequests";

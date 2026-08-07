@@ -5,6 +5,8 @@ import { AgentGatewayLive } from "./agentGateway/Layers/AgentGateway";
 import { DaemonBrokerLive } from "./daemon/Layers/Broker";
 import { AgentGatewayOperationRepositoryLive } from "./agentGateway/Layers/AgentGatewayOperationRepository";
 import { AgentGatewayCredentialsWithSecretsLive } from "./agentGateway/Layers/AgentGatewayCredentials";
+import { AdvisorReactorLive } from "./advisor/Layers/AdvisorReactor";
+import { AdvisorSessionLive } from "./advisor/Layers/AdvisorSession";
 import { BrowserAutomationHostLive } from "./browserAutomation/Layers/BrowserAutomationHost";
 import { AutomationRunReactorLive } from "./automation/Layers/AutomationRunReactor";
 import { AutomationSchedulerLive } from "./automation/Layers/AutomationScheduler";
@@ -114,6 +116,12 @@ export function makeServerRuntimeServicesLayer(
     Layer.provideMerge(OrchestrationLayerLive),
     Layer.provideMerge(TerminalLayerLive),
   );
+  // The advisor watches the same domain events the browser sees, and reaches
+  // the provider through its own shadow sessions.
+  const advisorReactorLayer = AdvisorReactorLive.pipe(
+    Layer.provideMerge(AdvisorSessionLive.pipe(Layer.provideMerge(runtimeServicesLayer))),
+    Layer.provideMerge(OrchestrationLayerLive),
+  );
   // Shares the single memoized TerminalManager with the top-level TerminalLayerLive.
   const devServerManagerLayer = DevServerManagerLive.pipe(Layer.provide(TerminalLayerLive));
   const sessionCredentialLayer = SessionCredentialServiceLive.pipe(
@@ -209,6 +217,7 @@ export function makeServerRuntimeServicesLayer(
     orchestrationReactorLayer,
     providerCommandReactorLayer,
     threadDeletionReactorLayer,
+    advisorReactorLayer,
     devServerManagerLayer,
     GitLayerLive,
     TextGenerationLayerLive,

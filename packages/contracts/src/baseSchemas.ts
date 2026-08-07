@@ -72,3 +72,18 @@ export const ApprovalRequestId = makeEntityId("ApprovalRequestId");
 export type ApprovalRequestId = typeof ApprovalRequestId.Type;
 export const CheckpointRef = makeEntityId("CheckpointRef");
 export type CheckpointRef = typeof CheckpointRef.Type;
+
+/**
+ * A thread's answer to "should the advisor watch me?".
+ *
+ * `null` means "whatever the global setting says" and is the default, so a
+ * thread only carries an opinion once someone expresses one. That is the
+ * difference between a thread nobody configured and one deliberately opted
+ * out: copying the global value at creation time would freeze it, and later
+ * changing the global default would silently skip every existing thread.
+ *
+ * Lives here rather than in `advisor.ts` because `orchestration.ts` needs it
+ * and `advisor.ts` already depends on `orchestration.ts`.
+ */
+export const AdvisorThreadOverride = Schema.NullOr(Schema.Boolean);
+export type AdvisorThreadOverride = typeof AdvisorThreadOverride.Type;

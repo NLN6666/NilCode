@@ -15,10 +15,12 @@ async function mountMenu(props?: {
   fastModeEnabled?: boolean;
   interactionMode?: "default" | "plan";
   supportsFastMode?: boolean;
+  advisorOverride?: boolean | null;
 }) {
   const onAddAttachments = vi.fn();
   const onToggleFastMode = vi.fn();
   const onSetPlanMode = vi.fn();
+  const onSetAdvisorOverride = vi.fn();
   const host = document.createElement("div");
   document.body.append(host);
   const screen = await render(
@@ -26,9 +28,11 @@ async function mountMenu(props?: {
       interactionMode={props?.interactionMode ?? "default"}
       supportsFastMode={props?.supportsFastMode ?? true}
       fastModeEnabled={props?.fastModeEnabled ?? false}
+      advisorOverride={props?.advisorOverride ?? null}
       onAddAttachments={onAddAttachments}
       onToggleFastMode={onToggleFastMode}
       onSetPlanMode={onSetPlanMode}
+      onSetAdvisorOverride={onSetAdvisorOverride}
     />,
     { container: host },
   );
@@ -44,6 +48,7 @@ async function mountMenu(props?: {
     onAddAttachments,
     onToggleFastMode,
     onSetPlanMode,
+    onSetAdvisorOverride,
   };
 }
 

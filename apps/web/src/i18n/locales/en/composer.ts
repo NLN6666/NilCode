@@ -11,6 +11,14 @@ export const composer = {
     planMode: "Plan mode",
     fast: "Fast",
     default: "Default",
+    advisor: {
+      /** Submenu title; the options below decide it for this thread only. */
+      title: "Advisor",
+      /** Follows the global setting, which is what an unconfigured thread does. */
+      followDefault: "Follow default",
+      on: "Watch this thread",
+      off: "Do not watch",
+    },
   },
 
   modelPicker: {

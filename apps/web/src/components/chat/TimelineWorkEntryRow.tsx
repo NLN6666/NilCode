@@ -3,7 +3,7 @@
 // Layer: Web chat presentation component
 // Exports: TimelineWorkEntryRow, EditedFileRowContent, prefersCompactWorkEntryRow
 
-import type { TurnId } from "@synara/contracts";
+import { ADVISOR_ACTIVITY_KIND, type TurnId } from "@synara/contracts";
 import {
   createElement,
   memo,
@@ -238,6 +238,9 @@ function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   // (answer submitted) rather than the generic "info" checkmark.
   if (workEntry.activityKind === "user-input.requested") return CircleQuestionIcon;
   if (workEntry.activityKind === "user-input.resolved") return ArrowUpCircleIcon;
+  // Advisor notes are observations, not work the agent did. The eye keeps them
+  // from reading as another completed step in the transcript.
+  if (workEntry.activityKind === ADVISOR_ACTIVITY_KIND) return EyeIcon;
   // "Moved to background" notices read as a tray drop, not a warning check.
   if (workEntry.nativeEventType === "background_tasks_changed") return BackgroundTrayIcon;
 

@@ -10,6 +10,12 @@ export const composer: Messages["composer"] = {
     planMode: "计划模式",
     fast: "快速",
     default: "默认",
+    advisor: {
+      title: "监察",
+      followDefault: "跟随全局设置",
+      on: "旁观此会话",
+      off: "不旁观",
+    },
   },
 
   modelPicker: {

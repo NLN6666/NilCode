@@ -35,6 +35,7 @@ import {
 import { TestClock } from "effect/testing";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { advisorShadowThreadId } from "../../advisor/advisorShadowThread.ts";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
@@ -334,6 +335,51 @@ describe("ProviderRuntimeIngestion", () => {
       runtimeEventRepository,
     };
   }
+
+  // The advisor runs a provider session that is deliberately not a thread. Its
+  // events reach this stream like any other, and journalling them would both
+  // grow the journal without bound and hand the projector a thread id that
+  // resolves to nothing. The prefix check at the stream door is the whole of
+  // the isolation.
+  it("keeps advisor shadow session events out of the runtime journal", async () => {
+    const harness = await createHarness();
+    const shadowThreadId = advisorShadowThreadId(asThreadId("thread-1"));
+
+    harness.emit({
+      type: "runtime.warning",
+      eventId: asEventId("evt-advisor-shadow-session"),
+      provider: "codex",
+      createdAt: "2026-08-07T00:00:00.000Z",
+      threadId: shadowThreadId,
+      payload: { message: "advisor session chatter" },
+    });
+    await harness.drain();
+
+    const coverage = await Effect.runPromise(
+      harness.runtimeEventRepository.getThreadCoverage(shadowThreadId),
+    );
+    expect(coverage.retainedCount).toBe(0);
+  });
+
+  // The same check must not swallow a real thread whose id merely resembles one.
+  it("still journals events for an ordinary thread", async () => {
+    const harness = await createHarness();
+
+    harness.emit({
+      type: "runtime.warning",
+      eventId: asEventId("evt-ordinary-thread"),
+      provider: "codex",
+      createdAt: "2026-08-07T00:00:00.000Z",
+      threadId: asThreadId("thread-1"),
+      payload: { message: "ordinary runtime warning" },
+    });
+    await harness.drain();
+
+    const coverage = await Effect.runPromise(
+      harness.runtimeEventRepository.getThreadCoverage(asThreadId("thread-1")),
+    );
+    expect(coverage.retainedCount).toBeGreaterThan(0);
+  });
 
   it("REL-01C gate: replays output persisted before subscription without duplicate acceptance", async () => {
     const harness = await createHarness({ startIngestion: false });

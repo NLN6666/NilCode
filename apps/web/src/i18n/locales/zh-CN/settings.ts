@@ -874,6 +874,26 @@ export const settings: Settings = {
       refreshFailedTitle: "无法刷新模型目录",
       refreshFailedDescription: "刷新请求失败。",
     },
+    advisor: {
+      title: "监察",
+      enabled: {
+        title: "旁观并提出意见",
+        description:
+          "由另一个模型旁观主模型的操作，发现问题时出声。它没有任何工具：不能读文件、不能改动、不能执行命令，只能看到与你所见相同的活动摘要。",
+        ariaLabel: "启用监察",
+      },
+      model: {
+        title: "监察模型",
+        description:
+          "只有 Codex 与 Claude 能在不丢弃当前工作的前提下被中途打断，因此监察只开放这两家。",
+        ariaLabel: "监察模型",
+      },
+      severities: {
+        nit: "小建议",
+        concern: "值得注意",
+        blocker: "必须停下",
+      },
+    },
     generationDefaults: {
       title: "生成默认值",
       gitWritingModel: {

@@ -10,6 +10,7 @@ import {
   PiModelOptions,
 } from "./model";
 import { ProviderMentionReference, ProviderSkillReference } from "./providerDiscovery";
+import { AdvisorThreadOverride } from "./baseSchemas";
 import { ProjectKind } from "./project";
 import {
   ApprovalRequestId,
@@ -809,6 +810,10 @@ export const OrchestrationThread = Schema.Struct({
   settledAt: Schema.optional(Schema.NullOr(IsoDateTime)).pipe(
     Schema.withDecodingDefault(() => null),
   ),
+  /** Per-thread advisor opt-in/out; null means follow the global setting. */
+  advisorEnabled: Schema.optional(AdvisorThreadOverride).pipe(
+    Schema.withDecodingDefault(() => null),
+  ),
   deletedAt: Schema.NullOr(IsoDateTime),
   handoff: Schema.NullOr(ThreadHandoff).pipe(Schema.withDecodingDefault(() => null)),
   pinnedMessages: Schema.optional(ThreadPinnedMessages),
@@ -894,6 +899,10 @@ export const OrchestrationThreadShell = Schema.Struct({
     Schema.withDecodingDefault(() => null),
   ),
   settledAt: Schema.optional(Schema.NullOr(IsoDateTime)).pipe(
+    Schema.withDecodingDefault(() => null),
+  ),
+  /** Per-thread advisor opt-in/out; null means follow the global setting. */
+  advisorEnabled: Schema.optional(AdvisorThreadOverride).pipe(
     Schema.withDecodingDefault(() => null),
   ),
   handoff: Schema.NullOr(ThreadHandoff).pipe(Schema.withDecodingDefault(() => null)),
@@ -1201,6 +1210,7 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   associatedWorktreeRef: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   createBranchFlowCompleted: Schema.optional(Schema.Boolean),
   isPinned: Schema.optional(Schema.Boolean),
+  advisorEnabled: Schema.optional(AdvisorThreadOverride),
   // Desired settled state; the decider stamps the authoritative settledAt timestamp.
   isSettled: Schema.optional(Schema.Boolean),
   parentThreadId: Schema.optional(Schema.NullOr(ThreadId)),
@@ -1847,6 +1857,7 @@ export const ThreadMetaUpdatedPayload = Schema.Struct({
   associatedWorktreeRef: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   createBranchFlowCompleted: Schema.optional(Schema.Boolean),
   isPinned: Schema.optional(Schema.Boolean),
+  advisorEnabled: Schema.optional(AdvisorThreadOverride),
   settledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   parentThreadId: Schema.optional(Schema.NullOr(ThreadId)),
   subagentAgentId: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),

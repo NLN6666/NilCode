@@ -31,6 +31,8 @@ const ProjectionThreadDbRow = ProjectionThread.mapFields(
   Struct.assign({
     createBranchFlowCompleted: SqliteBoolean,
     isPinned: SqliteBoolean,
+    // Stored as INTEGER/NULL: null means "follow the global setting".
+    advisorEnabled: Schema.NullOr(SqliteBoolean),
     handoff: Schema.NullOr(Schema.fromJsonString(ThreadHandoff)),
     lastKnownPr: Schema.NullOr(Schema.fromJsonString(OrchestrationThreadPullRequest)),
     pinnedMessages: Schema.NullOr(Schema.fromJsonString(ThreadPinnedMessages)),
@@ -88,6 +90,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           updated_at,
           archived_at,
           settled_at,
+          advisor_enabled,
           deleted_at
         )
         VALUES (
@@ -131,6 +134,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           ${row.updatedAt},
           ${row.archivedAt ?? null},
           ${row.settledAt ?? null},
+          ${row.advisorEnabled ?? null},
           ${row.deletedAt}
         )
         ON CONFLICT (thread_id)
@@ -174,6 +178,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           updated_at = excluded.updated_at,
           archived_at = excluded.archived_at,
           settled_at = excluded.settled_at,
+          advisor_enabled = excluded.advisor_enabled,
           deleted_at = excluded.deleted_at
       `,
   });
@@ -224,6 +229,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           updated_at AS "updatedAt",
           archived_at AS "archivedAt",
           settled_at AS "settledAt",
+          advisor_enabled AS "advisorEnabled",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE thread_id = ${threadId}
@@ -276,6 +282,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           updated_at AS "updatedAt",
           archived_at AS "archivedAt",
           settled_at AS "settledAt",
+          advisor_enabled AS "advisorEnabled",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE project_id = ${projectId}
