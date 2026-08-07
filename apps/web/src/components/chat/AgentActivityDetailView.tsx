@@ -46,6 +46,8 @@ interface AgentActivityDetailViewProps {
   onBack: () => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenThread?: ((threadId: ThreadId) => void) | undefined;
+  /** Subagent-specific opener: docks the child beside its parent instead of navigating. */
+  onOpenSubagentThread?: ((threadId: ThreadId) => void) | undefined;
   timestampFormat: TimestampFormat;
 }
 
@@ -57,6 +59,7 @@ export function AgentActivityDetailView({
   onBack,
   onImageExpand,
   onOpenThread,
+  onOpenSubagentThread,
   timestampFormat,
 }: AgentActivityDetailViewProps) {
   const copy = useMessages().chat.activity;
@@ -123,6 +126,7 @@ export function AgentActivityDetailView({
               chatTypographyStyle={chatTypographyStyle}
               footerTextStyle={footerTextStyle}
               onOpenThread={onOpenThread}
+              onOpenSubagentThread={onOpenSubagentThread}
             />
           </AgentActivitySection>
         ) : null}

@@ -81,6 +81,12 @@ interface ChatTranscriptPaneProps {
   onOpenAgentActivity?: ComponentProps<typeof MessagesTimeline>["onOpenAgentActivity"];
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
   onOpenThread: (threadId: ThreadId) => void;
+  /**
+   * Opener for subagent threads specifically. Only the activity detail's subagent
+   * cards use it — the timeline's `onOpenThread` serves non-subagent cards, which
+   * should keep navigating full-page.
+   */
+  onOpenSubagentThread?: ((threadId: ThreadId) => void) | undefined;
   onOpenAutomation?: ComponentProps<typeof MessagesTimeline>["onOpenAutomation"];
   onRevertUserMessage: (messageId: MessageId) => void;
   onUndoTurnFiles?: ComponentProps<typeof MessagesTimeline>["onUndoTurnFiles"];
@@ -143,6 +149,7 @@ export function ChatTranscriptPane({
   onOpenAgentActivity,
   onOpenTurnDiff,
   onOpenThread,
+  onOpenSubagentThread,
   onOpenAutomation,
   onRevertUserMessage,
   onUndoTurnFiles,
@@ -208,6 +215,7 @@ export function ChatTranscriptPane({
               onBack={onCloseAgentActivityDetail}
               onImageExpand={onExpandTimelineImage}
               onOpenThread={onOpenThread}
+              onOpenSubagentThread={onOpenSubagentThread}
               timestampFormat={timestampFormat}
             />
           ) : (
