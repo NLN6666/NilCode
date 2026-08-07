@@ -310,10 +310,14 @@ turn 内复用上下文（这是「持续会话」相对「每次独立评估」
 
 | 项 | 说明 |
 |---|---|
-| 线程级覆盖 | §2 要求「全局默认 + 每线程可覆盖」，目前只有全局。需要新增命令 + 线程字段 + decider/projector 分支 |
-| 设置界面 | 开关与 provider/model 选择器 |
-| `advisor.advice` 渲染 | 目前走通用 activity 卡片，未做专门的严重度样式 |
-| i18n | 上述界面文案的中文翻译 |
+| 线程级开关的界面入口 | 覆盖本身已打通（`thread.meta.update` 可设置、持久化、reactor 生效），缺的是把它放在哪个界面上 |
+
+**后续补齐**
+
+- 设置界面：`AdvisorSettingsSection`（开关 + 合并的 provider/model 选择器），挂在「模型」面板
+- 线程级覆盖：`advisorEnabled`（null = 跟随全局）贯穿 contracts → decider → projector → `projection_threads.advisor_enabled`（迁移 091）→ reactor
+- `advisor.advice` 渲染：时间线用眼睛图标区分「旁观意见」与「主模型做过的事」
+- i18n：en / zh-CN 双语文案
 
 **实施中相对原设计的修正**
 
