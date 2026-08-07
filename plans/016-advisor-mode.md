@@ -92,12 +92,13 @@
 ```
 packages/contracts/src/advisor.ts               # 设置、严重度、投递通道、输出 schema  ✅
 
-apps/server/src/advisor/                        # 五个纯函数模块，全部已实现 ✅
+apps/server/src/advisor/                        # 六个纯函数模块，全部已实现 ✅
   advisorEventDigest.ts                         # activity → 单行摘要；噪音过滤 + 自激掐断
   advisorDeltaBuffer.ts                         # 两次评估之间累积摘要行，带上限与截断披露
   advisorEmissionGuard.ts                       # 能不能说：规范化/空话过滤/去重/升级
   advisorDelivery.ts                            # 怎么送达：通道决策 + 打断免疫期
   advisorQuarantine.ts                          # 该不该丢：不安全输出隔离
+  advisorPipeline.ts                            # 把以上编排成 reactor 需要的两个状态转移
   AdvisorSession.ts                             # 每个受监察线程一个 advisor 影子会话 ⬜
 apps/server/src/orchestration/Layers/
   AdvisorReactor.ts                             # 订阅 activity，驱动上述模块       ⬜
@@ -160,6 +161,20 @@ apps/web/  (transcript)                          # advisor.advice 活动的渲�
 **`workInProgress` 由此而来。** 一个 turn 可能在中途到达边界而后续仍有动作（对应 OMP 的 `willContinue`）。这种 delta 会被标记 `[in progress]`，advisor 知道自己看的是未完成的工作，`shouldWithholdAdvice` 据此只放行 `blocker`。
 
 delta 有 200 行上限。超出时丢弃最老的行并在 delta 中显式声明 `[earlier activity omitted]`——**静默丢弃会让 advisor 以为主模型做的事比实际少**，那比承认记录不全更糟。
+
+### 5.3 长轮次的中途评估（相对 OMP 的有意偏离）
+
+纯按 turn 边界触发有一个问题：一个跑十分钟的长 turn，advisor 要等到全部做完才开口，这谈不上「实时旁观」。
+
+因此 delta 累积到 `ADVISOR_INTERIM_EVALUATION_LINES`（50 行）时**提前触发一次评估**，并标记 `workInProgress: true`。配合 §6.1 的 `shouldWithholdAdvice`，这类评估里只有 `blocker` 能通过，`nit`/`concern` 直接丢弃。
+
+于是长轮次拿到了实时性，同时 advisor 并没有因此获得对半成品挑刺的权利。这也让 `workInProgress` 在 Synara 里有了真实用途——否则它恒为 `false`，是一个从 OMP 照搬来的死参数。
+
+### 5.4 turn 边界标记不进 delta
+
+`turn.completed` 这条 activity 只作**边界信号**，不作为内容进入 delta。
+
+advisor 被问的是「模型做了什么」，不是「轮次结束了」这个元事件；而 `workInProgress: false` 已经表达了「这是完整画面」。把它折进去还会让一个空转的轮次看起来有活动，进而触发一次没有意义的评估。
 
 ## 6. 防护规则
 
@@ -252,6 +267,7 @@ turn 内复用上下文（这是「持续会话」相对「每次独立评估」
 |---|---|---|
 | `advisorEventDigest` | 纯函数单测：截断、噪音过滤、自激掐断 | ✅ 15 |
 | `advisorDeltaBuffer` | 纯函数单测：累积、上限淘汰、截断披露、空 delta | ✅ 8 |
+| `advisorPipeline` | 纯函数单测：触发时机、边界语义、五道守卫的编排顺序 | ✅ 16 |
 | `advisorEmissionGuard` | 纯函数单测：规范化、空话、去重、升级、每次一条 | ✅ 21 |
 | `advisorDelivery` | 纯函数单测：通道决策全分支、免疫期、withhold | ✅ 16 |
 | `advisorQuarantine` | 纯函数单测：三条触发规则、output-only 判定、连续计数 | ✅ 14 |
