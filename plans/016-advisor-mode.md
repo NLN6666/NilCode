@@ -272,7 +272,10 @@ turn 内复用上下文（这是「持续会话」相对「每次独立评估」
 | `advisorDelivery` | 纯函数单测：通道决策全分支、免疫期、withhold | ✅ 16 |
 | `advisorQuarantine` | 纯函数单测：三条触发规则、output-only 判定、连续计数 | ✅ 14 |
 | `contracts/advisor` | 契约单测：默认值、供应商收窄、verdict 形状 | ✅ 21 |
-| `AdvisorReactor` | 用 `apps/server/src/orchestration/testing/` 做集成测试 | ⬜ |
+| `advisorResponseCollector` | 纯函数单测：拼接、忽略 reasoning、终态不可重开 | ✅ 12 |
+| `advisorThreadState` | 纯函数单测：打断窗口、plan 模式跨 turn | ✅ 8 |
+| `AdvisorSession` | 假 ProviderService：verdict 解析、只注入一次指令、连续失败停手 | ✅ 9 |
+| `AdvisorReactor` | 四个假服务：三条通道派发、自激掐断、开关生效 | ✅ 8 |
 
 四条不变量必须有专门用例，缺一不可：
 
@@ -288,3 +291,32 @@ turn 内复用上下文（这是「持续会话」相对「每次独立评估」
 - 独立的评审历史视图——先复用 activity 流
 - 非 Codex/Claude 供应商的支持（理由见 §3.2）
 - OMP 的 `obfuscator`（对工具参数/结果脱敏后再给 advisor 看）与 `syncBacklog`（advisor 落后时有界阻塞主模型）——前者在 advisor 只看摘要行的前提下收益有限，后者与「advisor 永不阻塞主模型」这条不变量冲突
+
+
+## 11. 落地状态（截至服务端接线完成）
+
+服务端全部完成并已接入 `serverLayers.ts` / `effectServer.ts`，共 150 个 advisor 用例通过。
+默认 `enabled: false`，未开启前对现有行为零影响。
+
+**已完成**
+
+- 契约：`packages/contracts/src/advisor.ts` + `ServerSettings.advisor`
+- 决策层（纯函数）：digest / deltaBuffer / emissionGuard / delivery / quarantine / pipeline / threadState / responseCollector
+- 协议层：`advisorProtocol.ts`（系统提示 + verdict 解析）
+- 影子会话：`advisorShadowThread.ts` + `Layers/AdvisorSession.ts`；其 provider 事件在 `ProviderRuntimeIngestion` 入口被过滤，不进 journal / 投影 / 浏览器
+- 反应器：`Layers/AdvisorReactor.ts`，三条通道分别派发 `thread.turn.start`（steer / queue）与 `thread.activity.append`
+
+**未完成**
+
+| 项 | 说明 |
+|---|---|
+| 线程级覆盖 | §2 要求「全局默认 + 每线程可覆盖」，目前只有全局。需要新增命令 + 线程字段 + decider/projector 分支 |
+| 设置界面 | 开关与 provider/model 选择器 |
+| `advisor.advice` 渲染 | 目前走通用 activity 卡片，未做专门的严重度样式 |
+| i18n | 上述界面文案的中文翻译 |
+
+**实施中相对原设计的修正**
+
+- `turnRunning` 不单独跟踪：中途评估必然在 turn 内、边界评估必然在 turn 后，`workInProgress` 已经回答了同一个问题，再引入第二个来源只会产生分歧
+- activity tone 无 `warning`，`concern` 落为 `info`，严重度改由 payload 承载
+- `advisorThreadState` 只从领域事件折叠，进程启动前就处于 plan 模式的线程会被看作 default，直到它再次变更
