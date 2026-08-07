@@ -49,8 +49,8 @@ export function PullRequestCommentComposer({ detail }: { detail: PullRequestDeta
         // The draft stays in the field on failure — nothing to re-type.
         toastManager.add({
           type: "error",
-          title: "Could not post comment",
-          description: error instanceof Error ? error.message : "GitHub CLI comment failed.",
+          title: copy.composer.postFailedTitle,
+          description: error instanceof Error ? error.message : copy.composer.postFailedDescription,
         });
       })
       .finally(() => {

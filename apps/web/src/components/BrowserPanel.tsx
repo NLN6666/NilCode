@@ -163,7 +163,8 @@ export function BrowserAnnotationButton(props: {
   controller: BrowserAnnotationsController;
   disabled: boolean;
 }) {
-  const label = props.controller.active ? "Cancel annotation" : "Annotate page";
+  const copy = useMessages().browser.actions;
+  const label = props.controller.active ? copy.cancelAnnotateElement : copy.annotateElement;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -186,9 +187,7 @@ export function BrowserAnnotationButton(props: {
         <CentralIcon name="window-cursor" className="size-3.5" />
       </TooltipTrigger>
       <TooltipPopup side="bottom">
-        {props.controller.active
-          ? "Cancel element selection (Esc)"
-          : "Select an element to annotate"}
+        {props.controller.active ? copy.cancelAnnotateElementHint : copy.annotateElementHint}
       </TooltipPopup>
     </Tooltip>
   );
@@ -1579,7 +1578,7 @@ export function BrowserPanel({
         applyInteractionMode("annotating");
       } catch {
         if (interactionRequestRef.current === requestId) {
-          setLocalError("Couldn't freeze the page for annotation.");
+          setLocalError(browserCopy.annotation.errors.freezeFailed);
         }
       }
     });
@@ -1587,6 +1586,7 @@ export function BrowserPanel({
     activeTab,
     api,
     applyInteractionMode,
+    browserCopy,
     browserSurfaceId,
     cancelElementPick,
     claimInteractionRequest,
@@ -1644,7 +1644,7 @@ export function BrowserPanel({
       applyInteractionMode("browse");
       const draft = createBrowserElementDraft(event.selection);
       if (!draft) {
-        setLocalError("Couldn't read that page element.");
+        setLocalError(browserCopy.annotation.errors.elementReadFailed);
         return;
       }
       addComposerDraftBrowserElement(threadId, draft);

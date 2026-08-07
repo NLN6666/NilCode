@@ -161,6 +161,8 @@ export const composer: Messages["composer"] = {
     progress: (index, total) => `第 ${index} / ${total} 个`,
     selectMultiple: "可多选。",
     cancel: "取消",
+    submit: "提交答案",
+    submitting: "正在提交…",
   },
 
   pendingApproval: {
@@ -216,6 +218,8 @@ export const composer: Messages["composer"] = {
     unnamedItem: "该项",
     remove: "移除附件",
     removeSelections: "移除已选内容",
+    removeComments: "移除评论",
+    commentCount: (count) => `${count} 条评论`,
     unknownType: "未知类型",
     capturedApp: "已截取的应用",
     showText: "展开全文",

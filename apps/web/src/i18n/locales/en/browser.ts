@@ -25,6 +25,15 @@ export const browser = {
     /** Tooltip only: the shortcut belongs on hover, not in the accessible name. */
     stopPickElementHint: "Stop picking an element (Esc)",
     annotate: "Annotate the page",
+    /**
+     * DOM element annotation, distinct from `annotate` above (which marks up a
+     * screenshot). The hints carry the shortcut; the labels stay shortcut-free so
+     * the accessible name reads cleanly.
+     */
+    annotateElement: "Annotate page",
+    cancelAnnotateElement: "Cancel annotation",
+    annotateElementHint: "Select an element to annotate",
+    cancelAnnotateElementHint: "Cancel element selection (Esc)",
     copyScreenshot: "Copy screenshot",
     copyLink: "Copy link",
     menu: "Browser actions",
@@ -111,6 +120,8 @@ export const browser = {
       syncFailed: "Couldn't refresh annotation markers.",
       startFailed: "Couldn't start annotation mode. Try again.",
       draftFull: "This draft can't accept another browser annotation.",
+      freezeFailed: "Couldn't freeze the page for annotation.",
+      elementReadFailed: "Couldn't read that page element.",
     },
   },
 };

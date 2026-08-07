@@ -417,7 +417,7 @@ import {
 } from "../lib/browserAnnotations";
 import {
   appendFileCommentsToPrompt,
-  formatFileCommentLabel,
+  serializeFileCommentLabel,
   formatFileCommentTitleSeed,
   type FileCommentDraft,
 } from "../lib/fileComments";
@@ -1017,7 +1017,7 @@ function buildQueuedComposerPreviewText(input: {
   }
   const firstFileComment = input.fileComments[0];
   if (firstFileComment) {
-    return formatFileCommentLabel(firstFileComment);
+    return serializeFileCommentLabel(firstFileComment);
   }
   const firstBrowserElement = input.browserElements[0];
   if (firstBrowserElement) {
@@ -1201,6 +1201,7 @@ export default function ChatView({
 }: ChatViewProps) {
   const appChatCopy = useMessages().app.chat;
   const composerPlaceholderCopy = useMessages().composer.placeholder;
+  const composerPendingInputCopy = useMessages().composer.pendingInput;
   const composerTraitStatusLabels = useMessages().composer.modelPicker;
   // Prop defaults are resolved here instead of in the destructuring pattern: an
   // AssignmentPattern in the parameter list makes React Compiler bail out (silently —
@@ -11632,10 +11633,10 @@ export default function ChatView({
                           }
                         >
                           {activePendingIsResponding
-                            ? "Submitting..."
+                            ? composerPendingInputCopy.submitting
                             : activePendingProgress.isLastQuestion
-                              ? "Submit answers"
-                              : "Next question"}
+                              ? composerPendingInputCopy.submit
+                              : composerPendingInputCopy.nextQuestion}
                         </Button>
                       ) : phase === "running" ? (
                         <Button
