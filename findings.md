@@ -47,7 +47,33 @@ worktree 隔离会话中，带 heredoc + 多级 `&&` 的长命令会被拒绝执
 
 ---
 
-## 5. UTF-8 字节游标的起始与结束边界对齐方向相反
+## 5. 新建的 worktree 没装依赖，报错会伪装成代码问题
+
+`packages/contracts` 的测试报 `Cannot find package 'effect'`。真因是**这个 worktree 从未跑过 `bun install`**，`node_modules/effect` 根本不存在。
+
+**判别方法：** 先跑一个**既有的**测试（如 `packages/contracts/src/terminal.test.ts`）。它也失败 → 环境问题；它通过 → 才是新代码的问题。
+
+**修复：** `bun install --frozen-lockfile`（按 lockfile 安装，不是升级依赖）。
+
+---
+
+## 6. 本仓库的 effect 是 effect-smol 预览版，自定义校验用 `Schema.makeFilter`
+
+`Schema.refine(fn, { title })` 会在运行时炸 `TypeError: check.run is not a function`。
+
+**正确写法：** `SomeSchema.check(Schema.makeFilter((value: string) => /* boolean */))`。参考 `packages/contracts/src/browserAutomationToolInputs.ts:69`。
+
+---
+
+## 7. 校验器写坏时，"拒绝非法输入"的测试会假通过
+
+`DaemonName` 的过滤器写错导致**所有**解码都抛异常。此时 4 条"应当拒绝"的用例全部通过——但它们是因为错误的原因通过的。
+
+**判别方法：** 正向用例（应当解码成功）与反向用例（应当拒绝）**必须同时存在**。只有两者并存且都通过，才能证明校验器真的在按预期区分输入。只写拒绝用例的 schema 测试是不可信的。
+
+---
+
+## 8. UTF-8 字节游标的起始与结束边界对齐方向相反
 
 `sliceHistorySince` 首版两端都用"向前对齐到下一个字符起始"，导致 `maxBytes` 截断时**超出**上限（要 7 字节却返回了 9 字节）。
 
