@@ -15,14 +15,11 @@
 // Input is a structural subset of OrchestrationThreadActivity rather than the
 // contract type, so this stays a pure string function with no schema dependency.
 
-/**
- * Activity kind carrying the advisor's own advice.
- *
- * `OrchestrationThreadActivity.kind` is a free string (existing values look like
- * `task.progress`, `turn.steered`), so adding one costs no schema compatibility
- * - unlike `tone`, which is a literal union and stays "info".
- */
-export const ADVISOR_ACTIVITY_KIND = "advisor.advice";
+// Re-exported so every advisor module keeps one import site; the constant is
+// defined in contracts because the web app renders this kind too.
+import { ADVISOR_ACTIVITY_KIND } from "@synara/contracts";
+
+export { ADVISOR_ACTIVITY_KIND };
 
 export const ADVISOR_DIGEST_MAX_CHARS = 200;
 

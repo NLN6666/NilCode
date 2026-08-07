@@ -43,6 +43,15 @@ export const DEFAULT_ADVISOR_SETTINGS: AdvisorServerSettings = Schema.decodeSync
  * Ordered weakest to strongest; the order is load-bearing, since a repeated note
  * is only allowed through when it escalates.
  */
+/**
+ * Activity kind carrying an advisor note in the transcript.
+ *
+ * `OrchestrationThreadActivity.kind` is a free string, so adding one costs no
+ * schema compatibility - unlike `tone`, which is a literal union. Shared here
+ * because the server writes it and the web app renders it.
+ */
+export const ADVISOR_ACTIVITY_KIND = "advisor.advice";
+
 export const ADVISOR_SEVERITIES = ["nit", "concern", "blocker"] as const;
 
 export const AdvisorSeverity = Schema.Literals(ADVISOR_SEVERITIES);
