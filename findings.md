@@ -73,7 +73,19 @@ worktree 隔离会话中，带 heredoc + 多级 `&&` 的长命令会被拒绝执
 
 ---
 
-## 8. UTF-8 字节游标的起始与结束边界对齐方向相反
+## 8. 既有失败（非本次改动引入）
+
+`packages/shared/src/loginShellEnvironment.test.ts` → `anchors the cache in the Synara home both processes resolve`
+
+```
+expected 'D:\tmp\synara-home\cache\login-shell-…' to be '\tmp\synara-home\cache\login-shell-en…'
+```
+
+Windows 盘符前缀问题。`git log --name-only 6373224d..HEAD | grep -c loginShell` = 0，本分支从未触及该文件。**汇报测试结果时须把它算作既有失败，不得计入本次改动。**
+
+---
+
+## 9. UTF-8 字节游标的起始与结束边界对齐方向相反
 
 `sliceHistorySince` 首版两端都用"向前对齐到下一个字符起始"，导致 `maxBytes` 截断时**超出**上限（要 7 字节却返回了 9 字节）。
 
