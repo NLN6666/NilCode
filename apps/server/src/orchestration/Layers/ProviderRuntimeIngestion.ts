@@ -41,6 +41,7 @@ import {
   resolveSubagentIdentityFromDirectory,
 } from "@synara/shared/subagents";
 
+import { isAdvisorShadowThreadId } from "../../advisor/advisorShadowThread.ts";
 import {
   generatedImageMarkdown,
   generatedImagePathFromRuntimeEvent,
@@ -3031,22 +3032,29 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       yield* Effect.forkScoped(
         Stream.runForEach(providerService.streamEvents, (event) =>
-          runtimeEvents.append(event).pipe(
-            Effect.flatMap((persisted) =>
-              Deferred.await(startupRuntimeReplayComplete).pipe(
-                Effect.andThen(drainRuntimeJournalThrough(persisted.sequence)),
+          // The advisor runs a provider session keyed by a derived thread id that
+          // is deliberately not a thread. Its events arrive on this stream like
+          // any other, but journalling them would grow the journal for a thread
+          // nothing can read back, and the projector below would resolve that id
+          // to nothing. Dropping them at the door is the whole isolation.
+          isAdvisorShadowThreadId(event.threadId)
+            ? Effect.void
+            : runtimeEvents.append(event).pipe(
+                Effect.flatMap((persisted) =>
+                  Deferred.await(startupRuntimeReplayComplete).pipe(
+                    Effect.andThen(drainRuntimeJournalThrough(persisted.sequence)),
+                  ),
+                ),
+                Effect.catchCause((cause) =>
+                  Cause.hasInterruptsOnly(cause)
+                    ? Effect.failCause(cause)
+                    : Effect.logWarning("provider runtime event journal ingestion failed", {
+                        eventId: event.eventId,
+                        eventType: event.type,
+                        cause: Cause.pretty(cause),
+                      }),
+                ),
               ),
-            ),
-            Effect.catchCause((cause) =>
-              Cause.hasInterruptsOnly(cause)
-                ? Effect.failCause(cause)
-                : Effect.logWarning("provider runtime event journal ingestion failed", {
-                    eventId: event.eventId,
-                    eventType: event.type,
-                    cause: Cause.pretty(cause),
-                  }),
-            ),
-          ),
         ),
       );
       yield* Effect.forkScoped(
