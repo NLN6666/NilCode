@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { TrimmedNonEmptyString } from "./baseSchemas";
+import { TrimmedNonEmptyString, type AdvisorThreadOverride } from "./baseSchemas";
 import { DEFAULT_MODEL_BY_PROVIDER } from "./model";
 import { ClaudeModelSelection, CodexModelSelection } from "./orchestration";
 
@@ -34,6 +34,25 @@ export const DEFAULT_ADVISOR_SETTINGS: AdvisorServerSettings = Schema.decodeSync
 )({});
 
 /**
+ * Activity kind carrying an advisor note in the transcript.
+ *
+ * `OrchestrationThreadActivity.kind` is a free string, so adding one costs no
+ * schema compatibility - unlike `tone`, which is a literal union. Shared here
+ * because the server writes it and the web app renders it.
+ */
+export const ADVISOR_ACTIVITY_KIND = "advisor.advice";
+
+export { AdvisorThreadOverride } from "./baseSchemas";
+
+/** Whether the advisor watches a given thread. */
+export function resolveAdvisorEnabled(input: {
+  readonly globalEnabled: boolean;
+  readonly threadOverride: AdvisorThreadOverride | undefined;
+}): boolean {
+  return input.threadOverride ?? input.globalEnabled;
+}
+
+/**
  * How much of the main model's attention a note is worth.
  *
  * Modelled on Oh My Pi's advisor (see README acknowledgements). Without a
@@ -43,15 +62,6 @@ export const DEFAULT_ADVISOR_SETTINGS: AdvisorServerSettings = Schema.decodeSync
  * Ordered weakest to strongest; the order is load-bearing, since a repeated note
  * is only allowed through when it escalates.
  */
-/**
- * Activity kind carrying an advisor note in the transcript.
- *
- * `OrchestrationThreadActivity.kind` is a free string, so adding one costs no
- * schema compatibility - unlike `tone`, which is a literal union. Shared here
- * because the server writes it and the web app renders it.
- */
-export const ADVISOR_ACTIVITY_KIND = "advisor.advice";
-
 export const ADVISOR_SEVERITIES = ["nit", "concern", "blocker"] as const;
 
 export const AdvisorSeverity = Schema.Literals(ADVISOR_SEVERITIES);

@@ -16,6 +16,7 @@ import {
   EventId,
   MessageId,
   ThreadId,
+  resolveAdvisorEnabled,
   type AdvisorSeverity,
   type OrchestrationEvent,
   type OrchestrationThreadActivityTone,
@@ -157,12 +158,20 @@ export const make = Effect.gen(function* () {
       const settings = yield* serverSettings.getSettings.pipe(
         Effect.catchCause(() => Effect.succeed(null)),
       );
-      if (settings === null || !settings.advisor.enabled) {
+      if (settings === null) {
         return input.state;
       }
       const thread = yield* snapshotQuery
         .getThreadDetailById(input.threadId)
         .pipe(Effect.catchCause(() => Effect.succeed(Option.none())));
+      if (
+        !resolveAdvisorEnabled({
+          globalEnabled: settings.advisor.enabled,
+          threadOverride: Option.isSome(thread) ? thread.value.advisorEnabled : null,
+        })
+      ) {
+        return input.state;
+      }
       const cwd = Option.isSome(thread)
         ? (thread.value.workingDirectory ?? thread.value.worktreePath ?? undefined)
         : undefined;

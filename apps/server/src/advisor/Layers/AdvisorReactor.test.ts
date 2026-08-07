@@ -45,6 +45,7 @@ async function withReactor<A>(
   options: {
     readonly verdicts: ReadonlyArray<AdvisorVerdict | null>;
     readonly advisorEnabled?: boolean;
+    readonly threadOverride?: boolean | null;
   },
   body: (input: {
     readonly emit: (event: OrchestrationEvent) => Effect.Effect<void>;
@@ -79,6 +80,7 @@ async function withReactor<A>(
                 runtimeMode: "full-access",
                 interactionMode: "default",
                 workingDirectory: "/repo",
+                advisorEnabled: options.threadOverride ?? null,
                 worktreePath: null,
               }),
             ),
@@ -228,6 +230,26 @@ describe("AdvisorReactor", () => {
 
     expect(recorder.evaluations).toEqual([]);
     expect(recorder.commands).toEqual([]);
+  });
+
+  // A thread's own choice beats the global default in both directions, which is
+  // the whole point of an override.
+  it("respects a thread that opted out while the default is on", async () => {
+    const recorder = await withReactor(
+      { verdicts: [{ verdict: "silent" }], advisorEnabled: true, threadOverride: false },
+      (input) => oneTurn(input).pipe(Effect.as(input.recorder)),
+    );
+
+    expect(recorder.evaluations).toEqual([]);
+  });
+
+  it("respects a thread that opted in while the default is off", async () => {
+    const recorder = await withReactor(
+      { verdicts: [{ verdict: "silent" }], advisorEnabled: false, threadOverride: true },
+      (input) => oneTurn(input).pipe(Effect.as(input.recorder)),
+    );
+
+    expect(recorder.evaluations).toHaveLength(1);
   });
 
   // The advice card is an activity like any other. Feeding it back would let

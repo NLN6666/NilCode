@@ -6,6 +6,7 @@ import {
   AdvisorServerSettings,
   AdvisorVerdict,
   DEFAULT_ADVISOR_SETTINGS,
+  resolveAdvisorEnabled,
 } from "./advisor";
 
 const decodeSettings = Schema.decodeUnknownSync(AdvisorServerSettings);
@@ -53,6 +54,26 @@ describe("AdvisorServerSettings", () => {
       ).toThrow();
     },
   );
+});
+
+describe("resolveAdvisorEnabled", () => {
+  it.each([true, false])("follows the global setting when the thread has no opinion", (global) => {
+    expect(resolveAdvisorEnabled({ globalEnabled: global, threadOverride: null })).toBe(global);
+  });
+
+  // An unconfigured thread and a thread whose override was cleared are the same
+  // thing, and both must track the global default rather than a frozen copy.
+  it.each([true, false])("treats a missing override as no opinion", (global) => {
+    expect(resolveAdvisorEnabled({ globalEnabled: global, threadOverride: undefined })).toBe(global);
+  });
+
+  it("lets a thread opt in while the default is off", () => {
+    expect(resolveAdvisorEnabled({ globalEnabled: false, threadOverride: true })).toBe(true);
+  });
+
+  it("lets a thread opt out while the default is on", () => {
+    expect(resolveAdvisorEnabled({ globalEnabled: true, threadOverride: false })).toBe(false);
+  });
 });
 
 describe("AdvisorVerdict", () => {

@@ -516,6 +516,7 @@ export function projectEvent(
             updatedAt: payload.updatedAt,
             archivedAt: null,
             settledAt: null,
+            advisorEnabled: null,
             deletedAt: null,
             handoff: payload.handoff,
             messages: [],
@@ -642,6 +643,9 @@ export function projectEvent(
                   }
                 : {}),
               ...(payload.isPinned !== undefined ? { isPinned: payload.isPinned } : {}),
+              ...(payload.advisorEnabled !== undefined
+                ? { advisorEnabled: payload.advisorEnabled }
+                : {}),
               ...(payload.settledAt !== undefined ? { settledAt: payload.settledAt } : {}),
               ...(payload.parentThreadId !== undefined
                 ? { parentThreadId: payload.parentThreadId }
