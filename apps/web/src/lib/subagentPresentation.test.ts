@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatSubagentModelLabel,
+  formatSubagentModelWithEffortLabel,
   humanizeSubagentStatus,
   normalizeSubagentStatusKind,
   resolveSubagentPresentation,
@@ -218,6 +219,96 @@ describe("resolveSubagentPresentationForThread", () => {
     });
 
     expect(presentation.fullLabel).toBe("Locke [explorer]");
+  });
+
+  it("derives the model and effort from the parent activity the child thread cannot carry", () => {
+    const presentation = resolveSubagentPresentationForThread({
+      thread: {
+        id: "subagent:thread-1:child-provider-1",
+        title: "Subagent child-provider-1",
+        parentThreadId: "thread-1",
+        subagentNickname: null,
+        subagentRole: null,
+      },
+      threads: [
+        {
+          id: "thread-1",
+          activities: [
+            {
+              payload: {
+                data: {
+                  item: {
+                    receiverAgents: [
+                      {
+                        threadId: "child-provider-1",
+                        agentNickname: "Locke",
+                        agentRole: "explorer",
+                        model: "claude-sonnet-4-6",
+                        effort: "high",
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(presentation.modelLabel).toBe("Sonnet 4.6 · high");
+  });
+
+  it("leaves the model unresolved rather than borrowing one when the parent activity has none", () => {
+    const presentation = resolveSubagentPresentationForThread({
+      thread: {
+        id: "subagent:thread-1:child-provider-1",
+        title: "Subagent child-provider-1",
+        parentThreadId: "thread-1",
+        subagentNickname: null,
+        subagentRole: null,
+      },
+      threads: [
+        {
+          id: "thread-1",
+          activities: [
+            {
+              payload: {
+                data: {
+                  item: {
+                    receiverAgents: [{ threadId: "child-provider-1", agentNickname: "Locke" }],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(presentation.nickname).toBe("Locke");
+    expect(presentation.modelLabel).toBeNull();
+  });
+
+  it("reports no model for a top-level thread", () => {
+    expect(
+      resolveSubagentPresentationForThread({ thread: { id: "thread-1", title: "Fix auth flow" } })
+        .modelLabel,
+    ).toBeNull();
+  });
+});
+
+describe("formatSubagentModelWithEffortLabel", () => {
+  it("joins model and effort with the separator every subagent surface shares", () => {
+    expect(formatSubagentModelWithEffortLabel("claude-sonnet-4-6", "high")).toBe(
+      "Sonnet 4.6 · high",
+    );
+  });
+
+  it("falls back to whichever half is known", () => {
+    expect(formatSubagentModelWithEffortLabel("claude-sonnet-4-6", null)).toBe("Sonnet 4.6");
+    expect(formatSubagentModelWithEffortLabel(null, "low")).toBe("low");
+    expect(formatSubagentModelWithEffortLabel(null, null)).toBeUndefined();
   });
 });
 

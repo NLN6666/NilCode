@@ -127,3 +127,45 @@ describe("SubagentDetailSections conversation preview", () => {
     expect(inertShell?.textContent ?? "").not.toBe("");
   });
 });
+
+describe("SubagentDetailSections open-full-conversation routing", () => {
+  it("prefers the subagent opener so the child docks beside its parent", async () => {
+    const onOpenThread = vi.fn();
+    const onOpenSubagentThread = vi.fn();
+    await render(
+      <SubagentDetailSections
+        subagents={[
+          { threadId: "subagent:parent:a", resolvedThreadId: "thread-a", nickname: "Scout" },
+        ]}
+        chatTypographyStyle={{ fontSize: "14px" }}
+        footerTextStyle={{ fontSize: "11px" }}
+        onOpenThread={onOpenThread}
+        onOpenSubagentThread={onOpenSubagentThread}
+      />,
+    );
+
+    await page.getByRole("button", { name: "Open full conversation" }).click();
+
+    expect(onOpenSubagentThread).toHaveBeenCalledWith("thread-a");
+    // Falling through to plain navigation would replace the parent view instead.
+    expect(onOpenThread).not.toHaveBeenCalled();
+  });
+
+  it("falls back to plain navigation for hosts that pass no subagent opener", async () => {
+    const onOpenThread = vi.fn();
+    await render(
+      <SubagentDetailSections
+        subagents={[
+          { threadId: "subagent:parent:a", resolvedThreadId: "thread-a", nickname: "Scout" },
+        ]}
+        chatTypographyStyle={{ fontSize: "14px" }}
+        footerTextStyle={{ fontSize: "11px" }}
+        onOpenThread={onOpenThread}
+      />,
+    );
+
+    await page.getByRole("button", { name: "Open full conversation" }).click();
+
+    expect(onOpenThread).toHaveBeenCalledWith("thread-a");
+  });
+});

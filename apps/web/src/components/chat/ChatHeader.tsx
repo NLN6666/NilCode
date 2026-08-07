@@ -108,6 +108,13 @@ interface ChatHeaderProps {
   onToggleRightDock?: () => void;
   surfaceMode?: "single" | "split";
   isSidechat?: boolean;
+  /**
+   * "Sonnet 4.6 · high" for a subagent thread. A subagent's model is the one thing
+   * its own thread record cannot tell you — it lives in the parent's activity — so
+   * without this the docked conversation gives no clue which model is answering.
+   * Null (not a guess) whenever it cannot be derived.
+   */
+  subagentModelLabel?: string | null;
   // When provided, the header collapses the
   // Open-in-editor + git-actions + diff-toggle cluster into one Environment button that
   // drives the Environment panel; otherwise the legacy cluster is rendered.
@@ -532,6 +539,7 @@ export function ChatHeader({
   onToggleRightDock,
   surfaceMode: surfaceModeProp,
   isSidechat: isSidechatProp,
+  subagentModelLabel: subagentModelLabelProp,
   environment: environmentProp,
   chatLayoutAction: chatLayoutActionProp,
   changeThreadAction: changeThreadActionProp,
@@ -559,6 +567,7 @@ export function ChatHeader({
   const rightDockOpen = rightDockOpenProp ?? false;
   const surfaceMode = surfaceModeProp ?? "single";
   const isSidechat = isSidechatProp ?? false;
+  const subagentModelLabel = subagentModelLabelProp ?? null;
   const environment = environmentProp ?? null;
   const chatLayoutAction = chatLayoutActionProp ?? null;
   const changeThreadAction = changeThreadActionProp ?? null;
@@ -752,6 +761,17 @@ export function ChatHeader({
                   </IconButton>
                 ) : null}
               </div>
+              {/* Reads as a caption on the title rather than a control: the model is
+                  context for what you are looking at, not something to act on here. */}
+              {subagentModelLabel ? (
+                <span
+                  data-testid="chat-header-subagent-model"
+                  className="min-w-0 shrink truncate font-system-ui text-[length:var(--app-font-size-ui-xs,10px)] font-normal text-muted-foreground/70"
+                  title={subagentModelLabel}
+                >
+                  {subagentModelLabel}
+                </span>
+              ) : null}
               {editorChatControls ? (
                 <EditorRailTabs
                   projectId={editorChatControls.projectId}

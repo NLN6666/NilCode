@@ -42,6 +42,8 @@ export interface SubagentPresentation {
   role: string | null;
   title: string | null;
   fullLabel: string;
+  /** `Sonnet 4.6 · high`, or null when neither model nor effort is known. */
+  modelLabel: string | null;
   accentColor: string;
 }
 
@@ -158,6 +160,8 @@ function resolveSubagentIdentityFromParentActivity(input: {
 }): {
   nickname: string | null;
   role: string | null;
+  model: string | null;
+  effort: string | null;
 } | null {
   const parentThreadId = normalizeWhitespace(input.thread.parentThreadId);
   if (!parentThreadId) {
@@ -199,6 +203,8 @@ function resolveSubagentIdentityFromParentActivity(input: {
   return {
     nickname: normalizeWhitespace(resolved.nickname),
     role: normalizeRole(resolved.role),
+    model: normalizeWhitespace(resolved.model),
+    effort: normalizeWhitespace(resolved.effort),
   };
 }
 
@@ -220,6 +226,8 @@ export function resolveSubagentPresentation(input: {
   nickname?: string | null | undefined;
   role?: string | null | undefined;
   title?: string | null | undefined;
+  model?: string | null | undefined;
+  effort?: string | null | undefined;
   fallbackId?: string | null | undefined;
 }): SubagentPresentation {
   const explicitNickname = normalizeWhitespace(input.nickname);
@@ -248,6 +256,7 @@ export function resolveSubagentPresentation(input: {
     role,
     title: resolvedTitle,
     fullLabel,
+    modelLabel: formatSubagentModelWithEffortLabel(input.model, input.effort) ?? null,
     accentColor: subagentAccentColor(nickname ?? primaryLabel),
   };
 }
@@ -271,6 +280,12 @@ export function resolveSubagentPresentationForThread(input: {
     nickname: input.thread.subagentNickname ?? derivedIdentity?.nickname,
     role: input.thread.subagentRole ?? derivedIdentity?.role,
     title: input.thread.title,
+    // Model/effort exist only in the parent's activity payload — the thread record
+    // has no such field. Unresolved stays unresolved: never borrow the parent's
+    // model, since a plausible-looking wrong value defeats the whole point of
+    // showing which model this fan-out actually routed to.
+    model: derivedIdentity?.model,
+    effort: derivedIdentity?.effort,
     fallbackId: input.thread.id,
   });
 }
@@ -369,6 +384,18 @@ export function humanizeSubagentStatus(
 export function formatSubagentModelLabel(model: string | null | undefined): string | undefined {
   const displayName = formatModelDisplayName(normalizeWhitespace(model));
   return displayName?.startsWith("Claude ") ? displayName.slice("Claude ".length) : displayName;
+}
+
+// The one-line "what is this agent running on" label. Every surface that shows a
+// subagent's model (composer strip rows, detail cards, the docked conversation
+// header) composes it here, so the same agent never reads two different ways.
+export function formatSubagentModelWithEffortLabel(
+  model: string | null | undefined,
+  effort: string | null | undefined,
+): string | undefined {
+  const modelLabel = formatSubagentModelLabel(model);
+  const effortLabel = normalizeWhitespace(effort) ?? undefined;
+  return modelLabel && effortLabel ? `${modelLabel} · ${effortLabel}` : (modelLabel ?? effortLabel);
 }
 
 // Status is the only hue in the agent panels: the dot always carries it, the

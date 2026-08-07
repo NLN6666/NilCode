@@ -51,6 +51,8 @@ export function SubagentDetailSections(props: {
   chatTypographyStyle: CSSProperties;
   footerTextStyle: CSSProperties;
   onOpenThread?: ((threadId: ThreadId) => void) | undefined;
+  /** Docks the subagent beside its parent; falls back to `onOpenThread` when absent. */
+  onOpenSubagentThread?: ((threadId: ThreadId) => void) | undefined;
 }) {
   if (props.subagents.length === 0) {
     return null;
@@ -65,6 +67,7 @@ export function SubagentDetailSections(props: {
           chatTypographyStyle={props.chatTypographyStyle}
           footerTextStyle={props.footerTextStyle}
           onOpenThread={props.onOpenThread}
+          onOpenSubagentThread={props.onOpenSubagentThread}
         />
       ))}
     </div>
@@ -76,6 +79,7 @@ function SubagentDetailCard(props: {
   chatTypographyStyle: CSSProperties;
   footerTextStyle: CSSProperties;
   onOpenThread?: ((threadId: ThreadId) => void) | undefined;
+  onOpenSubagentThread?: ((threadId: ThreadId) => void) | undefined;
 }) {
   const { subagent } = props;
   const copy = useMessages().chat.activity.subagent;
@@ -90,6 +94,9 @@ function SubagentDetailCard(props: {
   const statusKind = normalizeSubagentStatusKind(subagent.rawStatus, subagent.isActive ?? false);
   const modelLabel = formatSubagentModelLabel(subagent.model);
   const resolvedThreadId = subagent.resolvedThreadId;
+  // The dock is where every other entry point lands a subagent; plain navigation
+  // is only the fallback for hosts that have no dock of their own.
+  const openThread = props.onOpenSubagentThread ?? props.onOpenThread;
   const metaRows = [
     modelLabel ? { key: "model", label: copy.model, value: modelLabel } : null,
     presentation.role ? { key: "role", label: copy.role, value: presentation.role } : null,
@@ -160,11 +167,11 @@ function SubagentDetailCard(props: {
           data-testid="subagent-open-full-conversation"
           className="inline-flex items-center rounded-md px-1.5 py-1 text-muted-foreground/70 transition-colors hover:bg-[var(--color-background-button-secondary-hover)] hover:text-foreground disabled:pointer-events-none disabled:opacity-45"
           style={props.footerTextStyle}
-          disabled={!resolvedThreadId || !props.onOpenThread}
+          disabled={!resolvedThreadId || !openThread}
           title={resolvedThreadId ? undefined : copy.noThread}
           onClick={
-            resolvedThreadId && props.onOpenThread
-              ? () => props.onOpenThread?.(ThreadId.makeUnsafe(resolvedThreadId))
+            resolvedThreadId && openThread
+              ? () => openThread(ThreadId.makeUnsafe(resolvedThreadId))
               : undefined
           }
         >

@@ -2063,6 +2063,18 @@ export default function ChatView({
     () => buildThreadBreadcrumbs(threadLineageThreads, activeThread),
     [activeThread, threadLineageThreads],
   );
+  // The lineage already carries the parent's activities (it needs them for the
+  // breadcrumb labels), which is the only place a subagent's model is recorded.
+  const subagentModelLabel = useMemo(
+    () =>
+      activeThread?.parentThreadId
+        ? resolveSubagentPresentationForThread({
+            thread: activeThread,
+            threads: threadLineageThreads,
+          }).modelLabel
+        : null,
+    [activeThread, threadLineageThreads],
+  );
   // Studio threads are always local. Their optional "Use a folder" cwd is stored separately
   // from Git worktree metadata; the server migration repairs the legacy mixed representation.
   const resolvedThreadEnvMode = isStudioContainer
@@ -11836,6 +11848,7 @@ export default function ChatView({
             ? { className: cn(CHAT_SURFACE_HEADER_PADDING_X_CLASS, "h-full") }
             : {})}
           isSidechat={Boolean(activeThread.sidechatSourceThreadId)}
+          subagentModelLabel={subagentModelLabel}
           hideSidebarControls={isEditorRail}
           hideHandoffControls={terminalWorkspaceTerminalTabActive || isEditorRail}
           isGitRepo={isGitRepo}
@@ -12089,6 +12102,7 @@ export default function ChatView({
                     turnDiffSummaryByAssistantMessageId={turnDiffSummaryByAssistantMessageId}
                     onOpenTurnDiff={onOpenTurnDiff}
                     onOpenThread={onNavigateToThread}
+                    onOpenSubagentThread={onOpenSubagentThread}
                     onOpenAutomation={onOpenAutomation}
                     revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
                     onRevertUserMessage={onRevertUserMessage}

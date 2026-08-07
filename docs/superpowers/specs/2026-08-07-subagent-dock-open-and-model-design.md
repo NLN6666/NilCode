@@ -18,11 +18,11 @@ updated: 2026-08-07T09:29:01Z
 
 ### 2.1 三个入口，两种落点
 
-| 入口 | 代码位置 | 点击后 |
-| --- | --- | --- |
-| 侧边栏子代理行 | `apps/web/src/components/Sidebar.tsx` `activateSidebarThread` | `openThreadInHostDock()` → dock tab |
-| 底部子代理条 | `apps/web/src/components/chat/ComposerSubagentStrip.tsx:97` | `onOpenSubagentThread` → dock tab |
-| **转录子代理卡片** | `apps/web/src/components/chat/SubagentDetailSections.tsx:167` | **`onOpenThread` → 整页跳转** |
+| 入口               | 代码位置                                                      | 点击后                              |
+| ------------------ | ------------------------------------------------------------- | ----------------------------------- |
+| 侧边栏子代理行     | `apps/web/src/components/Sidebar.tsx` `activateSidebarThread` | `openThreadInHostDock()` → dock tab |
+| 底部子代理条       | `apps/web/src/components/chat/ComposerSubagentStrip.tsx:97`   | `onOpenSubagentThread` → dock tab   |
+| **转录子代理卡片** | `apps/web/src/components/chat/SubagentDetailSections.tsx:167` | **`onOpenThread` → 整页跳转**       |
 
 `apps/web/src/lib/dockThreadOpener.ts` 的文件注释已经写明了这条规则的存在理由：把「host = 父线程」收口在一处，避免多个入口漂移成不同的导航模型。转录卡片是唯一还没接进来的那个。
 
@@ -98,12 +98,12 @@ ChatView.tsx:12091  onOpenThread={onNavigateToThread}
 
 ## 5. 测试
 
-| 覆盖点 | 位置 |
-| --- | --- |
-| 从父线程 activity 派生出 `model` / `effort` / `modelLabel`；缺字段时为 `null` | `apps/web/src/lib/subagentPresentation` 相应测试 |
-| `modelLabel` 与底部条口径一致（含 `· effort` 拼接、`Claude ` 前缀剥离） | 同上 |
-| 「打开完整对话」调用 `onOpenSubagentThread` 而非 `onOpenThread`；未传时回退 | `apps/web/src/components/chat/SubagentDetailSections.test.tsx` |
-| `ChatHeader` 有 / 无 `subagentModelLabel` 时的渲染 | `apps/web/src/components/chat/` 相应测试 |
+| 覆盖点                                                                        | 位置                                                           |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 从父线程 activity 派生出 `model` / `effort` / `modelLabel`；缺字段时为 `null` | `apps/web/src/lib/subagentPresentation` 相应测试               |
+| `modelLabel` 与底部条口径一致（含 `· effort` 拼接、`Claude ` 前缀剥离）       | 同上                                                           |
+| 「打开完整对话」调用 `onOpenSubagentThread` 而非 `onOpenThread`；未传时回退   | `apps/web/src/components/chat/SubagentDetailSections.test.tsx` |
+| `ChatHeader` 有 / 无 `subagentModelLabel` 时的渲染                            | `apps/web/src/components/chat/` 相应测试                       |
 
 现有 `packages/shared/src/subagents.test.ts` 已有携带 `model` / `requested_model` 的 activity payload 夹具，可直接复用其形状。
 

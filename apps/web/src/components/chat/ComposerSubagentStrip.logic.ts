@@ -9,7 +9,6 @@ import { ThreadId, type TurnId } from "@synara/contracts";
 
 import type { WorkLogEntry, WorkLogSubagent } from "../../session-logic";
 import {
-  formatSubagentModelLabel,
   humanizeSubagentStatus,
   normalizeSubagentStatusKind,
   resolveSubagentPresentation,
@@ -84,6 +83,8 @@ function toStripItem(
     nickname: subagent.nickname,
     role: subagent.role,
     title: subagent.title,
+    model: subagent.model,
+    effort: subagent.effort,
     fallbackId: subagent.threadId,
   });
   const statusLabel =
@@ -92,7 +93,6 @@ function toStripItem(
     statusLabel ?? subagent.rawStatus,
     subagent.isActive,
   );
-  const modelLabel = formatSubagentModelLabel(subagent.model);
   const threadId = ThreadId.makeUnsafe(subagent.resolvedThreadId ?? subagent.threadId);
 
   return {
@@ -103,10 +103,7 @@ function toStripItem(
     primaryLabel: presentation.nickname ?? presentation.primaryLabel,
     fullLabel: presentation.fullLabel,
     role: presentation.role,
-    modelLabel:
-      modelLabel && subagent.effort
-        ? `${modelLabel} · ${subagent.effort}`
-        : (modelLabel ?? subagent.effort),
+    modelLabel: presentation.modelLabel ?? undefined,
     statusLabel,
     statusKind,
     isActive: statusKind === "running",
