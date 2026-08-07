@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { AdvisorModelSelection, AdvisorServerSettings } from "./advisor";
 import { TrimmedString } from "./baseSchemas";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL } from "./model";
 import { ModelSelection, ProviderKind, ThreadEnvironmentMode } from "./orchestration";
@@ -134,6 +135,7 @@ export const ServerSettings = Schema.Struct({
   }).pipe(Schema.withDecodingDefault(() => ({}))),
   skills: SkillsServerSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   network: NetworkServerSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+  advisor: AdvisorServerSettings.pipe(Schema.withDecodingDefault(() => ({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
 
@@ -227,6 +229,15 @@ export const ServerSettingsPatch = Schema.Struct({
           noProxy: Schema.optionalKey(StringSetting),
         }),
       ),
+    }),
+  ),
+  advisor: Schema.optionalKey(
+    Schema.Struct({
+      enabled: Schema.optionalKey(Schema.Boolean),
+      // Replaced whole rather than field-wise: provider and model must stay a
+      // matched pair, and a partial patch could pair a Codex provider with a
+      // Claude model.
+      modelSelection: Schema.optionalKey(AdvisorModelSelection),
     }),
   ),
 });
