@@ -647,6 +647,66 @@ describe("WsTransport", () => {
     expect(internals.streamCleanups.get(key)).toBe(cleanup);
   });
 
+  // Production runs streams through `ManagedRuntime.runCallback`, which invokes
+  // `onExit` SYNCHRONOUSLY when the stream fails or completes without ever
+  // suspending (a server that rejects the subscription outright does exactly
+  // that). `makeBareTransport` defers `onExit` to a microtask, so every other
+  // test in this file exercises only the asynchronous path.
+  function useSynchronousStreamRuntime(internals: WsTransportInternals): void {
+    Object.assign(internals, {
+      getClientRuntime: () => ({
+        runCallback: (
+          effect: Effect.Effect<unknown, Error>,
+          options: { readonly onExit: (exit: Exit.Exit<unknown, Error>) => void },
+        ) => Effect.runCallback(effect, options),
+      }),
+    });
+  }
+
+  it("does not retain the cleanup of a stream that exited synchronously", () => {
+    const { internals } = makeBareTransport();
+    useSynchronousStreamRuntime(internals);
+    const key = "orchestration.thread:thread-sync-exit";
+    const restart = vi.fn();
+
+    internals.startStream(
+      {},
+      key,
+      Stream.fail(new Error("subscription rejected")),
+      () => undefined,
+      restart,
+    );
+
+    // The stream is already dead. Leaving its cancel in `streamCleanups` makes
+    // the `startThreadStream` early-return permanent, so the thread would never
+    // resubscribe again — a live-looking UI that receives nothing until restart.
+    expect(internals.streamCleanups.has(key)).toBe(false);
+    expect(internals.activeThreadStreamInputs.has(key)).toBe(false);
+  });
+
+  it("still resubscribes a thread whose stream exited synchronously", async () => {
+    const { internals } = makeBareTransport();
+    useSynchronousStreamRuntime(internals);
+    const threadId = "thread-sync-exit-resubscribe";
+    const input = { threadId };
+    const subscribeThread = vi.fn(() => Stream.fail(new Error("subscription rejected")));
+    internals.threadSubscriptions.set(threadId, input);
+
+    await internals.startThreadStream(
+      { [ORCHESTRATION_WS_METHODS.subscribeThread]: subscribeThread },
+      threadId,
+      input,
+    );
+    // A second attempt must not be swallowed by the early-return guard.
+    await internals.startThreadStream(
+      { [ORCHESTRATION_WS_METHODS.subscribeThread]: subscribeThread },
+      threadId,
+      input,
+    );
+
+    expect(subscribeThread).toHaveBeenCalledTimes(2);
+  });
+
   it("force-restarts an identical live thread stream for a fresh snapshot", async () => {
     const { internals } = makeBareTransport();
     const threadId = "thread-force-snapshot";

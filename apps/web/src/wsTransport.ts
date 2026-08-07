@@ -1402,7 +1402,20 @@ export class WsTransport {
     const settled = new Promise<void>((resolve) => {
       resolveSettled = resolve;
     });
-    const cancel = this.getClientRuntime(client).runCallback(
+    // `runCallback` invokes `onExit` synchronously when the stream fails or
+    // completes without ever suspending — exactly what a server that rejects
+    // the subscription outright produces. Publishing the cleanup identity
+    // before starting the stream keeps that path identical to the asynchronous
+    // one: `onExit` can recognise itself as the current owner, release the
+    // entry and schedule its restart. Deriving the identity from `cancel`
+    // instead would read it inside its own initialiser, and the dead cancel
+    // would afterwards be written back over the entry `onExit` just cleared,
+    // pinning `startThreadStream`'s early-return open forever.
+    const handle: { cancel?: () => void } = {};
+    const cleanup = () => handle.cancel?.();
+    this.streamCleanups.set(key, cleanup);
+    this.streamSettled.set(key, settled);
+    handle.cancel = this.getClientRuntime(client).runCallback(
       Stream.runForEach(runnableStream, (event) =>
         Effect.sync(() => {
           if (this.streamCapacityRetries.has(key)) {
@@ -1423,7 +1436,7 @@ export class WsTransport {
             this.streamSettled.delete(key);
           }
           resolveSettled();
-          const wasReplacedOrStopped = this.streamCleanups.get(key) !== cancel;
+          const wasReplacedOrStopped = this.streamCleanups.get(key) !== cleanup;
           if (!wasReplacedOrStopped) {
             this.streamCleanups.delete(key);
             this.activeThreadStreamInputs.delete(key);
@@ -1508,8 +1521,6 @@ export class WsTransport {
         },
       },
     );
-    this.streamCleanups.set(key, cancel);
-    this.streamSettled.set(key, settled);
   }
 
   private stopStream(
