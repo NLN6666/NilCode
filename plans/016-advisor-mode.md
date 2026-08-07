@@ -16,7 +16,7 @@
 | 维度 | 决策 |
 |---|---|
 | 介入时机 | 实时旁观 + 主动打断（非事后评审） |
-| 评估节奏 | 持续会话，事件增量喂入，advisor 自主决定何时发声 |
+| 评估节奏 | 持续会话；**在 turn 边界**喂入自上次评估以来的 delta（见 §5.2） |
 | 发言方式 | **按严重度分级投递**，全自动、不需用户逐条确认（见 §6） |
 | 工具权限 | **无**。不读文件、不执行命令、不写入。只看推给它的事件流 |
 | 配置粒度 | 全局默认（provider + model + 开关），每个线程可覆盖 |
@@ -92,12 +92,13 @@
 ```
 packages/contracts/src/advisor.ts               # 设置、严重度、投递通道、输出 schema  ✅
 
-apps/server/src/advisor/                        # 四个纯函数模块，全部已实现 ✅
+apps/server/src/advisor/                        # 五个纯函数模块，全部已实现 ✅
   advisorEventDigest.ts                         # activity → 单行摘要；噪音过滤 + 自激掐断
+  advisorDeltaBuffer.ts                         # 两次评估之间累积摘要行，带上限与截断披露
   advisorEmissionGuard.ts                       # 能不能说：规范化/空话过滤/去重/升级
   advisorDelivery.ts                            # 怎么送达：通道决策 + 打断免疫期
   advisorQuarantine.ts                          # 该不该丢：不安全输出隔离
-  AdvisorSession.ts                             # 每个受监察线程一个 advisor 会话   ⬜
+  AdvisorSession.ts                             # 每个受监察线程一个 advisor 影子会话 ⬜
 apps/server/src/orchestration/Layers/
   AdvisorReactor.ts                             # 订阅 activity，驱动上述模块       ⬜
 
@@ -117,7 +118,10 @@ apps/web/  (transcript)                          # advisor.advice 活动的渲�
   → thread.activity.append
   → AdvisorReactor 订阅到 activity
   → digestActivity：噪音丢弃、自激丢弃、压成 ≤200 字符的一行
-  → 增量喂入 advisor 会话
+  → appendAdvisorDeltaLine：累积进 delta 缓冲（不评估）
+  ⋯ turn 边界到达 ⋯
+  → takeAdvisorDelta：取出 delta 并清空；delta 为空则完全不调用 advisor
+  → 喂入 advisor 会话，请求一次评估
   → advisor 输出「沉默」或「带严重度的建议」
   → isAdvisorOutputUnsafe：不安全则整轮隔离（§7.1）
   → shouldWithholdAdvice：评估半成品时只放行 blocker
@@ -141,6 +145,21 @@ apps/web/  (transcript)                          # advisor.advice 活动的渲�
 ```
 
 不满足此形状的输出按 §7 的「输出不符合 schema」处理——丢弃并计一次失败，**不做兜底解析**。放宽解析等于允许 advisor 用自由文本绕过全部防护规则。
+
+### 5.2 触发点是 turn 边界，不是每个事件（实施中修正）
+
+初稿设想「每条 activity 喂一行并评估一次」。**已修正为按 OMP 的模型：在 turn 边界触发一次评估**，喂入自上次评估以来累积的 delta。
+
+理由有两条，都很硬：
+
+1. **成本从 O(事件数) 降到 O(轮次数)。** 一个 turn 能产生上百条 activity，逐条评估会让 advisor 的开销盖过主模型本身。
+2. **半个工具调用的中间态不足以判断。** turn 边界上的信息才是完整的。
+
+`digestActivity` 因此不再是「评估的输入」，而是「构造 delta 的方式」——它仍然每条 activity 调用一次，只是结果进缓冲区而非直接触发模型。
+
+**`workInProgress` 由此而来。** 一个 turn 可能在中途到达边界而后续仍有动作（对应 OMP 的 `willContinue`）。这种 delta 会被标记 `[in progress]`，advisor 知道自己看的是未完成的工作，`shouldWithholdAdvice` 据此只放行 `blocker`。
+
+delta 有 200 行上限。超出时丢弃最老的行并在 delta 中显式声明 `[earlier activity omitted]`——**静默丢弃会让 advisor 以为主模型做的事比实际少**，那比承认记录不全更糟。
 
 ## 6. 防护规则
 
@@ -232,6 +251,7 @@ turn 内复用上下文（这是「持续会话」相对「每次独立评估」
 | 对象 | 方式 | 状态 |
 |---|---|---|
 | `advisorEventDigest` | 纯函数单测：截断、噪音过滤、自激掐断 | ✅ 15 |
+| `advisorDeltaBuffer` | 纯函数单测：累积、上限淘汰、截断披露、空 delta | ✅ 8 |
 | `advisorEmissionGuard` | 纯函数单测：规范化、空话、去重、升级、每次一条 | ✅ 21 |
 | `advisorDelivery` | 纯函数单测：通道决策全分支、免疫期、withhold | ✅ 16 |
 | `advisorQuarantine` | 纯函数单测：三条触发规则、output-only 判定、连续计数 | ✅ 14 |
