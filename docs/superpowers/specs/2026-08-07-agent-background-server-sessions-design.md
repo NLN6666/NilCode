@@ -74,11 +74,11 @@ DaemonBroker (Effect Layer)
 
 ### 3.1 三个核心类型（沿用 oh-my-pi 命名）
 
-| 类型 | 含义 |
-|---|---|
-| `DaemonSpec` | 不可变启动规格：`name` / `application` / `args` / `env` / `cwd` / `pty` / `ready` / `restart` / `persist` / `detached` |
-| `DaemonSnapshot` | 可序列化的对外状态：`name` / `id` / `state` / `pid` / `createdAt` / `startedAt` / `readyAt` / `exitedAt` / `exitCode` / `exitReason` / `restartCount` / `outputBytes` / `readyPending` |
-| `ManagedDaemon` | broker 内部记录：`spec` + `snapshot` + `dir` + `log` + `process` / `input` / `pty` + `generation` + `logReady` / `portReady` / `readinessBuffer` / `readyPattern` + `restartTimer` / `consecutiveFailures` |
+| 类型             | 含义                                                                                                                                                                                                       |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DaemonSpec`     | 不可变启动规格：`name` / `application` / `args` / `env` / `cwd` / `pty` / `ready` / `restart` / `persist` / `detached`                                                                                     |
+| `DaemonSnapshot` | 可序列化的对外状态：`name` / `id` / `state` / `pid` / `createdAt` / `startedAt` / `readyAt` / `exitedAt` / `exitCode` / `exitReason` / `restartCount` / `outputBytes` / `readyPending`                     |
+| `ManagedDaemon`  | broker 内部记录：`spec` + `snapshot` + `dir` + `log` + `process` / `input` / `pty` + `generation` + `logReady` / `portReady` / `readinessBuffer` / `readyPattern` + `restartTimer` / `consecutiveFailures` |
 
 `generation` 是防竞态计数器：重启时递增，旧进程的 exit 回调若 generation 不匹配则丢弃，避免"上一代的退出事件把新一代标记成 exited"。
 
@@ -104,10 +104,10 @@ starting ──(就绪条件满足)──> ready ──> running
 
 ### 3.4 与既有 TerminalManager 的关系
 
-| 场景 | 走哪条路 |
-|---|---|
+| 场景                            | 走哪条路                                                                                           |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- |
 | `detached: false` + `pty: true` | 复用既有 PTY adapter 与 `TerminalManager`，会话以 `streamOutput: false` 打开，用户仍可在 UI 里接管 |
-| `detached: true` | **不能**走 TerminalManager（PTY 随父进程死）。走独立 spawn，stdio 重定向到日志文件，`unref()` |
+| `detached: true`                | **不能**走 TerminalManager（PTY 随父进程死）。走独立 spawn，stdio 重定向到日志文件，`unref()`      |
 
 `detached` 蕴含 `persist`，并**禁用 PTY 输入**（stdio 已重定向到文件，没有 stdin 通道）——这是 oh-my-pi 的既定约束，照搬。
 
@@ -115,16 +115,16 @@ starting ──(就绪条件满足)──> ready ──> running
 
 沿用本仓库 `automationTools.ts` 的惯例：**独立的 `synara_*` 工具**，而非单个带 `op` 判别式的工具。oh-my-pi 把三个工具合并成 `hub` 是为解决其自身的工具爆炸问题；本仓库既有 7 个独立的 automation 工具，为一族破例会让 API 自相矛盾。**op 语义逐个照搬，封装形态随本地惯例。**
 
-| 工具 | 对应 oh-my-pi op | 参数 |
-|---|---|---|
-| `synara_start_daemon` | `start` | `name` / `application` / `args` / `env` / `cwd` / `pty` / `ready` / `restart` / `persist` / `detached` |
-| `synara_list_daemons` | `ps` | — |
-| `synara_describe_daemon` | `describe` | `name` |
-| `synara_read_daemon_logs` | `logs` | `name` / `lines`(默认 100，上限 1000) / `head` / `grep` / `follow` / `cursor` / `timeout`(默认 30s) |
-| `synara_send_daemon_input` | `send` | `name` / `text` / `enter`(默认 true) / `keys` / `signal` |
-| `synara_wait_daemon` | `wait` | `name` / `for`(`ready`\|`exit`，默认 exit) / `pattern`(优先于 for) / `timeout`(默认 30s) |
-| `synara_stop_daemon` | `stop` | `name` / `timeout`(默认 5s) |
-| `synara_restart_daemon` | `restart` | `name` |
+| 工具                       | 对应 oh-my-pi op | 参数                                                                                                   |
+| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------ |
+| `synara_start_daemon`      | `start`          | `name` / `application` / `args` / `env` / `cwd` / `pty` / `ready` / `restart` / `persist` / `detached` |
+| `synara_list_daemons`      | `ps`             | —                                                                                                      |
+| `synara_describe_daemon`   | `describe`       | `name`                                                                                                 |
+| `synara_read_daemon_logs`  | `logs`           | `name` / `lines`(默认 100，上限 1000) / `head` / `grep` / `follow` / `cursor` / `timeout`(默认 30s)    |
+| `synara_send_daemon_input` | `send`           | `name` / `text` / `enter`(默认 true) / `keys` / `signal`                                               |
+| `synara_wait_daemon`       | `wait`           | `name` / `for`(`ready`\|`exit`，默认 exit) / `pattern`(优先于 for) / `timeout`(默认 30s)               |
+| `synara_stop_daemon`       | `stop`           | `name` / `timeout`(默认 5s)                                                                            |
+| `synara_restart_daemon`    | `restart`        | `name`                                                                                                 |
 
 ### 4.1 就绪探针 `ready`
 
@@ -143,11 +143,11 @@ starting ──(就绪条件满足)──> ready ──> running
 
 ### 4.3 `send` 的三条通道
 
-| 参数 | 语义 |
-|---|---|
-| `text` + `enter`（默认 true） | 写 stdin。`enter: false` 用于 REPL 半截输入、或读单字符的 y/n 提示 |
-| `keys: string[]` | 终端按键（`CTRL_C` / `ENTER` / `TAB` / 方向键等），在 `text` 之后发送 |
-| `signal` | 进程树信号（`SIGINT` / `SIGTERM` 等），**不经终端行规程** |
+| 参数                          | 语义                                                                  |
+| ----------------------------- | --------------------------------------------------------------------- |
+| `text` + `enter`（默认 true） | 写 stdin。`enter: false` 用于 REPL 半截输入、或读单字符的 y/n 提示    |
+| `keys: string[]`              | 终端按键（`CTRL_C` / `ENTER` / `TAB` / 方向键等），在 `text` 之后发送 |
+| `signal`                      | 进程树信号（`SIGINT` / `SIGTERM` 等），**不经终端行规程**             |
 
 PTY 里的 Ctrl+C 与直接投递 SIGTERM 不是一回事，MC 服务端对两者处理路径不同。保留两条独立通道是刻意的。
 
@@ -183,22 +183,22 @@ PTY 里的 Ctrl+C 与直接投递 SIGTERM 不是一回事，MC 服务端对两�
 
 ## 6. detached 实现
 
-| 环节 | 做法 |
-|---|---|
-| spawn | `stdio: ["ignore", logFd, logFd]`——stdin 丢弃，stdout/stderr 直接重定向到日志文件描述符 |
-| 平台差异 | **全平台 `detached: true`**，Windows 上同时 `windowsHide: true` 避免弹出控制台窗口。**此处刻意偏离来源实现**，理由见下方实测 |
-| 脱离事件循环 | spawn 后调用 `child.unref()`，使 Node 事件循环可独立退出 |
-| 元数据持久化 | `DaemonSpec` + 最后已知 `pid` 落盘到 `<dir>/daemon.json` |
-| 重启后认领 | `#refreshDetached`：先 `#readDetachedOutput` 从 `outputOffset` 增量读日志文件，再用持久化的 pid 探测存活；不存活则 `#settle` 标记退出 |
+| 环节         | 做法                                                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| spawn        | `stdio: ["ignore", logFd, logFd]`——stdin 丢弃，stdout/stderr 直接重定向到日志文件描述符                                               |
+| 平台差异     | **全平台 `detached: true`**，Windows 上同时 `windowsHide: true` 避免弹出控制台窗口。**此处刻意偏离来源实现**，理由见下方实测          |
+| 脱离事件循环 | spawn 后调用 `child.unref()`，使 Node 事件循环可独立退出                                                                              |
+| 元数据持久化 | `DaemonSpec` + 最后已知 `pid` 落盘到 `<dir>/daemon.json`                                                                              |
+| 重启后认领   | `#refreshDetached`：先 `#readDetachedOutput` 从 `outputOffset` 增量读日志文件，再用持久化的 pid 探测存活；不存活则 `#settle` 标记退出 |
 
 ### 6.1 偏离来源实现：Windows 上必须 `detached: true`（已实测）
 
 oh-my-pi 的 `DAEMON_SPAWN_OPTIONS` 在 Windows 上使用 `detached: false`。**该选择在 Synara 的技术栈上不成立**，实测如下（Node v24，Windows 11，子进程每 300ms 追加一行到日志文件，父进程 400ms 后退出，3 秒后计数）：
 
-| spawn 选项 | 结果 |
-|---|---|
-| `detached: false` + `unref()` | 1 行——父进程一退子进程即死 |
-| `detached: true` + `unref()` + `windowsHide: true` | 58 行——持续存活 |
+| spawn 选项                                         | 结果                       |
+| -------------------------------------------------- | -------------------------- |
+| `detached: false` + `unref()`                      | 1 行——父进程一退子进程即死 |
+| `detached: true` + `unref()` + `windowsHide: true` | 58 行——持续存活            |
 
 差异根源：oh-my-pi 使用 `Bun.spawn`，与 Node 的 `child_process.spawn` 在 Windows 进程组语义上不同。照搬 `detached: false` 会让 detached 功能**在主力平台上静默失效**——进程看似启动成功，Synara 一关全部消失，且无任何错误。
 
