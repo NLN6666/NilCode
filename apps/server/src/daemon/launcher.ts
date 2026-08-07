@@ -34,6 +34,7 @@ import {
   type ProcessIdentity,
   type ProcessIdentityMap,
 } from "./processIdentity.ts";
+import { resolveExecutable } from "../executableLookup.ts";
 import { daemonSpawnOptions } from "./spawnOptions.ts";
 
 /** How often a detached daemon's log file is polled for new output. */
@@ -57,6 +58,7 @@ export interface DaemonLauncherDependencies {
   readonly tailIntervalMs: number;
   readonly livenessIntervalMs: number;
   readonly readIdentities: (pids: readonly number[]) => ProcessIdentityMap | null;
+  readonly resolveApplication: (command: string, env: NodeJS.ProcessEnv) => string | null;
 }
 
 /**
@@ -382,6 +384,7 @@ export function createDaemonLauncher(
     tailIntervalMs: DETACHED_TAIL_INTERVAL_MS,
     livenessIntervalMs: RECLAIM_LIVENESS_INTERVAL_MS,
     readIdentities: readProcessIdentities,
+    resolveApplication: (command, env) => resolveExecutable(command, { env }),
     ...overrides,
   };
 
@@ -406,7 +409,11 @@ export function createDaemonLauncher(
 
       if (spec.pty) {
         const pty = await deps.loadPty();
-        const ptyProcess = pty.spawn(spec.application, [...(spec.args ?? [])], {
+        // node-pty does not search PATH the way child_process does, so a bare `java`
+        // dies with "File not found" — which is exactly what an agent will write.
+        // Resolving here keeps the spec's vocabulary the same across all three modes.
+        const application = deps.resolveApplication(spec.application, env) ?? spec.application;
+        const ptyProcess = pty.spawn(application, [...(spec.args ?? [])], {
           cwd,
           env: env as Record<string, string>,
           cols: 120,

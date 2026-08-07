@@ -26,27 +26,27 @@
 
 ## 已完成（可直接复用）
 
-| 提交 | 内容 |
-|---|---|
+| 提交       | 内容                                                                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `c6ea542f` | `packages/shared/src/backgroundServiceSession.ts` —— 字节游标切片 + UTF-8 边界对齐。**与 oh-my-pi 的 `cursor = outputBytes` 语义一致，直接复用** |
-| `5e4c3d99` | `packages/shared/src/backgroundServiceMatch.ts` —— 跨块子串匹配、回显剥离、控制字符。Task 2 会在其上扩展按键表 |
+| `5e4c3d99` | `packages/shared/src/backgroundServiceMatch.ts` —— 跨块子串匹配、回显剥离、控制字符。Task 2 会在其上扩展按键表                                   |
 
 ---
 
 ## 文件结构
 
-| 文件 | 职责 |
-|---|---|
-| `packages/contracts/src/daemon.ts` | 新建。`DaemonSpec` / `DaemonSnapshot` / `DaemonState` / `DaemonReadySpec` / `DaemonRestartPolicy` schema |
-| `packages/shared/src/daemonKeys.ts` | 新建。终端按键名 → 转义序列、信号名白名单 |
-| `packages/shared/src/daemonRestart.ts` | 新建。指数退避时长计算（纯函数） |
-| `apps/server/src/daemon/DaemonLog.ts` | 新建。日志文件落盘、轮转、按游标读取 |
-| `apps/server/src/daemon/readiness.ts` | 新建。就绪探针（log 正则 / port 连接 / readyPending 计算） |
-| `apps/server/src/daemon/spawnOptions.ts` | 新建。跨平台 spawn 选项（detached 的唯一权威处） |
-| `apps/server/src/daemon/Services/Broker.ts` | 新建。`DaemonBrokerShape` 接口 + ServiceMap tag |
-| `apps/server/src/daemon/Layers/Broker.ts` | 新建。broker 实现：记录表、launch、settle、waitUntil、refreshDetached |
-| `apps/server/src/agentGateway/daemonTools.ts` | 新建。8 个工具 |
-| `apps/server/src/agentGateway/Services/AgentGatewaySessionRegistry.ts` | 改。加 `daemon:control` |
+| 文件                                                                   | 职责                                                                                                     |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `packages/contracts/src/daemon.ts`                                     | 新建。`DaemonSpec` / `DaemonSnapshot` / `DaemonState` / `DaemonReadySpec` / `DaemonRestartPolicy` schema |
+| `packages/shared/src/daemonKeys.ts`                                    | 新建。终端按键名 → 转义序列、信号名白名单                                                                |
+| `packages/shared/src/daemonRestart.ts`                                 | 新建。指数退避时长计算（纯函数）                                                                         |
+| `apps/server/src/daemon/DaemonLog.ts`                                  | 新建。日志文件落盘、轮转、按游标读取                                                                     |
+| `apps/server/src/daemon/readiness.ts`                                  | 新建。就绪探针（log 正则 / port 连接 / readyPending 计算）                                               |
+| `apps/server/src/daemon/spawnOptions.ts`                               | 新建。跨平台 spawn 选项（detached 的唯一权威处）                                                         |
+| `apps/server/src/daemon/Services/Broker.ts`                            | 新建。`DaemonBrokerShape` 接口 + ServiceMap tag                                                          |
+| `apps/server/src/daemon/Layers/Broker.ts`                              | 新建。broker 实现：记录表、launch、settle、waitUntil、refreshDetached                                    |
+| `apps/server/src/agentGateway/daemonTools.ts`                          | 新建。8 个工具                                                                                           |
+| `apps/server/src/agentGateway/Services/AgentGatewaySessionRegistry.ts` | 改。加 `daemon:control`                                                                                  |
 
 拆分理由：`spawnOptions.ts` 单独成文件，是因为 findings.md 第 1 条那个静默 bug 的唯一防线就是"detached 选项只有一处定义、且有测试盯着"。`DaemonLog` 与 `readiness` 独立是因为两者都能脱离进程完整测试。
 
@@ -55,11 +55,13 @@
 ## Task 1: 守护进程契约 schema
 
 **Files:**
+
 - Create: `packages/contracts/src/daemon.ts`
 - Test: `packages/contracts/src/daemon.test.ts`
 - Modify: `packages/contracts/src/index.ts`（照既有方式 re-export）
 
 **Interfaces:**
+
 - Produces: `DaemonState`、`DaemonRestartPolicy`、`DaemonReadySpec`、`DaemonSpec`、`DaemonSnapshot`、`DAEMON_NAME_MAX_LENGTH = 48`、`DAEMON_LOGS_DEFAULT_LINES = 100`、`DAEMON_LOGS_MAX_LINES = 1000`
 
 - [ ] **Step 1: 写失败测试**
@@ -181,12 +183,14 @@ git commit -m "feat(contracts): add daemon spec and snapshot schemas"
 ## Task 2: 按键表、信号白名单、重启退避
 
 **Files:**
+
 - Create: `packages/shared/src/daemonKeys.ts`
 - Create: `packages/shared/src/daemonRestart.ts`
 - Test: `packages/shared/src/daemonKeys.test.ts`、`packages/shared/src/daemonRestart.test.ts`
 - Modify: `packages/shared/package.json`
 
 **Interfaces:**
+
 - Produces:
   - `resolveTerminalKey(name: string): string | null` —— `"CTRL_C"` → `"\x03"`，未知名返回 `null`
   - `TERMINAL_KEY_NAMES: readonly string[]` —— 供工具 schema 生成 enum
@@ -319,10 +323,12 @@ git commit -m "feat(shared): add daemon key table, signal whitelist, and restart
 ## Task 3: 跨平台 spawn 选项（detached 的唯一权威处）
 
 **Files:**
+
 - Create: `apps/server/src/daemon/spawnOptions.ts`
 - Test: `apps/server/src/daemon/spawnOptions.test.ts`
 
 **Interfaces:**
+
 - Produces: `daemonSpawnOptions(input: { detached: boolean; platform: NodeJS.Platform; logFd: number }): SpawnOptions`
 
 这是全仓**唯一**决定 detached 行为的地方。findings.md 第 1 条那个静默 bug 的防线就是这个文件加它的测试。
@@ -397,6 +403,7 @@ git commit -m "feat(server): add cross-platform daemon spawn options"
 ## Task 4: 真实存活性集成测试
 
 **Files:**
+
 - Create: `apps/server/src/daemon/detachedSurvival.test.ts`
 - Create: `apps/server/src/daemon/testFixtures/tickingChild.cjs`
 
@@ -432,10 +439,12 @@ git commit -m "test(server): pin detached child survival across parent exit"
 ## Task 5: DaemonLog —— 文件落盘、轮转、游标读取
 
 **Files:**
+
 - Create: `apps/server/src/daemon/DaemonLog.ts`
 - Test: `apps/server/src/daemon/DaemonLog.test.ts`
 
 **Interfaces:**
+
 - Consumes: `sliceHistorySince` from `@synara/shared/backgroundServiceSession`
 - Produces:
   - `DaemonLog.open(dir: string): Promise<DaemonLog>` —— 打开 `output.log`，已存在则先移为 `output.prev.log`
@@ -478,16 +487,19 @@ git commit -m "feat(server): add rotating daemon log with byte-cursor reads"
 ## Task 6: 就绪探针
 
 **Files:**
+
 - Create: `apps/server/src/daemon/readiness.ts`
 - Test: `apps/server/src/daemon/readiness.test.ts`
 
 **Interfaces:**
+
 - Produces:
   - `createReadinessTracker(spec: DaemonReadySpec | null): ReadinessTracker`
   - `interface ReadinessTracker { feedOutput(chunk: string): void; markPortReady(): void; readonly isReady: boolean; readonly pending: readonly ("log"|"port")[]; }`
   - `connectPort(input: { host: string; port: number; timeoutMs: number }): Promise<boolean>`
 
 要点：
+
 - `log` 正则只对**有界 `readinessBuffer`**（保留最近 N KB）匹配，绝不对全量历史反复跑
 - 正则编译失败时不得抛穿到进程外——视为该条件永不满足，并记录原因
 - 两个条件都声明时**必须都满足**；`pending` 报告还差哪些
@@ -508,11 +520,13 @@ git commit -m "feat(server): add daemon readiness probes for log and port"
 ## Task 7: DaemonBroker —— 记录表、状态机、launch/settle
 
 **Files:**
+
 - Create: `apps/server/src/daemon/Services/Broker.ts`（接口 + ServiceMap tag）
 - Create: `apps/server/src/daemon/Layers/Broker.ts`（实现）
 - Test: `apps/server/src/daemon/Layers/Broker.test.ts`
 
 **Interfaces:**
+
 - Consumes: Task 1 的 schema、Task 2 的退避、Task 3 的 spawn 选项、Task 5 的 `DaemonLog`、Task 6 的就绪探针
 - Produces `DaemonBrokerShape`：
   - `start(spec: DaemonSpec): Effect<DaemonSnapshot, DaemonError>`
@@ -548,13 +562,16 @@ git commit -m "feat(server): add daemon broker with state machine and restart po
 ## Task 8: detached 元数据持久化与重启认领
 
 **Files:**
+
 - Modify: `apps/server/src/daemon/Layers/Broker.ts`
 - Test: `apps/server/src/daemon/Layers/Broker.detached.test.ts`
 
 **Interfaces:**
+
 - Produces（`DaemonBrokerShape` 新增）：`reclaimDetached: Effect<readonly DaemonSnapshot[], never>`
 
 **关键实现点：**
+
 - `DaemonSpec` + `pid` + **进程身份**（`startedAt` + `commandLine`）+ `outputOffset` 落盘到 `<dir>/daemon.json`
 - `#refreshDetached`：先从 `outputOffset` 增量读日志文件，再校验进程身份；不匹配则 `#settle`
 - `reclaimDetached` 在 broker 启动时调用一次，重建记录表
@@ -563,9 +580,9 @@ git commit -m "feat(server): add daemon broker with state machine and restart po
 
 新建 `apps/server/src/daemon/processIdentity.ts`：
 
-| 平台 | 取身份的方式 |
-|---|---|
-| POSIX | `ps -p <pids> -o pid=,lstart=,command=`（沿用既有 `spawnSync` + 解析 + 可注入依赖的写法） |
+| 平台    | 取身份的方式                                                                                                                                |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| POSIX   | `ps -p <pids> -o pid=,lstart=,command=`（沿用既有 `spawnSync` + 解析 + 可注入依赖的写法）                                                   |
 | Windows | 一次 PowerShell CIM 批量查询：`Get-CimInstance Win32_Process -Filter "ProcessId=N or ..."`，取 `ProcessId` / `CreationDate` / `CommandLine` |
 
 - **批量查询**：一次调用覆盖所有被跟踪的 pid。PowerShell 启动约 200–400ms，逐个查会随守护进程数线性劣化；该检查只在 `list`/`describe`/`wait` 路径上跑，不在热路径
@@ -588,6 +605,7 @@ git commit -m "feat(server): persist and reclaim detached daemons across restart
 ## Task 9: `daemon:control` 能力
 
 **Files:**
+
 - Modify: `apps/server/src/agentGateway/Services/AgentGatewaySessionRegistry.ts:4-9`
 - Modify: 各签发点（`rg -n '"browser:control"' apps/server/src` 逐一比照）
 
@@ -605,24 +623,26 @@ git commit -am "feat(server): add daemon:control agent gateway capability"
 ## Task 10: 8 个 Agent 工具
 
 **Files:**
+
 - Create: `apps/server/src/agentGateway/daemonTools.ts`
 - Test: `apps/server/src/agentGateway/daemonTools.test.ts`
 - Modify: 工具注册处（`rg -n "makeThreadReadTools" apps/server/src` 定位）
 
 **Interfaces:**
+
 - Consumes: `DaemonBrokerShape`（Task 7/8）、`resolveTerminalKey` / `isAllowedSignal`（Task 2）、`SYNARA_GATEWAY_MAX_WAIT_MS`
 - Produces: `makeDaemonTools(input: { broker: DaemonBrokerShape }): ReadonlyArray<ToolEntry>`
 
-| 工具 | 对应 op | annotations |
-|---|---|---|
-| `synara_start_daemon` | `start` | `WRITE_TOOL_ANNOTATIONS` |
-| `synara_list_daemons` | `ps` | `READ_ONLY_TOOL_ANNOTATIONS` |
-| `synara_describe_daemon` | `describe` | `READ_ONLY_TOOL_ANNOTATIONS` |
-| `synara_read_daemon_logs` | `logs` | `readOnlyHint: false`（`follow` 会阻塞） |
-| `synara_send_daemon_input` | `send` | `WRITE_TOOL_ANNOTATIONS` |
-| `synara_wait_daemon` | `wait` | `readOnlyHint: false` |
-| `synara_stop_daemon` | `stop` | `WRITE_TOOL_ANNOTATIONS` |
-| `synara_restart_daemon` | `restart` | `WRITE_TOOL_ANNOTATIONS` |
+| 工具                       | 对应 op    | annotations                              |
+| -------------------------- | ---------- | ---------------------------------------- |
+| `synara_start_daemon`      | `start`    | `WRITE_TOOL_ANNOTATIONS`                 |
+| `synara_list_daemons`      | `ps`       | `READ_ONLY_TOOL_ANNOTATIONS`             |
+| `synara_describe_daemon`   | `describe` | `READ_ONLY_TOOL_ANNOTATIONS`             |
+| `synara_read_daemon_logs`  | `logs`     | `readOnlyHint: false`（`follow` 会阻塞） |
+| `synara_send_daemon_input` | `send`     | `WRITE_TOOL_ANNOTATIONS`                 |
+| `synara_wait_daemon`       | `wait`     | `readOnlyHint: false`                    |
+| `synara_stop_daemon`       | `stop`     | `WRITE_TOOL_ANNOTATIONS`                 |
+| `synara_restart_daemon`    | `restart`  | `WRITE_TOOL_ANNOTATIONS`                 |
 
 `synara_stop_daemon` 的 description 必须含：
 
@@ -655,17 +675,21 @@ Run: `bun fmt && bun lint && bun typecheck`
 
 > `bun fmt` 在 Windows 上会重写全仓行尾，`git status` 会显示 2000+ 假 modified。判断真实改动一律用 `git diff --numstat`，只提交本计划涉及的文件。
 
-- [ ] **Step 4:** 手工验收：起一个真实的 Minecraft 服务端
+- [x] **Step 4:** 手工验收 —— 已固化为 `apps/server/src/daemon/minecraftAcceptance.test.ts`（默认跳过）
 
+> **本步骤原方案有误，已更正。** 原写法用 `detached: true` 起 Minecraft，但 detached 没有 stdin，发不了 `stop`，只剩强杀 —— 正是会损坏世界存档的做法（findings.md 第 15 条）。有状态服务器必须走 supervised PTY。
+
+```bash
+SYNARA_MC_SERVER_DIR="<mc dir>" SYNARA_MC_JAR="<server jar>" \
+  npx vitest run apps/server/src/daemon/minecraftAcceptance.test.ts
 ```
-synara_start_daemon { name: "mc", application: "java", args: ["-Xmx2G","-jar","server.jar","nogui"],
-                      cwd: "<mc dir>", ready: { log: "Done \\(", timeout: 180 }, detached: true }
-synara_read_daemon_logs { name: "mc", lines: 20 }
-synara_send_daemon_input { name: "mc", text: "list" }
-synara_send_daemon_input { name: "mc", text: "stop" }
-synara_wait_daemon { name: "mc", for: "exit", timeout: 60 }
-```
-关闭 Synara，确认 MC 进程仍在；重启 Synara，确认 `synara_list_daemons` 认回它。
+
+两段互补，不让真实存档去承担 detached 的风险：
+
+1. **Minecraft（supervised PTY）**：`start` → 等 `Done \(` 就绪 → 读日志 → `list` 有回应 → `stop` → 等退出 → 确认落盘。清理路径无论断言是否失败都先发 `stop`，绝不留给测试运行器硬杀。
+2. **detached 存活与认领**（一次性 node 进程）：起 detached → `core.dispose()` 模拟 Synara 退出 → 子进程仍在 → 新 broker `reclaimDetached` 按进程身份认回同一 pid → 无人看管期间产生的输出仍可读。
+
+实测（Purpur 1.21.11 / Java 26 / 2026-08-07）：两段全过。服务端自身日志佐证 `Done (9.981s)!` → `There are 0 of a max of 20 players online:` → `Stopping the server` → 三个维度 `All chunks are saved`。
 
 - [ ] **Step 5:** 提交
 

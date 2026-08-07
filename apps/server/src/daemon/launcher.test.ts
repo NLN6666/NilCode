@@ -182,6 +182,9 @@ describe("pty launch", () => {
     }));
     const launcher = createDaemonLauncher({
       loadPty: async () => ({ spawn }) as unknown as typeof import("node-pty"),
+      // Held identity so this case stays about args/cwd/env passthrough; PATH
+      // resolution has its own two cases below.
+      resolveApplication: (command) => command,
     });
 
     const handle = await launcher.launch({
@@ -214,6 +217,48 @@ describe("pty launch", () => {
     const exited = exitOf(handle);
     listeners.exit?.({ exitCode: 0, signal: undefined });
     expect((await exited).code).toBe(0);
+  });
+
+  it("resolves a bare command through PATH before handing it to node-pty", async () => {
+    // node-pty does not search PATH the way child_process does. Measured against a real
+    // Purpur server: `application: "java"` died with "File not found: java" — and a bare
+    // command name is exactly what an agent writes.
+    const spawn = vi.fn(() => ({
+      pid: 1,
+      write: vi.fn(),
+      kill: vi.fn(),
+      onData: vi.fn(),
+      onExit: vi.fn(),
+    }));
+    const launcher = createDaemonLauncher({
+      loadPty: async () => ({ spawn }) as unknown as typeof import("node-pty"),
+      resolveApplication: () => "C:/Program Files/Java/bin/java.exe",
+    });
+
+    await launcher.launch({ spec: decodeSpec({ name: "mc", application: "java" }), dir, log });
+
+    expect((spawn.mock.calls[0] as unknown as string[])[0]).toBe(
+      "C:/Program Files/Java/bin/java.exe",
+    );
+  });
+
+  it("falls back to the raw command when PATH lookup finds nothing", async () => {
+    // Better to let the spawn fail with the platform's own message than to invent one.
+    const spawn = vi.fn(() => ({
+      pid: 1,
+      write: vi.fn(),
+      kill: vi.fn(),
+      onData: vi.fn(),
+      onExit: vi.fn(),
+    }));
+    const launcher = createDaemonLauncher({
+      loadPty: async () => ({ spawn }) as unknown as typeof import("node-pty"),
+      resolveApplication: () => null,
+    });
+
+    await launcher.launch({ spec: decodeSpec({ name: "x", application: "ghost" }), dir, log });
+
+    expect((spawn.mock.calls[0] as unknown as string[])[0]).toBe("ghost");
   });
 });
 

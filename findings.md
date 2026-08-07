@@ -111,7 +111,7 @@ Effect.try({ try: () => handler(args), catch: (error) => error }).pipe(
   Effect.flatMap((effect) => effect),
   Effect.map(mcpToolResultJson),
   Effect.catch((error) => Effect.succeed(mcpToolResultError(errorText(error)))),
-)
+);
 ```
 
 **同一模式在 `agentGateway/automationTools.ts` 也存在**（`Effect.gen` 内 `readStringArg(..., {required:true})` + 尾部 `Effect.catch`），属既有代码，本次未改。若要修，须先补一条"缺参数返回 `isError` 而非整个请求失败"的测试。
@@ -139,3 +139,36 @@ detached 的 stdout/stderr 直接指向 `output.log` 的 fd。若 broker 把 tai
 ## 13. reclaim 时不能轮转日志
 
 `DaemonLog.open` 默认把 `output.log` 移成 `output.prev.log`。认领一个还活着的 detached 守护进程时这样做，会让它继续往一个**已被改名、没人读**的 fd 里写。故 reclaim 必须走 `DaemonLog.open(dir, { reuseExisting: true })`。
+
+---
+
+## 14. node-pty 在 Windows 上不解析 PATH
+
+真实 Purpur 服务端验收时，`application: "java"` 直接失败：
+
+```
+File not found: java
+```
+
+`child_process.spawn` 在 Windows 上会按 PATH + PATHEXT 找 `java.exe`，**node-pty 不会**，它要完整路径。而"写裸命令名"恰恰是 Agent 的默认行为。
+
+**解法：** launcher 在交给 node-pty 前用仓库既有的 `executableLookup.resolveExecutable(command, { env })` 解析；解析不到就原样传下去，让平台自己报错，不要自造错误信息。piped / detached 两条路走 `child_process`，本来就会解析，无需改动。
+
+回归测试：`launcher.test.ts` 的 `resolves a bare command through PATH before handing it to node-pty`。
+
+---
+
+## 15. detached + 有状态服务器 = 危险组合（推翻 plan 016 Task 11 的验收脚本）
+
+plan 016 Task 11 原本写的验收命令用 `detached: true` 起 Minecraft。**那是错的**：
+
+detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了 `stop`；唯一的关停手段是信号，而 Windows 上 Node 的 `process.kill(pid, 'SIGTERM')` 走 `TerminateProcess`，等同硬杀 —— 正是会损坏世界存档的那件事。
+
+**正确分工：**
+
+| 模式                            | 适用                        | 关停方式                       |
+| ------------------------------- | --------------------------- | ------------------------------ |
+| `pty: true`（默认，supervised） | Minecraft 等有状态服务器    | 发自身命令（`stop`），优雅落盘 |
+| `detached: true`                | 无状态服务（dev server 等） | 信号 / 强杀，无所谓            |
+
+实测（`minecraftAcceptance.test.ts`）：supervised PTY 下 `Done (9.981s)!` 命中就绪、`list` 有回应、`stop` 后三个维度 `All chunks are saved`。
