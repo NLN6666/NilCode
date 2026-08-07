@@ -555,14 +555,26 @@ git commit -m "feat(server): add daemon broker with state machine and restart po
 - Produces（`DaemonBrokerShape` 新增）：`reclaimDetached: Effect<readonly DaemonSnapshot[], never>`
 
 **关键实现点：**
-- `DaemonSpec` + 最后已知 `pid` + `outputOffset` 落盘到 `<dir>/daemon.json`
-- `#refreshDetached`：先从 `outputOffset` 增量读日志文件，再用持久化 pid 探测存活；不存活则 `#settle`
-- 存活探测在 Windows 上不能只靠 `process.kill(pid, 0)`——**pid 会被复用**。须同时校验 `daemon.json` 里记录的启动时间与进程实际启动时间，避免把一个复用了 pid 的无关进程认成自己的守护进程
+- `DaemonSpec` + `pid` + **进程身份**（`startedAt` + `commandLine`）+ `outputOffset` 落盘到 `<dir>/daemon.json`
+- `#refreshDetached`：先从 `outputOffset` 增量读日志文件，再校验进程身份；不匹配则 `#settle`
 - `reclaimDetached` 在 broker 启动时调用一次，重建记录表
+
+**pid 复用防护（照 omp 的做法）：** oh-my-pi 在 macOS 上持久化 `start_tvsec`/`start_tvusec` 并在 `status()` 里比对，Linux 用 `pidfd`（天然免疫）。**Windows 两边都没覆盖**——本仓库既有的 `processTreeKiller.readCurrentCommands` 用 `ps`，在 Windows 上直接返回 `null`。
+
+新建 `apps/server/src/daemon/processIdentity.ts`：
+
+| 平台 | 取身份的方式 |
+|---|---|
+| POSIX | `ps -p <pids> -o pid=,lstart=,command=`（沿用既有 `spawnSync` + 解析 + 可注入依赖的写法） |
+| Windows | 一次 PowerShell CIM 批量查询：`Get-CimInstance Win32_Process -Filter "ProcessId=N or ..."`，取 `ProcessId` / `CreationDate` / `CommandLine` |
+
+- **批量查询**：一次调用覆盖所有被跟踪的 pid。PowerShell 启动约 200–400ms，逐个查会随守护进程数线性劣化；该检查只在 `list`/`describe`/`wait` 路径上跑，不在热路径
+- 纯函数 `processIdentityMatches(persisted, current): boolean` 单独导出并测试，平台查询作为可注入依赖 mock 掉
+- **查询失败（命令不可用/超时）时必须返回"未知"而非"已退出"**——把一个活着的 MC 服务器误判成已退出，会让 Agent 去重启它，于是同一个世界存档被两个进程同时写入
 
 - [ ] **Step 1: 写失败测试**
 
-覆盖：落盘后重建 broker 能认回运行中的 detached 进程 / 进程已死时认领后状态为 exited / 日志从 `outputOffset` 继续读且不重复 / **pid 复用不会被误认**（构造一个 pid 相同但启动时间不同的记录）。
+覆盖：落盘后重建 broker 能认回运行中的 detached 进程 / 进程已死时认领后状态为 exited / 日志从 `outputOffset` 继续读且不重复 / **pid 复用不会被误认**（构造一个 pid 相同但启动时间不同的记录）/ **身份查询失败时状态保持未知而不是 exited**（否则会导致同一存档被两个进程写入）。
 
 - [ ] **Step 2–5:** 跑失败 → 实现 → 跑通过 → 提交
 
