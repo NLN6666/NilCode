@@ -46,6 +46,7 @@ import {
   SettingsSelectControl,
   useSettingsRestoreSignal,
 } from "./SettingControls";
+import { AdvisorSettingsSection } from "./AdvisorSettingsSection";
 import { SettingsRow, SettingsSection, SettingsSelectPopup } from "./SettingsPanelPrimitives";
 
 /** Locale-free reason a custom slug was rejected; the panel maps it to copy. */
@@ -423,6 +424,8 @@ export function ModelsSettingsPanel({
           }
         />
       </SettingsSection>
+
+      <AdvisorSettingsSection />
 
       <SettingsSection title={m.settings.models.defaults.title}>
         <SettingsRow

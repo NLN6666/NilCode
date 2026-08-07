@@ -929,6 +929,26 @@ export const settings = {
       refreshFailedTitle: "Could not refresh the model catalog",
       refreshFailedDescription: "The refresh request failed.",
     },
+    advisor: {
+      title: "Advisor",
+      enabled: {
+        title: "Watch and advise",
+        description:
+          "A second model watches what the agent does and speaks up when it sees a problem. It has no tools: it cannot read files, edit anything, or run commands, and it only sees a summary of the activity you see.",
+        ariaLabel: "Enable the advisor",
+      },
+      model: {
+        title: "Advisor model",
+        description:
+          "Only Codex and Claude can be interrupted mid-turn without discarding the work, so the advisor is limited to those.",
+        ariaLabel: "Advisor model",
+      },
+      severities: {
+        nit: "Nit",
+        concern: "Concern",
+        blocker: "Blocker",
+      },
+    },
     generationDefaults: {
       title: "Generation defaults",
       gitWritingModel: {
