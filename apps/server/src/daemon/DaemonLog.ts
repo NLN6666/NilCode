@@ -42,6 +42,13 @@ export interface DaemonLogRead {
 export interface DaemonLogOptions {
   readonly maxBytes?: number;
   readonly readBytes?: number;
+  /**
+   * Keep the existing log instead of rotating it aside on open.
+   *
+   * Required when reclaiming a detached daemon: that process still holds an fd to this
+   * exact file, so renaming it would leave the daemon writing to a log nobody reads.
+   */
+  readonly reuseExisting?: boolean;
 }
 
 export class DaemonLog {
@@ -63,8 +70,13 @@ export class DaemonLog {
    * loop's first failure is still readable after the relaunch overwrote the log.
    */
   static async open(dir: string, options: DaemonLogOptions = {}): Promise<DaemonLog> {
-    const log = new DaemonLog(dir, options.maxBytes ?? MAX_LOG_BYTES, options.readBytes ?? LOG_READ_BYTES);
-    await log.rotate();
+    const log = new DaemonLog(
+      dir,
+      options.maxBytes ?? MAX_LOG_BYTES,
+      options.readBytes ?? LOG_READ_BYTES,
+    );
+    if (options.reuseExisting === true) await log.refreshFromDisk();
+    else await log.rotate();
     log.handle = await open(log.activePath, "a");
     return log;
   }
@@ -80,6 +92,11 @@ export class DaemonLog {
   /** Total bytes ever written. Doubles as the read cursor exposed to callers. */
   get outputBytes(): number {
     return this.totalBytes;
+  }
+
+  /** Path of the file currently being written. A detached tailer reads from here. */
+  get filePath(): string {
+    return this.activePath;
   }
 
   /** File descriptor a detached child inherits for stdout and stderr. */

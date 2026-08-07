@@ -18,7 +18,17 @@ import { restartDelayMs } from "@synara/shared/daemonRestart";
 
 import { DaemonLog } from "./DaemonLog";
 import { createReadinessTracker, type ReadinessTracker } from "./readiness";
-import type { ProcessIdentityMap } from "./processIdentity";
+import {
+  resolveIdentityLiveness,
+  type ProcessIdentity,
+  type ProcessIdentityMap,
+} from "./processIdentity";
+import {
+  daemonDirectory,
+  listPersistedDaemons,
+  removeDaemonMetadata,
+  writeDaemonMetadata,
+} from "./persistence";
 
 export interface DaemonExitResult {
   readonly code: number | null;
@@ -27,6 +37,15 @@ export interface DaemonExitResult {
 
 export interface DaemonProcessHandle {
   readonly pid: number;
+  /**
+   * True when the child writes the log file itself through an inherited fd.
+   *
+   * Detached daemons do exactly that, and their output reaches the broker only as a
+   * replay from that same file. Appending it again would double every line.
+   */
+  readonly writesOwnLog?: boolean;
+  /** Bytes of log already replayed, persisted so a later reclaim resumes from here. */
+  readonly consumedBytes?: number;
   write(data: string): void;
   signalSelf(signal: string): void;
   killTree(signal: string): void;
@@ -40,6 +59,13 @@ export interface DaemonLauncher {
     dir: string;
     log: DaemonLog;
   }): Promise<DaemonProcessHandle>;
+
+  /** Re-adopt a detached process recorded by a previous server run. */
+  reclaim(input: {
+    identity: ProcessIdentity;
+    log: DaemonLog;
+    outputOffset: number;
+  }): DaemonProcessHandle;
 }
 
 export interface BrokerCoreOptions {
@@ -121,6 +147,7 @@ export interface BrokerCore {
   }): Promise<{ snapshot: DaemonSnapshot; matched: boolean; timedOut: boolean }>;
   stop(input: { name: string; timeoutMs: number }): Promise<DaemonSnapshot>;
   restart(name: string): Promise<DaemonSnapshot>;
+  reclaimDetached(): Promise<DaemonSnapshot[]>;
   dispose(): Promise<void>;
 }
 
@@ -161,10 +188,17 @@ export function createBrokerCore(options: BrokerCoreOptions): BrokerCore {
     record.waiters = remaining;
   }
 
-  function handleOutput(record: ManagedDaemon, generation: number, chunk: string): void {
+  function handleOutput(
+    record: ManagedDaemon,
+    generation: number,
+    chunk: string,
+    writesOwnLog: boolean,
+  ): void {
     if (generation !== record.generation) return;
 
-    void record.log.append(chunk);
+    // Captured at launch rather than read off `record.process`, which settle() nulls:
+    // a tailer flushing its last chunk after exit must still not double-write.
+    if (!writesOwnLog) void record.log.append(chunk);
 
     if (record.snapshot.state === "starting") {
       record.readiness.feedOutput(chunk);
@@ -196,6 +230,10 @@ export function createBrokerCore(options: BrokerCoreOptions): BrokerCore {
     // A superseded generation's exit must not touch the live one: without this guard a
     // relaunch races its predecessor's callback and the fresh process is marked dead.
     if (generation !== record.generation) return;
+
+    // A dead daemon must not be reclaimed on the next boot: its pid is free to be
+    // handed to something else the moment it exits.
+    if (record.spec.detached) void removeDaemonMetadata(record.dir).catch(() => undefined);
 
     record.process = null;
     record.snapshot.exitCode = result.code;
@@ -261,10 +299,37 @@ export function createBrokerCore(options: BrokerCoreOptions): BrokerCore {
       record.snapshot.restartCount = generation - 1;
     }
 
-    handle.onOutput((chunk) => handleOutput(record, generation, chunk));
+    const writesOwnLog = handle.writesOwnLog === true;
+    handle.onOutput((chunk) => handleOutput(record, generation, chunk, writesOwnLog));
     handle.onExit((result) => settle(record, generation, result));
 
     if (record.snapshot.state === "starting" && record.readiness.isReady) markReady(record);
+
+    if (record.spec.detached) await persist(record);
+  }
+
+  /**
+   * Record a detached daemon so the next server boot can find it.
+   *
+   * The identity — not just the pid — is what gets written: pids are recycled, and a
+   * reclaim that trusted the number alone would eventually adopt, and later kill, some
+   * unrelated process the user is running.
+   */
+  async function persist(record: ManagedDaemon): Promise<void> {
+    const pid = record.snapshot.pid;
+    if (pid === null) return;
+    const identity = options.readIdentities([pid])?.get(pid);
+    await writeDaemonMetadata(record.dir, {
+      spec: record.spec,
+      id: record.snapshot.id,
+      identity: identity ?? { pid, startedAt: null, commandLine: "" },
+      createdAt: record.snapshot.createdAt,
+      startedAt: record.snapshot.startedAt,
+      outputOffset: record.process?.consumedBytes ?? 0,
+    }).catch(() => {
+      // Losing the record costs a reclaim, not the daemon. Failing the launch over it
+      // would be the worse trade.
+    });
   }
 
   return {
@@ -281,7 +346,7 @@ export function createBrokerCore(options: BrokerCoreOptions): BrokerCore {
         return publish(existing);
       }
 
-      const dir = path.join(options.rootDir, "daemons", spec.name);
+      const dir = daemonDirectory(options.rootDir, spec.name);
       await mkdir(dir, { recursive: true });
       idCounter += 1;
 
@@ -465,10 +530,91 @@ export function createBrokerCore(options: BrokerCoreOptions): BrokerCore {
       return publish(record);
     },
 
+    /**
+     * Re-adopt every detached daemon a previous server run recorded.
+     *
+     * The three outcomes of the identity check are deliberately asymmetric. A pid whose
+     * identity matches is adopted live; a pid that is gone, or now belongs to something
+     * else, is recorded as exited and its metadata dropped. A query that *failed* leaves
+     * the daemon adopted as running: claiming a live Minecraft server had exited would
+     * lead the agent to relaunch it, and two processes on one world save is a far worse
+     * outcome than a status that is merely stale.
+     */
+    async reclaimDetached(): Promise<DaemonSnapshot[]> {
+      const discovered = await listPersistedDaemons(options.rootDir);
+      const fresh = discovered.filter((entry) => !records.has(entry.record.spec.name));
+      if (fresh.length === 0) return [];
+
+      // One batched query for every pid: each platform call costs hundreds of
+      // milliseconds, so per-daemon queries would scale badly on a busy machine.
+      const identities = options.readIdentities(fresh.map((entry) => entry.record.identity.pid));
+      const reclaimed: DaemonSnapshot[] = [];
+
+      for (const { dir, record: persisted } of fresh) {
+        const liveness = resolveIdentityLiveness(persisted.identity, identities);
+        if (liveness === "exited") {
+          await removeDaemonMetadata(dir).catch(() => undefined);
+          continue;
+        }
+
+        const log = await DaemonLog.open(dir, { reuseExisting: true });
+        await log.refreshFromDisk();
+        idCounter += 1;
+
+        const record: ManagedDaemon = {
+          spec: persisted.spec,
+          dir,
+          log,
+          process: null,
+          // A reclaimed daemon is long past its startup banner; re-running the readiness
+          // probe would strand it in `starting` waiting for a line already scrolled by.
+          readiness: createReadinessTracker(null),
+          generation: 1,
+          consecutiveFailures: 0,
+          restartTimer: null,
+          stopRequested: false,
+          launchedAtMs: Date.now(),
+          waiters: [],
+          snapshot: {
+            name: persisted.spec.name,
+            id: persisted.id,
+            state: "running",
+            pid: persisted.identity.pid,
+            createdAt: persisted.createdAt,
+            startedAt: persisted.startedAt,
+            readyAt: null,
+            exitedAt: null,
+            exitCode: null,
+            exitReason: null,
+            restartCount: 0,
+            outputBytes: log.outputBytes,
+            readyPending: [],
+          },
+        };
+
+        const handle = options.launcher.reclaim({
+          identity: persisted.identity,
+          log,
+          outputOffset: persisted.outputOffset,
+        });
+        record.process = handle;
+        handle.onOutput((chunk) => handleOutput(record, record.generation, chunk, true));
+        handle.onExit((result) => settle(record, record.generation, result));
+
+        records.set(persisted.spec.name, record);
+        reclaimed.push(publish(record));
+      }
+
+      return reclaimed;
+    },
+
     async dispose(): Promise<void> {
       for (const record of records.values()) {
         if (record.restartTimer !== null) clearTimeout(record.restartTimer);
         settleWaiters(record, () => true, { matched: false, timedOut: false });
+        // Checkpoint how much log a live detached daemon has already replayed, so the
+        // next boot resumes from there instead of re-reading the whole file.
+        if (record.spec.detached && record.process !== null) await persist(record);
         await record.log.close();
       }
       records.clear();

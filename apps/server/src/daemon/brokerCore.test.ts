@@ -24,6 +24,10 @@ class FakeLauncher {
     return proc;
   });
 
+  reclaim = vi.fn((): DaemonProcessHandle => {
+    throw new Error("this suite never reclaims; see reclaim.test.ts");
+  });
+
   get latest(): FakeProcess {
     const proc = this.launched.at(-1);
     if (proc === undefined) throw new Error("nothing launched yet");
@@ -412,5 +416,52 @@ describe("list and describe", () => {
 
   it("raises a typed error for an unknown name", () => {
     expect(() => core.describe("nope")).toThrow(/nope/u);
+  });
+});
+
+describe("log ownership", () => {
+  function launchSelfLogging(pid: number): void {
+    launcher.launch = vi.fn(async () => {
+      const proc = new FakeProcess(pid);
+      Object.assign(proc, { writesOwnLog: true });
+      launcher.launched.push(proc);
+      return proc;
+    });
+  }
+
+  it("does not append output for a handle that writes the log itself", async () => {
+    // A detached child holds the log fd directly. Appending its output a second time
+    // here would duplicate every line in the file it is already writing.
+    launchSelfLogging(9_001);
+
+    await core.start(decodeSpec({ name: "mc", application: "java", detached: true }));
+    launcher.latest.emitOutput("line from the child\n");
+    await vi.advanceTimersByTimeAsync(0);
+
+    const read = await core.logs({
+      name: "mc",
+      lines: 100,
+      head: false,
+      grep: null,
+      follow: false,
+      cursor: 0,
+      timeoutMs: 0,
+    });
+    expect(read.content).toBe("");
+  });
+
+  it("still feeds readiness from a self-logging handle", async () => {
+    // Skipping the append must not also skip the readiness probe: a detached daemon's
+    // only ready signal is the text its log tailer replays.
+    launchSelfLogging(9_002);
+
+    await core.start(
+      decodeSpec({ name: "mc", application: "java", detached: true, ready: { log: "Done \\(" } }),
+    );
+    expect(core.describe("mc").state).toBe("starting");
+
+    launcher.latest.emitOutput('[12:00:00] Done (3.2s)! For help, type "help"\n');
+
+    expect(core.describe("mc").state).toBe("ready");
   });
 });
