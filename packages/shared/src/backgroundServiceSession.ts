@@ -1,0 +1,110 @@
+// FILE: backgroundServiceSession.ts
+// Purpose: Session-id codec and history cursor slicing for background service sessions.
+// Layer: Shared runtime utility
+// Exports: encodeBackgroundSessionId, decodeBackgroundSessionId, sliceHistorySince.
+//
+// A session id is opaque to the agent on purpose. Scope thread ids are synthetic
+// (`project-service:<projectId>`), so handing the model a separate threadId and
+// terminalId would let it assemble a scope of its own and slip past the naming
+// rule that keeps project services project-wide. Ids are only ever minted by the
+// list/start tools; the agent hands them back verbatim.
+
+const SESSION_ID_SEPARATOR = "\u0000";
+
+export function encodeBackgroundSessionId(threadId: string, terminalId: string): string {
+  return `${threadId}${SESSION_ID_SEPARATOR}${terminalId}`;
+}
+
+export function decodeBackgroundSessionId(
+  sessionId: string,
+): { threadId: string; terminalId: string } | null {
+  const parts = sessionId.split(SESSION_ID_SEPARATOR);
+  if (parts.length !== 2) return null;
+  const [threadId, terminalId] = parts;
+  if (!threadId || !terminalId) return null;
+  return { threadId, terminalId };
+}
+
+export interface HistorySlice {
+  content: string;
+  nextCursor: number;
+  droppedBytes: number;
+  /** True when `maxBytes` cut the slice short, so a follow-up read has more waiting. */
+  truncated: boolean;
+}
+
+/**
+ * Resolve an absolute byte cursor against the retained scrollback.
+ *
+ * The dropped total is *derived*, never maintained: `appendedBytes` only grows,
+ * and the retained byte count already reflects both trimming passes (chunk
+ * eviction on append, `capHistoryByLimits` on read). Subtracting one from the
+ * other stays correct no matter how the buffer trimmed itself, which removes the
+ * whole class of "forgot to update the dropped counter" bugs.
+ */
+export function sliceHistorySince(input: {
+  retained: string;
+  appendedBytes: number;
+  cursor: number;
+  maxBytes: number;
+}): HistorySlice {
+  const retained = Buffer.from(input.retained, "utf8");
+  const retainedBytes = retained.byteLength;
+  const droppedTotal = Math.max(0, input.appendedBytes - retainedBytes);
+  const cursor = Math.max(0, Math.min(input.cursor, input.appendedBytes));
+
+  const droppedBytes = cursor < droppedTotal ? droppedTotal - cursor : 0;
+  const startInRetained = cursor < droppedTotal ? 0 : cursor - droppedTotal;
+
+  if (startInRetained >= retainedBytes) {
+    return { content: "", nextCursor: input.appendedBytes, droppedBytes, truncated: false };
+  }
+
+  const start = alignToCharStart(retained, startInRetained);
+  const takeBytes = Math.min(retainedBytes - start, Math.max(0, input.maxBytes));
+  const end = alignToCharEnd(retained, start + takeBytes);
+
+  return {
+    content: retained.subarray(start, end).toString("utf8"),
+    nextCursor: droppedTotal + end,
+    droppedBytes,
+    truncated: end < retainedBytes,
+  };
+}
+
+/** True when the byte at `offset` is a UTF-8 continuation byte (`10xxxxxx`). */
+function isContinuationByte(buffer: Buffer, offset: number): boolean {
+  return (buffer[offset]! & 0b1100_0000) === 0b1000_0000;
+}
+
+/**
+ * Move a start offset *forward* to the next character boundary, skipping the
+ * tail of a character the cursor landed inside.
+ *
+ * Stopping on a continuation byte makes `toString` emit a U+FFFD replacement
+ * character, which corrupts the log text and makes the agent believe the server
+ * printed garbage.
+ */
+function alignToCharStart(buffer: Buffer, offset: number): number {
+  let aligned = Math.max(0, Math.min(offset, buffer.byteLength));
+  while (aligned < buffer.byteLength && isContinuationByte(buffer, aligned)) {
+    aligned += 1;
+  }
+  return aligned;
+}
+
+/**
+ * Move an end offset *backward* to the previous character boundary.
+ *
+ * The opposite direction from `alignToCharStart` on purpose: the end offset is
+ * bounded by `maxBytes`, so rounding it up would hand back more bytes than the
+ * caller asked for. Rounding down drops the partial trailing character, and the
+ * next read picks it up whole.
+ */
+function alignToCharEnd(buffer: Buffer, offset: number): number {
+  let aligned = Math.max(0, Math.min(offset, buffer.byteLength));
+  while (aligned > 0 && aligned < buffer.byteLength && isContinuationByte(buffer, aligned)) {
+    aligned -= 1;
+  }
+  return aligned;
+}

@@ -73,6 +73,8 @@ import { makeAgentGatewayBrowserTools } from "../browserTools.ts";
 import { BrowserAutomationHost } from "../../browserAutomation/Services/BrowserAutomationHost.ts";
 import { makeBrowserAutomationHost } from "../../browserAutomation/Layers/BrowserAutomationHost.ts";
 import { makeThreadReadTools } from "../threadReadTools.ts";
+import { makeDaemonTools } from "../daemonTools.ts";
+import { DaemonBroker } from "../../daemon/Services/Broker.ts";
 import { makeThreadDiagnosticTools } from "../threadDiagnosticTools.ts";
 import { pruneProjectedArchivedManagedWorktrees } from "../../managedWorktrees.ts";
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
@@ -104,6 +106,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     yield* Effect.serviceOption(BrowserAutomationHost),
     () => makeBrowserAutomationHost({}),
   );
+  const daemonBroker = yield* Effect.serviceOption(DaemonBroker);
   const loadProviderAvailabilities = Effect.gen(function* () {
     const [settings, statuses] = yield* Effect.all([
       serverSettings.getSettings,
@@ -637,6 +640,12 @@ export const makeAgentGateway = Effect.gen(function* () {
     setThreadArchived,
     ...automationTools,
     ...browserTools,
+    // Daemon supervision is optional: a deployment without the broker layer simply
+    // does not advertise the tools, rather than advertising ones that always fail.
+    ...Option.match(daemonBroker, {
+      onNone: () => [] as ReadonlyArray<ToolEntry>,
+      onSome: (broker) => makeDaemonTools({ broker }),
+    }),
   ];
   return {
     handleMcpPost: makeAgentGatewayMcpTransport({

@@ -1,0 +1,121 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  decodeBackgroundSessionId,
+  encodeBackgroundSessionId,
+  sliceHistorySince,
+} from "./backgroundServiceSession";
+
+describe("backgroundSessionId", () => {
+  it("round-trips a synthetic project-service scope", () => {
+    const id = encodeBackgroundSessionId("project-service:p1", "erp-seed");
+    expect(decodeBackgroundSessionId(id)).toEqual({
+      threadId: "project-service:p1",
+      terminalId: "erp-seed",
+    });
+  });
+
+  it("round-trips an agent-scoped ad hoc terminal id", () => {
+    const id = encodeBackgroundSessionId("thread-42", "agent:minecraft");
+    expect(decodeBackgroundSessionId(id)).toEqual({
+      threadId: "thread-42",
+      terminalId: "agent:minecraft",
+    });
+  });
+
+  it("returns null for malformed input instead of guessing", () => {
+    expect(decodeBackgroundSessionId("no-separator")).toBeNull();
+    expect(decodeBackgroundSessionId("")).toBeNull();
+    expect(decodeBackgroundSessionId("\u0000only-terminal")).toBeNull();
+    expect(decodeBackgroundSessionId("only-thread\u0000")).toBeNull();
+    expect(decodeBackgroundSessionId("a\u0000b\u0000c")).toBeNull();
+  });
+});
+
+describe("sliceHistorySince", () => {
+  const base = { retained: "hello world", appendedBytes: 11, maxBytes: 1000 };
+
+  it("returns the whole retained buffer from cursor zero", () => {
+    expect(sliceHistorySince({ ...base, cursor: 0 })).toEqual({
+      content: "hello world",
+      nextCursor: 11,
+      droppedBytes: 0,
+      truncated: false,
+    });
+  });
+
+  it("returns only the delta once the cursor has advanced", () => {
+    expect(sliceHistorySince({ ...base, cursor: 6 })).toEqual({
+      content: "world",
+      nextCursor: 11,
+      droppedBytes: 0,
+      truncated: false,
+    });
+  });
+
+  it("reports dropped bytes when the cursor falls inside the evicted range", () => {
+    // 100 bytes were appended but only the last 11 survive, so 89 were dropped.
+    const result = sliceHistorySince({
+      retained: "hello world",
+      appendedBytes: 100,
+      cursor: 10,
+      maxBytes: 1000,
+    });
+    expect(result.droppedBytes).toBe(79);
+    expect(result.content).toBe("hello world");
+    expect(result.nextCursor).toBe(100);
+  });
+
+  it("never splits a multi-byte character at the start boundary", () => {
+    // "你好" is six bytes; starting at byte 1 lands inside U+4F60.
+    const result = sliceHistorySince({
+      retained: "你好",
+      appendedBytes: 6,
+      cursor: 1,
+      maxBytes: 1000,
+    });
+    expect(result.content).not.toContain("�");
+    expect(result.content).toBe("好");
+    expect(result.nextCursor).toBe(6);
+  });
+
+  it("backs off to a character boundary when maxBytes truncates", () => {
+    const result = sliceHistorySince({
+      retained: "你好世界",
+      appendedBytes: 12,
+      cursor: 0,
+      maxBytes: 7,
+    });
+    expect(result.content).toBe("你好");
+    expect(result.nextCursor).toBe(6);
+    expect(result.truncated).toBe(true);
+  });
+
+  it("returns nothing and holds the cursor once fully consumed", () => {
+    expect(sliceHistorySince({ ...base, cursor: 11 })).toEqual({
+      content: "",
+      nextCursor: 11,
+      droppedBytes: 0,
+      truncated: false,
+    });
+  });
+
+  it("clamps a cursor from the future back to the appended total", () => {
+    expect(sliceHistorySince({ ...base, cursor: 9999 })).toEqual({
+      content: "",
+      nextCursor: 11,
+      droppedBytes: 0,
+      truncated: false,
+    });
+  });
+
+  it("treats a negative cursor as the beginning", () => {
+    expect(sliceHistorySince({ ...base, cursor: -5 }).content).toBe("hello world");
+  });
+
+  it("handles an empty retained buffer", () => {
+    expect(
+      sliceHistorySince({ retained: "", appendedBytes: 0, cursor: 0, maxBytes: 1000 }),
+    ).toEqual({ content: "", nextCursor: 0, droppedBytes: 0, truncated: false });
+  });
+});

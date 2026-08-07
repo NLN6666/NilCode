@@ -25,6 +25,7 @@ export * from "./externalMcp";
 export * from "./ws";
 export * from "./wsCompatibility";
 export * from "./keybindings";
+export * from "./daemon";
 export * from "./launchConfig";
 export * from "./server";
 export * from "./stats";

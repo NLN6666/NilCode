@@ -4,6 +4,22 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./backgroundServiceMatch": {
+      "types": "./src/backgroundServiceMatch.ts",
+      "import": "./src/backgroundServiceMatch.ts"
+    },
+    "./backgroundServiceSession": {
+      "types": "./src/backgroundServiceSession.ts",
+      "import": "./src/backgroundServiceSession.ts"
+    },
+    "./daemonKeys": {
+      "types": "./src/daemonKeys.ts",
+      "import": "./src/daemonKeys.ts"
+    },
+    "./daemonRestart": {
+      "types": "./src/daemonRestart.ts",
+      "import": "./src/daemonRestart.ts"
+    },
     "./model": {
       "types": "./src/model.ts",
       "import": "./src/model.ts"
