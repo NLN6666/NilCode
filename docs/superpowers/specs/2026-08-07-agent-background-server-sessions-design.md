@@ -186,12 +186,25 @@ PTY 里的 Ctrl+C 与直接投递 SIGTERM 不是一回事，MC 服务端对两�
 | 环节 | 做法 |
 |---|---|
 | spawn | `stdio: ["ignore", logFd, logFd]`——stdin 丢弃，stdout/stderr 直接重定向到日志文件描述符 |
-| 平台差异 | 非 Windows：`detached: true`。**Windows：`detached: false`**，若宿主无可继承控制台则 `windowsHide: true` 保持无窗口 |
+| 平台差异 | **全平台 `detached: true`**，Windows 上同时 `windowsHide: true` 避免弹出控制台窗口。**此处刻意偏离来源实现**，理由见下方实测 |
 | 脱离事件循环 | spawn 后调用 `child.unref()`，使 Node 事件循环可独立退出 |
 | 元数据持久化 | `DaemonSpec` + 最后已知 `pid` 落盘到 `<dir>/daemon.json` |
 | 重启后认领 | `#refreshDetached`：先 `#readDetachedOutput` 从 `outputOffset` 增量读日志文件，再用持久化的 pid 探测存活；不存活则 `#settle` 标记退出 |
 
-Synara 主要运行在 Windows，`detached: false` 意味着**子进程仍属同一进程组**——需实测关闭 Synara 后 MC 服务端是否真的存活。若不存活，须改用 `windowsHide` + 独立进程组标志。**此为本期最大的实现风险，须在 Task 中显式验证，不得假定。**
+### 6.1 偏离来源实现：Windows 上必须 `detached: true`（已实测）
+
+oh-my-pi 的 `DAEMON_SPAWN_OPTIONS` 在 Windows 上使用 `detached: false`。**该选择在 Synara 的技术栈上不成立**，实测如下（Node v24，Windows 11，子进程每 300ms 追加一行到日志文件，父进程 400ms 后退出，3 秒后计数）：
+
+| spawn 选项 | 结果 |
+|---|---|
+| `detached: false` + `unref()` | 1 行——父进程一退子进程即死 |
+| `detached: true` + `unref()` + `windowsHide: true` | 58 行——持续存活 |
+
+差异根源：oh-my-pi 使用 `Bun.spawn`，与 Node 的 `child_process.spawn` 在 Windows 进程组语义上不同。照搬 `detached: false` 会让 detached 功能**在主力平台上静默失效**——进程看似启动成功，Synara 一关全部消失，且无任何错误。
+
+`windowsHide: true` 已覆盖 `detached: true` 会弹出控制台窗口的问题，两者可兼得。
+
+**实现须在测试中固化这一行为**：起真实子进程、杀父进程、验证日志文件继续增长。
 
 ## 7. 权限
 
