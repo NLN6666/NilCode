@@ -7,7 +7,7 @@
 // Layer: Server provider discovery helper
 // Exports: AgentCatalogProvider, AgentRoot, parseCodexAgentToml, agentCatalogRoots,
 //          collectAgentsFromRoots, discoverAgentCatalog, mergeAgentDescriptors,
-//          agentNameKey, clearAgentCatalogCacheForTests
+//          agentNameKey, resolveEnabledClaudePlugins, clearAgentCatalogCacheForTests
 
 import * as fs from "node:fs/promises";
 import * as nodePath from "node:path";
@@ -363,18 +363,101 @@ interface InstalledPluginsFile {
   readonly plugins?: Record<string, ReadonlyArray<InstalledPluginEntry>>;
 }
 
+interface ClaudeSettingsFile {
+  readonly enabledPlugins?: Record<string, boolean>;
+}
+
+// Dirs contributing `enabledPlugins`, lowest precedence first: the home dir,
+// then every cwd ancestor shallowest-first so the closest project settings win.
+// A cwd under the home dir would repeat it; the first (lowest) position is kept,
+// matching how `agentCatalogRoots` dedupes the same overlap.
+function claudeSettingsDirs(input: {
+  readonly homeDir: string;
+  readonly cwd?: string | null;
+}): string[] {
+  const dirs = [input.homeDir];
+  const cwd = input.cwd?.trim();
+  if (cwd) {
+    dirs.push(...ancestorsFromDeepest(cwd).toReversed());
+  }
+
+  const seen = new Set<string>();
+  return dirs.filter((dir) => {
+    const resolved = nodePath.resolve(dir);
+    if (seen.has(resolved)) {
+      return false;
+    }
+    seen.add(resolved);
+    return true;
+  });
+}
+
+async function readEnabledPlugins(settingsPath: string): Promise<Record<string, boolean> | null> {
+  let parsed: ClaudeSettingsFile;
+  try {
+    parsed = JSON.parse(await fs.readFile(settingsPath, "utf8")) as ClaudeSettingsFile;
+  } catch {
+    return null;
+  }
+  const enabled = parsed?.enabledPlugins;
+  return enabled && typeof enabled === "object" && !Array.isArray(enabled) ? enabled : null;
+}
+
+/**
+ * Merged `enabledPlugins` toggles across the settings layers, or `null` when no
+ * layer declares the key at all.
+ *
+ * Installing a plugin only downloads it; Claude Code loads a plugin's subagents
+ * only while that plugin is also enabled, so an installed-but-disabled plugin
+ * leaves its definitions on disk unusable. `null` means "nobody recorded an
+ * opinion" and callers must not filter on it — a user who never toggled a
+ * plugin would otherwise lose every plugin subagent at once.
+ */
+export async function resolveEnabledClaudePlugins(input: {
+  readonly homeDir: string;
+  readonly cwd?: string | null;
+}): Promise<ReadonlyMap<string, boolean> | null> {
+  // `.local.json` overrides its sibling, so it follows it in every dir.
+  const settingsPaths = claudeSettingsDirs(input).flatMap((dir) => [
+    nodePath.join(dir, ".claude", "settings.json"),
+    nodePath.join(dir, ".claude", "settings.local.json"),
+  ]);
+  const files = await Promise.all(settingsPaths.map(readEnabledPlugins));
+
+  let merged: Map<string, boolean> | null = null;
+  for (const file of files) {
+    if (!file) {
+      continue;
+    }
+    merged ??= new Map<string, boolean>();
+    for (const [key, value] of Object.entries(file)) {
+      if (typeof value === "boolean") {
+        merged.set(key, value);
+      }
+    }
+  }
+  return merged;
+}
+
 /**
  * Plugin subagents (`fable-advisor:grok-implementer`) live under each plugin's
  * install directory, not `~/.claude/agents`, so a plain home-root scan misses
  * them entirely and they would only ever arrive via the SDK's async reply.
  *
- * Only entries listed in `installed_plugins.json` are real: `plugins/marketplaces`
- * additionally holds hundreds of browsable-but-uninstalled definitions that
- * cannot actually be spawned, and listing those would fill the composer menu
- * with mentions that silently do nothing.
+ * Two on-disk sets are deliberately withheld, both of which would offer mentions
+ * that silently do nothing because Claude Code cannot spawn them:
+ * - `plugins/marketplaces` holds hundreds of browsable-but-uninstalled copies;
+ *   only entries listed in `installed_plugins.json` are installed at all.
+ * - Installed-but-disabled plugins keep their full `agents/` directory on disk.
+ *   A plugin missing from `enabledPlugins` counts as disabled rather than
+ *   undecided: Claude Code records every plugin it loads, so an absent key means
+ *   the plugin is not loaded.
  */
-export async function claudePluginAgentRoots(homeDir: string): Promise<AgentRoot[]> {
-  const manifestPath = nodePath.join(homeDir, ".claude", "plugins", "installed_plugins.json");
+export async function claudePluginAgentRoots(input: {
+  readonly homeDir: string;
+  readonly cwd?: string | null;
+}): Promise<AgentRoot[]> {
+  const manifestPath = nodePath.join(input.homeDir, ".claude", "plugins", "installed_plugins.json");
 
   let parsed: InstalledPluginsFile;
   try {
@@ -383,11 +466,15 @@ export async function claudePluginAgentRoots(homeDir: string): Promise<AgentRoot
     return [];
   }
 
+  const enabledPlugins = await resolveEnabledClaudePlugins(input);
   const roots: AgentRoot[] = [];
   for (const [key, installs] of Object.entries(parsed.plugins ?? {})) {
     // Keys are `<plugin>@<marketplace>`; the mention namespace is the plugin part.
     const pluginName = key.split("@")[0]?.trim();
     if (!pluginName) {
+      continue;
+    }
+    if (enabledPlugins && enabledPlugins.get(key) !== true) {
       continue;
     }
     for (const install of installs ?? []) {
@@ -449,7 +536,7 @@ export async function discoverAgentCatalog(
   // They also feed the fingerprint, so installing a plugin invalidates the cache.
   const roots =
     input.provider === "claudeAgent"
-      ? [...agentCatalogRoots(input), ...(await claudePluginAgentRoots(input.homeDir))]
+      ? [...agentCatalogRoots(input), ...(await claudePluginAgentRoots(input))]
       : agentCatalogRoots(input);
   const cacheKey = [input.provider, input.homeDir, input.cwd?.trim() ?? ""].join(" ");
 

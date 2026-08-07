@@ -316,9 +316,132 @@ describe("claudePluginAgentRoots", () => {
   });
 
   it("returns no roots when the manifest is missing or malformed", async () => {
-    expect(await claudePluginAgentRoots(tempDir)).toEqual([]);
+    expect(await claudePluginAgentRoots({ homeDir: tempDir })).toEqual([]);
 
     await writeFile(".claude/plugins/installed_plugins.json", "{ not valid json");
-    expect(await claudePluginAgentRoots(tempDir)).toEqual([]);
+    expect(await claudePluginAgentRoots({ homeDir: tempDir })).toEqual([]);
+  });
+});
+
+describe("claudePluginAgentRoots enablement", () => {
+  // Two installed plugins, one of which the settings layer never mentions.
+  async function writeTwoInstalledPlugins(): Promise<void> {
+    await writeFile(
+      ".claude/plugins/installed_plugins.json",
+      JSON.stringify({
+        version: 2,
+        plugins: {
+          "hookify@claude-plugins-official": [
+            {
+              installPath: nodePath.join(
+                tempDir,
+                ".claude/plugins/cache/claude-plugins-official/hookify/1.0.0",
+              ),
+            },
+          ],
+          "ecc@everything-claude-code": [
+            {
+              installPath: nodePath.join(
+                tempDir,
+                ".claude/plugins/cache/everything-claude-code/ecc/2.0.0",
+              ),
+            },
+          ],
+        },
+      }),
+    );
+    await writeFile(
+      ".claude/plugins/cache/claude-plugins-official/hookify/1.0.0/agents/conversation-analyzer.md",
+      "---\nname: conversation-analyzer\n---\n",
+    );
+    await writeFile(
+      ".claude/plugins/cache/everything-claude-code/ecc/2.0.0/agents/code-explorer.md",
+      "---\nname: code-explorer\n---\n",
+    );
+  }
+
+  async function catalogNames(cwd?: string): Promise<string[]> {
+    clearAgentCatalogCacheForTests();
+    const agents = await discoverAgentCatalog({
+      provider: "claudeAgent",
+      homeDir: tempDir,
+      ...(cwd ? { cwd } : {}),
+    });
+    return agents.map((agent) => agent.name);
+  }
+
+  // The ECC case: installed and fully present on disk (67 agents), but absent
+  // from `enabledPlugins`, so Claude Code never loads it and every mention it
+  // would contribute is unspawnable.
+  it("skips an installed plugin that enabledPlugins never lists", async () => {
+    await writeTwoInstalledPlugins();
+    await writeFile(
+      ".claude/settings.json",
+      JSON.stringify({ enabledPlugins: { "hookify@claude-plugins-official": true } }),
+    );
+
+    const names = await catalogNames();
+
+    expect(names).toContain("hookify:conversation-analyzer");
+    expect(names).not.toContain("ecc:code-explorer");
+  });
+
+  it("skips a plugin disabled explicitly", async () => {
+    await writeTwoInstalledPlugins();
+    await writeFile(
+      ".claude/settings.json",
+      JSON.stringify({
+        enabledPlugins: {
+          "hookify@claude-plugins-official": true,
+          "ecc@everything-claude-code": false,
+        },
+      }),
+    );
+
+    expect(await catalogNames()).not.toContain("ecc:code-explorer");
+  });
+
+  // Without this fallback, a user who never toggled a plugin would silently lose
+  // every plugin subagent instead of just the disabled ones.
+  it("keeps every installed plugin when no settings layer declares enabledPlugins", async () => {
+    await writeTwoInstalledPlugins();
+    await writeFile(".claude/settings.json", JSON.stringify({ model: "opus" }));
+
+    const names = await catalogNames();
+
+    expect(names).toContain("hookify:conversation-analyzer");
+    expect(names).toContain("ecc:code-explorer");
+  });
+
+  it("lets a local override re-enable what the user layer disabled", async () => {
+    await writeTwoInstalledPlugins();
+    await writeFile(
+      ".claude/settings.json",
+      JSON.stringify({ enabledPlugins: { "ecc@everything-claude-code": false } }),
+    );
+    await writeFile(
+      ".claude/settings.local.json",
+      JSON.stringify({ enabledPlugins: { "ecc@everything-claude-code": true } }),
+    );
+
+    expect(await catalogNames()).toContain("ecc:code-explorer");
+  });
+
+  // Passing a cwd walks its real ancestors too, so a machine-level settings file
+  // can join the merge; the project layer outranks all of them, which is exactly
+  // what this asserts.
+  it("lets project settings override the home layer", async () => {
+    await writeTwoInstalledPlugins();
+    await writeFile(
+      ".claude/settings.json",
+      JSON.stringify({ enabledPlugins: { "ecc@everything-claude-code": false } }),
+    );
+    const projectDir = nodePath.join(tempDir, "repo");
+    await writeFile(
+      "repo/.claude/settings.json",
+      JSON.stringify({ enabledPlugins: { "ecc@everything-claude-code": true } }),
+    );
+
+    expect(await catalogNames(projectDir)).toContain("ecc:code-explorer");
   });
 });
