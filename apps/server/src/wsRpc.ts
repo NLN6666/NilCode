@@ -19,6 +19,7 @@ import {
   type GitHubProjectProvisionProgressEvent,
   type OrchestrationCommand,
   type OrchestrationEvent,
+  type DaemonEvent,
   type ProjectDevServerEvent,
   type OrchestrationShellStreamEvent,
   type OrchestrationShellStreamItem,
@@ -53,6 +54,14 @@ import {
   ensureStudioWorkspaceInstructionsFiles,
   STUDIO_WORKSPACE_SUBDIRECTORIES,
 } from "./studioWorkspaceScaffold";
+import {
+  daemonRosterEvent,
+  readDaemonLogs,
+  restartDaemon,
+  sendDaemonText,
+  stopDaemon,
+} from "./daemon/daemonClientOperations";
+import { DaemonBroker } from "./daemon/Services/Broker";
 import { DevServerManager, findProjectDevServerForLocalServer } from "./devServerManager";
 import { GitCore } from "./git/Services/GitCore";
 import { GitHubCli } from "./git/Services/GitHubCli";
@@ -319,6 +328,7 @@ const makeWsRpcHandlersLayer = () =>
       const checkpointDiffQuery = yield* CheckpointDiffQuery;
       const automationService = yield* AutomationService;
       const config = yield* ServerConfig;
+      const daemonBroker = yield* DaemonBroker;
       const devServerManager = yield* DevServerManager;
       const fileSystem = yield* FileSystem.FileSystem;
       const externalMcp = yield* ExternalMcpService;
@@ -1534,6 +1544,50 @@ const makeWsRpcHandlersLayer = () =>
                 });
                 yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
               }),
+            ),
+          ),
+
+        [WS_METHODS.daemonReadLogs]: (input) =>
+          rpcEffect(readDaemonLogs(daemonBroker, input), "Failed to read background service logs"),
+        [WS_METHODS.daemonSendText]: (input) =>
+          rpcEffect(
+            sendDaemonText(daemonBroker, input),
+            "Failed to send input to the background service",
+          ),
+        [WS_METHODS.daemonStop]: (input) =>
+          rpcEffect(stopDaemon(daemonBroker, input), "Failed to stop the background service"),
+        [WS_METHODS.daemonRestart]: (input) =>
+          rpcEffect(restartDaemon(daemonBroker, input), "Failed to restart the background service"),
+        [WS_METHODS.subscribeDaemonEvents]: (_, { clientId }) =>
+          streamAdmission.guard(
+            clientId,
+            { key: "daemon.events" },
+            bufferLiveUiStream(
+              // Subscription and roster share one scope, in that order. Subscribing
+              // second would lose a daemon that started while the roster was being read;
+              // reading the roster outside this scope would leak the listener whenever a
+              // client disconnected before the live phase began.
+              Stream.callback<DaemonEvent, WsRpcError>((queue) =>
+                Effect.gen(function* () {
+                  const pending: DaemonEvent[] = [];
+                  let sink = (event: DaemonEvent) => {
+                    pending.push(event);
+                  };
+                  const unsubscribe = daemonBroker.subscribe((event) => sink(event));
+                  yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+
+                  yield* Queue.offer(queue, yield* daemonRosterEvent(daemonBroker));
+                  for (const event of pending.splice(0)) yield* Queue.offer(queue, event);
+
+                  sink = (event) => {
+                    Effect.runFork(Queue.offer(queue, event).pipe(Effect.asVoid));
+                  };
+                }),
+              ),
+              {
+                label: "daemon.events",
+                onDroppedEvents: failLiveUiStreamForSnapshotResync,
+              },
             ),
           ),
 

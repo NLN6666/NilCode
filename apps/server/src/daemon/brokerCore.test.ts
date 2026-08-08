@@ -8,7 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DaemonSpec } from "@synara/contracts";
 import { RESTART_BASE_DELAY_MS } from "@synara/shared/daemonRestart";
 
-import { createBrokerCore, type BrokerCore, type DaemonProcessHandle } from "./brokerCore";
+import {
+  createBrokerCore,
+  type BrokerCore,
+  type DaemonBrokerEvent,
+  type DaemonProcessHandle,
+} from "./brokerCore";
 
 const decodeSpec = Schema.decodeUnknownSync(DaemonSpec);
 
@@ -468,5 +473,80 @@ describe("log ownership", () => {
     launcher.latest.emitOutput('[12:00:00] Done (3.2s)! For help, type "help"\n');
 
     expect(core.describe("mc").state).toBe("ready");
+  });
+});
+
+describe("subscribe", () => {
+  const collect = () => {
+    const events: DaemonBrokerEvent[] = [];
+    const unsubscribe = core.subscribe((event) => events.push(event));
+    return { events, unsubscribe };
+  };
+
+  it("announces the launch, the readiness transition, and the exit", async () => {
+    const { events } = collect();
+
+    await core.start(decodeSpec({ name: "mc", application: "java", ready: { log: "Done \\(" } }));
+    launcher.latest.emitOutput("Done (1.2s)!");
+    launcher.latest.emitExit(0);
+
+    const states = events
+      .filter((event) => event.type === "state")
+      .map((event) => event.snapshot.state);
+    expect(states).toEqual(["starting", "ready", "exited"]);
+  });
+
+  it("carries the post-chunk cursor on output", async () => {
+    await core.start(simpleSpec());
+    const { events } = collect();
+
+    launcher.latest.emitOutput("hello");
+
+    const output = events.find((event) => event.type === "output");
+    expect(output).toMatchObject({ name: "mc", chunk: "hello" });
+    expect(output?.type === "output" && output.cursor).toBeGreaterThan(0);
+  });
+
+  it("stays silent on plain reads", async () => {
+    await core.start(simpleSpec());
+    const { events } = collect();
+
+    core.list();
+    core.describe("mc");
+
+    // Reads resolve derived fields, but a byte counter ticking is not a lifecycle change.
+    expect(events).toEqual([]);
+  });
+
+  it("stops delivering once unsubscribed", async () => {
+    await core.start(simpleSpec());
+    const { events, unsubscribe } = collect();
+
+    unsubscribe();
+    launcher.latest.emitOutput("after");
+    launcher.latest.emitExit(1);
+
+    expect(events).toEqual([]);
+  });
+
+  it("keeps delivering to the others when one listener throws", async () => {
+    const seen: DaemonBrokerEvent[] = [];
+    core.subscribe(() => {
+      throw new Error("subscriber exploded");
+    });
+    core.subscribe((event) => seen.push(event));
+
+    await core.start(simpleSpec());
+
+    expect(seen.some((event) => event.type === "state")).toBe(true);
+  });
+
+  it("reports detached on the snapshot so the UI can explain the missing stdin", async () => {
+    const { events } = collect();
+
+    await core.start(decodeSpec({ name: "mc", application: "java", detached: true }));
+
+    const state = events.find((event) => event.type === "state");
+    expect(state?.type === "state" && state.snapshot.detached).toBe(true);
   });
 });

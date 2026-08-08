@@ -2,16 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import {
   resolveTerminalSelectionActionPosition,
+  resolveTerminalSelectionAnchorRect,
   resolveTerminalSelectionContextMenuItems,
   shouldHandleTerminalSelectionMouseUp,
   terminalSelectionActionDelayForClickCount,
 } from "./terminal/terminalSelectionActions";
 
 describe("resolveTerminalSelectionActionPosition", () => {
-  it("only offers Add to chat when a composer target exists", () => {
-    expect(resolveTerminalSelectionContextMenuItems(false)).toEqual([]);
-    expect(resolveTerminalSelectionContextMenuItems(true)).toEqual([
-      { id: "add-to-chat", label: "Add to chat" },
+  it("labels Add to chat with the caller's localized copy", () => {
+    expect(resolveTerminalSelectionContextMenuItems(false, "添加到对话")).toEqual([]);
+    expect(resolveTerminalSelectionContextMenuItems(true, "添加到对话")).toEqual([
+      { id: "add-to-chat", label: "添加到对话" },
     ]);
   });
 
@@ -79,5 +80,73 @@ describe("resolveTerminalSelectionActionPosition", () => {
     expect(shouldHandleTerminalSelectionMouseUp(true, 0)).toBe(true);
     expect(shouldHandleTerminalSelectionMouseUp(false, 0)).toBe(false);
     expect(shouldHandleTerminalSelectionMouseUp(true, 1)).toBe(false);
+  });
+});
+
+// The terminal renders through the WebGL addon, so its text has no DOM nodes and
+// window.getSelection() cannot describe the selection. These anchors come from
+// xterm's own cell coordinates instead.
+describe("resolveTerminalSelectionAnchorRect", () => {
+  const screenRect = { left: 100, top: 50, width: 800, height: 400 };
+
+  it("anchors to the bottom-right of the last selected cell", () => {
+    // 80 cols over 800px -> 10px cells; 20 rows over 400px -> 20px cells.
+    expect(
+      resolveTerminalSelectionAnchorRect({
+        screenRect,
+        cols: 80,
+        rows: 20,
+        endColumn: 12,
+        endRow: 3,
+      }),
+    ).toEqual({ right: 220, bottom: 130 });
+  });
+
+  it("returns null when the selection scrolled out of the viewport", () => {
+    expect(
+      resolveTerminalSelectionAnchorRect({
+        screenRect,
+        cols: 80,
+        rows: 20,
+        endColumn: 12,
+        endRow: -1,
+      }),
+    ).toBeNull();
+    expect(
+      resolveTerminalSelectionAnchorRect({
+        screenRect,
+        cols: 80,
+        rows: 20,
+        endColumn: 12,
+        endRow: 20,
+      }),
+    ).toBeNull();
+  });
+
+  it("clamps a column past the last cell back onto the row", () => {
+    expect(
+      resolveTerminalSelectionAnchorRect({
+        screenRect,
+        cols: 80,
+        rows: 20,
+        endColumn: 999,
+        endRow: 0,
+      }),
+    ).toEqual({ right: 900, bottom: 70 });
+  });
+
+  it("returns null for a terminal that has not been measured yet", () => {
+    expect(
+      resolveTerminalSelectionAnchorRect({
+        screenRect: { left: 0, top: 0, width: 0, height: 0 },
+        cols: 80,
+        rows: 20,
+        endColumn: 4,
+        endRow: 1,
+      }),
+    ).toBeNull();
+    expect(
+      resolveTerminalSelectionAnchorRect({ screenRect, cols: 0, rows: 0, endColumn: 4, endRow: 1 }),
+    ).toBeNull();
   });
 });

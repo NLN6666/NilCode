@@ -3667,6 +3667,12 @@ function registerIpcHandlers(): void {
       return new Promise<string | null>((resolve) => {
         const template: MenuItemConstructorOptions[] = [];
         let hasInsertedDestructiveSeparator = false;
+        // Electron documents the popup callback only as "called when menu is
+        // closed" and does not order it against item clicks. Recording the id and
+        // resolving a tick after close makes the result correct either way; a
+        // click that lands first is already stored, and one that lands right
+        // after close still beats the deferred resolve.
+        let clickedId: string | null = null;
         for (const item of normalizedItems) {
           const shouldInsertSeparator =
             item.separatorBefore ||
@@ -3679,7 +3685,9 @@ function registerIpcHandlers(): void {
           }
           const itemOption: MenuItemConstructorOptions = {
             label: item.label,
-            click: () => resolve(item.id),
+            click: () => {
+              clickedId = item.id;
+            },
           };
           if (item.destructive) {
             const destructiveIcon = getDestructiveMenuIcon();
@@ -3694,7 +3702,9 @@ function registerIpcHandlers(): void {
         menu.popup({
           window,
           ...popupPosition,
-          callback: () => resolve(null),
+          callback: () => {
+            setImmediate(() => resolve(clickedId));
+          },
         });
       });
     },

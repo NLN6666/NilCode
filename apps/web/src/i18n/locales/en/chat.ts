@@ -123,6 +123,7 @@ export const chat = {
       sidechat: "Side chats",
       git: "Git",
       pullRequest: "Pull request",
+      services: "Services",
       fallback: "Panel",
     },
 
@@ -136,6 +137,7 @@ export const chat = {
       explorer: "Files",
       sidechat: "Side chats",
       git: "Source control",
+      services: "Background services",
     },
 
     closePane: (label: string) => `Close ${label}`,
@@ -152,6 +154,57 @@ export const chat = {
       running: (scriptName: string) => `${scriptName} running`,
       runningCount: (count: number) => `${count} services running`,
     },
+  },
+
+  /**
+   * The background services (daemon) dock pane. Server-wide, not per-thread: the same
+   * roster shows in every chat, and ending a conversation does not end a service.
+   */
+  services: {
+    empty: "No background services are running.",
+    emptyHint:
+      "Ask the agent to start a long-running process — a game server, dev server, or database — and it will appear here.",
+    loading: "Loading background services...",
+
+    /** Lifecycle labels, keyed by `DaemonState`. */
+    states: {
+      starting: "Starting",
+      ready: "Ready",
+      running: "Running",
+      exited: "Exited",
+      failed: "Failed",
+      restarting: "Restarting",
+    },
+
+    pid: (pid: number) => `PID ${pid}`,
+    restarts: (count: number) => (count === 1 ? "1 restart" : `${count} restarts`),
+    exitedWithCode: (code: number) => `exit ${code}`,
+    waitingFor: (conditions: string) => `waiting for ${conditions}`,
+    /** Marks a service that will keep running after Synara closes. */
+    detached: "Detached",
+    detachedHint: "Keeps running after Synara exits, and is re-adopted on the next start.",
+
+    stop: "Stop",
+    restart: "Restart",
+    stopping: "Stopping...",
+    restarting: "Restarting...",
+
+    logsLabel: "Service log",
+    /** Shown above the log when rotation dropped bytes we can never show. */
+    droppedBytes: (bytes: number) => `${bytes} earlier bytes were rotated out of the log.`,
+
+    inputPlaceholder: "Send a console command...",
+    inputLabel: "Console command",
+    send: "Send",
+    /**
+     * A detached daemon has its stdio redirected to the log file, so there is no stdin
+     * channel left to write to. Say why rather than showing a dead input box.
+     */
+    inputUnavailableDetached: "Detached services have no console input.",
+    inputUnavailableExited: "This service is not running.",
+
+    actionFailed: (detail: string) => `Action failed: ${detail}`,
+    unknownError: "Unknown error",
   },
 
   split: {

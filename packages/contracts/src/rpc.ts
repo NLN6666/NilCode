@@ -28,6 +28,15 @@ import {
   AgentMcpSourceView,
   AgentMcpToolCatalog,
 } from "./agentMcp";
+import {
+  DaemonEvent,
+  DaemonReadLogsInput,
+  DaemonReadLogsResult,
+  DaemonRestartInput,
+  DaemonSendTextInput,
+  DaemonSnapshot,
+  DaemonStopInput,
+} from "./daemon";
 import { OpenInEditorInput } from "./editor";
 import {
   ExternalMcpCreateIntegrationInput,
@@ -722,6 +731,37 @@ export const WsSubscribeTerminalEventsRpc = Rpc.make(WS_METHODS.subscribeTermina
   stream: true,
 });
 
+export const WsDaemonReadLogsRpc = Rpc.make(WS_METHODS.daemonReadLogs, {
+  payload: DaemonReadLogsInput,
+  success: DaemonReadLogsResult,
+  error: WsRpcError,
+});
+
+export const WsDaemonSendTextRpc = Rpc.make(WS_METHODS.daemonSendText, {
+  payload: DaemonSendTextInput,
+  success: DaemonSnapshot,
+  error: WsRpcError,
+});
+
+export const WsDaemonStopRpc = Rpc.make(WS_METHODS.daemonStop, {
+  payload: DaemonStopInput,
+  success: DaemonSnapshot,
+  error: WsRpcError,
+});
+
+export const WsDaemonRestartRpc = Rpc.make(WS_METHODS.daemonRestart, {
+  payload: DaemonRestartInput,
+  success: DaemonSnapshot,
+  error: WsRpcError,
+});
+
+export const WsSubscribeDaemonEventsRpc = Rpc.make(WS_METHODS.subscribeDaemonEvents, {
+  payload: Schema.Struct({}),
+  success: DaemonEvent,
+  error: WsRpcError,
+  stream: true,
+});
+
 export const WsServerGetConfigRpc = Rpc.make(WS_METHODS.serverGetConfig, {
   payload: Schema.Struct({}),
   success: ServerConfig,
@@ -1141,6 +1181,11 @@ export const WsFeatureRpcGroup = RpcGroup.make(
   WsTerminalRestartRpc,
   WsTerminalCloseRpc,
   WsSubscribeTerminalEventsRpc,
+  WsDaemonReadLogsRpc,
+  WsDaemonSendTextRpc,
+  WsDaemonStopRpc,
+  WsDaemonRestartRpc,
+  WsSubscribeDaemonEventsRpc,
   WsServerGetConfigRpc,
   WsServerGetEnvironmentRpc,
   WsServerGetSettingsRpc,

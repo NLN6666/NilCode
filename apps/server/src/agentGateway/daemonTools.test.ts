@@ -38,6 +38,7 @@ function stubBroker(overrides: Partial<DaemonBrokerShape> = {}) {
     stop: vi.fn(() => Effect.succeed(snapshot)),
     restart: vi.fn(() => Effect.succeed(snapshot)),
     reclaimDetached: Effect.succeed([]),
+    subscribe: vi.fn(() => () => undefined),
     dispose: Effect.void,
     ...overrides,
   };
