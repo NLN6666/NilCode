@@ -121,6 +121,10 @@ export function makeServerRuntimeServicesLayer(
   const advisorReactorLayer = AdvisorReactorLive.pipe(
     Layer.provideMerge(AdvisorSessionLive.pipe(Layer.provideMerge(runtimeServicesLayer))),
     Layer.provideMerge(OrchestrationLayerLive),
+    // Read the per-thread advisor toggle. `mergeAll` below does not let siblings
+    // satisfy each other at runtime, so every layer that needs settings has to
+    // be given ServerSettingsLive here.
+    Layer.provideMerge(ServerSettingsLive),
   );
   // Shares the single memoized TerminalManager with the top-level TerminalLayerLive.
   const devServerManagerLayer = DevServerManagerLive.pipe(Layer.provide(TerminalLayerLive));

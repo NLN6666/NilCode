@@ -7,8 +7,10 @@
  * @module CliConfig
  */
 import OS from "node:os";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Config, Data, Effect, FileSystem, Layer, Option, Path, Schema, ServiceMap } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
+import { FetchHttpClient } from "effect/unstable/http";
 import { NetService } from "@synara/shared/Net";
 import {
   optionalBooleanEnvironmentConfig,
@@ -29,7 +31,7 @@ import {
   type ServerConfigShape,
 } from "./config";
 import { fixPath, resolveBaseDir } from "./os-jank";
-import { Open } from "./open";
+import { Open, OpenLive } from "./open";
 import { ServerAuth } from "./auth/Services/ServerAuth";
 import * as SqlitePersistence from "./persistence/Layers/Sqlite";
 import { ProviderRuntimeEventRepositoryLive } from "./persistence/Layers/ProviderRuntimeEvents";
@@ -39,7 +41,7 @@ import { startClaudeCredentialKeepalive } from "./provider/claudeCredentialKeepa
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
 import { ProviderSessionReaperLive } from "./provider/Layers/ProviderSessionReaper";
 import { ProviderRuntimeReconcilerLive } from "./provider/Layers/ProviderRuntimeReconciler";
-import { Server } from "./effectServer";
+import { Server, ServerLive } from "./effectServer";
 import { ServerLoggerLive } from "./serverLogger";
 import { startOutboundProxySync } from "./outboundProxyRuntime";
 import { ServerSettingsService } from "./serverSettings";
@@ -77,7 +79,7 @@ function consumeDesktopShutdownTokenFromProcessEnvironment(): string | undefined
   return token;
 }
 
-interface CliInput {
+export interface CliInput {
   readonly mode: Option.Option<RuntimeMode>;
   readonly port: Option.Option<number>;
   readonly host: Option.Option<string>;
@@ -292,7 +294,16 @@ const ServerConfigLive = (input: CliInput) =>
     }),
   );
 
-const LayerLive = (input: CliInput) => {
+/**
+ * The layer graph every server start builds.
+ *
+ * Exported so the startup smoke test can build this exact graph. A layer that
+ * forgets one of its dependencies still typechecks here - `Layer.mergeAll`
+ * siblings appear to satisfy each other, and `index.ts` casts away whatever
+ * requirement survives - so building it for real is the only thing that catches
+ * the mistake before a user does.
+ */
+export const LayerLive = (input: CliInput) => {
   const { runtimeServicesLayer, providerLayer } = makeServerApplicationLayers();
   const providerSessionReaperLayer = ProviderSessionReaperLive.pipe(
     // The reaper coordinates orchestration state with live provider sessions,
@@ -604,3 +615,19 @@ const serverCommand = baseServerCommand.pipe(
 );
 
 export const synaraCli = serverCommand;
+
+/**
+ * Services the CLI runtime supplies around the command handler.
+ *
+ * `LayerLive` is built inside the handler and leans on these, so the two only
+ * add up to a working server together. Defined here rather than in `index.ts`
+ * so the startup smoke test builds the same graph the entry point does.
+ */
+export const CliRuntimeLayer = Layer.empty.pipe(
+  Layer.provideMerge(CliConfig.layer),
+  Layer.provideMerge(ServerLive),
+  Layer.provideMerge(OpenLive),
+  Layer.provideMerge(NetService.layer),
+  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(FetchHttpClient.layer),
+);
