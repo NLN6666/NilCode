@@ -26,7 +26,15 @@ import { useMessages } from "../../i18n/context";
 import { useProviderModelCatalog } from "~/hooks/useProviderModelCatalog";
 import { PlusIcon, XIcon } from "~/lib/icons";
 import { resolveProviderDiscoveryCwd } from "~/lib/providerDiscovery";
-import { patchDefaultModelForProvider, resolveDefaultModelSlug } from "~/providerOrdering";
+import {
+  patchDefaultModelForProvider,
+  resolveDefaultModelRef,
+  resolveDefaultModelSlug,
+} from "~/providerOrdering";
+import { defaultModelTraitOptions } from "~/composerDraftModels";
+import { getComposerTraitSelection } from "~/components/chat/composerTraits";
+import { resolveRuntimeModelDescriptor } from "~/components/chat/runtimeModelCapabilities";
+import type { ProviderOptions } from "~/providerModelOptions";
 import { refreshCloudModelCatalog } from "~/lib/providerDiscoveryReactQuery";
 import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { cn } from "~/lib/utils";
@@ -139,14 +147,17 @@ export function ModelsSettingsPanel({
     () => [...GIT_WRITING_DISCOVERY_PROVIDERS, visibilityProvider, defaultModelProvider],
     [defaultModelProvider, visibilityProvider],
   );
-  const { modelOptionsByProvider: gitWritingCatalogOptionsByProvider, allModelOptionsByProvider } =
-    useProviderModelCatalog({
-      selectedProvider: currentGitTextGenerationProvider,
-      discoveryEnabled: active,
-      cwd: providerModelDiscoveryCwd,
-      modelHintByProvider: gitWritingModelHintByProvider,
-      prefetchProviders: discoveryProviders,
-    });
+  const {
+    modelOptionsByProvider: gitWritingCatalogOptionsByProvider,
+    allModelOptionsByProvider,
+    runtimeModelsByProvider,
+  } = useProviderModelCatalog({
+    selectedProvider: currentGitTextGenerationProvider,
+    discoveryEnabled: active,
+    cwd: providerModelDiscoveryCwd,
+    modelHintByProvider: gitWritingModelHintByProvider,
+    prefetchProviders: discoveryProviders,
+  });
   const gitTextGenerationModelOptions = useMemo(
     () =>
       getGitTextGenerationModelOptions(
@@ -295,15 +306,65 @@ export function ModelsSettingsPanel({
       ? m.settings.models.defaults.builtIn
       : (defaultModelCandidates.find((option) => option.slug === selectedDefaultModelSlug)?.name ??
         selectedDefaultModelSlug);
+  const selectedDefaultRef = resolveDefaultModelRef(
+    settings.defaultModelByProvider,
+    defaultModelProvider,
+  );
+  // Reasoning ladders and window options are per-model, so a level carried across a
+  // model change could name a rung the new model does not have. Dropping traits
+  // returns the new model to its own defaults, which is always a valid state.
   const setDefaultModel = (slug: string) => {
     updateSettings({
       defaultModelByProvider: patchDefaultModelForProvider(
         settings.defaultModelByProvider,
         defaultModelProvider,
-        slug.length > 0 ? slug : null,
+        slug.length > 0 ? { slug } : null,
       ),
     });
   };
+  const setDefaultModelTrait = (trait: "effort" | "contextWindow", value: string) => {
+    if (!selectedDefaultRef) {
+      return;
+    }
+    const next = {
+      slug: selectedDefaultRef.slug,
+      effort: selectedDefaultRef.effort,
+      contextWindow: selectedDefaultRef.contextWindow,
+      [trait]: value.length > 0 ? value : undefined,
+    };
+    updateSettings({
+      defaultModelByProvider: patchDefaultModelForProvider(
+        settings.defaultModelByProvider,
+        defaultModelProvider,
+        next,
+      ),
+    });
+  };
+
+  // Read through the same trait resolver the composer uses, fed the runtime-discovered
+  // descriptor, so the ladders offered here are the ones the local agent actually
+  // reports rather than the static fallback table.
+  const defaultRuntimeModel = resolveRuntimeModelDescriptor({
+    provider: defaultModelProvider,
+    model: selectedDefaultModelSlug,
+    runtimeModels: runtimeModelsByProvider[defaultModelProvider],
+  });
+  const defaultTraits = getComposerTraitSelection(
+    defaultModelProvider,
+    selectedDefaultModelSlug,
+    "",
+    defaultModelTraitOptions(defaultModelProvider, selectedDefaultRef) as ProviderOptions,
+    defaultRuntimeModel,
+  );
+  // Prompt-injected rungs (ultrathink) work by prefixing the message, which a stored
+  // default has no message to prefix - offering them here would do nothing.
+  const defaultEffortLevels = defaultTraits.effortLevels.filter(
+    (level) => !defaultTraits.promptInjectedValues.includes(level.value),
+  );
+  const defaultContextWindowOptions = defaultTraits.contextWindowOptions;
+  const showsDefaultTraits =
+    selectedDefaultModelSlug.length > 0 &&
+    (defaultEffortLevels.length > 0 || defaultContextWindowOptions.length > 1);
 
   const visibilityModels = allModelOptionsByProvider[visibilityProvider];
   const hiddenSlugsForProvider = new Set(
@@ -490,6 +551,53 @@ export function ModelsSettingsPanel({
               <p className="text-xs text-muted-foreground">{m.settings.models.defaults.noModels}</p>
             )}
           </div>
+          {showsDefaultTraits ? (
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+              {defaultEffortLevels.length > 0 ? (
+                <SettingsSelectControl
+                  value={selectedDefaultRef?.effort ?? ""}
+                  onValueChange={(value) => setDefaultModelTrait("effort", value)}
+                  ariaLabel={m.settings.models.defaults.effortAriaLabel}
+                  triggerClassName="w-full sm:w-44"
+                  valueContent={
+                    defaultEffortLevels.find((level) => level.value === selectedDefaultRef?.effort)
+                      ?.label ?? m.settings.models.defaults.modelDefault
+                  }
+                >
+                  <SelectItem hideIndicator value="">
+                    {m.settings.models.defaults.modelDefault}
+                  </SelectItem>
+                  {defaultEffortLevels.map((level) => (
+                    <SelectItem hideIndicator key={level.value} value={level.value}>
+                      {level.label}
+                    </SelectItem>
+                  ))}
+                </SettingsSelectControl>
+              ) : null}
+              {defaultContextWindowOptions.length > 1 ? (
+                <SettingsSelectControl
+                  value={selectedDefaultRef?.contextWindow ?? ""}
+                  onValueChange={(value) => setDefaultModelTrait("contextWindow", value)}
+                  ariaLabel={m.settings.models.defaults.contextWindowAriaLabel}
+                  triggerClassName="w-full sm:w-44"
+                  valueContent={
+                    defaultContextWindowOptions.find(
+                      (option) => option.value === selectedDefaultRef?.contextWindow,
+                    )?.label ?? m.settings.models.defaults.modelDefault
+                  }
+                >
+                  <SelectItem hideIndicator value="">
+                    {m.settings.models.defaults.modelDefault}
+                  </SelectItem>
+                  {defaultContextWindowOptions.map((option) => (
+                    <SelectItem hideIndicator key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SettingsSelectControl>
+              ) : null}
+            </div>
+          ) : null}
         </SettingsRow>
       </SettingsSection>
 

@@ -93,15 +93,29 @@ export function normalizeHiddenModels(
 
 /** A user-chosen default model for one provider. Same shape as {@link HiddenModelRef}
  *  so the persisted settings stay a flat list and adding a `ProviderKind` needs no
- *  schema migration. */
+ *  schema migration.
+ *
+ *  `effort` and `contextWindow` hold the chosen *values* in the provider's own
+ *  vocabulary, not the option fields they end up in: the field name differs per
+ *  provider and a runtime-discovered descriptor can override it, so it is resolved
+ *  at write time (see `composerEffortOptionId`) rather than frozen into storage.
+ *  Both are absent until explicitly picked, which is what keeps a model on its own
+ *  default instead of pinning whatever the default happened to be that day. */
 export interface DefaultModelRef {
   readonly provider: ProviderKind;
   readonly slug: string;
+  readonly effort?: string | undefined;
+  readonly contextWindow?: string | undefined;
 }
 
 /** Keeps the first entry per provider; a provider can only have one default. */
 export function normalizeDefaultModels(
-  defaultModels: ReadonlyArray<{ provider: string; slug: string }>,
+  defaultModels: ReadonlyArray<{
+    provider: string;
+    slug: string;
+    effort?: string | undefined;
+    contextWindow?: string | undefined;
+  }>,
 ): DefaultModelRef[] {
   const seen = new Set<ProviderKind>();
   const result: DefaultModelRef[] = [];
@@ -111,7 +125,14 @@ export function normalizeDefaultModels(
       continue;
     }
     seen.add(candidate.provider);
-    result.push({ provider: candidate.provider, slug });
+    const effort = candidate.effort?.trim();
+    const contextWindow = candidate.contextWindow?.trim();
+    result.push({
+      provider: candidate.provider,
+      slug,
+      ...(effort ? { effort } : {}),
+      ...(contextWindow ? { contextWindow } : {}),
+    });
   }
   return result;
 }
@@ -120,19 +141,45 @@ export function resolveDefaultModelSlug(
   defaultModels: ReadonlyArray<DefaultModelRef> | null | undefined,
   provider: ProviderKind,
 ): string | null {
-  const match = defaultModels?.find((entry) => entry.provider === provider);
-  const slug = match?.slug.trim();
-  return slug && slug.length > 0 ? slug : null;
+  return resolveDefaultModelRef(defaultModels, provider)?.slug ?? null;
 }
 
+/** The whole entry, for callers that also need the stored reasoning level or window. */
+export function resolveDefaultModelRef(
+  defaultModels: ReadonlyArray<DefaultModelRef> | null | undefined,
+  provider: ProviderKind,
+): DefaultModelRef | null {
+  const match = defaultModels?.find((entry) => entry.provider === provider);
+  const slug = match?.slug.trim();
+  return match && slug && slug.length > 0 ? { ...match, slug } : null;
+}
+
+/**
+ * Replaces one provider's entry. A blank slug drops it entirely - traits are
+ * meaningless without a model to hang them on. Callers decide whether traits
+ * survive a model change; only they know which levels the new model offers.
+ */
 export function patchDefaultModelForProvider(
   defaultModels: ReadonlyArray<DefaultModelRef>,
   provider: ProviderKind,
-  slug: string | null,
+  next: Omit<DefaultModelRef, "provider"> | null,
 ): DefaultModelRef[] {
   const others = defaultModels.filter((entry) => entry.provider !== provider);
-  const trimmed = slug?.trim() ?? "";
-  return trimmed.length > 0 ? [...others, { provider, slug: trimmed }] : others;
+  const slug = next?.slug.trim() ?? "";
+  if (slug.length === 0) {
+    return others;
+  }
+  const effort = next?.effort?.trim();
+  const contextWindow = next?.contextWindow?.trim();
+  return [
+    ...others,
+    {
+      provider,
+      slug,
+      ...(effort ? { effort } : {}),
+      ...(contextWindow ? { contextWindow } : {}),
+    },
+  ];
 }
 
 /**

@@ -1,0 +1,13 @@
+diff --git a/index.js b/index.js
+index 106e40b..0d8b8f2 100644
+--- a/index.js
++++ b/index.js
+@@ -26,7 +26,7 @@ module.exports = function (pid, signal, callback) {
+
+     switch (process.platform) {
+     case 'win32':
+-        exec('taskkill /pid ' + pid + ' /T /F', callback);
++        exec('taskkill /pid ' + pid + ' /T /F', { windowsHide: true }, callback);
+         break;
+     case 'darwin':
+         buildProcessTree(pid, tree, pidsToProcess, function (parentPid) {

@@ -157,6 +157,7 @@ function readWindowsIdentities(pids: readonly number[]): ProcessIdentityMap | nu
       encoding: "utf8",
       timeout: QUERY_TIMEOUT_MS,
       maxBuffer: QUERY_MAX_BUFFER_BYTES,
+      windowsHide: true,
     });
     if (result.error || result.status !== 0) return null;
     return parseWindowsIdentities(result.stdout.trim());

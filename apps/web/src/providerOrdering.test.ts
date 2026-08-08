@@ -16,6 +16,7 @@ import {
   filterModelOptionsByVisibility,
   normalizeDefaultModels,
   patchDefaultModelForProvider,
+  resolveDefaultModelRef,
   resolveDefaultModelSlug,
 } from "./providerOrdering";
 
@@ -130,6 +131,32 @@ describe("default model preferences", () => {
     ).toEqual([{ provider: "codex", slug: "gpt-5.4" }]);
   });
 
+  it("keeps stored traits through normalization and trims them", () => {
+    expect(
+      normalizeDefaultModels([
+        { provider: "codex", slug: "gpt-5.4", effort: "  xhigh  ", contextWindow: "1m" },
+      ]),
+    ).toEqual([{ provider: "codex", slug: "gpt-5.4", effort: "xhigh", contextWindow: "1m" }]);
+  });
+
+  it("normalizes a blank trait away instead of storing it", () => {
+    expect(normalizeDefaultModels([{ provider: "codex", slug: "gpt-5.4", effort: "   " }])).toEqual(
+      [{ provider: "codex", slug: "gpt-5.4" }],
+    );
+  });
+
+  it("resolves the whole entry, not just the slug", () => {
+    const defaults = [{ provider: "codex" as const, slug: "gpt-5.4", effort: "xhigh" }];
+
+    expect(resolveDefaultModelRef(defaults, "codex")).toEqual({
+      provider: "codex",
+      slug: "gpt-5.4",
+      effort: "xhigh",
+    });
+    expect(resolveDefaultModelRef(defaults, "grok")).toBeNull();
+    expect(resolveDefaultModelRef(undefined, "codex")).toBeNull();
+  });
+
   it("resolves a provider's slug and returns null when it has none", () => {
     const defaults = [
       { provider: "codex" as const, slug: "gpt-5.4" },
@@ -154,7 +181,7 @@ describe("default model preferences", () => {
       { provider: "grok" as const, slug: "grok-build" },
     ];
 
-    expect(patchDefaultModelForProvider(defaults, "codex", "gpt-5.6-sol")).toEqual([
+    expect(patchDefaultModelForProvider(defaults, "codex", { slug: "gpt-5.6-sol" })).toEqual([
       { provider: "grok", slug: "grok-build" },
       { provider: "codex", slug: "gpt-5.6-sol" },
     ]);
@@ -169,17 +196,17 @@ describe("default model preferences", () => {
     expect(patchDefaultModelForProvider(defaults, "codex", null)).toEqual([
       { provider: "grok", slug: "grok-build" },
     ]);
-    expect(patchDefaultModelForProvider(defaults, "codex", "")).toEqual([
+    expect(patchDefaultModelForProvider(defaults, "codex", { slug: "" })).toEqual([
       { provider: "grok", slug: "grok-build" },
     ]);
-    expect(patchDefaultModelForProvider(defaults, "codex", "   ")).toEqual([
+    expect(patchDefaultModelForProvider(defaults, "codex", { slug: "   " })).toEqual([
       { provider: "grok", slug: "grok-build" },
     ]);
   });
 
   it("adds an entry for a provider that had none, and never mutates the input", () => {
     const defaults = [{ provider: "codex" as const, slug: "gpt-5.4" }];
-    const patched = patchDefaultModelForProvider(defaults, "grok", "  grok-build  ");
+    const patched = patchDefaultModelForProvider(defaults, "grok", { slug: "  grok-build  " });
 
     expect(patched).toEqual([
       { provider: "codex", slug: "gpt-5.4" },
@@ -188,11 +215,43 @@ describe("default model preferences", () => {
     expect(defaults).toEqual([{ provider: "codex", slug: "gpt-5.4" }]);
   });
 
+  it("stores the chosen reasoning level and context window alongside the slug", () => {
+    expect(
+      patchDefaultModelForProvider([], "codex", {
+        slug: "gpt-5.4",
+        effort: "xhigh",
+        contextWindow: "1m",
+      }),
+    ).toEqual([{ provider: "codex", slug: "gpt-5.4", effort: "xhigh", contextWindow: "1m" }]);
+  });
+
+  // An absent trait must leave no key behind, since the consumer reads presence as
+  // "the user pinned this" and absence as "follow the model's own default".
+  it("omits traits that were cleared rather than storing an empty value", () => {
+    expect(
+      patchDefaultModelForProvider([], "codex", {
+        slug: "gpt-5.4",
+        effort: "  ",
+        contextWindow: undefined,
+      }),
+    ).toEqual([{ provider: "codex", slug: "gpt-5.4" }]);
+  });
+
+  it("drops traits along with the entry when the slug goes blank", () => {
+    expect(
+      patchDefaultModelForProvider(
+        [{ provider: "codex", slug: "gpt-5.4", effort: "xhigh" }],
+        "codex",
+        { slug: "" },
+      ),
+    ).toEqual([]);
+  });
+
   it("survives a round trip through normalization after patching", () => {
     const patched = patchDefaultModelForProvider(
       [{ provider: "codex", slug: "gpt-5.4" }],
       "codex",
-      "gpt-5.6-sol",
+      { slug: "gpt-5.6-sol" },
     );
     expect(normalizeDefaultModels(patched)).toEqual([{ provider: "codex", slug: "gpt-5.6-sol" }]);
   });

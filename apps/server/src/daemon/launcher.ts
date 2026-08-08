@@ -26,6 +26,7 @@ import {
   type ProcessTreeKiller,
   type TerminalKillSignal,
 } from "../terminal/processTreeKiller.ts";
+import { ptyPlatformSpawnOptions } from "../terminal/ptySpawnOptions.ts";
 import type { DaemonLog } from "./DaemonLog.ts";
 import type { DaemonExitResult, DaemonLauncher, DaemonProcessHandle } from "./brokerCore.ts";
 import {
@@ -419,6 +420,7 @@ export function createDaemonLauncher(
           cols: 120,
           rows: 30,
           name: deps.platform === "win32" ? "xterm-color" : "xterm-256color",
+          ...ptyPlatformSpawnOptions(deps.platform),
         });
         return new PtyHandle(ptyProcess, deps.killer);
       }

@@ -129,6 +129,83 @@ describe("resolvePreferredComposerModelSelection", () => {
     expect(withDefault.model).toBe(getDefaultModel("codex"));
   });
 
+  // A stored trait that never reaches `options` is the silent failure mode here:
+  // the setting saves, the UI shows it, and the provider never sees it.
+  it("applies a stored reasoning level to the new-chat selection", () => {
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: null,
+        projectModelSelection: null,
+        defaultProvider: "codex",
+        defaultModelByProvider: [{ provider: "codex", slug: "gpt-5.4", effort: "xhigh" }],
+      }),
+    ).toEqual({
+      provider: "codex",
+      model: "gpt-5.4",
+      options: { reasoningEffort: "xhigh" },
+    });
+  });
+
+  // Each provider names the field differently; writing to the wrong one is silent.
+  it("writes each provider's level to the field that provider reads", () => {
+    const selectionFor = (provider: "claudeAgent" | "pi" | "opencode", slug: string) =>
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: null,
+        projectModelSelection: null,
+        defaultProvider: provider,
+        defaultModelByProvider: [{ provider, slug, effort: "high" }],
+      });
+
+    expect(selectionFor("claudeAgent", "claude-opus-4-6").options).toEqual({ effort: "high" });
+    expect(selectionFor("opencode", "gpt-5.4").options).toEqual({ variant: "high" });
+    // Pi has no model of its own, so its default resolves onto Codex.
+    expect(selectionFor("pi", "gpt-5.4").provider).toBe("codex");
+  });
+
+  it("stores a Claude context window under autoCompactWindow, not contextWindow", () => {
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: null,
+        projectModelSelection: null,
+        defaultProvider: "claudeAgent",
+        defaultModelByProvider: [
+          { provider: "claudeAgent", slug: "claude-opus-4-6", contextWindow: "1m" },
+        ],
+      }).options,
+    ).toEqual({ autoCompactWindow: "1m" });
+  });
+
+  // Absent traits must produce no key at all, or "follow the model default" would
+  // silently become "pinned to whatever the default was".
+  it("adds no options when no trait was ever chosen", () => {
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: null,
+        projectModelSelection: null,
+        defaultProvider: "codex",
+        defaultModelByProvider: [{ provider: "codex", slug: "gpt-5.4" }],
+      }),
+    ).toEqual({ provider: "codex", model: "gpt-5.4" });
+  });
+
+  // Traits ride the user default, which is the last link of the chain - anything
+  // that already remembers a model keeps its own options untouched.
+  it("does not apply stored traits when a thread already remembers a model", () => {
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: { provider: "codex", model: "gpt-5.5" },
+        projectModelSelection: null,
+        defaultProvider: "codex",
+        defaultModelByProvider: [{ provider: "codex", slug: "gpt-5.4", effort: "xhigh" }],
+      }),
+    ).toEqual({ provider: "codex", model: "gpt-5.5" });
+  });
+
   it("reads the Codex user default for Pi, which has no model of its own", () => {
     expect(
       resolvePreferredComposerModelSelection({

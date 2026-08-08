@@ -5,12 +5,42 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { prepareWindowsSafeProcess } from "@synara/shared/windowsProcess";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import * as Path from "node:path";
 
 import { Effect } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { expect, it } from "vitest";
+
+// Upstream's spawner enumerates POSIX spawn options and models the Windows-only
+// ones nowhere, so we patch them in (patches/@effect%2Fplatform-node-shared@*).
+// `windowsHide` is the load-bearing one: when the parent process has no console
+// of its own - the packaged desktop app - every child that omits it pops a
+// visible cmd.exe window. That regressed once already because the patch added
+// `windowsVerbatimArguments` alone, so guard the field here rather than trusting
+// the next dependency bump to carry it along.
+it("keeps the patched Effect spawner forwarding windowsHide to Node spawn", () => {
+  // Resolved through platform-node because the shared package is a transitive
+  // dependency, not one this workspace declares.
+  const platformNodePath = createRequire(import.meta.url).resolve(
+    "@effect/platform-node/package.json",
+  );
+  const packagePath = createRequire(platformNodePath).resolve(
+    "@effect/platform-node-shared/package.json",
+  );
+  const spawner = readFileSync(
+    Path.join(Path.dirname(packagePath), "dist", "NodeChildProcessSpawner.js"),
+    "utf8",
+  );
+
+  expect(spawner).toContain("windowsHide: cmd.options.windowsHide ?? true");
+  // killProcessGroup shells out to taskkill through `exec`, which is a second,
+  // separate omission in the same file - it fired once per finished command.
+  const killIndex = spawner.indexOf("taskkill");
+  expect(killIndex).toBeGreaterThan(-1);
+  expect(spawner.slice(killIndex, killIndex + 120)).toContain("windowsHide: true");
+});
 
 it.runIf(process.platform === "win32")(
   "forwards encoded Codex arguments verbatim through the Effect Node spawner",

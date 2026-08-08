@@ -24,7 +24,11 @@ import {
   resolveSelectableModel,
 } from "@synara/shared/model";
 import { resolveAppModelSelection } from "./appSettings";
-import { resolveDefaultModelSlug, type DefaultModelRef } from "./providerOrdering";
+import { resolveDefaultModelRef, type DefaultModelRef } from "./providerOrdering";
+import {
+  composerContextWindowOptionId,
+  composerEffortOptionId,
+} from "./components/chat/composerTraits";
 import type { ComposerThreadDraftState } from "./composerDraftDomain";
 import { classifyProviderReasoningEffortSupport } from "./lib/codexReasoningEffort";
 
@@ -769,7 +773,9 @@ export function resolvePreferredComposerModelSelection(input: {
   // Pi has no built-in default model, so it falls back to Codex like the rest of
   // the composer does; the user default is read for whichever provider survives.
   const fallbackProvider = preferredProvider === "pi" ? "codex" : preferredProvider;
-  const userDefaultModel = resolveDefaultModelSlug(input.defaultModelByProvider, fallbackProvider);
+  const userDefault = resolveDefaultModelRef(input.defaultModelByProvider, fallbackProvider);
+  const userDefaultModel = userDefault?.slug ?? null;
+  const defaultTraitOptions = defaultModelTraitOptions(fallbackProvider, userDefault);
 
   return (
     input.draft?.modelSelectionByProvider?.[preferredProvider] ??
@@ -778,12 +784,42 @@ export function resolvePreferredComposerModelSelection(input: {
       : null) ??
     (input.projectModelSelection?.provider === preferredProvider
       ? input.projectModelSelection
-      : null) ?? {
+      : null) ??
+    ({
       provider: fallbackProvider,
       model:
         (userDefaultModel
           ? (normalizeModelSlug(userDefaultModel, fallbackProvider) ?? userDefaultModel)
           : null) ?? getDefaultModel(fallbackProvider),
-    }
+      // Only reached when nothing earlier in the chain remembered a model, so the
+      // stored traits apply to the model chosen right above and to no other.
+      ...(defaultTraitOptions ? { options: defaultTraitOptions } : {}),
+    } as ModelSelection)
   );
+}
+
+/**
+ * Turns the stored default traits into a provider `options` patch, resolving each
+ * value to the field that provider actually reads. Absent traits produce no key at
+ * all, so a model keeps following its own default instead of being pinned to
+ * whatever that default happened to be when the user last opened settings.
+ *
+ * Shared with the settings panel, which needs the same shape to show the current
+ * selection back to the user.
+ */
+export function defaultModelTraitOptions(
+  provider: ProviderKind,
+  ref: DefaultModelRef | null | undefined,
+): Record<string, string> | undefined {
+  if (!ref) {
+    return undefined;
+  }
+  const options: Record<string, string> = {};
+  if (ref.effort) {
+    options[composerEffortOptionId(provider)] = ref.effort;
+  }
+  if (ref.contextWindow) {
+    options[composerContextWindowOptionId(provider)] = ref.contextWindow;
+  }
+  return Object.keys(options).length > 0 ? options : undefined;
 }

@@ -33,6 +33,8 @@ import {
 import { COMPOSER_PICKER_TRIGGER_TEXT_CLASS_NAME } from "./composerPickerStyles";
 import { ComposerPickerMenuPopup } from "./ComposerPickerMenuPopup";
 import {
+  composerContextWindowOptionId,
+  composerEffortOptionId,
   getComposerTraitSelection,
   hasVisibleComposerTraitControls,
   resolveComposerTraitStatusLabel,
@@ -319,7 +321,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   // Both descriptor ids are resolved up here rather than inline. React Compiler cannot lower a `??`
   // in an object-key position, and it cannot match an optional-chained expression in a dependency
   // list to its own inferred scope — either one makes it skip this component entirely.
-  const contextWindowTraitId = contextWindowDescriptor?.id ?? "contextWindow";
+  const contextWindowTraitId = composerContextWindowOptionId(provider, contextWindowDescriptor?.id);
   const primarySelectDescriptorId = primarySelectDescriptor?.id;
   const hasPriorEffortSection = thinkingEnabled !== null || contextWindowOptions.length > 1;
   const hasPriorFastModeSection =
@@ -361,15 +363,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
       onSelectionComplete?.();
       return;
     }
-    const optionId =
-      primarySelectDescriptorId ??
-      (provider === "kilo" || provider === "opencode"
-        ? "variant"
-        : provider === "pi"
-          ? "thinkingLevel"
-          : provider === "claudeAgent"
-            ? "effort"
-            : "reasoningEffort");
+    const optionId = composerEffortOptionId(provider, primarySelectDescriptorId);
     commitTrait(buildProviderOptionPatch(provider, optionId, nextOption.value));
   };
 

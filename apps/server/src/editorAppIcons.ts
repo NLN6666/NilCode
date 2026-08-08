@@ -660,7 +660,11 @@ async function writeIconArtifact(input: {
     "$bitmap.Dispose()",
     "$icon.Dispose()",
   ].join("; ");
-  await execFileAsync("powershell.exe", ["-NoProfile", "-Command", script]);
+  // One icon extraction runs per installed editor, so omitting `windowsHide`
+  // flashes a console window for each of them at startup.
+  await execFileAsync("powershell.exe", ["-NoProfile", "-Command", script], {
+    windowsHide: true,
+  });
 }
 
 async function resolveCachedEditorIconUncached(input: {

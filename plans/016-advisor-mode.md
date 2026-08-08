@@ -13,16 +13,16 @@
 
 ## 2. 已确定的决策
 
-| 维度 | 决策 |
-|---|---|
-| 介入时机 | 实时旁观 + 主动打断（非事后评审） |
-| 评估节奏 | 持续会话；**在 turn 边界**喂入自上次评估以来的 delta（见 §5.2） |
-| 发言方式 | **按严重度分级投递**，全自动、不需用户逐条确认（见 §6） |
-| 工具权限 | **无**。不读文件、不执行命令、不写入。只看推给它的事件流 |
-| 配置粒度 | 全局默认（provider + model + 开关），每个线程可覆盖 |
-| 架构 | 独立 `AdvisorReactor`，订阅 `OrchestrationThreadActivity` 投影 |
-| 供应商范围 | 仅 Codex 与 Claude |
-| 参考实现 | [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) 的 advisor（README 已致谢） |
+| 维度       | 决策                                                                                |
+| ---------- | ----------------------------------------------------------------------------------- |
+| 介入时机   | 实时旁观 + 主动打断（非事后评审）                                                   |
+| 评估节奏   | 持续会话；**在 turn 边界**喂入自上次评估以来的 delta（见 §5.2）                     |
+| 发言方式   | **按严重度分级投递**，全自动、不需用户逐条确认（见 §6）                             |
+| 工具权限   | **无**。不读文件、不执行命令、不写入。只看推给它的事件流                            |
+| 配置粒度   | 全局默认（provider + model + 开关），每个线程可覆盖                                 |
+| 架构       | 独立 `AdvisorReactor`，订阅 `OrchestrationThreadActivity` 投影                      |
+| 供应商范围 | 仅 Codex 与 Claude                                                                  |
+| 参考实现   | [can1357/oh-my-pi](https://github.com/can1357/oh-my-pi) 的 advisor（README 已致谢） |
 
 ### 2.0 与参考实现的关系
 
@@ -66,10 +66,10 @@
 
 向 `Schema.Literals` 增加取值向后兼容但**向前不兼容**——旧版本客户端读到新值会解码失败。避开它的办法是使用已有的自由字符串字段：
 
-| 需求 | 原方案 | 实际方案 |
-|---|---|---|
-| 标记 advisor 发言 | 扩展 `tone` literal | `kind: "advisor.advice"` + `tone: "info"` |
-| 自激掐断依据 | 扩展 `MessageDispatchOrigin` | 按 activity `kind` 判定 |
+| 需求              | 原方案                       | 实际方案                                  |
+| ----------------- | ---------------------------- | ----------------------------------------- |
+| 标记 advisor 发言 | 扩展 `tone` literal          | `kind: "advisor.advice"` + `tone: "info"` |
+| 自激掐断依据      | 扩展 `MessageDispatchOrigin` | 按 activity `kind` 判定                   |
 
 `OrchestrationThreadActivity.kind`（`orchestration.ts:607`）是 `TrimmedNonEmptyString`，现有取值形如 `task.progress`、`turn.steered`、`runtime.error`。**新增取值零兼容成本。**
 
@@ -184,14 +184,14 @@ advisor 被问的是「模型做了什么」，不是「轮次结束了」这个
 
 `resolveAdvisorDeliveryChannel`（`advisorDelivery.ts`）按以下**顺序**判定，先命中先返回：
 
-| 条件 | 通道 | 理由 |
-|---|---|---|
-| plan 模式激活 | `preserve` | plan 模式是用户在决定下一步，steer 会启动用户没批准的工作 |
-| 正在中断本轮 | `preserve` | 中断是明确的停止指令，advisor 不得立刻反手再起一轮 |
-| `severity === "nit"` | `aside` | 小建议永远不值得切进运行中的轮次 |
-| 处于打断免疫期 | `aside` | 见 §6.2 |
-| 无轮次在跑，且非 `blocker` | `preserve` | 没有可重定向的对象，steer 会凭空起一轮用户没要的活 |
-| 其余 | `steer` | 打断当前轮 |
+| 条件                       | 通道       | 理由                                                      |
+| -------------------------- | ---------- | --------------------------------------------------------- |
+| plan 模式激活              | `preserve` | plan 模式是用户在决定下一步，steer 会启动用户没批准的工作 |
+| 正在中断本轮               | `preserve` | 中断是明确的停止指令，advisor 不得立刻反手再起一轮        |
+| `severity === "nit"`       | `aside`    | 小建议永远不值得切进运行中的轮次                          |
+| 处于打断免疫期             | `aside`    | 见 §6.2                                                   |
+| 无轮次在跑，且非 `blocker` | `preserve` | 没有可重定向的对象，steer 会凭空起一轮用户没要的活        |
+| 其余                       | `steer`    | 打断当前轮                                                |
 
 三个通道映射到 Synara 现有能力，**不新建投递机制**：`aside` → `dispatchMode: "queue"`，`steer` → `dispatchMode: "steer"`，`preserve` → 不注入、只留活动卡片。
 
@@ -207,12 +207,12 @@ advisor 被问的是「模型做了什么」，不是「轮次结束了」这个
 
 `advisorEmissionGuard.ts`，四道过滤：
 
-| 规则 | 值 | 作用 |
-|---|---|---|
-| 每次评估一条 | 1 | 真正贴合设计的限流：绑定在「advisor 被问了一次」上，而非墙钟 |
-| 空话过滤 | 短语表 | `stop`/`lgtm`/`nothing to add` 一类——advisor 无话可说时最常见的失败模式 |
-| 去重 | 4096 条 | 规范化后已说过的不再说 |
-| 升级放行 | 强制 | 同一条建议**只有严重度提升时**才能再次通过 |
+| 规则         | 值      | 作用                                                                    |
+| ------------ | ------- | ----------------------------------------------------------------------- |
+| 每次评估一条 | 1       | 真正贴合设计的限流：绑定在「advisor 被问了一次」上，而非墙钟            |
+| 空话过滤     | 短语表  | `stop`/`lgtm`/`nothing to add` 一类——advisor 无话可说时最常见的失败模式 |
+| 去重         | 4096 条 | 规范化后已说过的不再说                                                  |
+| 升级放行     | 强制    | 同一条建议**只有严重度提升时**才能再次通过                              |
 
 规范化为 NFKC + 小写 + 非字母数字折叠为单空格 + trim，因此 `Stop.`、`*Stop*`、`  stop  ` 共用一个键——否则加个标点就能绕过去重。
 
@@ -226,14 +226,14 @@ advisor 被问的是「模型做了什么」，不是「轮次结束了」这个
 
 **硬性不变量：advisor 的任何故障都不得影响主模型。**
 
-| 故障 | 处理 |
-|---|---|
-| advisor 会话起不来 | 降级为静默，UI 标注不可用，指数退避重启（非重试风暴） |
-| advisor 会话崩溃 | 同上 |
-| 输出不符合 schema | 丢弃该次输出并计一次失败 |
-| 连续失败 3 次 | 自动禁用该线程 advisor，UI 标注 |
-| advisor 响应超时 | 丢弃该次评估，不排队堆积 |
-| turn 已结束但 advisor 仍在思考 | 丢弃结果——过期建议没有价值 |
+| 故障                           | 处理                                                  |
+| ------------------------------ | ----------------------------------------------------- |
+| advisor 会话起不来             | 降级为静默，UI 标注不可用，指数退避重启（非重试风暴） |
+| advisor 会话崩溃               | 同上                                                  |
+| 输出不符合 schema              | 丢弃该次输出并计一次失败                              |
+| 连续失败 3 次                  | 自动禁用该线程 advisor，UI 标注                       |
+| advisor 响应超时               | 丢弃该次评估，不排队堆积                              |
+| turn 已结束但 advisor 仍在思考 | 丢弃结果——过期建议没有价值                            |
 
 任何一种情况下主 turn 都照常跑完。advisor 永不进入主模型的关键路径。
 
@@ -263,19 +263,19 @@ turn 内复用上下文（这是「持续会话」相对「每次独立评估」
 
 ## 9. 测试
 
-| 对象 | 方式 | 状态 |
-|---|---|---|
-| `advisorEventDigest` | 纯函数单测：截断、噪音过滤、自激掐断 | ✅ 15 |
-| `advisorDeltaBuffer` | 纯函数单测：累积、上限淘汰、截断披露、空 delta | ✅ 8 |
-| `advisorPipeline` | 纯函数单测：触发时机、边界语义、五道守卫的编排顺序 | ✅ 16 |
-| `advisorEmissionGuard` | 纯函数单测：规范化、空话、去重、升级、每次一条 | ✅ 21 |
-| `advisorDelivery` | 纯函数单测：通道决策全分支、免疫期、withhold | ✅ 16 |
-| `advisorQuarantine` | 纯函数单测：三条触发规则、output-only 判定、连续计数 | ✅ 14 |
-| `contracts/advisor` | 契约单测：默认值、供应商收窄、verdict 形状 | ✅ 21 |
-| `advisorResponseCollector` | 纯函数单测：拼接、忽略 reasoning、终态不可重开 | ✅ 12 |
-| `advisorThreadState` | 纯函数单测：打断窗口、plan 模式跨 turn | ✅ 8 |
-| `AdvisorSession` | 假 ProviderService：verdict 解析、只注入一次指令、连续失败停手 | ✅ 9 |
-| `AdvisorReactor` | 四个假服务：三条通道派发、自激掐断、开关生效 | ✅ 8 |
+| 对象                       | 方式                                                           | 状态  |
+| -------------------------- | -------------------------------------------------------------- | ----- |
+| `advisorEventDigest`       | 纯函数单测：截断、噪音过滤、自激掐断                           | ✅ 15 |
+| `advisorDeltaBuffer`       | 纯函数单测：累积、上限淘汰、截断披露、空 delta                 | ✅ 8  |
+| `advisorPipeline`          | 纯函数单测：触发时机、边界语义、五道守卫的编排顺序             | ✅ 16 |
+| `advisorEmissionGuard`     | 纯函数单测：规范化、空话、去重、升级、每次一条                 | ✅ 21 |
+| `advisorDelivery`          | 纯函数单测：通道决策全分支、免疫期、withhold                   | ✅ 16 |
+| `advisorQuarantine`        | 纯函数单测：三条触发规则、output-only 判定、连续计数           | ✅ 14 |
+| `contracts/advisor`        | 契约单测：默认值、供应商收窄、verdict 形状                     | ✅ 21 |
+| `advisorResponseCollector` | 纯函数单测：拼接、忽略 reasoning、终态不可重开                 | ✅ 12 |
+| `advisorThreadState`       | 纯函数单测：打断窗口、plan 模式跨 turn                         | ✅ 8  |
+| `AdvisorSession`           | 假 ProviderService：verdict 解析、只注入一次指令、连续失败停手 | ✅ 9  |
+| `AdvisorReactor`           | 四个假服务：三条通道派发、自激掐断、开关生效                   | ✅ 8  |
 
 四条不变量必须有专门用例，缺一不可：
 
@@ -291,7 +291,6 @@ turn 内复用上下文（这是「持续会话」相对「每次独立评估」
 - 独立的评审历史视图——先复用 activity 流
 - 非 Codex/Claude 供应商的支持（理由见 §3.2）
 - OMP 的 `obfuscator`（对工具参数/结果脱敏后再给 advisor 看）与 `syncBacklog`（advisor 落后时有界阻塞主模型）——前者在 advisor 只看摘要行的前提下收益有限，后者与「advisor 永不阻塞主模型」这条不变量冲突
-
 
 ## 11. 落地状态（截至服务端接线完成）
 

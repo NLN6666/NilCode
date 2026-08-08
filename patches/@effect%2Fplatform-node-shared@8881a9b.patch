@@ -1,27 +1,59 @@
 diff --git a/dist/NodeChildProcessSpawner.js b/dist/NodeChildProcessSpawner.js
-index ff15212e4..e7cf12c4d 100644
 --- a/dist/NodeChildProcessSpawner.js
 +++ b/dist/NodeChildProcessSpawner.js
-@@ -314,7 +314,8 @@ const make = /*#__PURE__*/Effect.gen(function* () {
+@@ -242,7 +242,9 @@
+   const killProcessGroup = (command, childProcess, signal) => {
+     if (globalThis.process.platform === "win32") {
+       return Effect.callback(resume => {
+-        NodeChildProcess.exec(`taskkill /pid ${childProcess.pid} /T /F`, error => {
++        NodeChildProcess.exec(`taskkill /pid ${childProcess.pid} /T /F`, {
++          windowsHide: true
++        }, error => {
+           if (error) {
+             resume(Effect.fail(toPlatformError("kill", toError(error), command)));
+           } else {
+@@ -314,7 +316,9 @@
              env,
              stdio,
              detached: cmd.options.detached ?? process.platform !== "win32",
 -            shell: cmd.options.shell
 +            shell: cmd.options.shell,
++            windowsHide: cmd.options.windowsHide ?? true,
 +            windowsVerbatimArguments: cmd.options.windowsVerbatimArguments
            }), Effect.fnUntraced(function* ([childProcess, exitSignal]) {
              const exited = yield* Deferred.isDone(exitSignal);
              const killWithTimeout = withTimeout(childProcess, cmd, cmd.options);
 diff --git a/src/NodeChildProcessSpawner.ts b/src/NodeChildProcessSpawner.ts
-index dc53bafb7..fe867fbfc 100644
 --- a/src/NodeChildProcessSpawner.ts
 +++ b/src/NodeChildProcessSpawner.ts
-@@ -430,7 +430,12 @@ const make = Effect.gen(function*() {
+@@ -326,7 +326,11 @@
+   ) => {
+     if (globalThis.process.platform === "win32") {
+       return Effect.callback<void, PlatformError.PlatformError>((resume) => {
+-        NodeChildProcess.exec(`taskkill /pid ${childProcess.pid} /T /F`, (error) => {
++        // Without `windowsHide` this pops a console window every time a child
++        // process group is killed, and one is killed per finished command.
++        NodeChildProcess.exec(`taskkill /pid ${childProcess.pid} /T /F`, {
++          windowsHide: true
++        }, (error) => {
+           if (error) {
+             resume(Effect.fail(toPlatformError("kill", toError(error), command)))
+           } else {
+@@ -430,7 +434,21 @@
              env,
              stdio,
              detached: cmd.options.detached ?? process.platform !== "win32",
 -            shell: cmd.options.shell
 +            shell: cmd.options.shell,
++            // Defaults to `true`: nothing spawned through this spawner wants a
++            // console window, and when the parent process has none of its own
++            // (the packaged desktop app) every omission pops a visible cmd.exe
++            // window. Pass `windowsHide: false` explicitly to opt out.
++            windowsHide: (
++              cmd.options as ChildProcess.CommandOptions & {
++                readonly windowsHide?: boolean | undefined
++              }
++            ).windowsHide ?? true,
 +            windowsVerbatimArguments: (
 +              cmd.options as ChildProcess.CommandOptions & {
 +                readonly windowsVerbatimArguments?: boolean | undefined

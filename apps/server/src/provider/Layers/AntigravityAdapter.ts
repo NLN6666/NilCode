@@ -247,6 +247,7 @@ export async function runAntigravityHelperProcess(
       cwd: options.cwd,
       env: buildProviderChildEnvironment({ provider: PROVIDER }),
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
     let stdout = "";
     let stderr = "";

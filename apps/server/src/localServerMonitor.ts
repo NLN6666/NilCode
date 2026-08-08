@@ -2,7 +2,8 @@
 // Purpose: Finds local development servers listening on localhost/private ports and
 //          stops a selected server process after re-validating it is still a dev listener.
 // Layer: Server runtime utility used by the WebSocket RPC layer.
-// Depends on: node child_process lsof/ps output and shared server contract shapes.
+// Depends on: node child_process lsof/ps output (PowerShell on Windows, see
+//             localServerMonitorWindows) and shared server contract shapes.
 
 import { execFile } from "node:child_process";
 import path from "node:path";
@@ -15,6 +16,7 @@ import type {
   ServerStopLocalServerResult,
 } from "@synara/contracts";
 
+import { readWindowsLocalServerSnapshot } from "./localServerMonitorWindows";
 import { redactSensitiveProcessArgs } from "./processArgumentRedaction";
 
 const PROCESS_OUTPUT_MAX_BUFFER_BYTES = 2 * 1024 * 1024;
@@ -272,10 +274,14 @@ function tokenizeCommandLine(commandLine: string): string[] {
 
 function normalizeCommandName(command: string, args: string): string {
   const firstToken = tokenizeCommandLine(args)[0] ?? command;
-  return path
-    .basename(firstToken || command)
-    .replace(/\.[cm]?js$/i, "")
-    .toLowerCase();
+  return (
+    path
+      .basename(firstToken || command)
+      // `.exe` joins the script suffixes so Windows' "dotnet.exe" resolves to the
+      // same label as Unix' "dotnet" instead of missing every lookup.
+      .replace(/\.(?:[cm]?js|exe)$/i, "")
+      .toLowerCase()
+  );
 }
 
 // Some dev tools let a generic child own the port while the parent has the useful command.
@@ -309,8 +315,16 @@ function processLineageCommandLines(
   return commandLines.length > 0 ? commandLines.join(" ") : null;
 }
 
+// Detector patterns are written against bare, unquoted tool names as `ps` reports
+// them. Windows command lines differ on both counts - `"C:\...\dotnet.exe" run`
+// would match neither `\bdotnet\b` nor `dotnet\s+run` - so the extension is dropped
+// where it ends a token and quotes become spaces. Only the text used for matching
+// is normalized; tokenization and display still read the original.
 function normalizeProcessText(command: string, args: string): string {
-  return `${command} ${args}`.toLowerCase();
+  return `${command} ${args}`
+    .toLowerCase()
+    .replace(/\.exe(?=["'\s]|$)/g, "")
+    .replace(/["']/g, " ");
 }
 
 export function isIgnoredLocalServerProcess(input: DevServerCandidateInput): boolean {
@@ -844,9 +858,6 @@ function groupListenersByPid(
 }
 
 async function readLsofListeners(): Promise<ParsedLsofListener[]> {
-  if (process.platform === "win32") {
-    return [];
-  }
   const output = await execFileText("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-F", "pcPn"]).catch(
     () => "",
   );
@@ -856,7 +867,7 @@ async function readLsofListeners(): Promise<ParsedLsofListener[]> {
 async function readProcessInfoBatch(
   pids: readonly number[],
 ): Promise<Map<number, LocalServerProcessInfo>> {
-  if (pids.length === 0 || process.platform === "win32") {
+  if (pids.length === 0) {
     return new Map();
   }
   const output = await execFileText("ps", [
@@ -876,7 +887,7 @@ async function readProcessInfoBatch(
 // Resolves each pid's working directory via `lsof -d cwd`. Only user-owned
 // processes are reported (which dev servers are); others are silently absent.
 async function readProcessCwdBatch(pids: readonly number[]): Promise<Map<number, string>> {
-  if (pids.length === 0 || process.platform === "win32") {
+  if (pids.length === 0) {
     return new Map();
   }
   const output = await execFileText("lsof", ["-a", "-d", "cwd", "-Fn", "-p", pids.join(",")]).catch(
@@ -925,13 +936,34 @@ export function buildLocalServerProcesses(
   );
 }
 
-export async function listLocalServers(): Promise<ServerListLocalServersResult> {
+interface LocalServerSources {
+  readonly listeners: readonly ParsedLsofListener[];
+  readonly processInfoByPid: ReadonlyMap<number, LocalServerProcessInfo>;
+  readonly cwdByPid: ReadonlyMap<number, string>;
+}
+
+// The one place the platforms differ. Unix reads lsof and ps; Windows has neither,
+// so a PowerShell snapshot returns both tables in a single round-trip.
+async function readLocalServerSources(): Promise<LocalServerSources> {
+  if (process.platform === "win32") {
+    // The CIM process table already spans every pid, so the ancestor walk that
+    // batches ps calls has nothing left to fetch. Windows exposes no per-process
+    // working directory, so attributing a listener to a tracked project run falls
+    // back to the pid/ppid branch of localServerMatchesRun.
+    const snapshot = await readWindowsLocalServerSnapshot();
+    return { ...snapshot, cwdByPid: new Map() };
+  }
   const listeners = await readLsofListeners();
   const pids = [...new Set(listeners.map((listener) => listener.pid))];
   const processInfoByPid = await readProcessInfoWithAncestors(pids);
   // Resolve cwd across the full lineage so a generic port-holding child can fall
   // back to its dev-tool parent's directory (cwd is inherited across fork/exec).
   const cwdByPid = await readProcessCwdBatch([...new Set([...pids, ...processInfoByPid.keys()])]);
+  return { listeners, processInfoByPid, cwdByPid };
+}
+
+export async function listLocalServers(): Promise<ServerListLocalServersResult> {
+  const { listeners, processInfoByPid, cwdByPid } = await readLocalServerSources();
   const servers = buildLocalServerProcesses(listeners, processInfoByPid, cwdByPid);
   return {
     generatedAt: new Date().toISOString(),

@@ -310,10 +310,15 @@ export const AppSettingsSchema = Schema.Struct({
   // Stored as a flat list rather than a record so adding a `ProviderKind` needs
   // no schema migration — same shape and rationale as `hiddenModels`. It is the
   // last link of the new-thread fallback chain, just before the built-in default.
+  // `effort` and `contextWindow` are optional so settings written before they
+  // existed keep decoding, and so an unset trait stays "follow the model's own
+  // default" rather than being pinned to a value.
   defaultModelByProvider: Schema.Array(
     Schema.Struct({
       provider: PersistedProviderKind,
       slug: Schema.String,
+      effort: Schema.optional(Schema.String),
+      contextWindow: Schema.optional(Schema.String),
     }),
   ).pipe(withDefaults(() => [])),
 });

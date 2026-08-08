@@ -95,7 +95,10 @@ function processAbortError(): Error {
 function killChild(child: ChildProcessHandle, signal: NodeJS.Signals = "SIGTERM"): void {
   if (process.platform === "win32" && child.pid !== undefined) {
     try {
-      spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+      spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
       return;
     } catch {
       // fallback to direct kill

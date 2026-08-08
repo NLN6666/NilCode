@@ -976,6 +976,10 @@ export const settings = {
       },
       providerAriaLabel: "Default model provider",
       modelAriaLabel: "Default model",
+      effortAriaLabel: "Default reasoning level",
+      contextWindowAriaLabel: "Default context window",
+      /** Placeholder meaning "leave it to the model"; nothing is written to the selection. */
+      modelDefault: "Model default",
       /** Placeholder option meaning "no preference"; the built-in default applies. */
       builtIn: "Built-in default",
       noModels: "No models discovered for this provider yet.",

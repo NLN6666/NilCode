@@ -94,6 +94,47 @@ function promptInjectedValuesForDescriptor(
   );
 }
 
+/**
+ * The provider option field a chosen reasoning level is written to. Each provider
+ * names it differently, and a runtime-discovered descriptor overrides all of them.
+ *
+ * Lives here rather than inline in a picker because every surface that lets a user
+ * choose a level - the composer traits menu, Settings -> default models - has to
+ * agree on the field, and a second copy of this mapping would drift silently: the
+ * value would be written under a key the provider never reads.
+ */
+export function composerEffortOptionId(
+  provider: ProviderKind,
+  primarySelectDescriptorId?: string | undefined,
+): string {
+  if (primarySelectDescriptorId) {
+    return primarySelectDescriptorId;
+  }
+  if (provider === "kilo" || provider === "opencode") {
+    return "variant";
+  }
+  if (provider === "pi") {
+    return "thinkingLevel";
+  }
+  return provider === "claudeAgent" ? "effort" : "reasoningEffort";
+}
+
+/**
+ * The provider option field a chosen context window is written to. A discovered
+ * descriptor wins; otherwise Claude reads `autoCompactWindow` while the rest read
+ * `contextWindow`. Getting this wrong is silent - the value lands under a key the
+ * provider never looks at, so the setting simply does nothing.
+ */
+export function composerContextWindowOptionId(
+  provider: ProviderKind,
+  descriptorId?: string | undefined,
+): string {
+  if (descriptorId) {
+    return descriptorId;
+  }
+  return provider === "claudeAgent" ? "autoCompactWindow" : "contextWindow";
+}
+
 // Resolve the currently selected composer traits from capabilities plus draft overrides.
 export function getComposerTraitSelection(
   provider: ProviderKind,

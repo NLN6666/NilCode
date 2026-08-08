@@ -14,6 +14,7 @@ import {
   PtySpawnInput,
   PtySpawnError,
 } from "../Services/PTY";
+import { ptyPlatformSpawnOptions } from "../ptySpawnOptions";
 
 type NodePtyModule = typeof import("node-pty");
 type NodePtyLoader = () => Promise<NodePtyModule>;
@@ -147,6 +148,7 @@ export const makeNodePtyLayer = (loadNodePtyModule: NodePtyLoader = () => import
                 rows: input.rows,
                 env: input.env,
                 name: globalThis.process.platform === "win32" ? "xterm-color" : "xterm-256color",
+                ...ptyPlatformSpawnOptions(globalThis.process.platform),
               }),
             catch: (cause) =>
               new PtySpawnError({
