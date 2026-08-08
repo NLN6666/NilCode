@@ -336,7 +336,7 @@ interface PendingUserInput {
 }
 
 interface GrokSessionContext {
-  harnessPolicyDelivered?: boolean;
+  deliveredHarnessPolicyVersion?: string;
   readonly gatewaySessionLease?: AgentGatewaySessionLease;
   readonly threadId: ThreadId;
   readonly lifecycleGeneration?: string;

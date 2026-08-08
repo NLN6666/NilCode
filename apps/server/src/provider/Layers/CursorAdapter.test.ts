@@ -10,7 +10,7 @@ import { takeCursorSynaraHarnessPolicyTextPart } from "./CursorAdapter.ts";
 describe("Cursor Synara harness policy", () => {
   it("delivers scoped MCP host context exactly once per fresh/load/fork session", () => {
     for (const lifecycle of ["fresh", "load", "fork"] as const) {
-      const state: { harnessPolicyDelivered?: boolean } = {};
+      const state: { deliveredHarnessPolicyVersion?: string } = {};
       const first = takeCursorSynaraHarnessPolicyTextPart(state, true);
       expect(first?.text, lifecycle).toContain(SYNARA_HARNESS_POLICY_MARKER);
       expect(first?.text, lifecycle).toContain("Use the synara_* tools");

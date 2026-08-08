@@ -35,7 +35,7 @@ import {
 
 describe("Grok Synara harness policy", () => {
   it("delivers private scoped host context once", () => {
-    const state: { harnessPolicyDelivered?: boolean } = {};
+    const state: { deliveredHarnessPolicyVersion?: string } = {};
     expect(takeGrokSynaraHarnessPolicyTextPart(state, true)?.text).toContain(
       SYNARA_HARNESS_POLICY_MARKER,
     );
