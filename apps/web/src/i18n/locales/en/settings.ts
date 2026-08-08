@@ -945,6 +945,12 @@ export const settings = {
           "Only Codex and Claude can be interrupted mid-turn without discarding the work, so the advisor is limited to those.",
         ariaLabel: "Advisor model",
       },
+      effort: {
+        title: "Reasoning level",
+        description:
+          "How hard the advisor thinks before it decides whether to speak up. It runs on every turn, so a higher level costs more and takes longer to arrive. Modes that push the model into autonomous work are not offered: the advisor has no tools to use them with.",
+        ariaLabel: "Advisor reasoning level",
+      },
       severities: {
         nit: "Nit",
         concern: "Concern",

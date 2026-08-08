@@ -1,4 +1,4 @@
-import type { ProviderRuntimeEvent, ThreadId } from "@synara/contracts";
+import type { AdvisorModelSelection, ProviderRuntimeEvent, ThreadId } from "@synara/contracts";
 import { Effect, Layer, Queue, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -89,10 +89,14 @@ async function withAdvisor<A>(
   );
 }
 
-const evaluate = (advisor: AdvisorSessionShape, delta: string) =>
+const evaluate = (
+  advisor: AdvisorSessionShape,
+  delta: string,
+  modelSelection: AdvisorModelSelection = CODEX_MODEL,
+) =>
   advisor.evaluate({
     mainThreadId: MAIN_THREAD,
-    modelSelection: CODEX_MODEL,
+    modelSelection,
     delta,
     workInProgress: false,
   });
@@ -146,6 +150,49 @@ describe("AdvisorSession", () => {
         Effect.gen(function* () {
           yield* evaluate(advisor, "first");
           yield* evaluate(advisor, "second");
+          return harness;
+        }),
+    );
+
+    expect(harness.startedSessions).toHaveLength(1);
+  });
+
+  // The reasoning level travels in modelSelection.options. A session key that
+  // ignored options would reuse the running shadow session, and the level the
+  // user just picked would never reach the provider.
+  it("starts a fresh shadow session when the reasoning level changes", async () => {
+    const harness = await withAdvisor(
+      { replies: [say('{"verdict":"silent"}'), say('{"verdict":"silent"}')] },
+      ({ advisor, harness }) =>
+        Effect.gen(function* () {
+          yield* evaluate(advisor, "first");
+          yield* evaluate(advisor, "second", {
+            ...CODEX_MODEL,
+            options: { reasoningEffort: "xhigh" },
+          });
+          return harness;
+        }),
+    );
+
+    expect(harness.stopped).toEqual([SHADOW]);
+    expect(harness.startedSessions).toHaveLength(2);
+  });
+
+  // Key equality must track the option values, not the order the fields happen
+  // to be written in, or an unrelated settings round-trip would churn sessions.
+  it("reuses the session when the same options arrive in a different field order", async () => {
+    const harness = await withAdvisor(
+      { replies: [say('{"verdict":"silent"}'), say('{"verdict":"silent"}')] },
+      ({ advisor, harness }) =>
+        Effect.gen(function* () {
+          yield* evaluate(advisor, "first", {
+            ...CODEX_MODEL,
+            options: { reasoningEffort: "high", fastMode: true },
+          });
+          yield* evaluate(advisor, "second", {
+            ...CODEX_MODEL,
+            options: { fastMode: true, reasoningEffort: "high" },
+          });
           return harness;
         }),
     );

@@ -17,8 +17,11 @@ import { ensureNativeApi } from "~/nativeApi";
 import { useMessages } from "../../i18n/context";
 import {
   ADVISOR_MODEL_OPTIONS,
+  advisorEffortOptions,
+  advisorEffortValue,
   advisorModelValue,
   parseAdvisorModelValue,
+  withAdvisorEffort,
 } from "./advisorSettings.logic";
 import { SettingsSelectControl } from "./SettingControls";
 import { SettingsRow, SettingsSection } from "./SettingsPanelPrimitives";
@@ -53,6 +56,10 @@ export function AdvisorSettingsSection() {
       option.slug === advisor.modelSelection.model,
   );
 
+  const effortOptions = advisorEffortOptions(advisor.modelSelection);
+  const effortValue = advisorEffortValue(advisor.modelSelection);
+  const selectedEffort = effortOptions.find((level) => level.value === effortValue);
+
   return (
     <SettingsSection title={copy.title}>
       <SettingsRow
@@ -78,7 +85,7 @@ export function AdvisorSettingsSection() {
               // A value that does not name one of the offered pairs is dropped
               // rather than sent: the contract cannot represent it, so the
               // patch would be rejected after the UI already looked saved.
-              const modelSelection = parseAdvisorModelValue(value);
+              const modelSelection = parseAdvisorModelValue(value, advisor.modelSelection);
               if (modelSelection === null) return;
               patchAdvisor({ modelSelection });
             }}
@@ -102,6 +109,34 @@ export function AdvisorSettingsSection() {
           </SettingsSelectControl>
         }
       />
+      {effortOptions.length > 0 ? (
+        <SettingsRow
+          title={copy.effort.title}
+          anchorKey="models:advisor-effort"
+          description={copy.effort.description}
+          control={
+            <SettingsSelectControl
+              value={effortValue}
+              onValueChange={(value) => {
+                // Unsupported levels come back as the same selection object, so
+                // there is nothing to patch and nothing to optimistically flip.
+                const modelSelection = withAdvisorEffort(advisor.modelSelection, value);
+                if (modelSelection === advisor.modelSelection) return;
+                patchAdvisor({ modelSelection });
+              }}
+              ariaLabel={copy.effort.ariaLabel}
+              triggerClassName="w-full sm:w-52"
+              valueContent={selectedEffort?.label ?? effortValue}
+            >
+              {effortOptions.map((level) => (
+                <SelectItem hideIndicator key={level.value} value={level.value}>
+                  {level.label}
+                </SelectItem>
+              ))}
+            </SettingsSelectControl>
+          }
+        />
+      ) : null}
     </SettingsSection>
   );
 }

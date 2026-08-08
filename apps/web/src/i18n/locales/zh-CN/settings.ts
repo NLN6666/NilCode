@@ -890,6 +890,12 @@ export const settings: Settings = {
           "只有 Codex 与 Claude 能在不丢弃当前工作的前提下被中途打断，因此监察只开放这两家。",
         ariaLabel: "监察模型",
       },
+      effort: {
+        title: "推理档位",
+        description:
+          "监察在决定是否出声前思考的深度。它每一轮都会运行，档位越高花费越多、给出建议也越慢。会驱使模型自行展开工作的模式不在此提供：监察没有任何工具可用来执行它们。",
+        ariaLabel: "监察推理档位",
+      },
       severities: {
         nit: "小建议",
         concern: "值得注意",

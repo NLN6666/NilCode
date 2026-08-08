@@ -55,8 +55,20 @@ interface ShadowSessionState {
   readonly disabled: boolean;
 }
 
+/**
+ * Session identity: provider, model, and every model option that shapes how the
+ * model reasons. Options belong in the key because a shadow session already
+ * running at the old reasoning effort would otherwise be reused unchanged, and
+ * the new setting would go silently unapplied until something else restarted it.
+ * Entries are sorted so key equality tracks the values, not their field order.
+ */
 function modelKeyOf(selection: AdvisorModelSelection): string {
-  return `${selection.provider}:${selection.model}`;
+  const optionKey = Object.entries(selection.options ?? {})
+    .filter(([, value]) => value !== undefined)
+    .toSorted(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .join(",");
+  return `${selection.provider}:${selection.model}:${optionKey}`;
 }
 
 export const make = Effect.gen(function* () {
