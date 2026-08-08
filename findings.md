@@ -83,6 +83,27 @@ expected 'D:\tmp\synara-home\cache\login-shell-…' to be '\tmp\synara-home\cach
 
 Windows 盘符前缀问题。`git log --name-only 6373224d..HEAD | grep -c loginShell` = 0，本分支从未触及该文件。**汇报测试结果时须把它算作既有失败，不得计入本次改动。**
 
+**追加（2026-08-08，dev 合到 c4c79f32 之后实测）：**
+
+| 既有失败                                         | 表现                                                    |
+| ------------------------------------------------ | ------------------------------------------------------- |
+| `orchestration/Layers/CheckpointReactor.test.ts` | 30 用例中 6 失败，单跑仍失败（非负载所致），每例 10–27s |
+| `git/Layers/GitCore.test.ts`                     | `expected 'origin-1' to be 'origin'`                    |
+
+**基线对比方法（这是判定既有失败的唯一可信手段，依赖推理不够）：**
+
+```bash
+git stash push -u -m "<唯一tag>"                      # 规则要求带 tag，worktree 间共享栈
+git stash list --format='%H %gs'                      # 立刻捕获 SHA
+npx vitest run <file> -t "<单个最快的失败用例>"        # 只跑一例，别跑整文件
+git stash apply <SHA>                                 # apply 不是 pop
+git stash drop stash@{n}                              # 按 tag 重新定位后再 drop
+```
+
+实测 `restores turn zero from the persisted checkpoint family` 在**基线上同样失败**（10.2s），故 CheckpointReactor 的 6 例与 advisor/services 改动无关。
+
+**注意别被负载骗了。** 后台跑 server 全量的同时跑 web 全量，会让 `ChatMarkdown.test.tsx` 和 `Sidebar.import.test.ts` 双双超时（web import 阶段耗时 562s）；两者单独重跑 24 例全通过、耗时 5.2s。**超时类失败必须在机器空闲时单独复跑**再下结论，否则会把负载问题误记成回归。
+
 ---
 
 ## 9. UTF-8 字节游标的起始与结束边界对齐方向相反
@@ -201,3 +222,53 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 3. **枚举漏了 Windows 惯用法。** `harnessPolicy.ts:25` 点名了 `&`、`nohup`、`start /b`、run-in-background flag，**唯独没有 PowerShell 的 `Start-Process`** —— 而这正是 Windows 上 Agent 的首选写法。
 
 **次生缺口（本次不触发，但会咬别的 provider）：** `takeSynaraHarnessPolicyForSession`（`harnessPolicy.ts:96`）只判断 `harnessPolicyDelivered` 布尔值，**不比对 `SYNARA_HARNESS_POLICY_VERSION`**。claudeAgent 走 `systemPrompt.append`（`ClaudeAdapter.ts:5257`）每次会话都带，不受影响；codex / cursor / grok / droid / pi / opencode / antigravity 走一次性投递，策略版本升级后，同一 server 进程里已开着的会话永远收不到新规则。
+
+---
+
+## 17. #16 的约束已生效，但面板依旧空白 —— 剩下的是纯可发现性问题
+
+**现象：** 用户报「Synara 接管的 Background 服务依旧看不到」。
+
+**关键对比（同一台实机，同一套判别方法）：**
+
+| 检查                       | #16 那次   | 本次（2026-08-08 20:08）    |
+| -------------------------- | ---------- | --------------------------- |
+| `<stateDir>/daemons/` 目录 | **不存在** | `daemons/purpur-1218/` 存在 |
+| `output.log`               | —          | **1.2 MB，20:08 仍在写入**  |
+
+`4d6220b8`（后台服务约束改为可检测）**确实起作用了**：Agent 这次真的走了 `synara_start_daemon`，broker 侧完全正常。
+
+**所以「看不到」不在后端。** 用户确认的实际情况是**根本找不到入口**：
+
+1. `ServicesPanel` 只作为右侧 dock 的一个页签存在，唯一入口是 dock 的 `+` 添加菜单
+2. `rightDockPaneMeta.tsx` 的 `RIGHT_DOCK_LAUNCHER_ORDER` **不含 `services`** —— 空 dock 时的快捷启动器列表里没有它
+3. 有 daemon 在跑时，UI 上没有任何地方提示这件事
+
+**鸡生蛋的结构问题：** 想「有 daemon 时才显示入口」就得先知道有没有 daemon，但 `useDaemonFeed`（`ServicesPanel.tsx:56`）把订阅**限定在面板挂载期间**。不打开面板 → 拿不到名单 → 无从显示入口 → 用户永远打不开面板。原注释的权衡（「不开面板的用户不付流的代价」）在可发现性面前站不住：那条流是每个 daemon 状态变化一个事件，代价远小于功能完全不可达。
+
+**判别方法沿用 #16：** 后端有没有干活看 `daemons/` 目录，不要翻 `server.log` —— broker 与 WS 订阅**两处都不打日志**，`grep -c daemon server.log` 恒为 0，对判断 UI 侧是否订阅过毫无用处。
+
+---
+
+## 18. Advisor「不显示」的诊断必须按会话切分日志，否则会诊断到已被删掉的代码
+
+**现象：** 用户报「Advisor 依旧没有显示在对话里面」。
+
+**第一轮（错误的）结论：** 全量 grep `server.log` 得到 6 次 `advisor shadow session reported a failure`、1 次 `advisor disabled for thread after consecutive failures`，失败原因是 `Claude Code process exited with code 127` 与 `Claude is not authenticated`。据此判定「advisor 因 CLI 认证失败被自动禁用」。
+
+**这个结论是错的。** `bb629754`（advisor 改为一次性推理通道）已经把 shadow session 和 consecutive-failure kill switch **整个删掉了** —— `AdvisorSession.ts` 顶部注释明写「There is no state here. No session to prime, no consecutive-failure kill switch」。那些日志行来自旧构建，是历史沉积。
+
+**按最后一次 `advisor reactor started` 切分后的真实情况：**
+
+| 指标                        | 全量（含历史） | 末次会话（11:46:14Z 起） |
+| --------------------------- | -------------- | ------------------------ |
+| advisor evaluating          | 29             | 8                        |
+| advisor evaluation resolved | 19             | **8（零失败零超时）**    |
+| shadow session failure      | 6              | **0**                    |
+| verdict = silent            | 18/19          | **8/8**                  |
+
+新构建下 advisor **完全健康**，只是 100% 判 `silent`。且评估时机是混合的（4 次 `workInProgress: false` 的 turn 边界，nit/concern 均可通过），并非「只在 mid-turn 评估所以只能报 blocker」。
+
+**根因：不是 bug，是设计与期望的落差。** `ADVISOR_SYSTEM_PROMPT` 明确写着 _"Silence is the expected answer... Do not narrate, do not confirm that things look good - that is noise"_。advisor 在严格执行指令；用户看到的「没显示」就是它按设计沉默。
+
+**判别方法：** `server.log` 是跨构建追加的。任何「功能 X 没生效」的诊断，都必须先 `grep -n "<X> started" server.log | tail -1` 拿到末次启动行号，再 `tail -n +<行号>` 切出当前构建的区间。不切分就统计，等于拿已删代码的错误日志去诊断现有代码。
