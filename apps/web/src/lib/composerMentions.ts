@@ -147,7 +147,7 @@ export function providerMentionMatchesToken(
   );
 }
 
-export type MentionChipKind = "path" | "plugin" | "thread" | "preview";
+export type MentionChipKind = "path" | "plugin" | "thread" | "preview" | "launch";
 
 /**
  * Composer mention token that enables color-theme preview mode for the sent
@@ -175,6 +175,37 @@ export function isColorPreviewMentionToken(token: string): boolean {
 /** True when the outgoing prompt carries an `@Preview` mention token. */
 export function promptIncludesColorPreviewMention(prompt: string): boolean {
   return collectPromptMentionNameKeys(prompt).has(COLOR_PREVIEW_MENTION_KEY);
+}
+
+/**
+ * Composer mention token that enables background-service mode for the sent turn
+ * (`@Launch`). Matched case-insensitively, like skill mentions.
+ *
+ * Unrelated to the `LAUNCH_CONFIG_*` constants in `@synara/contracts`, which name
+ * the `.nilcode/launch.json` file. The server-side injection reports both that
+ * file and the live daemon list, which is why one user-facing word covers two
+ * subsystems.
+ */
+export const LAUNCH_MENTION_TOKEN = "Launch";
+
+/**
+ * Exact text the `@Launch` suggestion inserts. Kept next to the matcher so the
+ * inserted token can never drift out of `promptIncludesLaunchMention`.
+ */
+export const LAUNCH_MENTION_INSERT_TEXT = formatComposerMentionToken(LAUNCH_MENTION_TOKEN);
+
+/** Central icon shared by the `@Launch` chip and its command-menu row. */
+export const LAUNCH_MENTION_ICON_NAME = "server";
+
+const LAUNCH_MENTION_KEY = normalizeMentionNameKey(LAUNCH_MENTION_TOKEN);
+
+export function isLaunchMentionToken(token: string): boolean {
+  return normalizeMentionNameKey(token) === LAUNCH_MENTION_KEY;
+}
+
+/** True when the outgoing prompt carries an `@Launch` mention token. */
+export function promptIncludesLaunchMention(prompt: string): boolean {
+  return collectPromptMentionNameKeys(prompt).has(LAUNCH_MENTION_KEY);
 }
 
 export function isPluginProviderMentionReference(mention: ProviderMentionReference): boolean {
@@ -227,6 +258,9 @@ export function resolveMentionChipKind(
   }
   if (options?.kind === "preview" || isColorPreviewMentionToken(path)) {
     return "preview";
+  }
+  if (options?.kind === "launch" || isLaunchMentionToken(path)) {
+    return "launch";
   }
   return "path";
 }

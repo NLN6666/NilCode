@@ -513,6 +513,8 @@ export const OrchestrationMessage = Schema.Struct({
   mentions: Schema.optional(Schema.Array(ProviderMentionReference)),
   /** Set by the composer's `@Preview` mention: inject the color-preview prompt for this turn. */
   colorPreview: Schema.optional(Schema.Boolean),
+  /** Set by the composer's `@Launch` mention: inject the background-service prompt for this turn. */
+  launch: Schema.optional(Schema.Boolean),
   dispatchMode: Schema.optional(TurnDispatchMode),
   dispatchOrigin: Schema.optional(MessageDispatchOrigin),
   turnId: Schema.NullOr(TurnId),
@@ -1320,6 +1322,7 @@ export const ThreadTurnStartCommand = Schema.Struct({
     skills: Schema.optional(Schema.Array(ProviderSkillReference)),
     mentions: Schema.optional(Schema.Array(ProviderMentionReference)),
     colorPreview: Schema.optional(Schema.Boolean),
+    launch: Schema.optional(Schema.Boolean),
   }).check(TurnMessageContentCheck),
   modelSelection: Schema.optional(ModelSelection),
   providerOptions: Schema.optional(ProviderStartOptions),
@@ -1351,6 +1354,7 @@ const ClientThreadTurnStartCommand = Schema.Struct({
     skills: Schema.optional(Schema.Array(ProviderSkillReference)),
     mentions: Schema.optional(Schema.Array(ProviderMentionReference)),
     colorPreview: Schema.optional(Schema.Boolean),
+    launch: Schema.optional(Schema.Boolean),
   }).check(TurnMessageContentCheck),
   modelSelection: Schema.optional(ModelSelection),
   providerOptions: Schema.optional(ProviderStartOptions),
@@ -1946,6 +1950,7 @@ export const ThreadMessageSentPayload = Schema.Struct({
   skills: Schema.optional(Schema.Array(ProviderSkillReference)),
   mentions: Schema.optional(Schema.Array(ProviderMentionReference)),
   colorPreview: Schema.optional(Schema.Boolean),
+  launch: Schema.optional(Schema.Boolean),
   dispatchMode: Schema.optional(TurnDispatchMode),
   dispatchOrigin: Schema.optional(MessageDispatchOrigin),
   turnId: Schema.NullOr(TurnId),

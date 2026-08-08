@@ -26,6 +26,8 @@ import {
 import {
   COLOR_PREVIEW_MENTION_INSERT_TEXT,
   COLOR_PREVIEW_MENTION_TOKEN,
+  LAUNCH_MENTION_INSERT_TEXT,
+  LAUNCH_MENTION_TOKEN,
 } from "~/lib/composerMentions";
 import { basenameOfPath } from "../file-icons";
 import type { ComposerTrigger } from "../composer-logic";
@@ -154,8 +156,9 @@ export const COLOR_PREVIEW_MENTION_ITEM_ID = "color-preview";
 
 // Localized keywords are a synonym bag, not a name: weighting them keeps `@pre` scoring against
 // the literal token first, and (weight > 0) disables fuzzy matching so unrelated queries cannot
-// subsequence their way into a hit.
-const COLOR_PREVIEW_MENTION_KEYWORD_FIELD_WEIGHT = 200;
+// subsequence their way into a hit. Shared by every turn-mode row (`@Preview`, `@Launch`) so they
+// rank against their own token on equal terms.
+const TURN_MODE_MENTION_KEYWORD_FIELD_WEIGHT = 200;
 
 /**
  * The single `@Preview` row. It is a constant rather than a discovery result — nothing is probed
@@ -175,7 +178,31 @@ export function buildColorPreviewMentionComposerItems(input: {
   };
   return rankProviderDiscoveryItems([item], input.query, () => [
     { value: COLOR_PREVIEW_MENTION_TOKEN },
-    { value: input.keywords, weight: COLOR_PREVIEW_MENTION_KEYWORD_FIELD_WEIGHT },
+    { value: input.keywords, weight: TURN_MODE_MENTION_KEYWORD_FIELD_WEIGHT },
+  ]);
+}
+
+export const LAUNCH_MENTION_ITEM_ID = "launch";
+
+/**
+ * The single `@Launch` row. Same shape as the `@Preview` row above: a turn mode
+ * rather than a reference, ranked through the shared ranker so the localized
+ * wording filters it like every other mention suggestion.
+ */
+export function buildLaunchMentionComposerItems(input: {
+  readonly query: string;
+  readonly description: string;
+  readonly keywords: string;
+}): ComposerCommandItem[] {
+  const item: ComposerCommandItem = {
+    id: LAUNCH_MENTION_ITEM_ID,
+    type: "launch",
+    label: LAUNCH_MENTION_INSERT_TEXT,
+    description: input.description,
+  };
+  return rankProviderDiscoveryItems([item], input.query, () => [
+    { value: LAUNCH_MENTION_TOKEN },
+    { value: input.keywords, weight: TURN_MODE_MENTION_KEYWORD_FIELD_WEIGHT },
   ]);
 }
 
@@ -508,6 +535,11 @@ export function buildComposerCommandMenuItems(
       description: composerCopy.commandMenu.colorPreview.description,
       keywords: composerCopy.commandMenu.colorPreview.keywords,
     });
+    const launchItems = buildLaunchMentionComposerItems({
+      query: composerTrigger.query,
+      description: composerCopy.commandMenu.launch.description,
+      keywords: composerCopy.commandMenu.launch.keywords,
+    });
     // Keep mention suggestions ordered by primary intent. Delegation targets sit
     // right after plugins/chats — ahead of file paths, which the trailing "Files"
     // hint already tells users to reach by typing. Turn modes follow the targets:
@@ -518,6 +550,7 @@ export function buildComposerCommandMenuItems(
       ...threadItems,
       ...agentItems,
       ...colorPreviewItems,
+      ...launchItems,
       ...localRootItems,
       ...pathItems,
     ];

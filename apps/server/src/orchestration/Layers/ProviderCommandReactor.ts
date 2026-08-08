@@ -6,7 +6,9 @@ import {
   type ChatAttachment,
   type CheckpointRef,
   CommandId,
+  type DaemonSnapshot,
   EventId,
+  type LaunchConfiguration,
   type ModelSelection,
   MessageId,
   type OrchestrationEvent,
@@ -65,6 +67,7 @@ import {
   resolveThreadWorkspaceCwd,
 } from "../../checkpointing/Utils.ts";
 import { CheckpointStore } from "../../checkpointing/Services/CheckpointStore.ts";
+import { DaemonBroker } from "../../daemon/Services/Broker.ts";
 import { GitCore } from "../../git/Services/GitCore.ts";
 import {
   ProviderAdapterRequestError,
@@ -72,6 +75,7 @@ import {
   ProviderServiceError,
 } from "../../provider/Errors.ts";
 import { buildColorPreviewInstructions } from "../../provider/colorPreviewPromptInjection.ts";
+import { buildLaunchInstructions } from "../../provider/launchPromptInjection.ts";
 import {
   availablePromptInjectionChars,
   PROVIDER_INPUT_SAFETY_MARGIN_CHARS,
@@ -101,6 +105,7 @@ import {
 import { QueuedTurnPromotionRepository } from "../../persistence/Services/QueuedTurnPromotions.ts";
 import { ManagedAttachmentRepository } from "../../persistence/Services/ManagedAttachments.ts";
 import { ServerConfig } from "../../config.ts";
+import { readProjectLaunchConfig } from "../../launchConfig.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { providerStartOptionsFromServerSettings } from "@synara/shared/serverSettings";
 import { clearWorkspaceIndexCache } from "../../workspaceEntries.ts";
@@ -467,6 +472,10 @@ const make = Effect.gen(function* () {
   const serverSettings = yield* ServerSettingsService;
   const managedAttachments = yield* ManagedAttachmentRepository;
   const serverConfig = yield* ServerConfig;
+  // Optional on purpose: the broker only exists in the full server layer, and a
+  // missing one must degrade the `@Launch` snapshot rather than make every
+  // reactor test require a daemon supervisor.
+  const daemonBroker = yield* Effect.serviceOption(DaemonBroker);
   const handledTurnStartKeys = yield* Cache.make<string, true>({
     capacity: HANDLED_TURN_START_KEY_MAX,
     timeToLive: HANDLED_TURN_START_KEY_TTL,
@@ -525,6 +534,52 @@ const make = Effect.gen(function* () {
       projects: [project],
     });
   });
+
+  /**
+   * Render the `@Launch` background-service instructions for one turn.
+   *
+   * Both reads are best-effort. The injection is a hint, not a payload: an
+   * unavailable broker or an unreadable `launch.json` costs the model a snapshot
+   * it can rebuild with a tool call, so neither may fail the send.
+   */
+  const buildLaunchInjectionText = Effect.fnUntraced(function* (input: {
+    readonly thread: Pick<
+      OrchestrationThread,
+      "projectId" | "envMode" | "worktreePath" | "workingDirectory"
+    >;
+    readonly threadId: ThreadId;
+    readonly maxChars: number;
+  }) {
+    if (input.maxChars <= 0) {
+      return "";
+    }
+    const daemons = yield* Option.match(daemonBroker, {
+      onNone: () => Effect.succeed<ReadonlyArray<DaemonSnapshot>>([]),
+      onSome: (broker) =>
+        broker.list.pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("failed to list daemons for the launch injection", {
+              threadId: input.threadId,
+              error,
+            }).pipe(Effect.as<ReadonlyArray<DaemonSnapshot>>([])),
+          ),
+        ),
+    });
+    const cwd = yield* resolveProjectedThreadWorkspaceCwd(input.thread);
+    const configurations = cwd
+      ? yield* Effect.tryPromise(() => readProjectLaunchConfig(cwd)).pipe(
+          Effect.map((state) => state.configurations),
+          Effect.catch((error) =>
+            Effect.logWarning("failed to read launch.json for the launch injection", {
+              threadId: input.threadId,
+              error,
+            }).pipe(Effect.as<ReadonlyArray<LaunchConfiguration>>([])),
+          ),
+        )
+      : [];
+    return buildLaunchInstructions({ maxChars: input.maxChars, daemons, configurations });
+  });
+
   const editResendTurnStartKeys = new Set<string>();
   const quarantinedThreads = new Set<string>();
   const drainingQueuedTurns = new Set<string>();
@@ -1286,6 +1341,7 @@ const make = Effect.gen(function* () {
     readonly skills?: ReadonlyArray<ProviderSkillReference>;
     readonly mentions?: ReadonlyArray<ProviderMentionReference>;
     readonly colorPreview?: boolean;
+    readonly launch?: boolean;
     readonly reviewTarget?: ProviderReviewTarget;
     readonly modelSelection?: ModelSelection;
     readonly providerOptions?: ProviderStartOptions;
@@ -1354,9 +1410,20 @@ const make = Effect.gen(function* () {
               maxChars: availablePromptInjectionChars(steerMessageWithSkills.length),
             })
           : "";
-      const steerMessageWithInjections = steerColorPreviewText
+      const steerMessageWithColorPreview = steerColorPreviewText
         ? `${steerMessageWithSkills}\n\n${steerColorPreviewText}`
         : steerMessageWithSkills;
+      const steerLaunchText =
+        input.launch === true
+          ? yield* buildLaunchInjectionText({
+              thread,
+              threadId: input.threadId,
+              maxChars: availablePromptInjectionChars(steerMessageWithColorPreview.length),
+            })
+          : "";
+      const steerMessageWithInjections = steerLaunchText
+        ? `${steerMessageWithColorPreview}\n\n${steerLaunchText}`
+        : steerMessageWithColorPreview;
       const normalizedSteerInput = toNonEmptyProviderInput(
         normalizeSkillMentionTextForProvider({
           provider: steerProvider,
@@ -1548,9 +1615,23 @@ const make = Effect.gen(function* () {
             maxChars: availablePromptInjectionChars(providerInputWithSkills.length),
           })
         : "";
-    const providerInputWithInjections = colorPreviewInlineText
+    const providerInputWithColorPreview = colorPreviewInlineText
       ? `${providerInputWithSkills}\n\n${colorPreviewInlineText}`
       : providerInputWithSkills;
+    // Last in the injection chain: the launch snapshot is the most degradable of
+    // the three, so it takes whatever budget the skills and color-preview blocks
+    // left behind.
+    const launchInlineText =
+      input.launch === true
+        ? yield* buildLaunchInjectionText({
+            thread,
+            threadId: input.threadId,
+            maxChars: availablePromptInjectionChars(providerInputWithColorPreview.length),
+          })
+        : "";
+    const providerInputWithInjections = launchInlineText
+      ? `${providerInputWithColorPreview}\n\n${launchInlineText}`
+      : providerInputWithColorPreview;
     const normalizedInput = toNonEmptyProviderInput(
       normalizeSkillMentionTextForProvider({
         provider: selectedProvider as ProviderKind,
@@ -2268,6 +2349,7 @@ const make = Effect.gen(function* () {
         ...(message.skills !== undefined ? { skills: message.skills } : {}),
         ...(message.mentions !== undefined ? { mentions: message.mentions } : {}),
         ...(message.colorPreview !== undefined ? { colorPreview: message.colorPreview } : {}),
+        ...(message.launch !== undefined ? { launch: message.launch } : {}),
         ...(event.payload.modelSelection !== undefined
           ? { modelSelection: event.payload.modelSelection }
           : {}),

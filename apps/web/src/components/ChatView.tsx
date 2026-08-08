@@ -118,7 +118,9 @@ import {
   formatComposerMentionToken,
   filterPromptProviderMentionReferences,
   filterPromptSkillReferences,
+  LAUNCH_MENTION_INSERT_TEXT,
   promptIncludesColorPreviewMention,
+  promptIncludesLaunchMention,
   providerMentionReferencesEqual,
   providerSkillReferencesEqual,
   skillMentionPrefix,
@@ -8264,6 +8266,7 @@ export default function ChatView({
     // `@Preview` opts this turn into color-theme preview mode: the server
     // injects the fence-format instructions only when the flag is set.
     const colorPreviewForSend = promptIncludesColorPreviewMention(outgoingMessageText);
+    const launchForSend = promptIncludesLaunchMention(outgoingMessageText);
     const turnAttachmentsPromise = stageUploadComposerAttachments({
       threadId: threadIdForSend,
       images: composerImagesSnapshot,
@@ -8538,6 +8541,7 @@ export default function ChatView({
               ? { mentions: mentionedPluginMentionsForSend }
               : {}),
             ...(colorPreviewForSend ? { colorPreview: true } : {}),
+            ...(launchForSend ? { launch: true } : {}),
           },
           modelSelection: selectedModelSelectionForSend,
           ...(providerOptionsForDispatchForSend
@@ -10339,6 +10343,14 @@ export default function ChatView({
           snapshot,
           trigger,
           base: `${COLOR_PREVIEW_MENTION_INSERT_TEXT} `,
+        });
+        return;
+      }
+      if (item.type === "launch") {
+        applyComposerTriggerReplacement({
+          snapshot,
+          trigger,
+          base: `${LAUNCH_MENTION_INSERT_TEXT} `,
         });
         return;
       }
