@@ -75,7 +75,9 @@ export type AdvisorSeverity = typeof AdvisorSeverity.Type;
  *   - steer    -> dispatchMode "steer", interrupts the live turn
  *   - preserve -> no dispatch at all; recorded as a visible activity card only
  */
-export const AdvisorDeliveryChannel = Schema.Literals(["aside", "steer", "preserve"]);
+export const ADVISOR_DELIVERY_CHANNELS = ["aside", "steer", "preserve"] as const;
+
+export const AdvisorDeliveryChannel = Schema.Literals(ADVISOR_DELIVERY_CHANNELS);
 export type AdvisorDeliveryChannel = typeof AdvisorDeliveryChannel.Type;
 
 /**

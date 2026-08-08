@@ -1,90 +1,49 @@
-import type { AdvisorModelSelection, ProviderRuntimeEvent, ThreadId } from "@synara/contracts";
-import { Effect, Layer, Queue, Stream } from "effect";
+import type { AdvisorModelSelection, ThreadId } from "@synara/contracts";
+import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  ProviderService,
-  type ProviderServiceShape,
-} from "../../provider/Services/ProviderService.ts";
+  AdvisorInference,
+  type AdvisorInferenceInput,
+  type AdvisorInferenceShape,
+} from "../Services/AdvisorInference.ts";
 import { AdvisorSession, type AdvisorSessionShape } from "../Services/AdvisorSession.ts";
-import { advisorShadowThreadId } from "../advisorShadowThread.ts";
-import { ADVISOR_MAX_CONSECUTIVE_FAILURES, AdvisorSessionLive } from "./AdvisorSession.ts";
+import { AdvisorSessionLive } from "./AdvisorSession.ts";
 
 const MAIN_THREAD = "thread-1" as ThreadId;
-const SHADOW = advisorShadowThreadId(MAIN_THREAD);
 const CODEX_MODEL = { provider: "codex", model: "gpt-5.1-codex" } as const;
 
-/** One scripted advisor reply: the events its shadow turn will emit. */
-type Reply = ReadonlyArray<{ readonly type: string; readonly payload?: unknown }>;
-
-function say(text: string): Reply {
-  return [
-    { type: "item.completed", payload: { itemType: "assistant_message", detail: text } },
-    { type: "turn.completed" },
-  ];
-}
-
 interface Harness {
-  readonly startedSessions: ReadonlyArray<{ readonly model: string | undefined }>;
-  readonly prompts: ReadonlyArray<string>;
-  readonly stopped: ReadonlyArray<string>;
+  /** Every prompt the advisor sent, in order. */
+  readonly calls: ReadonlyArray<AdvisorInferenceInput>;
 }
 
+/** `replies` is consumed one per evaluation; `null` means the run failed. */
 async function withAdvisor<A>(
-  options: { readonly replies: ReadonlyArray<Reply>; readonly failSendTurn?: boolean },
+  replies: ReadonlyArray<string | null>,
   body: (input: {
     readonly advisor: AdvisorSessionShape;
     readonly harness: Harness;
   }) => Effect.Effect<A>,
 ): Promise<A> {
-  const startedSessions: Array<{ readonly model: string | undefined }> = [];
-  const prompts: Array<string> = [];
-  const stopped: Array<string> = [];
+  const calls: Array<AdvisorInferenceInput> = [];
   let replyIndex = 0;
 
-  return Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const queue = yield* Queue.unbounded<ProviderRuntimeEvent>();
-        const providerService = {
-          startSession: (threadId: ThreadId, input: { readonly modelSelection?: unknown }) => {
-            const selection = input.modelSelection as { readonly model?: string } | undefined;
-            startedSessions.push({ model: selection?.model });
-            return Effect.succeed({ threadId } as never);
-          },
-          sendTurn: (input: { readonly threadId: ThreadId; readonly input?: string }) => {
-            prompts.push(input.input ?? "");
-            if (options.failSendTurn === true) {
-              return Effect.die(new Error("send failed"));
-            }
-            const reply = options.replies[replyIndex] ?? [];
-            replyIndex += 1;
-            return Effect.forEach(reply, (event) =>
-              Queue.offer(queue, {
-                ...event,
-                threadId: input.threadId,
-              } as unknown as ProviderRuntimeEvent),
-            ).pipe(Effect.as({ threadId: input.threadId, turnId: "turn-1" } as never));
-          },
-          stopSession: (input: { readonly threadId: ThreadId }) => {
-            stopped.push(input.threadId);
-            return Effect.void;
-          },
-          get streamEvents() {
-            return Stream.fromQueue(queue);
-          },
-        } as unknown as ProviderServiceShape;
+  const inference: AdvisorInferenceShape = {
+    run: (input) => {
+      calls.push(input);
+      const reply = replies[replyIndex] ?? null;
+      replyIndex += 1;
+      return Effect.succeed(reply);
+    },
+  };
 
-        return yield* Effect.gen(function* () {
-          const advisor = yield* AdvisorSession;
-          yield* advisor.start();
-          return yield* body({ advisor, harness: { startedSessions, prompts, stopped } });
-        }).pipe(
-          Effect.provide(
-            Layer.provide(AdvisorSessionLive, Layer.succeed(ProviderService, providerService)),
-          ),
-        );
-      }),
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const advisor = yield* AdvisorSession;
+      return yield* body({ advisor, harness: { calls } });
+    }).pipe(
+      Effect.provide(Layer.provide(AdvisorSessionLive, Layer.succeed(AdvisorInference, inference))),
     ),
   );
 }
@@ -104,7 +63,7 @@ const evaluate = (
 describe("AdvisorSession", () => {
   it("returns the verdict the advisor replied with", async () => {
     const verdict = await withAdvisor(
-      { replies: [say('{"verdict":"advise","severity":"concern","message":"reuse the helper"}')] },
+      ['{"verdict":"advise","severity":"concern","message":"reuse the helper"}'],
       ({ advisor }) => evaluate(advisor, "[tool.updated] wrote a.ts"),
     );
 
@@ -116,160 +75,100 @@ describe("AdvisorSession", () => {
   });
 
   it("parses a silent verdict", async () => {
-    const verdict = await withAdvisor({ replies: [say('{"verdict":"silent"}')] }, ({ advisor }) =>
+    const verdict = await withAdvisor(['{"verdict":"silent"}'], ({ advisor }) =>
       evaluate(advisor, "x"),
     );
 
     expect(verdict).toEqual({ verdict: "silent" });
   });
 
-  // The session persists, so the instructions only need to be sent once. Re-
-  // sending them every turn would grow the advisor's context without adding
-  // anything it does not already have.
-  it("primes the session with its instructions once", async () => {
-    const harness = await withAdvisor(
-      { replies: [say('{"verdict":"silent"}'), say('{"verdict":"silent"}')] },
-      ({ advisor, harness }) =>
-        Effect.gen(function* () {
-          yield* evaluate(advisor, "first");
-          yield* evaluate(advisor, "second");
-          return harness;
-        }),
+  it("sends the delta under review", async () => {
+    const calls = await withAdvisor(['{"verdict":"silent"}'], ({ advisor, harness }) =>
+      evaluate(advisor, "[tool.updated] wrote a.ts").pipe(Effect.as(harness.calls)),
     );
 
-    expect(harness.prompts).toHaveLength(2);
-    expect(harness.prompts[0]).toContain("You are an advisor");
-    expect(harness.prompts[1]).not.toContain("You are an advisor");
-    expect(harness.prompts[1]).toContain("second");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.prompt).toContain("[tool.updated] wrote a.ts");
   });
 
-  it("reuses one shadow session across evaluations", async () => {
-    const harness = await withAdvisor(
-      { replies: [say('{"verdict":"silent"}'), say('{"verdict":"silent"}')] },
+  // Statelessness is the whole point of the rewrite: there is no session to
+  // prime, so the instructions have to ride along every single time.
+  it("carries its instructions on every evaluation", async () => {
+    const calls = await withAdvisor(
+      ['{"verdict":"silent"}', '{"verdict":"silent"}'],
       ({ advisor, harness }) =>
-        Effect.gen(function* () {
-          yield* evaluate(advisor, "first");
-          yield* evaluate(advisor, "second");
-          return harness;
-        }),
+        evaluate(advisor, "first").pipe(
+          Effect.andThen(evaluate(advisor, "second")),
+          Effect.as(harness.calls),
+        ),
     );
 
-    expect(harness.startedSessions).toHaveLength(1);
+    expect(calls).toHaveLength(2);
+    for (const call of calls) {
+      expect(call.prompt).toContain("You are an advisor");
+    }
   });
 
-  // The reasoning level travels in modelSelection.options. A session key that
-  // ignored options would reuse the running shadow session, and the level the
-  // user just picked would never reach the provider.
-  it("starts a fresh shadow session when the reasoning level changes", async () => {
-    const harness = await withAdvisor(
-      { replies: [say('{"verdict":"silent"}'), say('{"verdict":"silent"}')] },
-      ({ advisor, harness }) =>
-        Effect.gen(function* () {
-          yield* evaluate(advisor, "first");
-          yield* evaluate(advisor, "second", {
-            ...CODEX_MODEL,
-            options: { reasoningEffort: "xhigh" },
-          });
-          return harness;
-        }),
+  it("puts what the user asked for in the prompt", async () => {
+    const calls = await withAdvisor(['{"verdict":"silent"}'], ({ advisor, harness }) =>
+      advisor
+        .evaluate({
+          mainThreadId: MAIN_THREAD,
+          modelSelection: CODEX_MODEL,
+          delta: "[tool.updated] wrote a.ts",
+          request: "[user]\nadd rate limiting",
+          workInProgress: false,
+        })
+        .pipe(Effect.as(harness.calls)),
     );
 
-    expect(harness.stopped).toEqual([SHADOW]);
-    expect(harness.startedSessions).toHaveLength(2);
+    expect(calls[0]?.prompt).toContain("add rate limiting");
   });
 
-  // Key equality must track the option values, not the order the fields happen
-  // to be written in, or an unrelated settings round-trip would churn sessions.
-  it("reuses the session when the same options arrive in a different field order", async () => {
-    const harness = await withAdvisor(
-      { replies: [say('{"verdict":"silent"}'), say('{"verdict":"silent"}')] },
-      ({ advisor, harness }) =>
-        Effect.gen(function* () {
-          yield* evaluate(advisor, "first", {
-            ...CODEX_MODEL,
-            options: { reasoningEffort: "high", fastMode: true },
-          });
-          yield* evaluate(advisor, "second", {
-            ...CODEX_MODEL,
-            options: { fastMode: true, reasoningEffort: "high" },
-          });
-          return harness;
-        }),
+  it("forwards the working directory and CLI paths to the runtime", async () => {
+    const providerOptions = { codex: { binaryPath: "C:\\tools\\codex.exe" } };
+    const calls = await withAdvisor(['{"verdict":"silent"}'], ({ advisor, harness }) =>
+      advisor
+        .evaluate({
+          mainThreadId: MAIN_THREAD,
+          modelSelection: CODEX_MODEL,
+          cwd: "/repo",
+          providerOptions: providerOptions as never,
+          delta: "x",
+          workInProgress: false,
+        })
+        .pipe(Effect.as(harness.calls)),
     );
 
-    expect(harness.startedSessions).toHaveLength(1);
+    expect(calls[0]?.cwd).toBe("/repo");
+    expect(calls[0]?.providerOptions).toEqual(providerOptions);
   });
 
-  // Prose is a failed turn, not a note: every guard downstream keys off the
-  // verdict fields, so unparseable output must not reach them.
   it("returns null when the advisor answers with prose", async () => {
-    const verdict = await withAdvisor({ replies: [say("Looks good to me!")] }, ({ advisor }) =>
+    const verdict = await withAdvisor(["I think this looks fine overall."], ({ advisor }) =>
       evaluate(advisor, "x"),
     );
 
     expect(verdict).toBeNull();
   });
 
-  it("returns null when the turn cannot be sent", async () => {
-    const verdict = await withAdvisor({ replies: [], failSendTurn: true }, ({ advisor }) =>
-      evaluate(advisor, "x"),
-    );
+  it("returns null when the runtime could not answer", async () => {
+    const verdict = await withAdvisor([null], ({ advisor }) => evaluate(advisor, "x"));
 
     expect(verdict).toBeNull();
   });
 
-  // A model that cannot answer in the required shape will not start doing so
-  // on the next turn, and each attempt costs a full round trip.
-  it("stops asking after consecutive failures", async () => {
-    const harness = await withAdvisor(
-      { replies: Array.from({ length: 6 }, () => say("no json here")) },
-      ({ advisor, harness }) =>
-        Effect.gen(function* () {
-          for (let index = 0; index < ADVISOR_MAX_CONSECUTIVE_FAILURES + 2; index += 1) {
-            yield* evaluate(advisor, `delta ${index}`);
-          }
-          return harness;
-        }),
+  // The old shadow session switched itself off for good after three failures.
+  // Nothing is remembered now, so a fixed configuration recovers by itself.
+  it("keeps asking after a failure", async () => {
+    const verdict = await withAdvisor([null, null, null, '{"verdict":"silent"}'], ({ advisor }) =>
+      evaluate(advisor, "a").pipe(
+        Effect.andThen(evaluate(advisor, "b")),
+        Effect.andThen(evaluate(advisor, "c")),
+        Effect.andThen(evaluate(advisor, "d")),
+      ),
     );
 
-    expect(harness.prompts).toHaveLength(ADVISOR_MAX_CONSECUTIVE_FAILURES);
-  });
-
-  it("keeps asking when a failure is followed by a good answer", async () => {
-    const harness = await withAdvisor(
-      {
-        replies: [
-          say("no json here"),
-          say('{"verdict":"silent"}'),
-          say("no json here"),
-          say('{"verdict":"silent"}'),
-        ],
-      },
-      ({ advisor, harness }) =>
-        Effect.gen(function* () {
-          for (let index = 0; index < 4; index += 1) {
-            yield* evaluate(advisor, `delta ${index}`);
-          }
-          return harness;
-        }),
-    );
-
-    expect(harness.prompts).toHaveLength(4);
-  });
-
-  it("forgets the shadow session for a thread", async () => {
-    const harness = await withAdvisor(
-      { replies: [say('{"verdict":"silent"}'), say('{"verdict":"silent"}')] },
-      ({ advisor, harness }) =>
-        Effect.gen(function* () {
-          yield* evaluate(advisor, "first");
-          yield* advisor.forget(MAIN_THREAD);
-          yield* evaluate(advisor, "second");
-          return harness;
-        }),
-    );
-
-    expect(harness.stopped).toEqual([SHADOW]);
-    expect(harness.startedSessions).toHaveLength(2);
+    expect(verdict).toEqual({ verdict: "silent" });
   });
 });

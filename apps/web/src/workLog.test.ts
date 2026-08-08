@@ -1,4 +1,10 @@
-import { MessageId, TurnId, type OrchestrationThreadActivity } from "@synara/contracts";
+import {
+  ADVISOR_ACTIVITY_KIND,
+  MessageId,
+  TurnId,
+  type OrchestrationThreadActivity,
+} from "@synara/contracts";
+import { advisorDeliveryId } from "@synara/shared/advisorDelivery";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -3585,5 +3591,76 @@ describe("deriveWorkLogEntries Codex find regression", () => {
 
     const entries = deriveWorkLogEntries(activities, undefined);
     expect(entries[0]?.reasoningStatus).toBeUndefined();
+  });
+});
+
+describe("advisor notes in the transcript", () => {
+  const advisorActivity = (payload: { severity: string; channel?: string }) =>
+    makeActivity({
+      id: "advisor:thread-1:1:advice",
+      createdAt: "2026-02-23T00:00:02.000Z",
+      kind: ADVISOR_ACTIVITY_KIND,
+      summary: "this duplicates shared/text",
+      tone: "info",
+      payload,
+    });
+
+  it("carries severity and channel onto the entry", () => {
+    const entries = deriveWorkLogEntries(
+      [advisorActivity({ severity: "concern", channel: "steer" })],
+      undefined,
+    );
+
+    expect(entries[0]?.advisorNote).toEqual({ severity: "concern", channel: "steer" });
+  });
+
+  // A card with missing badges is worse than an ordinary row, so a payload that
+  // does not decode degrades instead of half-rendering.
+  it("leaves a malformed advisor payload as an ordinary work entry", () => {
+    const entries = deriveWorkLogEntries([advisorActivity({ severity: "urgent" })], undefined);
+
+    expect(entries[0]?.advisorNote).toBeUndefined();
+  });
+
+  it("promotes an advisor note out of the work log into its own entry", () => {
+    const entries = deriveTimelineEntries(
+      [],
+      [],
+      deriveWorkLogEntries([advisorActivity({ severity: "nit", channel: "aside" })], undefined),
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      kind: "advisor",
+      message: "this duplicates shared/text",
+      note: { severity: "nit", channel: "aside" },
+    });
+  });
+
+  // The delivered note reaches the model as a role "user" turn. Rendering it
+  // would duplicate the advisor card and attribute the words to the person.
+  it("drops the user turn a delivered note was carried on", () => {
+    const entries = deriveTimelineEntries(
+      [
+        {
+          id: MessageId.makeUnsafe(advisorDeliveryId("thread-1:1", "message")),
+          role: "user",
+          text: "[advisor · concern] this duplicates shared/text",
+          createdAt: "2026-02-23T00:00:03.000Z",
+          streaming: false,
+        },
+        {
+          id: MessageId.makeUnsafe("message-1"),
+          role: "user",
+          text: "add rate limiting",
+          createdAt: "2026-02-23T00:00:01.000Z",
+          streaming: false,
+        },
+      ],
+      [],
+      [],
+    );
+
+    expect(entries.map((entry) => entry.id)).toEqual(["message-1"]);
   });
 });

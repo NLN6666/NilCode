@@ -917,6 +917,14 @@ describe("deriveMessagesTimelineRows", () => {
     },
   });
 
+  const advisorEntry = (id: string, createdAt: string, message: string): TimelineEntry => ({
+    id: `entry-${id}`,
+    kind: "advisor",
+    createdAt,
+    message,
+    note: { severity: "concern", channel: "steer" },
+  });
+
   const messageRow = (rows: MessagesTimelineRow[], id: string): MessageTimelineRow | undefined =>
     rows.find(
       (row): row is MessageTimelineRow =>
@@ -925,6 +933,47 @@ describe("deriveMessagesTimelineRows", () => {
 
   const collapsedSignature = (row: MessageTimelineRow): string[] =>
     (row.collapsedTurnItems ?? []).map((item) => `${item.kind}:${String(item.id)}`);
+
+  it("gives an advisor note its own row instead of a work-log line", () => {
+    const rows = deriveMessagesTimelineRows({
+      ...baseInput,
+      timelineEntries: [
+        userEntry("u1", "2026-01-01T00:00:00Z"),
+        workEntry("w1", "2026-01-01T00:00:01Z", "tool 1"),
+        advisorEntry("adv1", "2026-01-01T00:00:02Z", "this duplicates shared/text"),
+      ],
+    });
+
+    expect(rows.map((row) => row.kind)).toEqual(["message", "work", "advisor"]);
+    expect(rows.at(-1)).toMatchObject({
+      kind: "advisor",
+      message: "this duplicates shared/text",
+      note: { severity: "concern", channel: "steer" },
+    });
+  });
+
+  // The note is an observation about the turn, so the "Worked for..."
+  // disclosure must close over it rather than stop at it - a settled turn
+  // whose advice is stranded outside the fold leaves loose work rows behind.
+  it("keeps an advisor note visible without stranding the work around it", () => {
+    const rows = deriveMessagesTimelineRows({
+      ...baseInput,
+      timelineEntries: [
+        userEntry("u1", "2026-01-01T00:00:00Z"),
+        workEntry("w1", "2026-01-01T00:00:01Z", "tool 1"),
+        advisorEntry("adv1", "2026-01-01T00:00:02Z", "this duplicates shared/text"),
+        workEntry("w2", "2026-01-01T00:00:03Z", "tool 2"),
+        assistantEntry("a1", "2026-01-01T00:00:04Z", {
+          turnId: "t1",
+          text: "All done",
+          completedAt: "2026-01-01T00:00:05Z",
+        }),
+      ],
+    });
+
+    expect(rows.map((row) => row.kind)).toEqual(["message", "advisor", "message"]);
+    expect(collapsedSignature(messageRow(rows, "a1")!)).toEqual(["work:w1", "work:w2"]);
+  });
 
   it("folds a settled turn's narration and work into one collapsed group on the terminal message", () => {
     const rows = deriveMessagesTimelineRows({

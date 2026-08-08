@@ -64,7 +64,9 @@ describe("resolveAdvisorEnabled", () => {
   // An unconfigured thread and a thread whose override was cleared are the same
   // thing, and both must track the global default rather than a frozen copy.
   it.each([true, false])("treats a missing override as no opinion", (global) => {
-    expect(resolveAdvisorEnabled({ globalEnabled: global, threadOverride: undefined })).toBe(global);
+    expect(resolveAdvisorEnabled({ globalEnabled: global, threadOverride: undefined })).toBe(
+      global,
+    );
   });
 
   it("lets a thread opt in while the default is off", () => {

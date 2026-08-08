@@ -1,3 +1,4 @@
+import { ProviderKind } from "@synara/contracts";
 import type { AdvisorVerdict, OrchestrationCommand, OrchestrationEvent } from "@synara/contracts";
 import { Effect, Layer, Option, Queue, Stream } from "effect";
 import { describe, expect, it } from "vitest";
@@ -36,9 +37,44 @@ function activityEvent(kind: string, summary: string): OrchestrationEvent {
   } as unknown as OrchestrationEvent;
 }
 
+function messageEvent(input: {
+  readonly role: string;
+  readonly text: string;
+  readonly messageId?: string;
+  readonly dispatchOrigin?: string;
+}): OrchestrationEvent {
+  return {
+    type: "thread.message-sent",
+    sequence: 1,
+    eventId: "event-1",
+    aggregateKind: "thread",
+    aggregateId: THREAD_ID,
+    occurredAt: "2026-01-01T00:00:00Z",
+    commandId: null,
+    payload: {
+      threadId: THREAD_ID,
+      messageId: input.messageId ?? "message-1",
+      role: input.role,
+      text: input.text,
+      dispatchOrigin: input.dispatchOrigin,
+      turnId: null,
+      streaming: false,
+      source: "native",
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    },
+  } as unknown as OrchestrationEvent;
+}
+
+interface Evaluation {
+  readonly delta: string;
+  readonly request: string | null;
+  readonly workInProgress: boolean;
+}
+
 interface Recorder {
   readonly commands: ReadonlyArray<OrchestrationCommand>;
-  readonly evaluations: ReadonlyArray<{ readonly delta: string; readonly workInProgress: boolean }>;
+  readonly evaluations: ReadonlyArray<Evaluation>;
 }
 
 async function withReactor<A>(
@@ -54,7 +90,7 @@ async function withReactor<A>(
   }) => Effect.Effect<A>,
 ): Promise<A> {
   const commands: Array<OrchestrationCommand> = [];
-  const evaluations: Array<{ readonly delta: string; readonly workInProgress: boolean }> = [];
+  const evaluations: Array<Evaluation> = [];
   let verdictIndex = 0;
 
   return Effect.runPromise(
@@ -92,14 +128,26 @@ async function withReactor<A>(
               enabled: options.advisorEnabled ?? true,
               modelSelection: { provider: "codex", model: "gpt-5.1-codex" },
             },
+            // The reactor resolves CLI paths out of these for the advisor's
+            // inference process; every provider key has to exist, as it does
+            // in a decoded ServerSettings.
+            providers: Object.fromEntries(ProviderKind.literals.map((provider) => [provider, {}])),
           }),
         } as unknown as import("../../serverSettings.ts").ServerSettingsShape;
 
         const advisorSession = {
           start: () => Effect.void,
           forget: () => Effect.void,
-          evaluate: (input: { readonly delta: string; readonly workInProgress: boolean }) => {
-            evaluations.push({ delta: input.delta, workInProgress: input.workInProgress });
+          evaluate: (input: {
+            readonly delta: string;
+            readonly request?: string | null;
+            readonly workInProgress: boolean;
+          }) => {
+            evaluations.push({
+              delta: input.delta,
+              request: input.request ?? null,
+              workInProgress: input.workInProgress,
+            });
             const verdict = options.verdicts[verdictIndex] ?? null;
             verdictIndex += 1;
             return Effect.succeed(verdict);
@@ -265,5 +313,53 @@ describe("AdvisorReactor", () => {
     );
 
     expect(recorder.evaluations).toEqual([]);
+  });
+
+  // Activities carry only the agent's side of the conversation. Without the
+  // request the advisor is asked to judge drift with nothing to judge against.
+  it("gives the advisor what the user asked for", async () => {
+    const recorder = await withReactor({ verdicts: [{ verdict: "silent" }] }, (input) =>
+      Effect.gen(function* () {
+        yield* input.emit(messageEvent({ role: "user", text: "add rate limiting" }));
+        yield* oneTurn(input);
+        return input.recorder;
+      }),
+    );
+
+    expect(recorder.evaluations[0]?.request).toContain("add rate limiting");
+  });
+
+  // The advisor's own note comes back as a role "user" message. Reading it as
+  // the request would let the advisor redefine the task it is checking.
+  it("does not mistake its own advice for the request", async () => {
+    const recorder = await withReactor({ verdicts: [{ verdict: "silent" }] }, (input) =>
+      Effect.gen(function* () {
+        yield* input.emit(
+          messageEvent({
+            role: "user",
+            text: "[advisor · nit] simpler with map",
+            dispatchOrigin: "agent",
+          }),
+        );
+        yield* oneTurn(input);
+        return input.recorder;
+      }),
+    );
+
+    expect(recorder.evaluations[0]?.request).toBeNull();
+  });
+
+  it("does not mistake the agent's own replies for the request", async () => {
+    const recorder = await withReactor({ verdicts: [{ verdict: "silent" }] }, (input) =>
+      Effect.gen(function* () {
+        yield* input.emit(
+          messageEvent({ role: "assistant", text: "I will start with the router" }),
+        );
+        yield* oneTurn(input);
+        return input.recorder;
+      }),
+    );
+
+    expect(recorder.evaluations[0]?.request).toBeNull();
   });
 });

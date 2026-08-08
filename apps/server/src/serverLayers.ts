@@ -6,6 +6,7 @@ import { DaemonBrokerLive } from "./daemon/Layers/Broker";
 import { AgentGatewayOperationRepositoryLive } from "./agentGateway/Layers/AgentGatewayOperationRepository";
 import { AgentGatewayCredentialsWithSecretsLive } from "./agentGateway/Layers/AgentGatewayCredentials";
 import { AdvisorReactorLive } from "./advisor/Layers/AdvisorReactor";
+import { AdvisorInferenceLive } from "./advisor/Layers/AdvisorInference";
 import { AdvisorSessionLive } from "./advisor/Layers/AdvisorSession";
 import { BrowserAutomationHostLive } from "./browserAutomation/Layers/BrowserAutomationHost";
 import { AutomationRunReactorLive } from "./automation/Layers/AutomationRunReactor";
@@ -117,9 +118,15 @@ export function makeServerRuntimeServicesLayer(
     Layer.provideMerge(TerminalLayerLive),
   );
   // The advisor watches the same domain events the browser sees, and reaches
-  // the provider through its own shadow sessions.
+  // its model through one short-lived CLI invocation per evaluation - never a
+  // provider session of its own.
   const advisorReactorLayer = AdvisorReactorLive.pipe(
-    Layer.provideMerge(AdvisorSessionLive.pipe(Layer.provideMerge(runtimeServicesLayer))),
+    Layer.provideMerge(
+      AdvisorSessionLive.pipe(
+        Layer.provideMerge(AdvisorInferenceLive),
+        Layer.provideMerge(runtimeServicesLayer),
+      ),
+    ),
     Layer.provideMerge(OrchestrationLayerLive),
     // Read the per-thread advisor toggle. `mergeAll` below does not let siblings
     // satisfy each other at runtime, so every layer that needs settings has to

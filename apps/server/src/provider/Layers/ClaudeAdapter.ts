@@ -5250,6 +5250,11 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           // and in-session switches both use the same API model contract.
           ...(apiModelId ? { model: apiModelId } : {}),
           pathToClaudeCodeExecutable: providerOptions?.binaryPath ?? "claude",
+          // Isolation deliberately stops at the MCP servers below. Blanking the
+          // setting sources was tried and bought nothing: the CLI reads stdio
+          // MCP servers from ~/.claude.json, not from the settings it is told
+          // to load here, so the console windows kept appearing - and it is the
+          // one knob that touches how the CLI reads local configuration at all.
           settingSources: [...CLAUDE_SETTING_SOURCES],
           systemPrompt: {
             type: "preset",
@@ -5292,6 +5297,21 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
               }
             : {}),
         };
+
+        // Every knob that differs between a main session and a shadow one, in
+        // one line. Sessions that fail inside the CLI report almost nothing
+        // about how they were configured, and comparing two of these lines is
+        // far faster than reasoning about which branch above produced what.
+        yield* Effect.logInfo("claude session starting", {
+          threadId,
+          model: apiModelId ?? null,
+          permissionMode: permissionMode ?? null,
+          settingSources: queryOptions.settingSources,
+          binaryPath: providerOptions?.binaryPath ?? "claude",
+          hasMcpServers: queryOptions.mcpServers !== undefined,
+          resuming: existingResumeSessionId !== undefined,
+          cwd: input.cwd ?? null,
+        });
 
         const queryRuntime = yield* Effect.tryPromise({
           try: () =>

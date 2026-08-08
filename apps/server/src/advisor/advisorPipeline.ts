@@ -41,6 +41,13 @@ import {
 } from "./advisorEmissionGuard.ts";
 import { type AdvisorDigestInput, digestActivity } from "./advisorEventDigest.ts";
 import {
+  type AdvisorRequestInput,
+  type AdvisorRequestState,
+  INITIAL_ADVISOR_REQUEST_STATE,
+  buildAdvisorRequestContext,
+  recordAdvisorRequest,
+} from "./advisorRequestContext.ts";
+import {
   type AdvisorQuarantineState,
   INITIAL_ADVISOR_QUARANTINE_STATE,
   isAdvisorOutputUnsafe,
@@ -57,6 +64,7 @@ const TURN_BOUNDARY_ACTIVITY_KIND = "turn.completed";
 
 export interface AdvisorPipelineState {
   readonly delta: AdvisorDeltaState;
+  readonly request: AdvisorRequestState;
   readonly emission: AdvisorEmissionState;
   readonly immunity: AdvisorImmunityState;
   readonly quarantine: AdvisorQuarantineState;
@@ -65,6 +73,7 @@ export interface AdvisorPipelineState {
 
 export const INITIAL_ADVISOR_PIPELINE_STATE: AdvisorPipelineState = {
   delta: INITIAL_ADVISOR_DELTA_STATE,
+  request: INITIAL_ADVISOR_REQUEST_STATE,
   emission: INITIAL_ADVISOR_EMISSION_STATE,
   immunity: INITIAL_ADVISOR_IMMUNITY_STATE,
   quarantine: INITIAL_ADVISOR_QUARANTINE_STATE,
@@ -73,6 +82,8 @@ export const INITIAL_ADVISOR_PIPELINE_STATE: AdvisorPipelineState = {
 
 export interface AdvisorEvaluationRequest {
   readonly delta: string;
+  /** Standing context, not part of the delta: it outlives every evaluation. */
+  readonly request: string | null;
   readonly workInProgress: boolean;
 }
 
@@ -80,6 +91,21 @@ export interface AdvisorAction {
   readonly channel: AdvisorDeliveryChannel;
   readonly severity: AdvisorSeverity;
   readonly message: string;
+}
+
+/**
+ * Fold one sent message into the pipeline.
+ *
+ * Never triggers an evaluation. A request is the question the advisor answers
+ * later; asking about a turn that has not started yet would be asking about
+ * nothing.
+ */
+export function ingestAdvisorMessage(input: {
+  readonly state: AdvisorPipelineState;
+  readonly message: AdvisorRequestInput;
+}): AdvisorPipelineState {
+  const request = recordAdvisorRequest(input.state.request, input.message);
+  return request === input.state.request ? input.state : { ...input.state, request };
 }
 
 /**
@@ -124,7 +150,11 @@ export function ingestAdvisorActivity(input: {
       emission: beginAdvisorUpdate(state.emission),
       completedTurns,
     },
-    evaluation: { delta: taken.delta, workInProgress },
+    evaluation: {
+      delta: taken.delta,
+      request: buildAdvisorRequestContext(state.request),
+      workInProgress,
+    },
   };
 }
 

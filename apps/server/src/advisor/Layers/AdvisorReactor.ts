@@ -21,7 +21,9 @@ import {
   type OrchestrationEvent,
   type OrchestrationThreadActivityTone,
 } from "@synara/contracts";
+import { advisorDeliveryId } from "@synara/shared/advisorDelivery";
 import { makeDrainableWorker, startDrainableWorkerProducers } from "@synara/shared/DrainableWorker";
+import { providerStartOptionsFromServerSettings } from "@synara/shared/serverSettings";
 import { Effect, Layer, Option, Ref, Stream } from "effect";
 
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
@@ -31,6 +33,7 @@ import { ADVISOR_ACTIVITY_KIND } from "../advisorEventDigest.ts";
 import {
   INITIAL_ADVISOR_PIPELINE_STATE,
   ingestAdvisorActivity,
+  ingestAdvisorMessage,
   resolveAdvisorAction,
   type AdvisorPipelineState,
 } from "../advisorPipeline.ts";
@@ -99,10 +102,10 @@ export const make = Effect.gen(function* () {
       yield* orchestrationEngine
         .dispatch({
           type: "thread.activity.append",
-          commandId: CommandId.makeUnsafe(`advisor:${marker}:activity`),
+          commandId: CommandId.makeUnsafe(advisorDeliveryId(marker, "activity")),
           threadId: input.threadId,
           activity: {
-            id: EventId.makeUnsafe(`advisor:${marker}:advice`),
+            id: EventId.makeUnsafe(advisorDeliveryId(marker, "advice")),
             tone: TONE_BY_SEVERITY[input.severity],
             kind: ADVISOR_ACTIVITY_KIND,
             summary: input.message,
@@ -131,10 +134,12 @@ export const make = Effect.gen(function* () {
       yield* orchestrationEngine
         .dispatch({
           type: "thread.turn.start",
-          commandId: CommandId.makeUnsafe(`advisor:${marker}:turn`),
+          commandId: CommandId.makeUnsafe(advisorDeliveryId(marker, "turn")),
           threadId: input.threadId,
           message: {
-            messageId: MessageId.makeUnsafe(`advisor:${marker}:message`),
+            // The transcript keys off this id to render the note as an advisor
+            // card instead of a user bubble - see isAdvisorDeliveredMessageId.
+            messageId: MessageId.makeUnsafe(advisorDeliveryId(marker, "message")),
             role: "user",
             text: formatAdvisorDelivery({ severity: input.severity, message: input.message }),
             attachments: [],
@@ -151,6 +156,7 @@ export const make = Effect.gen(function* () {
   const evaluateThread = (input: {
     readonly threadId: ThreadId;
     readonly delta: string;
+    readonly request: string | null;
     readonly workInProgress: boolean;
     readonly state: AdvisorPipelineState;
   }) =>
@@ -176,14 +182,31 @@ export const make = Effect.gen(function* () {
         ? (thread.value.workingDirectory ?? thread.value.worktreePath ?? undefined)
         : undefined;
 
+      // Paired with "advisor evaluation resolved" below. A start line with no
+      // matching end is what a hung or timed-out evaluation looks like from
+      // the outside, and the advisor is otherwise invisible in the log.
+      yield* Effect.logInfo("advisor evaluating", {
+        threadId: input.threadId,
+        workInProgress: input.workInProgress,
+        deltaLength: input.delta.length,
+        // A null request means the advisor is judging drift with no goal to
+        // judge it against, which is the one input gap it cannot report itself.
+        requestLength: input.request?.length ?? null,
+      });
+
       const verdict = yield* advisorSession.evaluate({
         mainThreadId: input.threadId,
         modelSelection: settings.advisor.modelSelection,
         cwd: cwd ?? undefined,
+        // Resolved the same way a main session resolves it. The advisor runs
+        // the same CLIs and has to find them in the same places.
+        providerOptions: providerStartOptionsFromServerSettings(settings),
         delta: input.delta,
+        request: input.request,
         workInProgress: input.workInProgress,
       });
       if (verdict === null) {
+        // AdvisorSession already logged which of its failure paths was taken.
         return input.state;
       }
 
@@ -198,6 +221,17 @@ export const make = Effect.gen(function* () {
         turnRunning: input.workInProgress,
         turnInterrupting: threadState.turnInterrupting,
         planModeActive: threadState.planModeActive,
+      });
+
+      // A verdict that produced no action was dropped by one of the guards -
+      // withheld, deduped, or quarantined. Without this the advisor working
+      // perfectly and the advisor never running look identical.
+      yield* Effect.logInfo("advisor evaluation resolved", {
+        threadId: input.threadId,
+        verdict: verdict.verdict,
+        channel: resolved.action?.channel ?? null,
+        severity: resolved.action?.severity ?? null,
+        quarantined: resolved.quarantined,
       });
 
       if (resolved.surfaceQuarantineWarning) {
@@ -236,15 +270,31 @@ export const make = Effect.gen(function* () {
           : yield* evaluateThread({
               threadId,
               delta: ingested.evaluation.delta,
+              request: ingested.evaluation.request,
               workInProgress: ingested.evaluation.workInProgress,
               state: ingested.state,
             });
       yield* Ref.update(pipelines, (map) => new Map(map).set(threadId, next));
     });
 
+  const handleMessage = (event: Extract<OrchestrationEvent, { type: "thread.message-sent" }>) =>
+    Ref.update(pipelines, (map) => {
+      const threadId = event.payload.threadId;
+      const state = map.get(threadId) ?? INITIAL_ADVISOR_PIPELINE_STATE;
+      const next = ingestAdvisorMessage({
+        state,
+        message: {
+          messageId: event.payload.messageId,
+          role: event.payload.role,
+          text: event.payload.text,
+          dispatchOrigin: event.payload.dispatchOrigin,
+        },
+      });
+      return next === state && map.has(threadId) ? map : new Map(map).set(threadId, next);
+    });
+
   const forgetThread = (threadId: ThreadId) =>
     Effect.gen(function* () {
-      yield* advisorSession.forget(threadId);
       yield* Ref.update(pipelines, (map) => {
         const nextMap = new Map(map);
         nextMap.delete(threadId);
@@ -299,6 +349,12 @@ export const make = Effect.gen(function* () {
         return;
       }
       yield* trackThreadState(event);
+      // The goal arrives on a different channel than the work. Activities carry
+      // what the agent did; only this event carries what it was asked to do.
+      if (event.type === "thread.message-sent") {
+        yield* handleMessage(event);
+        return;
+      }
       if (event.type !== "thread.activity-appended") {
         return;
       }
@@ -310,7 +366,9 @@ export const make = Effect.gen(function* () {
       yield* handleActivity(event);
     }).pipe(
       Effect.catchCause((cause) =>
-        Effect.logDebug("advisor reactor dropped an event", { type: event.type, cause }),
+        // Dropping an event silently means the advisor quietly stops seeing
+        // part of the thread; debug is not emitted in production.
+        Effect.logWarning("advisor reactor dropped an event", { type: event.type, cause }),
       ),
     );
 
@@ -320,7 +378,17 @@ export const make = Effect.gen(function* () {
     startDrainableWorkerProducers(
       worker,
       Effect.gen(function* () {
-        yield* advisorSession.start();
+        // The settings the advisor actually resolved at boot. The UI toggle is
+        // not evidence: it and the server read different things if the settings
+        // file did not load, and that difference is invisible from the browser.
+        const settings = yield* serverSettings.getSettings.pipe(
+          Effect.catchCause(() => Effect.succeed(null)),
+        );
+        yield* Effect.logInfo("advisor reactor started", {
+          globalEnabled: settings?.advisor.enabled ?? null,
+          provider: settings?.advisor.modelSelection.provider ?? null,
+          model: settings?.advisor.modelSelection.model ?? null,
+        });
         yield* Effect.forkScoped(
           Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) =>
             worker.enqueue(event),

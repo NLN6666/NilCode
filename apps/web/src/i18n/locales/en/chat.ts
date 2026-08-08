@@ -360,6 +360,22 @@ export const chat = {
     exportMarkdown: "Export markdown file",
   },
 
+  /** The advisor's note card in the transcript. */
+  advisor: {
+    label: "Advisor",
+    severity: {
+      nit: "nit",
+      concern: "concern",
+      blocker: "blocker",
+    },
+    /** How far the note got: the agent was interrupted, will see it next turn, or never received it. */
+    channel: {
+      steer: "Interrupted this turn",
+      aside: "Queued for the next turn",
+      preserve: "Not sent to the agent",
+    },
+  },
+
   /** Color-theme preview cards rendered from ```theme / ```html theme fences. */
   themePreview: {
     label: "Color theme",

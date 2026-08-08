@@ -7,11 +7,18 @@ import {
   type AdvisorPipelineState,
   INITIAL_ADVISOR_PIPELINE_STATE,
   ingestAdvisorActivity,
+  ingestAdvisorMessage,
   resolveAdvisorAction,
 } from "./advisorPipeline.ts";
 
 const tool = (summary: string) => ({ kind: "tool.updated", summary, payload: null });
 const turnCompleted = { kind: "turn.completed", summary: "Turn complete", payload: null };
+
+const asked = (state: AdvisorPipelineState, text: string, messageId = "message-1") =>
+  ingestAdvisorMessage({
+    state,
+    message: { messageId, role: "user", text, dispatchOrigin: "user" },
+  });
 
 const ingestAll = (
   state: AdvisorPipelineState,
@@ -117,6 +124,66 @@ describe("ingestAdvisorActivity", () => {
     });
 
     expect(result.evaluation).toBeNull();
+  });
+
+  it("carries what the user asked for", () => {
+    const state = ingestAll(asked(INITIAL_ADVISOR_PIPELINE_STATE, "add rate limiting"), [
+      tool("Read a.ts"),
+    ]);
+
+    const result = ingestAdvisorActivity({ state, activity: turnCompleted });
+
+    expect(result.evaluation?.request).toContain("add rate limiting");
+  });
+
+  it("reports no request on a thread that has none", () => {
+    const state = ingestAll(INITIAL_ADVISOR_PIPELINE_STATE, [tool("Read a.ts")]);
+
+    expect(
+      ingestAdvisorActivity({ state, activity: turnCompleted }).evaluation?.request,
+    ).toBeNull();
+  });
+
+  // The delta is emptied at every evaluation; the goal it is judged against
+  // must not be, or the advisor goes blind again after the first turn.
+  it("keeps the request after the delta is cleared", () => {
+    const first = ingestAdvisorActivity({
+      state: ingestAll(asked(INITIAL_ADVISOR_PIPELINE_STATE, "add rate limiting"), [
+        tool("Read a.ts"),
+      ]),
+      activity: turnCompleted,
+    });
+
+    const second = ingestAdvisorActivity({
+      state: ingestAll(first.state, [tool("Wrote b.ts")]),
+      activity: turnCompleted,
+    });
+
+    expect(second.evaluation?.delta).not.toContain("Read a.ts");
+    expect(second.evaluation?.request).toContain("add rate limiting");
+  });
+});
+
+describe("ingestAdvisorMessage", () => {
+  it("never triggers an evaluation on its own", () => {
+    const state = asked(INITIAL_ADVISOR_PIPELINE_STATE, "add rate limiting");
+
+    expect(state.delta.lines).toEqual([]);
+    expect(state.completedTurns).toBe(0);
+  });
+
+  it("returns the same state when the message is not a request", () => {
+    const state = ingestAdvisorMessage({
+      state: INITIAL_ADVISOR_PIPELINE_STATE,
+      message: {
+        messageId: "message-1",
+        role: "assistant",
+        text: "done",
+        dispatchOrigin: undefined,
+      },
+    });
+
+    expect(state).toBe(INITIAL_ADVISOR_PIPELINE_STATE);
   });
 });
 

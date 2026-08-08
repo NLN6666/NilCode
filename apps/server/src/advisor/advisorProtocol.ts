@@ -41,11 +41,19 @@ Rules for the message:
 export function buildAdvisorEvaluationPrompt(input: {
   readonly delta: string;
   readonly workInProgress: boolean;
+  /** Recent user messages, oldest first; null when the thread has none yet. */
+  readonly request?: string | null;
 }): string {
   const header = input.workInProgress
     ? "The agent's work is still in progress. Only a blocker will be acted on; anything less will be discarded, so stay silent unless it is serious."
     : "The agent has finished a turn. Here is everything it did since you last looked.";
-  return `${header}\n\n<activity>\n${input.delta}\n</activity>\n\nRespond with one JSON object.`;
+  // Without the request the advisor has only the agent's side of the
+  // conversation, and "is this drifting from what was asked" is unanswerable.
+  const request =
+    input.request === undefined || input.request === null
+      ? ""
+      : `\n\nWhat the user asked for, oldest message first:\n\n<request>\n${input.request}\n</request>`;
+  return `${header}${request}\n\n<activity>\n${input.delta}\n</activity>\n\nRespond with one JSON object.`;
 }
 
 /**

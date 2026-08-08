@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./advisorDelivery": {
+      "types": "./src/advisorDelivery.ts",
+      "import": "./src/advisorDelivery.ts"
+    },
     "./backgroundServiceMatch": {
       "types": "./src/backgroundServiceMatch.ts",
       "import": "./src/backgroundServiceMatch.ts"

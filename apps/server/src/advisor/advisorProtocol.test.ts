@@ -50,6 +50,29 @@ describe("buildAdvisorEvaluationPrompt", () => {
 
     expect(prompt.toLowerCase()).not.toContain("still in progress");
   });
+
+  // Two of the three things the system prompt asks the advisor to watch for are
+  // relative to the request. Without it, it is being asked to judge drift with
+  // no idea what the work was supposed to be.
+  it("carries what the user asked for", () => {
+    const prompt = buildAdvisorEvaluationPrompt({
+      delta: "[tool.updated] Read a.ts",
+      request: "[user]\nadd rate limiting",
+      workInProgress: false,
+    });
+
+    expect(prompt).toContain("<request>\n[user]\nadd rate limiting\n</request>");
+  });
+
+  it("omits the request block on a thread that has none", () => {
+    const prompt = buildAdvisorEvaluationPrompt({
+      delta: "x",
+      request: null,
+      workInProgress: false,
+    });
+
+    expect(prompt).not.toContain("<request>");
+  });
 });
 
 describe("parseAdvisorVerdict", () => {

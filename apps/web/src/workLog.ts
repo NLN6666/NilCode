@@ -1,12 +1,18 @@
 import {
+  ADVISOR_ACTIVITY_KIND,
+  ADVISOR_DELIVERY_CHANNELS,
+  ADVISOR_SEVERITIES,
   isToolLifecycleItemType,
   STUDIO_OUTPUTS_ACTIVITY_KIND,
+  type AdvisorDeliveryChannel,
+  type AdvisorSeverity,
   type OrchestrationLatestTurnState,
   type OrchestrationThreadActivity,
   type ProviderKind,
   type ToolLifecycleItemType,
   type TurnId,
 } from "@synara/contracts";
+import { isAdvisorDeliveredMessageId } from "@synara/shared/advisorDelivery";
 import {
   decodeSubagentAgentStates,
   extractSubagentIdentityHints,
@@ -83,6 +89,14 @@ export interface WorkLogEntry {
   // Provider-native event type carried through the activity payload (e.g.
   // "background_tasks_changed") so the timeline can pick a specific icon.
   nativeEventType?: string;
+  // Present only on advisor notes. Its presence is what promotes the entry out
+  // of the work log and into its own transcript card.
+  advisorNote?: WorkLogAdvisorNote;
+}
+
+export interface WorkLogAdvisorNote {
+  readonly severity: AdvisorSeverity;
+  readonly channel: AdvisorDeliveryChannel;
 }
 
 export type WorkLogReasoningStatus = "inProgress" | "completed" | "failed";
@@ -202,7 +216,22 @@ export type TimelineEntry =
       kind: "work";
       createdAt: string;
       entry: WorkLogEntry;
+    }
+  | {
+      // An advisor note is an observation about the work, not a step of it, so
+      // it gets its own card rather than a row inside a "Worked for" group.
+      id: string;
+      kind: "advisor";
+      createdAt: string;
+      message: string;
+      note: WorkLogAdvisorNote;
     };
+
+export function isAdvisorWorkEntry(
+  entry: Pick<WorkLogEntry, "advisorNote">,
+): entry is WorkLogEntry & { advisorNote: WorkLogAdvisorNote } {
+  return entry.advisorNote !== undefined;
+}
 
 const orderedActivitiesCache = new WeakMap<
   ReadonlyArray<OrchestrationThreadActivity>,
@@ -446,6 +475,28 @@ function extractWorkLogSynaraThreadCreation(
   return { operationId, requestedCount, createdCount, threads };
 }
 
+/**
+ * The severity and delivery channel the advisor reactor wrote onto its note.
+ *
+ * Returns null for anything that is not a well-formed advisor activity, so a
+ * malformed payload degrades to an ordinary work row rather than a card with
+ * missing badges.
+ */
+function extractWorkLogAdvisorNote(
+  activity: OrchestrationThreadActivity,
+  payload: Record<string, unknown> | null,
+): WorkLogAdvisorNote | null {
+  if (activity.kind !== ADVISOR_ACTIVITY_KIND || !payload) {
+    return null;
+  }
+  const severity = ADVISOR_SEVERITIES.find((value) => value === payload.severity);
+  const channel = ADVISOR_DELIVERY_CHANNELS.find((value) => value === payload.channel);
+  if (!severity || !channel) {
+    return null;
+  }
+  return { severity, channel };
+}
+
 function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
   const payload =
     activity.payload && typeof activity.payload === "object"
@@ -471,6 +522,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     ...(toolStatus ? { toolStatus } : {}),
     ...(reasoningStatus ? { reasoningStatus } : {}),
   };
+  const advisorNote = extractWorkLogAdvisorNote(activity, payload);
+  if (advisorNote) {
+    entry.advisorNote = advisorNote;
+  }
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
   if (payload && typeof payload.detail === "string" && payload.detail.length > 0) {
@@ -2167,6 +2222,12 @@ export function deriveTimelineEntries(
     proposedPlans.flatMap((proposedPlan) => (proposedPlan.turnId ? [proposedPlan.turnId] : [])),
   );
   const messageRows: TimelineEntry[] = messages.flatMap((message) => {
+    // A delivered note reaches the model as a role "user" turn. It already
+    // renders as an advisor card, and showing it again as a user bubble would
+    // both duplicate the sentence and attribute it to the person.
+    if (isAdvisorDeliveredMessageId(message.id)) {
+      return [];
+    }
     const displayMessage =
       message.role === "assistant" && message.turnId && proposedPlanTurnIds.has(message.turnId)
         ? { ...message, text: stripProposedPlanBlocksFromText(message.text) }
@@ -2194,12 +2255,22 @@ export function deriveTimelineEntries(
     createdAt: proposedPlan.createdAt,
     proposedPlan,
   }));
-  const workRows: TimelineEntry[] = workEntries.map((entry) => ({
-    id: entry.id,
-    kind: "work",
-    createdAt: entry.createdAt,
-    entry,
-  }));
+  const workRows: TimelineEntry[] = workEntries.map((entry) =>
+    isAdvisorWorkEntry(entry)
+      ? {
+          id: entry.id,
+          kind: "advisor",
+          createdAt: entry.createdAt,
+          message: entry.label,
+          note: entry.advisorNote,
+        }
+      : {
+          id: entry.id,
+          kind: "work",
+          createdAt: entry.createdAt,
+          entry,
+        },
+  );
 
   return mergeTimelineEntries(
     mergeTimelineEntries(

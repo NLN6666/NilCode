@@ -5,6 +5,7 @@
 
 import { type MessageId, type TurnId } from "@synara/contracts";
 import { type TimelineEntry, type WorkLogEntry, formatElapsed } from "../../session-logic";
+import type { WorkLogAdvisorNote } from "../../workLog";
 import { normalizeCompactToolLabel as normalizeCompactToolLabelValue } from "../../lib/toolCallLabel";
 import {
   isSummarizableToolCallEntry,
@@ -246,6 +247,13 @@ export type MessagesTimelineRow =
       id: string;
       createdAt: string;
       proposedPlan: ProposedPlan;
+    }
+  | {
+      kind: "advisor";
+      id: string;
+      createdAt: string;
+      message: string;
+      note: WorkLogAdvisorNote;
     }
   | { kind: "working"; id: string; createdAt: string | null }
   | {
@@ -579,6 +587,20 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
 
+    if (timelineEntry.kind === "advisor") {
+      // Same reasoning as a plan card: a visible mid-turn artifact that must
+      // not be absorbed into the surrounding work group.
+      flushPendingWorkGroup({ attachToPreviousAssistant: false });
+      nextRows.push({
+        kind: "advisor",
+        id: timelineEntry.id,
+        createdAt: timelineEntry.createdAt,
+        message: timelineEntry.message,
+        note: timelineEntry.note,
+      });
+      continue;
+    }
+
     const message = timelineEntry.message;
     const leadingWorkEntries =
       message.role === "assistant" ? pendingWorkGroup?.groupedEntries : undefined;
@@ -761,9 +783,10 @@ function collapseSettledTurns(
         foldIndices.push(scan);
         continue;
       }
-      if (prev.kind === "proposed-plan") {
-        // The plan card stays visible, but it should not strand earlier
-        // narration/work outside the final "Worked for..." disclosure.
+      if (prev.kind === "proposed-plan" || prev.kind === "advisor") {
+        // The plan card and the advisor note stay visible, but neither should
+        // strand earlier narration/work outside the final "Worked for..."
+        // disclosure.
         continue;
       }
       break;
@@ -1079,6 +1102,16 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
 
     case "proposed-plan":
       return a.proposedPlan === (b as typeof a).proposedPlan;
+
+    case "advisor": {
+      const ba = b as typeof a;
+      return (
+        a.createdAt === ba.createdAt &&
+        a.message === ba.message &&
+        a.note.severity === ba.note.severity &&
+        a.note.channel === ba.note.channel
+      );
+    }
 
     case "work":
       return (

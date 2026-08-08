@@ -61,6 +61,7 @@ import { Button } from "../ui/button";
 import { CrossTaskOriginLabel, type CrossTaskOrigin } from "./CrossTaskOriginLabel";
 import { SynaraThreadCreationCard } from "./SynaraThreadCreationCard";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
+import { AdvisorNoteCard } from "./AdvisorNoteCard";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { DiffStatLabel } from "./DiffStatLabel";
 import { ReviewChangesButton } from "./ReviewChangesButton";
@@ -2224,6 +2225,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             planMarkdown={row.proposedPlan.planMarkdown}
             cwd={markdownCwd}
             workspaceRoot={workspaceRoot}
+            chatTypographyStyle={chatTypographyStyle}
+          />
+        </div>
+      )}
+
+      {row.kind === "advisor" && (
+        <div className="min-w-0 py-0.5">
+          <AdvisorNoteCard
+            message={row.message}
+            note={row.note}
             chatTypographyStyle={chatTypographyStyle}
           />
         </div>

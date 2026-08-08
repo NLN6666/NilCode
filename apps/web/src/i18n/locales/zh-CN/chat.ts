@@ -318,6 +318,20 @@ export const chat: Chat = {
     exportMarkdown: "导出 Markdown 文件",
   },
 
+  advisor: {
+    label: "监察",
+    severity: {
+      nit: "细节",
+      concern: "存疑",
+      blocker: "阻断",
+    },
+    channel: {
+      steer: "已打断本轮",
+      aside: "已排入下一轮",
+      preserve: "未发送给模型",
+    },
+  },
+
   themePreview: {
     label: "配色主题",
     htmlTitle: "主题预览",
