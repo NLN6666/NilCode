@@ -117,6 +117,7 @@ const EditorWorkspaceView = lazy(() =>
 );
 const DockTerminalPane = lazy(() => import("./DockTerminalPane"));
 const GitPanel = lazy(() => import("./GitPanel"));
+const ServicesPanel = lazy(() => import("../services/ServicesPanel"));
 const DockExplorerPane = lazy(() =>
   import("./DockExplorerPane").then((module) => ({
     default: module.DockExplorerPane,
@@ -182,6 +183,7 @@ export function SingleChatSurface(props: {
   projectId: ProjectId | null;
 }) {
   const paneCopy = useMessages().chat.panes;
+  const servicesCopy = useMessages().chat.services;
   const navigate = useNavigate();
   const createSplitView = useSplitViewStore((store) => store.createFromThread);
   const createSplitViewFromDrop = useSplitViewStore((store) => store.createFromDrop);
@@ -835,6 +837,15 @@ export function SingleChatSurface(props: {
               projectId={props.projectId}
               onClose={() => closePane(props.threadId, pane.id)}
             />
+          </Suspense>
+        );
+      case "services":
+        // No `isActive` gate: the pane owns a WebSocket subscription, not a PTY, and it
+        // must keep collecting output while the user reads another tab — reattaching on
+        // focus would leave holes in the log exactly when a service was misbehaving.
+        return (
+          <Suspense fallback={<PanelStateMessage>{servicesCopy.loading}</PanelStateMessage>}>
+            <ServicesPanel />
           </Suspense>
         );
       case "explorer":

@@ -28,11 +28,11 @@ updated: 2026-08-08T07:26:50Z
 
 ### 2.2 三个确认的缺口
 
-| 缺口 | 证据 |
-| --- | --- |
-| **前端完全没有 daemon 通道** | `grep -ril daemon apps/web/src` 命中数为 0 |
+| 缺口                              | 证据                                                                                                             |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| **前端完全没有 daemon 通道**      | `grep -ril daemon apps/web/src` 命中数为 0                                                                       |
 | **`DaemonSpec.persist` 是死字段** | 全仓库唯一读取处是 `packages/contracts/src/daemon.test.ts` 的默认值断言；`daemonTools.ts` 甚至没把它暴露给 Agent |
-| **`broker.dispose` 从无调用点** | `serverShutdown.ts` 里不存在，服务器退出时不做任何 daemon 收尾 |
+| **`broker.dispose` 从无调用点**   | `serverShutdown.ts` 里不存在，服务器退出时不做任何 daemon 收尾                                                   |
 
 ### 2.3 需求第 3 点其实已成立，但有个真实漏洞
 
@@ -46,11 +46,11 @@ updated: 2026-08-08T07:26:50Z
 
 `brokerCore` 没有观察者机制，只有 per-call 的 `waiters` 和阻塞式 `logs(follow)`。
 
-| 方案 | 做法 | 结论 |
-| --- | --- | --- |
-| **A. broker 订阅 + WS 推送通道** | `brokerCore.subscribe(listener)`，新增 `WS_CHANNELS.daemonEvent` | **采纳。** 与既有 `terminalEvent` / `projectDevServerEvent` 完全同构；状态变化与输出走同一条流，低延迟 |
-| B. 前端长轮询 `logs(follow)` | 不动 broker | 驳回。每个面板一条阻塞请求，游标要前端管，状态变化还得另开轮询，等于并行维护第二套机制 |
-| C. 桥接进既有 terminal session 系统 | 复用 `terminalOpen/Write` | 驳回。daemon 有 restart policy、readiness、detached，terminal session 都没有；揉在一起正是知识库反复警告的抽象混淆 |
+| 方案                                | 做法                                                             | 结论                                                                                                               |
+| ----------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **A. broker 订阅 + WS 推送通道**    | `brokerCore.subscribe(listener)`，新增 `WS_CHANNELS.daemonEvent` | **采纳。** 与既有 `terminalEvent` / `projectDevServerEvent` 完全同构；状态变化与输出走同一条流，低延迟             |
+| B. 前端长轮询 `logs(follow)`        | 不动 broker                                                      | 驳回。每个面板一条阻塞请求，游标要前端管，状态变化还得另开轮询，等于并行维护第二套机制                             |
+| C. 桥接进既有 terminal session 系统 | 复用 `terminalOpen/Write`                                        | 驳回。daemon 有 restart policy、readiness、detached，terminal session 都没有；揉在一起正是知识库反复警告的抽象混淆 |
 
 ## 4. 契约层
 
@@ -60,12 +60,16 @@ updated: 2026-08-08T07:26:50Z
 
 ```
 DaemonEvent =
-  | { type: "state",  snapshot: DaemonSnapshot }
-  | { type: "output", name: DaemonName, chunk: string, cursor: number }
+  | { type: "snapshot", daemons: DaemonSnapshot[] }
+  | { type: "state",    snapshot: DaemonSnapshot }
+  | { type: "output",   name: DaemonName, chunk: string, cursor: number }
 ```
 
+- `snapshot` 是订阅打开时的开场名单，也是丢事件重同步后的重放起点（与 `ProjectDevServerEvent` 的做法一致）。**实现期新增**：本仓库的流式 RPC 用 `Stream.concat(名单, 实时流)` 起步，没有它就得另配一个 `daemonList` RPC，反而多一条要保持一致的路径
 - `state` 覆盖启动、就绪、退出、重启、重认领——一律直接携带完整 `DaemonSnapshot`，前端做整体替换而非增量合并，避免两边状态机各推各的
 - `output` 的 `cursor` 是发出该块之后的 `outputBytes`，让前端能识别自己是否漏收
+
+`DaemonSnapshot` 增加 `detached: boolean`：UI 需要它来解释"为什么这个服务不能输入命令"，否则只能从"没有输出"去猜。
 
 ### 4.2 删除死字段 `DaemonSpec.persist`
 
@@ -76,31 +80,41 @@ DaemonEvent =
 ### 4.3 新增 WS 通道与 RPC
 
 - 通道：`WS_CHANNELS.daemonEvent`，注册进 `WsPushPayloadByChannel` / `WsPushChannelSchema` / `WsPush` 三处（该文件要求三处同步）
-- RPC（`WS_METHODS` + `rpc.ts` + `ws.ts`）：`daemonList` / `daemonLogs` / `daemonSend` / `daemonStop` / `daemonRestart`
+- RPC（`WS_METHODS` + `rpc.ts` + `ws.ts`）：`daemon.readLogs` / `daemon.sendText` / `daemon.stop` / `daemon.restart`，外加流式的 `daemon.subscribeEvents`
 
-五个 RPC 一一映射到 broker 已有能力，**不新增任何底层能力**。不提供 `daemonStart`：服务由 Agent 启动，用户负责监看与终结。
+一一映射到 broker 已有能力，**不新增任何底层能力**。不提供 `daemonStart`：服务由 Agent 启动，用户负责监看与终结。
+
+**实现期偏离**：原计划的 `daemonList` 没有落地——订阅流的开场 `snapshot` 事件已经供给名单，再留一个无人调用的 `daemonList` 就是本设计正在清理的那种死代码。`daemon.readLogs` 保留，它取的是订阅之前就已产生的历史输出，实时流给不了。
+
+客户端控制面**刻意比 Agent 工具面窄**：不暴露阻塞式 `follow` 读、终端按键序列和裸信号。Agent 需要它们是因为它没有眼睛；人有实时流和两个按钮。把窄的一面保持窄，是为了防止 UI 长出一个顺手的"发 SIGKILL"入口。
 
 ## 5. 服务端
 
-| 文件 | 改动 |
-| --- | --- |
-| `daemon/brokerCore.ts` | 新增 `subscribe(listener): () => void`。在 `publish()`（状态）与 `handleOutput()`（输出）两处发事件。这是唯一的核心改动 |
-| `daemon/Services/Broker.ts` | `DaemonBrokerShape` 增加 `subscribe` |
-| `daemon/Layers/Broker.ts` | 透传 `subscribe` |
-| `daemon/daemonRpcHandlers.ts`（新增） | 五个 RPC 处理器；订阅 broker 事件并泵到 WS 推送 |
-| `serverShutdown.ts` | 见 §6 |
+| 文件                                       | 改动                                                                                                                    |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `daemon/brokerCore.ts`                     | 新增 `subscribe(listener): () => void`。在 `publish()`（状态）与 `handleOutput()`（输出）两处发事件。这是唯一的核心改动 |
+| `daemon/Services/Broker.ts`                | `DaemonBrokerShape` 增加 `subscribe`                                                                                    |
+| `daemon/Layers/Broker.ts`                  | 透传 `subscribe`                                                                                                        |
+| `daemon/daemonClientOperations.ts`（新增） | 四个动作的 broker 映射 + 订阅开场名单，不含任何 WebSocket 细节                                                          |
+| `daemon/shutdown.ts`（新增）               | 退出收尾，见 §6                                                                                                         |
+| `wsRpc.ts`                                 | 五个处理器；订阅流的作用域接线                                                                                          |
+| `effectServer.ts`                          | 注册 `shutdownDaemons` finalizer                                                                                        |
 
 daemon 是全局对象，事件**广播给所有已连接客户端**，不做 per-thread 过滤。
 
+**订阅流的作用域顺序是有讲究的**：先 `subscribe`、注册 finalizer，再读名单，最后回放这期间排队的事件。反过来（先读名单再订阅）会漏掉两步之间启动的 daemon；把名单读在作用域外则会在客户端于名单阶段断开时泄漏监听器。
+
+`brokerCore.publish()` 承担唯一的发射点，并按**生命周期签名**去重——签名刻意排除 `outputBytes`，否则一个话痨 daemon 的每次读取都会变成一次广播风暴。字节数由 `output` 事件的 `cursor` 承载。
+
 ## 6. 生命周期
 
-| 事件 | 行为 |
-| --- | --- |
-| 对话结束 / 线程删除 | **无动作**。broker 不认识 threadId |
-| 用户点「停止」 | `daemonStop` → 优雅信号，宽限期后杀进程树 |
-| 用户点「重启」 | `daemonRestart` |
-| **软件退出** | 优雅停止所有**非 detached** daemon，然后调用 `broker.dispose`（**首次真正接上这个一直没人调的方法**） |
-| 下次启动 | `reclaimDetached` 重认领 detached 服务，面板立刻显示它们 |
+| 事件                | 行为                                                                                                  |
+| ------------------- | ----------------------------------------------------------------------------------------------------- |
+| 对话结束 / 线程删除 | **无动作**。broker 不认识 threadId                                                                    |
+| 用户点「停止」      | `daemonStop` → 优雅信号，宽限期后杀进程树                                                             |
+| 用户点「重启」      | `daemonRestart`                                                                                       |
+| **软件退出**        | 优雅停止所有**非 detached** daemon，然后调用 `broker.dispose`（**首次真正接上这个一直没人调的方法**） |
+| 下次启动            | `reclaimDetached` 重认领 detached 服务，面板立刻显示它们                                              |
 
 **为什么 detached 不杀**：`detached: true` 的设计初衷就是活过 Synara 服务器进程，上一期为此在 Windows 上刻意偏离了来源实现（`detached: true` + `windowsHide`），并配了跨重启重认领。退出时一律杀掉会让那整套能力变成死代码。
 
@@ -128,11 +142,11 @@ daemon 是全局对象，事件**广播给所有已连接客户端**，不做 pe
 
 ### 7.2 模块划分
 
-| 模块 | 职责 | 依赖 |
-| --- | --- | --- |
-| `daemonStore.ts` | 全局 snapshot 表 + 每个 daemon 的日志环形缓冲；订阅 `daemonEvent` | WS 传输 |
-| `components/services/ServicesPanel.tsx` | 列表（状态点、名称、PID、重启次数）+ 选中态 + 操作按钮 | store |
-| `components/services/DaemonLogView.tsx` | 轻量只读 xterm 视图 + 输入行 | `terminalRuntimeAppearance` |
+| 模块                                    | 职责                                                              | 依赖                        |
+| --------------------------------------- | ----------------------------------------------------------------- | --------------------------- |
+| `daemonStore.ts`                        | 全局 snapshot 表 + 每个 daemon 的日志环形缓冲；订阅 `daemonEvent` | WS 传输                     |
+| `components/services/ServicesPanel.tsx` | 列表（状态点、名称、PID、重启次数）+ 选中态 + 操作按钮            | store                       |
+| `components/services/DaemonLogView.tsx` | 轻量只读 xterm 视图 + 输入行                                      | `terminalRuntimeAppearance` |
 
 **store 不挂在 thread 上。** daemon 是 server 全局的，切换对话不该丢日志缓冲。
 
@@ -161,14 +175,14 @@ daemon 是全局对象，事件**广播给所有已连接客户端**，不做 pe
 
 ## 9. 测试
 
-| 层 | 用例 |
-| --- | --- |
-| `brokerCore` | `subscribe` 在状态变化与输出时发射、退订后不再收到、多订阅者互不影响 |
-| 退出策略 | 非 detached 被优雅停止、detached 被保留、`dispose` 被调用 |
-| RPC | 五个处理器的入参解码、`daemon_not_found` 错误分支、返回形状 |
-| `daemonStore` | 事件归约、日志环形缓冲上限、`droppedBytes` 截断如实呈现 |
-| dock | `"services"` 落在 `SINGLETON_PANE_KINDS`、持久化状态校验放行该 kind |
-| i18n | 新增文案键中文齐备 |
+| 层            | 用例                                                                 |
+| ------------- | -------------------------------------------------------------------- |
+| `brokerCore`  | `subscribe` 在状态变化与输出时发射、退订后不再收到、多订阅者互不影响 |
+| 退出策略      | 非 detached 被优雅停止、detached 被保留、`dispose` 被调用            |
+| RPC           | 五个处理器的入参解码、`daemon_not_found` 错误分支、返回形状          |
+| `daemonStore` | 事件归约、日志环形缓冲上限、`droppedBytes` 截断如实呈现              |
+| dock          | `"services"` 落在 `SINGLETON_PANE_KINDS`、持久化状态校验放行该 kind  |
+| i18n          | 新增文案键中文齐备                                                   |
 
 Windows 上绕开 turbo 直接调 vitest。
 

@@ -18,6 +18,9 @@ export const RIGHT_DOCK_PANE_KINDS = [
   "sidechat",
   "git",
   "pullRequest",
+  // Server-wide, unlike every other kind here: the pane is per-thread, but what it
+  // shows is the machine's background services, identical in every chat.
+  "services",
 ] as const;
 
 export type RightDockPaneKind = (typeof RIGHT_DOCK_PANE_KINDS)[number];

@@ -1,10 +1,18 @@
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { DAEMON_NAME_MAX_LENGTH, DaemonSnapshot, DaemonSpec } from "./daemon";
+import {
+  DAEMON_NAME_MAX_LENGTH,
+  DaemonEvent,
+  DaemonReadLogsInput,
+  DaemonSnapshot,
+  DaemonSpec,
+  DaemonStopInput,
+} from "./daemon";
 
 const decodeSpec = Schema.decodeUnknownSync(DaemonSpec);
 const decodeSnapshot = Schema.decodeUnknownSync(DaemonSnapshot);
+const decodeEvent = Schema.decodeUnknownSync(DaemonEvent);
 
 describe("DaemonSpec", () => {
   it("decodes a minimal spec and applies defaults", () => {
@@ -13,7 +21,6 @@ describe("DaemonSpec", () => {
     expect(spec.args).toEqual([]);
     expect(spec.pty).toBe(true);
     expect(spec.restart).toBe("no");
-    expect(spec.persist).toBe(false);
     expect(spec.detached).toBe(false);
   });
 
@@ -53,7 +60,6 @@ describe("DaemonSpec", () => {
       args: ["-jar", "server.jar"],
       pty: false,
       restart: "on-failure",
-      persist: true,
       detached: true,
     });
 
@@ -109,5 +115,50 @@ describe("DaemonSnapshot", () => {
 
   it("rejects an unknown state", () => {
     expect(() => decodeSnapshot({ name: "a", id: "d1", state: "zombie" })).toThrow();
+  });
+
+  it("defaults detached to false so the UI never guesses at the input channel", () => {
+    expect(decodeSnapshot({ name: "a", id: "d1", state: "running" }).detached).toBe(false);
+  });
+});
+
+describe("DaemonEvent", () => {
+  it("decodes the opening roster", () => {
+    const event = decodeEvent({
+      type: "snapshot",
+      daemons: [{ name: "mc", id: "d1", state: "ready" }],
+    });
+
+    expect(event.type === "snapshot" && event.daemons).toHaveLength(1);
+  });
+
+  it("carries a whole snapshot on a state change", () => {
+    const event = decodeEvent({
+      type: "state",
+      snapshot: { name: "mc", id: "d1", state: "exited", exitCode: 1 },
+    });
+
+    expect(event.type === "state" && event.snapshot.exitCode).toBe(1);
+  });
+
+  it("carries the post-chunk cursor on output so a client can detect a gap", () => {
+    const event = decodeEvent({ type: "output", name: "mc", chunk: "Done (12.3s)!", cursor: 4096 });
+
+    expect(event.type === "output" && event.cursor).toBe(4096);
+  });
+
+  it("rejects an unknown event type", () => {
+    expect(() => decodeEvent({ type: "exploded", name: "mc" })).toThrow();
+  });
+});
+
+describe("daemon control inputs", () => {
+  it("applies the shared log and stop defaults", () => {
+    expect(Schema.decodeUnknownSync(DaemonReadLogsInput)({ name: "mc" }).lines).toBe(100);
+    expect(Schema.decodeUnknownSync(DaemonStopInput)({ name: "mc" }).timeoutSeconds).toBe(5);
+  });
+
+  it("rejects a traversal name on the control surface too", () => {
+    expect(() => Schema.decodeUnknownSync(DaemonStopInput)({ name: "../etc" })).toThrow();
   });
 });

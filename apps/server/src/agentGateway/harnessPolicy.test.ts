@@ -37,6 +37,19 @@ describe("Synara harness policy", () => {
     assert.include(policy, "Never call this tool for a manual follow-up turn");
   });
 
+  it("routes long-running processes to the daemon tools instead of a backgrounded shell", () => {
+    const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
+
+    // A shell-backgrounded server dies with the session's process tree and never shows
+    // up in the services panel, so this steer is what makes "ending a chat does not end
+    // the service" true in practice rather than only in the broker.
+    assert.include(policy, "must outlive this turn");
+    assert.include(policy, "synara_*_daemon");
+    assert.include(policy, "Never background it from a shell");
+    assert.include(policy, "background services panel");
+    assert.include(policy, "detached: true");
+  });
+
   it("never advertises gateway mutation to providers without scoped MCP", () => {
     const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: false });
     assert.include(policy, "Synara MCP control is unavailable");

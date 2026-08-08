@@ -1,6 +1,7 @@
 // FILE: daemon.ts
 // Purpose: Schemas for supervised background daemons — launch spec, lifecycle
-//          snapshot, readiness conditions, and restart policy.
+//          snapshot, readiness conditions, restart policy, and the client-facing
+//          feed and control inputs behind the background services panel.
 // Layer: Shared contracts (schema-only)
 //
 // Ported from can1357/oh-my-pi (MIT) — see THIRD-PARTY-NOTICES.md. The spec/snapshot
@@ -74,11 +75,9 @@ export const DaemonSpec = Schema.Struct({
   pty: Schema.optional(Schema.Boolean).pipe(Schema.withDecodingDefault(() => true)),
   ready: Schema.optional(DaemonReadySpec),
   restart: Schema.optional(DaemonRestartPolicy).pipe(Schema.withDecodingDefault(() => "no")),
-  /** Survive the last client disconnecting. */
-  persist: Schema.optional(Schema.Boolean).pipe(Schema.withDecodingDefault(() => false)),
   /**
-   * Survive the Synara server exiting. Implies `persist` and disables PTY input:
-   * stdio is redirected to the log file, so there is no stdin channel left.
+   * Survive the Synara server exiting. Disables PTY input: stdio is redirected to
+   * the log file, so there is no stdin channel left.
    */
   detached: Schema.optional(Schema.Boolean).pipe(Schema.withDecodingDefault(() => false)),
 });
@@ -111,5 +110,79 @@ export const DaemonSnapshot = Schema.Struct({
   readyPending: Schema.optional(Schema.Array(DaemonReadyCondition)).pipe(
     Schema.withDecodingDefault(() => []),
   ),
+  /**
+   * Mirrors `DaemonSpec.detached`. The client needs it to explain why a daemon has no
+   * input channel; without it the UI would have to guess from the absence of output.
+   */
+  detached: Schema.optional(Schema.Boolean).pipe(Schema.withDecodingDefault(() => false)),
 });
 export type DaemonSnapshot = typeof DaemonSnapshot.Type;
+
+// ── Client-facing surface ────────────────────────────────────────────
+//
+// Agents drive daemons through the `synara_*_daemon` tools; the sections below are the
+// separate, deliberately narrower surface the UI uses. Blocking reads, terminal keys and
+// raw signals stay agent-only: a human has a live stream and two buttons instead.
+
+/**
+ * Live daemon feed.
+ *
+ * `state` carries the whole snapshot rather than a delta so the client never runs a
+ * second copy of the lifecycle state machine — the two would drift.
+ */
+export const DaemonEvent = Schema.Union([
+  /** Full roster, emitted once when a subscription opens and again after a resync. */
+  Schema.Struct({
+    type: Schema.Literal("snapshot"),
+    daemons: Schema.Array(DaemonSnapshot),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("state"),
+    snapshot: DaemonSnapshot,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("output"),
+    name: DaemonName,
+    chunk: Schema.String,
+    /** `outputBytes` *after* this chunk, so a client can tell it missed something. */
+    cursor: NonNegativeInt,
+  }),
+]);
+export type DaemonEvent = typeof DaemonEvent.Type;
+
+export const DaemonReadLogsInput = Schema.Struct({
+  name: DaemonName,
+  lines: Schema.optional(NonNegativeInt).pipe(
+    Schema.withDecodingDefault(() => DAEMON_LOGS_DEFAULT_LINES),
+  ),
+});
+export type DaemonReadLogsInput = typeof DaemonReadLogsInput.Type;
+
+export const DaemonReadLogsResult = Schema.Struct({
+  snapshot: DaemonSnapshot,
+  content: Schema.String,
+  nextCursor: NonNegativeInt,
+  /** Bytes rotated out before this read. Surfaced verbatim; never papered over. */
+  droppedBytes: NonNegativeInt,
+  truncated: Schema.Boolean,
+});
+export type DaemonReadLogsResult = typeof DaemonReadLogsResult.Type;
+
+export const DaemonSendTextInput = Schema.Struct({
+  name: DaemonName,
+  text: Schema.String,
+});
+export type DaemonSendTextInput = typeof DaemonSendTextInput.Type;
+
+export const DaemonStopInput = Schema.Struct({
+  name: DaemonName,
+  timeoutSeconds: Schema.optional(NonNegativeInt).pipe(
+    Schema.withDecodingDefault(() => DAEMON_STOP_DEFAULT_TIMEOUT_SECONDS),
+  ),
+});
+export type DaemonStopInput = typeof DaemonStopInput.Type;
+
+export const DaemonRestartInput = Schema.Struct({
+  name: DaemonName,
+});
+export type DaemonRestartInput = typeof DaemonRestartInput.Type;

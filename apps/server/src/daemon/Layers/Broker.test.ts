@@ -26,6 +26,7 @@ function stubCore(overrides: Partial<BrokerCore> = {}): BrokerCore {
     stop: vi.fn(async () => snapshot),
     restart: vi.fn(async () => snapshot),
     reclaimDetached: vi.fn(async () => []),
+    subscribe: vi.fn(() => () => undefined),
     dispose: vi.fn(async () => undefined),
     ...overrides,
   };

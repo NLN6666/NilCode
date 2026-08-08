@@ -117,6 +117,7 @@ export const chat: Chat = {
       sidechat: "侧边会话",
       git: "Git",
       pullRequest: "拉取请求",
+      services: "后台服务",
       fallback: "面板",
     },
 
@@ -125,11 +126,52 @@ export const chat: Chat = {
       explorer: "文件",
       sidechat: "侧边会话",
       git: "源代码管理",
+      services: "后台服务",
     },
 
     closePane: (label) => `关闭${label}`,
     addPanel: "添加面板",
     collapsePanel: "折叠面板",
+  },
+
+  services: {
+    empty: "当前没有运行中的后台服务。",
+    emptyHint:
+      "让智能体启动一个长期运行的进程（游戏服务器、开发服务器、数据库），它就会出现在这里。",
+    loading: "正在加载后台服务…",
+
+    states: {
+      starting: "启动中",
+      ready: "就绪",
+      running: "运行中",
+      exited: "已退出",
+      failed: "已失败",
+      restarting: "重启中",
+    },
+
+    pid: (pid) => `PID ${pid}`,
+    restarts: (count) => `已重启 ${count} 次`,
+    exitedWithCode: (code) => `退出码 ${code}`,
+    waitingFor: (conditions) => `等待 ${conditions}`,
+    detached: "已分离",
+    detachedHint: "Synara 退出后仍会继续运行，下次启动时重新接管。",
+
+    stop: "停止",
+    restart: "重启",
+    stopping: "正在停止…",
+    restarting: "正在重启…",
+
+    logsLabel: "服务日志",
+    droppedBytes: (bytes) => `日志轮转丢弃了此前的 ${bytes} 字节。`,
+
+    inputPlaceholder: "发送控制台命令…",
+    inputLabel: "控制台命令",
+    send: "发送",
+    inputUnavailableDetached: "已分离的服务没有控制台输入通道。",
+    inputUnavailableExited: "该服务未在运行。",
+
+    actionFailed: (detail) => `操作失败：${detail}`,
+    unknownError: "未知错误",
   },
 
   split: {

@@ -70,6 +70,13 @@ import {
   TerminalRestartInput,
   TerminalWriteInput,
 } from "./terminal";
+import {
+  DaemonEvent,
+  DaemonReadLogsInput,
+  DaemonRestartInput,
+  DaemonSendTextInput,
+  DaemonStopInput,
+} from "./daemon";
 import { KeybindingRule } from "./keybindings";
 import {
   ProjectCreateLocalFilePreviewGrantInput,
@@ -208,6 +215,13 @@ export const WS_METHODS = {
   terminalRestart: "terminal.restart",
   terminalClose: "terminal.close",
 
+  // Background service (daemon) methods
+  daemonReadLogs: "daemon.readLogs",
+  daemonSendText: "daemon.sendText",
+  daemonStop: "daemon.stop",
+  daemonRestart: "daemon.restart",
+  subscribeDaemonEvents: "daemon.subscribeEvents",
+
   // Server meta
   serverGetConfig: "server.getConfig",
   serverGetEnvironment: "server.getEnvironment",
@@ -278,6 +292,7 @@ export const WS_CHANNELS = {
   projectProvisionProgress: "project.provisionProgress",
   terminalEvent: "terminal.event",
   projectDevServerEvent: "project.devServerEvent",
+  daemonEvent: "daemon.event",
   serverWelcome: "server.welcome",
   serverMaintenanceUpdated: "server.maintenanceUpdated",
   serverConfigUpdated: "server.configUpdated",
@@ -395,6 +410,13 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.terminalRestart, TerminalRestartInput),
   tagRequestBody(WS_METHODS.terminalClose, TerminalCloseInput),
 
+  // Background service (daemon) methods
+  tagRequestBody(WS_METHODS.daemonReadLogs, DaemonReadLogsInput),
+  tagRequestBody(WS_METHODS.daemonSendText, DaemonSendTextInput),
+  tagRequestBody(WS_METHODS.daemonStop, DaemonStopInput),
+  tagRequestBody(WS_METHODS.daemonRestart, DaemonRestartInput),
+  tagRequestBody(WS_METHODS.subscribeDaemonEvents, Schema.Struct({})),
+
   // Server meta
   tagRequestBody(WS_METHODS.serverGetConfig, Schema.Struct({})),
   tagRequestBody(WS_METHODS.serverGetEnvironment, Schema.Struct({})),
@@ -491,6 +513,7 @@ export interface WsPushPayloadByChannel {
   readonly [WS_CHANNELS.projectProvisionProgress]: typeof GitHubProjectProvisionProgressEvent.Type;
   readonly [WS_CHANNELS.terminalEvent]: typeof TerminalEvent.Type;
   readonly [WS_CHANNELS.projectDevServerEvent]: typeof ProjectDevServerEvent.Type;
+  readonly [WS_CHANNELS.daemonEvent]: typeof DaemonEvent.Type;
   readonly [ORCHESTRATION_WS_CHANNELS.domainEvent]: OrchestrationEvent;
   readonly [ORCHESTRATION_WS_CHANNELS.shellEvent]: OrchestrationShellStreamItem;
   readonly [ORCHESTRATION_WS_CHANNELS.threadEvent]: OrchestrationThreadStreamItem;
@@ -544,6 +567,7 @@ export const WsPushProjectDevServerEvent = makeWsPushSchema(
   WS_CHANNELS.projectDevServerEvent,
   ProjectDevServerEvent,
 );
+export const WsPushDaemonEvent = makeWsPushSchema(WS_CHANNELS.daemonEvent, DaemonEvent);
 export const WsPushOrchestrationDomainEvent = makeWsPushSchema(
   ORCHESTRATION_WS_CHANNELS.domainEvent,
   OrchestrationEvent,
@@ -568,6 +592,7 @@ export const WsPushChannelSchema = Schema.Literals([
   WS_CHANNELS.automationEvent,
   WS_CHANNELS.terminalEvent,
   WS_CHANNELS.projectDevServerEvent,
+  WS_CHANNELS.daemonEvent,
   ORCHESTRATION_WS_CHANNELS.domainEvent,
   ORCHESTRATION_WS_CHANNELS.shellEvent,
   ORCHESTRATION_WS_CHANNELS.threadEvent,
@@ -585,6 +610,7 @@ export const WsPush = Schema.Union([
   WsPushProjectProvisionProgress,
   WsPushTerminalEvent,
   WsPushProjectDevServerEvent,
+  WsPushDaemonEvent,
   WsPushOrchestrationDomainEvent,
   WsPushOrchestrationShellEvent,
   WsPushOrchestrationThreadEvent,

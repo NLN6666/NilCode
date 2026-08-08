@@ -16,6 +16,7 @@ import {
   GlobeIcon,
   InfoIcon,
   MessageCircleIcon,
+  ServerIcon,
   TerminalIcon,
 } from "~/lib/icons";
 import {
@@ -47,6 +48,7 @@ const RIGHT_DOCK_PANE_ICONS: Record<RightDockPaneKind, LucideIcon> = {
   sidechat: MessageCircleIcon,
   git: GitCommitIcon,
   pullRequest: GitPullRequestIcon,
+  services: ServerIcon,
 };
 
 // Always resolve pane meta through this helper instead of indexing the map

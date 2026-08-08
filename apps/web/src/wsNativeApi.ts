@@ -29,6 +29,7 @@ import {
   type OrchestrationEvent,
   type OrchestrationShellStreamItem,
   type OrchestrationThreadStreamItem,
+  type DaemonEvent,
   type ProjectDevServerEvent,
   type ServerProviderStatusesUpdatedPayload,
   type ServerLifecycleStreamEvent,
@@ -151,6 +152,7 @@ function omitNullUserInputAnswers(
 }
 const terminalEventListeners = createListenerRegistry<TerminalEvent>();
 const projectDevServerEventListeners = createListenerRegistry<ProjectDevServerEvent>();
+const daemonEventListeners = createListenerRegistry<DaemonEvent>();
 const automationEventListeners = createListenerRegistry<AutomationStreamEvent>();
 const orchestrationDomainEventListeners = createListenerRegistry<OrchestrationEvent>();
 const orchestrationShellEventListeners = createListenerRegistry<OrchestrationShellStreamItem>();
@@ -169,6 +171,7 @@ function clearWsNativeApiListeners(): void {
   projectProvisionProgressListeners.clear();
   terminalEventListeners.clear();
   projectDevServerEventListeners.clear();
+  daemonEventListeners.clear();
   automationEventListeners.clear();
   orchestrationDomainEventListeners.clear();
   orchestrationShellEventListeners.clear();
@@ -457,6 +460,9 @@ export function createWsNativeApi(): NativeApi {
   transport.subscribe(WS_CHANNELS.projectDevServerEvent, (message) => {
     projectDevServerEventListeners.emit(message.data);
   });
+  transport.subscribe(WS_CHANNELS.daemonEvent, (message) => {
+    daemonEventListeners.emit(message.data);
+  });
   transport.subscribe(WS_CHANNELS.automationEvent, (message) => {
     automationEventListeners.emit(message.data);
   });
@@ -504,6 +510,13 @@ export function createWsNativeApi(): NativeApi {
       restart: (input) => transport.request(WS_METHODS.terminalRestart, input),
       close: (input) => transport.request(WS_METHODS.terminalClose, input),
       onEvent: terminalEventListeners.subscribe,
+    },
+    daemons: {
+      readLogs: (input) => transport.request(WS_METHODS.daemonReadLogs, input),
+      sendText: (input) => transport.request(WS_METHODS.daemonSendText, input),
+      stop: (input) => transport.request(WS_METHODS.daemonStop, input),
+      restart: (input) => transport.request(WS_METHODS.daemonRestart, input),
+      onEvent: daemonEventListeners.subscribe,
     },
     projects: {
       discoverScripts: (input) => transport.request(WS_METHODS.projectsDiscoverScripts, input),

@@ -30,6 +30,7 @@ import {
   type OrchestrationEvent,
   type OrchestrationShellStreamItem,
   type OrchestrationThreadStreamItem,
+  type DaemonEvent,
   type ProjectDevServerEvent,
   type ServerConfigStreamEvent,
   type ServerLifecycleStreamEvent,
@@ -1232,6 +1233,14 @@ export class WsTransport {
             (event: ProjectDevServerEvent) => this.emit(WS_CHANNELS.projectDevServerEvent, event),
             restartChannel,
           );
+        } else if (channel === WS_CHANNELS.daemonEvent) {
+          this.startStream(
+            client,
+            "daemon.events",
+            client[WS_METHODS.subscribeDaemonEvents]({}),
+            (event: DaemonEvent) => this.emit(WS_CHANNELS.daemonEvent, event),
+            restartChannel,
+          );
         } else if (channel === WS_CHANNELS.automationEvent) {
           this.startStream(
             client,
@@ -1272,6 +1281,7 @@ export class WsTransport {
     else if (channel === WS_CHANNELS.serverSettingsUpdated) this.stopStream("server.settings");
     else if (channel === WS_CHANNELS.terminalEvent) this.stopStream("terminal.events");
     else if (channel === WS_CHANNELS.projectDevServerEvent) this.stopStream("project.devServers");
+    else if (channel === WS_CHANNELS.daemonEvent) this.stopStream("daemon.events");
     else if (channel === WS_CHANNELS.automationEvent) this.stopStream("automation.events");
     else if (channel === ORCHESTRATION_WS_CHANNELS.domainEvent)
       this.stopStream("orchestration.domain");

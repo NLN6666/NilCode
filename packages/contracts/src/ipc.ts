@@ -108,6 +108,15 @@ import type {
   PullRequestsListResult,
 } from "./pullRequests";
 import type {
+  DaemonEvent,
+  DaemonReadLogsInput,
+  DaemonReadLogsResult,
+  DaemonRestartInput,
+  DaemonSendTextInput,
+  DaemonSnapshot,
+  DaemonStopInput,
+} from "./daemon";
+import type {
   ProjectReadLaunchConfigInput,
   ProjectReadLaunchConfigResult,
   ProjectWriteLaunchConfigInput,
@@ -646,6 +655,17 @@ export interface NativeApi {
     restart: (input: TerminalRestartInput) => Promise<TerminalSessionSnapshot>;
     close: (input: TerminalCloseInput) => Promise<void>;
     onEvent: (callback: (event: TerminalEvent) => void) => () => void;
+  };
+  /**
+   * Supervised background services. Server-wide rather than thread-scoped: a daemon
+   * outlives the conversation that started it, so nothing here takes a thread id.
+   */
+  daemons: {
+    readLogs: (input: DaemonReadLogsInput) => Promise<DaemonReadLogsResult>;
+    sendText: (input: DaemonSendTextInput) => Promise<DaemonSnapshot>;
+    stop: (input: DaemonStopInput) => Promise<DaemonSnapshot>;
+    restart: (input: DaemonRestartInput) => Promise<DaemonSnapshot>;
+    onEvent: (callback: (event: DaemonEvent) => void) => () => void;
   };
   projects: {
     discoverScripts: (input: ProjectDiscoverScriptsInput) => Promise<ProjectDiscoverScriptsResult>;

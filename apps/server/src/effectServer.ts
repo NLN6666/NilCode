@@ -16,6 +16,8 @@ import {
   persistServerRuntimeState,
 } from "./serverRuntimeState";
 import { remoteAccessPolicyError, ServerConfig } from "./config";
+import { DaemonBroker } from "./daemon/Services/Broker";
+import { shutdownDaemons } from "./daemon/shutdown";
 import { resolveListeningPort } from "./startupAccess";
 import { patchBunWebSocketCloseEventCompatibility } from "./bunWebSocketCompatibility";
 import { makeEffectHttpRouteLayer } from "./http";
@@ -136,7 +138,15 @@ export const createEffectServer = Effect.fn(function* (
   const serverSettings = yield* ServerSettingsService;
   const threadDeletionReactor = yield* ThreadDeletionReactor;
   const advisorReactor = yield* AdvisorReactor;
+  const daemonBroker = yield* DaemonBroker;
   const readiness = yield* makeServerReadiness;
+
+  // Registered before anything else acquires a scope so it runs last on the way out:
+  // supervised background processes are the leaves of the dependency graph, and nothing
+  // that shuts down after them needs them alive. `DaemonBrokerLive` builds with
+  // `Layer.effect`, so it has no finalizer of its own — without this the broker's
+  // children were simply orphaned, and `dispose` had no caller at all.
+  yield* Effect.addFinalizer(() => shutdownDaemons(daemonBroker));
 
   yield* keybindings.syncDefaultKeybindingsOnStartup.pipe(
     Effect.catch((error) =>

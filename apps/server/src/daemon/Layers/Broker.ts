@@ -47,6 +47,7 @@ export function makeDaemonBroker(core: BrokerCore): DaemonBrokerShape {
     // refused to come up because one stale record was unreadable would cost the agent
     // every other daemon too.
     reclaimDetached: attempt(() => core.reclaimDetached()).pipe(Effect.orElseSucceed(() => [])),
+    subscribe: (listener) => core.subscribe(listener),
     dispose: attempt(() => core.dispose()).pipe(Effect.orElseSucceed(() => undefined)),
   };
 }

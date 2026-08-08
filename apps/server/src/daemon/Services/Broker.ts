@@ -9,6 +9,7 @@ import type { DaemonSnapshot, DaemonSpec } from "@synara/contracts";
 import type { AllowedSignal } from "@synara/shared/daemonKeys";
 import { Effect, Schema, ServiceMap } from "effect";
 
+import type { DaemonBrokerEvent } from "../brokerCore";
 import type { DaemonLogRead } from "../DaemonLog";
 
 export class DaemonError extends Schema.TaggedErrorClass<DaemonError>()("DaemonError", {
@@ -90,6 +91,15 @@ export interface DaemonBrokerShape {
 
   /** Re-adopt detached daemons recorded on disk. Runs once at broker startup. */
   readonly reclaimDetached: Effect.Effect<readonly DaemonSnapshot[], never>;
+
+  /**
+   * Listen to lifecycle transitions and output; returns the unsubscribe function.
+   *
+   * Deliberately synchronous rather than a `Stream`: the caller is a per-connection RPC
+   * stream that has to attach its listener and read the current roster without a gap in
+   * between, and a Stream would put a scope boundary right where that gap must not be.
+   */
+  readonly subscribe: (listener: (event: DaemonBrokerEvent) => void) => () => void;
 
   readonly dispose: Effect.Effect<void>;
 }

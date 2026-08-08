@@ -263,6 +263,8 @@ const TemporaryThreadGlyph = centralIconWrapper("bubble-annotation-5");
 export const TemporaryThreadIcon: LucideIcon = ({ className, ...props }) => (
   <TemporaryThreadGlyph className={cn("size-3.5 shrink-0", className)} {...props} />
 );
+/** Background services: the daemon roster, its dock tab, and its status rows. */
+export const ServerIcon = centralIconWrapper("server");
 export const TerminalIcon = centralIconWrapper("console");
 export const TerminalSquare = centralIconWrapper("console");
 export const TerminalSquareIcon = centralIconWrapper("console");
