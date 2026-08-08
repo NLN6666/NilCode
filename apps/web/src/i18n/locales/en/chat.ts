@@ -427,6 +427,20 @@ export const chat = {
       aside: "Queued for the next turn",
       preserve: "Not sent to the agent",
     },
+    /**
+     * Shown when the advisor evaluated and nothing reached the agent.
+     *
+     * Silence is the advisor's designed answer, so this row exists to prove it ran
+     * at all - without it, a healthy advisor and a dead one look identical.
+     */
+    observation: {
+      reviewed: "Advisor reviewed the work",
+      reviewedRepeated: (count: number) => `Advisor reviewed the work ${count} times`,
+      /** A guard dropped advice the advisor did produce - a rule ate a real note. */
+      withheld: "Advisor raised a note that was held back",
+      /** The advisor's own reply was rejected as malformed. */
+      quarantined: "Advisor output was discarded as malformed",
+    },
   },
 
   /** Color-theme preview cards rendered from ```theme / ```html theme fences. */

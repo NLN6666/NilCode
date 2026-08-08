@@ -17,9 +17,15 @@
 
 // Re-exported so every advisor module keeps one import site; the constant is
 // defined in contracts because the web app renders this kind too.
-import { ADVISOR_ACTIVITY_KIND } from "@synara/contracts";
+import { ADVISOR_ACTIVITY_KIND, ADVISOR_OBSERVATION_KIND } from "@synara/contracts";
 
-export { ADVISOR_ACTIVITY_KIND };
+export { ADVISOR_ACTIVITY_KIND, ADVISOR_OBSERVATION_KIND };
+
+/** Everything the advisor itself writes to the transcript, and must never read back. */
+export const ADVISOR_OWN_ACTIVITY_KINDS: ReadonlySet<string> = new Set([
+  ADVISOR_ACTIVITY_KIND,
+  ADVISOR_OBSERVATION_KIND,
+]);
 
 export const ADVISOR_DIGEST_MAX_CHARS = 200;
 
@@ -44,8 +50,10 @@ export function digestActivity(activity: AdvisorDigestInput): string | null {
   // Self-excitation cut: the advisor's own advice is visible as an activity, and
   // feeding it back would have the advisor comment on its own words forever.
   // The model's *reaction* to advice still feeds through, which is how the
-  // advisor learns whether it was heeded.
-  if (activity.kind === ADVISOR_ACTIVITY_KIND) {
+  // advisor learns whether it was heeded. Observation rows are cut for the same
+  // reason and more urgently: every evaluation writes one, so feeding them back
+  // would grow the delta by one line per evaluation without end.
+  if (ADVISOR_OWN_ACTIVITY_KINDS.has(activity.kind)) {
     return null;
   }
   if (HOUSEKEEPING_KINDS.has(activity.kind)) {

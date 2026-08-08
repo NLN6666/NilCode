@@ -925,6 +925,17 @@ describe("deriveMessagesTimelineRows", () => {
     note: { severity: "concern", channel: "steer" },
   });
 
+  const advisorObservationEntry = (
+    id: string,
+    createdAt: string,
+    reason: "silent" | "withheld" | "quarantined" = "silent",
+  ): TimelineEntry => ({
+    id: `entry-${id}`,
+    kind: "advisor-observation",
+    createdAt,
+    observation: { reason },
+  });
+
   const messageRow = (rows: MessagesTimelineRow[], id: string): MessageTimelineRow | undefined =>
     rows.find(
       (row): row is MessageTimelineRow =>
@@ -973,6 +984,70 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(rows.map((row) => row.kind)).toEqual(["message", "advisor", "message"]);
     expect(collapsedSignature(messageRow(rows, "a1")!)).toEqual(["work:w1", "work:w2"]);
+  });
+
+  // The advisor evaluates several times per turn and almost always stays silent,
+  // so one row per evaluation would bury the transcript under "it looked and said
+  // nothing". The run folds to a single row carrying the count.
+  it("folds a run of consecutive advisor observations into one row", () => {
+    const rows = deriveMessagesTimelineRows({
+      ...baseInput,
+      timelineEntries: [
+        userEntry("u1", "2026-01-01T00:00:00Z"),
+        advisorObservationEntry("obs1", "2026-01-01T00:00:01Z"),
+        advisorObservationEntry("obs2", "2026-01-01T00:00:02Z"),
+        advisorObservationEntry("obs3", "2026-01-01T00:00:03Z"),
+      ],
+    });
+
+    expect(rows.map((row) => row.kind)).toEqual(["message", "advisor-observation"]);
+    expect(rows.at(-1)).toMatchObject({
+      kind: "advisor-observation",
+      count: 3,
+      // The newest of the run, so the row reads as "last looked at <time>".
+      createdAt: "2026-01-01T00:00:03Z",
+    });
+  });
+
+  // A withheld note means the advisor did speak and a guard dropped it. Folding it
+  // into the surrounding silences must not lose that fact, or the row would report
+  // the least interesting thing that happened in the run.
+  it("keeps every reason in a folded run so a withheld note is not lost", () => {
+    const rows = deriveMessagesTimelineRows({
+      ...baseInput,
+      timelineEntries: [
+        userEntry("u1", "2026-01-01T00:00:00Z"),
+        advisorObservationEntry("obs1", "2026-01-01T00:00:01Z"),
+        advisorObservationEntry("obs2", "2026-01-01T00:00:02Z", "withheld"),
+      ],
+    });
+
+    expect(rows.at(-1)).toMatchObject({
+      kind: "advisor-observation",
+      count: 2,
+      reasons: ["silent", "withheld"],
+    });
+  });
+
+  // Real advice is a different row from an observation, and a run of silences must
+  // not swallow the one evaluation that produced a note.
+  it("does not fold an advisor note into an adjacent observation run", () => {
+    const rows = deriveMessagesTimelineRows({
+      ...baseInput,
+      timelineEntries: [
+        userEntry("u1", "2026-01-01T00:00:00Z"),
+        advisorObservationEntry("obs1", "2026-01-01T00:00:01Z"),
+        advisorEntry("adv1", "2026-01-01T00:00:02Z", "this duplicates shared/text"),
+        advisorObservationEntry("obs2", "2026-01-01T00:00:03Z"),
+      ],
+    });
+
+    expect(rows.map((row) => row.kind)).toEqual([
+      "message",
+      "advisor-observation",
+      "advisor",
+      "advisor-observation",
+    ]);
   });
 
   it("folds a settled turn's narration and work into one collapsed group on the terminal message", () => {

@@ -42,6 +42,20 @@ export const DEFAULT_ADVISOR_SETTINGS: AdvisorServerSettings = Schema.decodeSync
  */
 export const ADVISOR_ACTIVITY_KIND = "advisor.advice";
 
+/**
+ * Activity kind recording that the advisor looked and chose not to speak.
+ *
+ * Silence is the advisor's expected answer, which means a working advisor and an
+ * advisor that never ran look identical in the transcript - the failure mode that
+ * made users report the feature as broken while it was behaving exactly as designed.
+ * This kind is what separates the two. It carries no message: the whole content is
+ * "it looked, at this time, and had nothing to raise".
+ *
+ * A distinct kind rather than a flag on the note payload, so that anything reading
+ * for real advice (`ADVISOR_ACTIVITY_KIND`) keeps matching only real advice.
+ */
+export const ADVISOR_OBSERVATION_KIND = "advisor.observation";
+
 export { AdvisorThreadOverride } from "./baseSchemas";
 
 /** Whether the advisor watches a given thread. */
@@ -79,6 +93,21 @@ export const ADVISOR_DELIVERY_CHANNELS = ["aside", "steer", "preserve"] as const
 
 export const AdvisorDeliveryChannel = Schema.Literals(ADVISOR_DELIVERY_CHANNELS);
 export type AdvisorDeliveryChannel = typeof AdvisorDeliveryChannel.Type;
+
+/**
+ * Why an evaluation produced no advice.
+ *
+ * Not equally interesting, which is the reason they are distinguished at all:
+ *   - silent      -> the model had nothing to raise. The designed steady state.
+ *   - withheld    -> the model did advise and a guard dropped it (deduped, or a
+ *                    severity too low for a mid-turn interrupt). A rule ate real
+ *                    advice, which the user may want to know about.
+ *   - quarantined -> the advisor's own output was rejected as malformed.
+ */
+export const ADVISOR_OBSERVATION_REASONS = ["silent", "withheld", "quarantined"] as const;
+
+export const AdvisorObservationReason = Schema.Literals(ADVISOR_OBSERVATION_REASONS);
+export type AdvisorObservationReason = typeof AdvisorObservationReason.Type;
 
 /**
  * The only shape an advisor evaluation may return.
