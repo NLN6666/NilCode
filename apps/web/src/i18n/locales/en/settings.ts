@@ -394,6 +394,8 @@ export const settings = {
     providerCopies: (count: number, names: string) =>
       `Provider ${pluralize(count, "copy", "copies")}: ${names}`,
     enableSkill: (name: string) => `Enable the ${name} skill`,
+    toggleAll: "Enable every skill",
+    toggleSection: (title: string) => `Enable every skill under ${title}`,
     // Consumed as `SettingsSkillLabels` by skillsSettingsModel, which groups and titles the list.
     sharedSkills: "Shared skills",
     fromOrigin: (label: string) => `From ${label}`,

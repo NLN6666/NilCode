@@ -1,7 +1,7 @@
 // FILE: skillsSettingsModel.ts
 // Purpose: Groups duplicate skill copies for Settings -> Skills so shared names render once.
 // Layer: Settings UI logic
-// Exports: origin metadata, canonical skill grouping, and section ordering helpers.
+// Exports: origin metadata, canonical skill grouping, section ordering, and bulk toggle helpers.
 
 import type { ProviderKind, ProviderSkillDescriptor } from "@synara/contracts";
 import { PROVIDER_DISPLAY_NAMES } from "@synara/contracts";
@@ -33,6 +33,9 @@ export interface SettingsSkillSection {
   readonly title: string;
   readonly groups: ReadonlyArray<SettingsSkillGroup>;
 }
+
+/** Aggregate switch state for a range of skill rows (the whole panel, or one section). */
+export type SkillToggleState = "all" | "none" | "partial";
 
 const SHARED_SKILLS_SECTION = "shared";
 const PERSONAL_ORIGIN = "personal";
@@ -226,4 +229,45 @@ export function buildSettingsSkillSections(
       groups,
     }))
     .sort((left, right) => sectionRank(left.key) - sectionRank(right.key));
+}
+
+/**
+ * Switch state for a range of skill rows. `partial` is what puts the panel header and
+ * section header switches into their indeterminate rendering. An empty range reports
+ * `"all"`, but the panel hides those switches rather than showing an inert control.
+ */
+export function skillToggleState(
+  keys: ReadonlyArray<string>,
+  disabledKeys: ReadonlySet<string>,
+): SkillToggleState {
+  if (keys.length === 0) {
+    return "all";
+  }
+  const disabledCount = keys.filter((key) => disabledKeys.has(settingsSkillNameKey(key))).length;
+  if (disabledCount === 0) {
+    return "all";
+  }
+  return disabledCount === keys.length ? "none" : "partial";
+}
+
+/**
+ * Next `settings.skills.disabled` list after toggling `keys` as a batch. Names outside
+ * `keys` survive verbatim — including entries for skills no longer in the catalog, so an
+ * opt-out outlives uninstalling and reinstalling the provider that shipped the skill.
+ */
+export function nextDisabledSkillNames(
+  currentDisabled: ReadonlyArray<string>,
+  keys: ReadonlyArray<string>,
+  enabled: boolean,
+): string[] {
+  const next = new Set(currentDisabled.map((name) => settingsSkillNameKey(name)));
+  for (const key of keys) {
+    const normalized = settingsSkillNameKey(key);
+    if (enabled) {
+      next.delete(normalized);
+    } else {
+      next.add(normalized);
+    }
+  }
+  return [...next].toSorted();
 }

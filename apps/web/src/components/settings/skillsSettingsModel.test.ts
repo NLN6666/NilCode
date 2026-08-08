@@ -6,7 +6,12 @@ import type { ProviderSkillDescriptor } from "@synara/contracts";
 import { describe, expect, it } from "vitest";
 
 import { en } from "../../i18n/locales/en";
-import { buildSettingsSkillGroups, buildSettingsSkillSections } from "./skillsSettingsModel";
+import {
+  buildSettingsSkillGroups,
+  buildSettingsSkillSections,
+  nextDisabledSkillNames,
+  skillToggleState,
+} from "./skillsSettingsModel";
 
 // Rank/title assertions read against the real English catalog, exactly what the panel passes in.
 const SKILL_LABELS = en.settings.skills;
@@ -102,5 +107,47 @@ describe("buildSettingsSkillSections", () => {
 
     expect(sections.map((section) => section.title)).toEqual(["Shared skills", "From Cursor"]);
     expect(sections[0]?.groups.map((group) => group.key)).toEqual(["logic-consolidator"]);
+  });
+});
+
+describe("skillToggleState", () => {
+  it("reports all, none, and partial across a range of rows", () => {
+    const keys = ["alpha", "beta"];
+    expect(skillToggleState(keys, new Set())).toBe("all");
+    expect(skillToggleState(keys, new Set(["alpha", "beta"]))).toBe("none");
+    expect(skillToggleState(keys, new Set(["alpha"]))).toBe("partial");
+  });
+
+  it("ignores disabled entries outside the range", () => {
+    expect(skillToggleState(["alpha"], new Set(["gamma"]))).toBe("all");
+  });
+
+  it("normalizes keys before comparing", () => {
+    expect(skillToggleState([" Alpha "], new Set(["alpha"]))).toBe("none");
+  });
+
+  it("treats an empty range as fully enabled", () => {
+    expect(skillToggleState([], new Set(["alpha"]))).toBe("all");
+  });
+});
+
+describe("nextDisabledSkillNames", () => {
+  it("disables a whole batch in one patch", () => {
+    expect(nextDisabledSkillNames([], ["beta", "alpha"], false)).toEqual(["alpha", "beta"]);
+  });
+
+  it("enables a whole batch without touching unrelated entries", () => {
+    expect(nextDisabledSkillNames(["alpha", "beta", "gamma"], ["alpha", "beta"], true)).toEqual([
+      "gamma",
+    ]);
+  });
+
+  it("keeps entries for skills missing from the catalog so opt-outs survive a reinstall", () => {
+    expect(nextDisabledSkillNames(["uninstalled"], ["alpha"], true)).toEqual(["uninstalled"]);
+  });
+
+  it("normalizes both the existing list and the incoming keys", () => {
+    expect(nextDisabledSkillNames([" Alpha "], ["ALPHA"], false)).toEqual(["alpha"]);
+    expect(nextDisabledSkillNames([" Alpha "], ["ALPHA"], true)).toEqual([]);
   });
 });

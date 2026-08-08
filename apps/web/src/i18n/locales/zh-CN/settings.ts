@@ -368,6 +368,8 @@ export const settings: Settings = {
     },
     providerCopies: (_count, names) => `提供商副本：${names}`,
     enableSkill: (name) => `启用 ${name} 技能`,
+    toggleAll: "启用全部技能",
+    toggleSection: (title) => `启用「${title}」下的全部技能`,
     sharedSkills: "共享技能",
     fromOrigin: (label) => `来自 ${label}`,
     noDescription: "无描述。",

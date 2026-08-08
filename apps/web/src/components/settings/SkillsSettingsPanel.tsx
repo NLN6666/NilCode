@@ -1,8 +1,9 @@
 // FILE: SkillsSettingsPanel.tsx
 // Purpose: Settings → Skills panel. Lists every skill from the unified cross-provider
 // catalog (~/.synara/skills plus each provider's skills folder), shows which provider
-// a skill comes from, and lets the user enable/disable each one. Disabled skills are
-// hidden from the composer skill picker on every provider.
+// a skill comes from, and lets the user enable/disable each one — individually, per
+// origin section, or all at once. Disabled skills are hidden from the composer skill
+// picker on every provider.
 
 import type { ProviderKind, ServerSettings } from "@synara/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -21,8 +22,10 @@ import { serverQueryKeys, serverSettingsQueryOptions } from "~/lib/serverReactQu
 import {
   buildSettingsSkillGroups,
   buildSettingsSkillSections,
+  nextDisabledSkillNames,
   providerDisplayName,
   settingsSkillNameKey,
+  skillToggleState,
 } from "./skillsSettingsModel";
 
 function SkillProviderStack({ providers }: { providers: ReadonlyArray<ProviderKind> }) {
@@ -67,19 +70,17 @@ export function SkillsSettingsPanel() {
     m.settings.skills,
   );
 
-  const setSkillEnabled = (skillName: string, enabled: boolean) => {
+  // Batched so one row, one section, and the whole catalog all travel the same path:
+  // a single settings patch, one optimistic flip, one rollback on failure.
+  const setSkillsEnabled = (skillKeys: ReadonlyArray<string>, enabled: boolean) => {
+    if (skillKeys.length === 0) {
+      return;
+    }
     // Read through the query cache (not the render closure) so rapid toggles
     // build on each other instead of clobbering the previous patch.
     const latestSettings = queryClient.getQueryData<ServerSettings>(serverQueryKeys.settings());
     const currentDisabled = latestSettings?.skills.disabled ?? [...disabledSkillNames];
-    const key = settingsSkillNameKey(skillName);
-    const next = new Set(currentDisabled.map((name) => settingsSkillNameKey(name)));
-    if (enabled) {
-      next.delete(key);
-    } else {
-      next.add(key);
-    }
-    const disabled = [...next].sort();
+    const disabled = nextDisabledSkillNames(currentDisabled, skillKeys, enabled);
     if (latestSettings) {
       // Optimistic flip; a failed patch invalidates back to the server state.
       queryClient.setQueryData(serverQueryKeys.settings(), {
@@ -102,6 +103,8 @@ export function SkillsSettingsPanel() {
   const totalSkills = skillGroups.length;
   const enabledSkills = skillGroups.filter((group) => !disabledSkillNames.has(group.key)).length;
   const synaraSkillsDir = catalogQuery.data?.synaraSkillsDir;
+  const allSkillKeys = skillGroups.map((group) => group.key);
+  const allToggleState = skillToggleState(allSkillKeys, disabledSkillNames);
 
   return (
     <div className="space-y-8">
@@ -115,10 +118,20 @@ export function SkillsSettingsPanel() {
             ) : null
           }
           control={
-            <span className="text-xs font-medium text-muted-foreground">
-              {catalogQuery.isLoading
-                ? m.settings.skills.scanning
-                : m.settings.skills.enabledCount(enabledSkills, totalSkills)}
+            <span className="flex items-center gap-2.5">
+              <span className="text-xs font-medium text-muted-foreground">
+                {catalogQuery.isLoading
+                  ? m.settings.skills.scanning
+                  : m.settings.skills.enabledCount(enabledSkills, totalSkills)}
+              </span>
+              {totalSkills > 0 ? (
+                <Switch
+                  checked={allToggleState === "all"}
+                  indeterminate={allToggleState === "partial"}
+                  onCheckedChange={(checked) => setSkillsEnabled(allSkillKeys, Boolean(checked))}
+                  aria-label={m.settings.skills.toggleAll}
+                />
+              ) : null}
             </span>
           }
         />
@@ -143,8 +156,21 @@ export function SkillsSettingsPanel() {
       ) : null}
 
       {skillSections.map((section) => {
+        const sectionKeys = section.groups.map((group) => group.key);
+        const sectionToggleState = skillToggleState(sectionKeys, disabledSkillNames);
         return (
-          <SettingsSection key={section.key} title={section.title}>
+          <SettingsSection
+            key={section.key}
+            title={section.title}
+            action={
+              <Switch
+                checked={sectionToggleState === "all"}
+                indeterminate={sectionToggleState === "partial"}
+                onCheckedChange={(checked) => setSkillsEnabled(sectionKeys, Boolean(checked))}
+                aria-label={m.settings.skills.toggleSection(section.title)}
+              />
+            }
+          >
             {section.groups.map((group) => {
               const enabled = !disabledSkillNames.has(group.key);
               return (
@@ -181,9 +207,7 @@ export function SkillsSettingsPanel() {
                   control={
                     <Switch
                       checked={enabled}
-                      onCheckedChange={(checked) =>
-                        setSkillEnabled(group.primarySkill.name, Boolean(checked))
-                      }
+                      onCheckedChange={(checked) => setSkillsEnabled([group.key], Boolean(checked))}
                       aria-label={m.settings.skills.enableSkill(group.displayName)}
                     />
                   }
