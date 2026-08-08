@@ -17,6 +17,7 @@ import {
 
 import { useAppSettings } from "../../appSettings";
 import { useComposerDraftStore } from "../../composerDraftStore";
+import { useDaemonStore } from "../../daemonStore";
 import type { DiffRouteSearch } from "../../diffRouteSearch";
 import { stripDiffSearchParams } from "../../diffRouteSearch";
 import { readEditorViewState, storeEditorViewState } from "../../editorViewState";
@@ -225,10 +226,17 @@ export function SingleChatSurface(props: {
     gitCwd: workspaceRoot,
     isGitRepo: hasGitRepository,
   });
+  // Selects a boolean rather than the roster itself: zustand compares selector results
+  // by reference, and returning the record would re-render this surface on every log
+  // chunk of every service.
+  const hasAnyBackgroundService = useDaemonStore(
+    (store) => Object.keys(store.daemonsByName).length > 0,
+  );
   const dockLauncherItems = resolveRightDockLauncherItems({
     hasWorkspace: workspaceRoot !== null,
     hasGitRepository,
     hasReview: dockDiffTotals.fileCount > 0,
+    hasBackgroundServices: hasAnyBackgroundService,
     labels: paneCopy.kinds,
     launcherLabels: paneCopy.launchers,
   });

@@ -12,7 +12,7 @@ import type { DaemonSnapshot } from "@synara/contracts";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { emptyDaemonLogBuffer } from "~/daemonLogBuffer";
-import { applyDaemonEvent, useDaemonStore } from "~/daemonStore";
+import { useDaemonStore } from "~/daemonStore";
 import { useMessages } from "~/i18n/context";
 import { describeErrorMessage } from "@synara/shared/errorMessages";
 import { ensureNativeApi } from "~/nativeApi";
@@ -45,20 +45,6 @@ const TONE_DOT_CLASS: Record<DaemonTone, string> = {
   neutral: "bg-foreground/30",
   danger: "bg-red-500",
 };
-
-/**
- * Subscribe while the pane is mounted.
- *
- * Scoped to the pane rather than to app start so a user who never opens it pays for no
- * stream. The roster arrives as the subscription's first event, so there is no separate
- * fetch to keep in sync with it.
- */
-function useDaemonFeed(): void {
-  useEffect(() => {
-    const store = useDaemonStore.getState();
-    return ensureNativeApi().daemons.onEvent((event) => applyDaemonEvent(store, event));
-  }, []);
-}
 
 /**
  * Pull the backlog the live feed cannot supply.
@@ -261,9 +247,11 @@ function DaemonDetail(props: { snapshot: DaemonSnapshot }) {
   );
 }
 
+// The daemon feed is subscribed once at app start (routes/__root.tsx), not here: the
+// dock entry that opens this pane is gated on the roster, so the roster cannot depend
+// on the pane being open. See findings.md #17.
 export function ServicesPanel() {
   const copy = useMessages().chat.services;
-  useDaemonFeed();
 
   const daemonsByName = useDaemonStore((store) => store.daemonsByName);
   const hydrated = useDaemonStore((store) => store.hydrated);

@@ -19,11 +19,7 @@ import {
   ServerIcon,
   TerminalIcon,
 } from "~/lib/icons";
-import {
-  RIGHT_DOCK_PANE_KINDS,
-  type RightDockPane,
-  type RightDockPaneKind,
-} from "~/rightDockStore.logic";
+import { type RightDockPane, type RightDockPaneKind } from "~/rightDockStore.logic";
 import { CHAT_SURFACE_CHIP_ICON_CLASS_NAME, SurfaceChipIcon } from "./chatHeaderControls";
 import { FileEntryIcon } from "./FileEntryIcon";
 
@@ -66,22 +62,15 @@ export function getRightDockPaneMeta(
   };
 }
 
-// Add-menu / quick triggers follow the canonical kind order from the single
-// source of truth, so they stay in sync as kinds are added or removed. The
-// "file" kind is intentionally excluded: single-file preview tabs are opened by
-// clicking a file reference in chat, while the add menu offers the richer
-// "explorer" pane (file tree + search + viewer) in its place.
-export const RIGHT_DOCK_ADD_MENU_KINDS: readonly RightDockPaneKind[] = RIGHT_DOCK_PANE_KINDS.filter(
-  (kind) => kind !== "file" && kind !== "pullRequest",
-);
-
 // Empty-dock launchers prioritize the everyday workspace tools. Review only
 // appears when the selected diff scope contains changes, Git is gated by
-// repository discovery, and Explorer needs a concrete workspace. Context-only
+// repository discovery, Explorer needs a concrete workspace, and Services only
+// appears once the machine actually has a background service to show. Context-only
 // file and pull-request panes continue to open from their owning surfaces.
 const RIGHT_DOCK_LAUNCHER_ORDER: readonly RightDockPaneKind[] = [
   "diff",
   "terminal",
+  "services",
   "browser",
   "explorer",
   "sidechat",
@@ -91,10 +80,26 @@ const RIGHT_DOCK_LAUNCHER_ORDER: readonly RightDockPaneKind[] = [
 /** Launcher names for the active locale; kinds absent here reuse their tab label. */
 export type RightDockLauncherLabels = Messages["chat"]["panes"]["launchers"];
 
+/**
+ * The one list of pane kinds a user can open, for both entry points.
+ *
+ * This drives the empty-dock launcher buttons AND the "+" add menu on a populated
+ * dock (SingleChatSurface passes the result through as `addMenuKinds`). A kind left
+ * out of `RIGHT_DOCK_LAUNCHER_ORDER` is therefore unreachable from the UI entirely,
+ * not merely demoted to the menu — which is how the services pane shipped with no
+ * way to open it at all. See findings.md #17.
+ */
 export function resolveRightDockLauncherItems(input: {
   hasWorkspace: boolean;
   hasGitRepository: boolean;
   hasReview: boolean;
+  /**
+   * Whether the daemon roster has any entry at all — including services that have
+   * already exited. Exited entries keep the launcher visible on purpose: a service
+   * that just crashed is exactly when its log matters most, and gating on "still
+   * alive" would retract the entry at that moment.
+   */
+  hasBackgroundServices: boolean;
   labels: RightDockPaneLabels;
   launcherLabels: RightDockLauncherLabels;
 }): readonly RightDockLauncherItem[] {
@@ -106,6 +111,9 @@ export function resolveRightDockLauncherItems(input: {
       return [];
     }
     if (kind === "explorer" && !input.hasWorkspace) {
+      return [];
+    }
+    if (kind === "services" && !input.hasBackgroundServices) {
       return [];
     }
     const meta = getRightDockPaneMeta(kind, input.labels);
