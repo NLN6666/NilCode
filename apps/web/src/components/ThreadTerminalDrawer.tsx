@@ -32,6 +32,7 @@ import {
 import { resolveThreadTerminalLayout } from "./terminal/TerminalLayout";
 import {
   resolveTerminalSelectionActionPosition,
+  resolveTerminalSelectionAnchorRect,
   resolveTerminalSelectionContextMenuItems,
   shouldHandleTerminalSelectionMouseUp,
   terminalSelectionActionDelayForClickCount,
@@ -67,29 +68,40 @@ function runtimeEnvFromSerialized(
   return Object.fromEntries(entries);
 }
 
-function getTerminalSelectionRect(mountElement: HTMLElement): DOMRect | null {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+/**
+ * Locate the on-screen end of the terminal's selection.
+ *
+ * xterm draws through the WebGL renderer, so terminal text has no DOM nodes and
+ * `window.getSelection()` never sees it. The selection only exists in xterm's own
+ * cell model, so translate those cells into viewport pixels instead.
+ */
+function getTerminalSelectionRect(
+  terminal: Terminal,
+  mountElement: HTMLElement,
+): { right: number; bottom: number } | null {
+  const selectionPosition = terminal.getSelectionPosition();
+  if (!selectionPosition) {
     return null;
   }
-
-  const range = selection.getRangeAt(0);
-  const commonAncestor = range.commonAncestorContainer;
-  const selectionRoot =
-    commonAncestor instanceof Element ? commonAncestor : commonAncestor.parentElement;
-  if (!(selectionRoot instanceof Element) || !mountElement.contains(selectionRoot)) {
+  const screenElement = mountElement.querySelector(".xterm-screen");
+  if (!(screenElement instanceof HTMLElement)) {
     return null;
   }
-
-  const rects = Array.from(range.getClientRects()).filter(
-    (rect) => rect.width > 0 || rect.height > 0,
-  );
-  if (rects.length > 0) {
-    return rects[rects.length - 1] ?? null;
-  }
-
-  const boundingRect = range.getBoundingClientRect();
-  return boundingRect.width > 0 || boundingRect.height > 0 ? boundingRect : null;
+  const screenRect = screenElement.getBoundingClientRect();
+  return resolveTerminalSelectionAnchorRect({
+    screenRect: {
+      left: screenRect.left,
+      top: screenRect.top,
+      width: screenRect.width,
+      height: screenRect.height,
+    },
+    cols: terminal.cols,
+    rows: terminal.rows,
+    endColumn: selectionPosition.end.x,
+    // getSelectionPosition reports absolute buffer rows; the action is placed in
+    // viewport space, so rebase onto the rows currently scrolled into view.
+    endRow: selectionPosition.end.y - terminal.buffer.active.viewportY,
+  });
 }
 
 function TerminalRuntimeStatusOverlay({ status }: { status: TerminalRuntimeStatus }) {
@@ -153,9 +165,10 @@ function TerminalViewport({
   const terminalLabelRef = useRef(terminalLabel);
   const selectionPointerRef = useRef<{ x: number; y: number } | null>(null);
   const selectionGestureActiveRef = useRef(false);
-  const selectionActionRequestIdRef = useRef(0);
+  const selectionActionGenerationRef = useRef(0);
   const selectionActionOpenRef = useRef(false);
   const selectionActionTimerRef = useRef<number | null>(null);
+  const selectionActionDisposedRef = useRef(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [terminalInstance, setTerminalInstance] = useState<Terminal | null>(null);
   const [searchAddonInstance, setSearchAddonInstance] = useState<SearchAddon | null>(null);
@@ -215,6 +228,21 @@ function TerminalViewport({
   useLayoutEffect(() => {
     onAddTerminalContextRef.current = onAddTerminalContext;
   }, [onAddTerminalContext]);
+
+  // The menu is rendered by the OS (or the DOM fallback), so its label has to be
+  // resolved here rather than by a component that could read it from context.
+  const addToChatLabel = useMessages().chat.selection.addToChat;
+  const addToChatLabelRef = useRef(addToChatLabel);
+  useLayoutEffect(() => {
+    addToChatLabelRef.current = addToChatLabel;
+  }, [addToChatLabel]);
+
+  useEffect(() => {
+    selectionActionDisposedRef.current = false;
+    return () => {
+      selectionActionDisposedRef.current = true;
+    };
+  }, []);
 
   useEffect(() => {
     runtimeStatusMountedRef.current = true;
@@ -306,8 +334,12 @@ function TerminalViewport({
     };
   }, []);
 
+  // Cancels a selection action that has not opened yet. It deliberately does NOT
+  // invalidate an already-open menu: the selection was snapshotted before the menu
+  // opened, so a later selection change (terminal output repainting, the window
+  // losing focus to the menu) must not discard the user's click.
   const clearSelectionAction = useCallback(() => {
-    selectionActionRequestIdRef.current += 1;
+    selectionActionGenerationRef.current += 1;
     if (selectionActionTimerRef.current !== null) {
       window.clearTimeout(selectionActionTimerRef.current);
       selectionActionTimerRef.current = null;
@@ -333,13 +365,10 @@ function TerminalViewport({
     const lineCount = normalizedText.split("\n").length;
     const lineEnd = Math.max(lineStart, lineStart + lineCount - 1);
     const bounds = mountElement.getBoundingClientRect();
-    const selectionRect = getTerminalSelectionRect(mountElement);
+    const selectionRect = getTerminalSelectionRect(activeTerminal, mountElement);
     const position = resolveTerminalSelectionActionPosition({
       bounds,
-      selectionRect:
-        selectionRect === null
-          ? null
-          : { right: selectionRect.right, bottom: selectionRect.bottom },
+      selectionRect,
       pointer: selectionPointerRef.current,
     });
     return {
@@ -355,11 +384,12 @@ function TerminalViewport({
   }, [terminalId]);
 
   const showSelectionAction = useCallback(() => {
-    if (selectionActionOpenRef.current) {
+    if (selectionActionOpenRef.current || selectionActionDisposedRef.current) {
       return;
     }
     const contextMenuItems = resolveTerminalSelectionContextMenuItems(
       onAddTerminalContextRef.current !== undefined,
+      addToChatLabelRef.current,
     );
     if (contextMenuItems.length === 0) {
       clearSelectionAction();
@@ -372,14 +402,16 @@ function TerminalViewport({
     }
     const api = readNativeApi();
     if (!api) return;
-    const requestId = ++selectionActionRequestIdRef.current;
     selectionActionOpenRef.current = true;
     // Promise chain instead of async/try-finally: React Compiler does not yet
     // support try/finally, and it would skip optimizing this whole component.
     void api.contextMenu
       .show(contextMenuItems, nextAction.position)
       .then((clicked) => {
-        if (requestId !== selectionActionRequestIdRef.current || clicked !== "add-to-chat") {
+        // Only teardown invalidates the result. The selection is already captured
+        // in nextAction, so whatever happened to the live selection while the menu
+        // was open is irrelevant to committing the click.
+        if (selectionActionDisposedRef.current || clicked !== "add-to-chat") {
           return;
         }
         const addTerminalContext = onAddTerminalContextRef.current;
@@ -418,9 +450,15 @@ function TerminalViewport({
       }
       selectionPointerRef.current = { x: event.clientX, y: event.clientY };
       const delay = terminalSelectionActionDelayForClickCount(event.detail);
+      const generation = selectionActionGenerationRef.current;
       selectionActionTimerRef.current = window.setTimeout(() => {
         selectionActionTimerRef.current = null;
         window.requestAnimationFrame(() => {
+          // clearTimeout cannot unqueue the frame, so re-check that this pending
+          // action was not cancelled between the timeout and the frame.
+          if (generation !== selectionActionGenerationRef.current) {
+            return;
+          }
           void showSelectionAction();
         });
       }, delay);
