@@ -324,7 +324,7 @@ const loadPiCodingAgentModule: () => Promise<PiCodingAgentModule> = lazyModule(
 );
 
 interface PiSessionContext {
-  harnessPolicyDelivered?: boolean;
+  deliveredHarnessPolicyVersion?: string;
   readonly gatewayControlAvailable: boolean;
   gatewaySessionLease?: AgentGatewaySessionLease;
   gatewayConnection?: AgentGatewayMcpConnection;

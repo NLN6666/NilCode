@@ -100,7 +100,7 @@ type StoredTurn = {
 type AntigravitySessionContext = {
   session: ProviderSession;
   gatewaySessionLease?: AgentGatewaySessionLease;
-  harnessPolicyDelivered?: boolean;
+  deliveredHarnessPolicyVersion?: string;
   readonly lifecycleGeneration?: string;
   readonly binaryPath: string;
   readonly turns: StoredTurn[];

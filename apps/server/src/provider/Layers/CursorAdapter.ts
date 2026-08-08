@@ -192,7 +192,7 @@ interface PendingUserInput {
 }
 
 interface CursorSessionContext {
-  harnessPolicyDelivered?: boolean;
+  deliveredHarnessPolicyVersion?: string;
   readonly gatewaySessionLease?: AgentGatewaySessionLease;
   readonly threadId: ThreadId;
   readonly lifecycleGeneration?: string;

@@ -107,6 +107,7 @@ import { ServerConfig } from "../../config.ts";
 import { buildFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
 import { loadClaudeAgentSdk } from "../claudeAgentSdk.ts";
 import { buildClaudeProcessEnv } from "../claudeProcessEnv.ts";
+import { claudeShellBackgroundingNotice } from "../claudeShellBackgroundingNotice.ts";
 import {
   CLAUDE_CONTEXT_WINDOW_MAX_TOKENS,
   decideClaudeContextUsageWarnings,
@@ -4980,6 +4981,21 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           ).catch(() => ({}));
         };
 
+        // The harness policy asks the agent not to background a long-running service from a
+        // shell, but prose alone lost to the provider's native affordances and nothing ever
+        // observed a violation. This says it again with the command in hand, and stays
+        // advisory: detection sees syntax, not lifetime, so it must not block the call.
+        const shellBackgroundingHook = async (hookInput: HookInput): Promise<HookJSONOutput> => {
+          const notice = claudeShellBackgroundingNotice(hookInput);
+          if (notice === null) return {};
+          return {
+            hookSpecificOutput: {
+              hookEventName: "PreToolUse",
+              additionalContext: notice,
+            },
+          } satisfies HookJSONOutput;
+        };
+
         const canUseTool: CanUseTool = (toolName, toolInput, callbackOptions) =>
           Effect.runPromise(
             Effect.gen(function* () {
@@ -5280,7 +5296,9 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           // parent_tool_use_id so child threads can stream live.
           forwardSubagentText: true,
           hooks: {
-            PreToolUse: [{ hooks: [subagentSteerHook] }],
+            // Separate entries: the two steers are unrelated, and sharing one entry would
+            // put both their `additionalContext` outputs in the same slot.
+            PreToolUse: [{ hooks: [subagentSteerHook] }, { hooks: [shellBackgroundingHook] }],
           },
           canUseTool,
           env: claudeSdkEnv,

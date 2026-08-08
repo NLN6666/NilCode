@@ -3,6 +3,8 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   renderSynaraHarnessPolicy,
   SYNARA_HARNESS_POLICY_MARKER,
+  SYNARA_HARNESS_POLICY_VERSION,
+  type SynaraHarnessPolicyDeliveryState,
   takeSynaraHarnessPolicyForProviderSession,
   takeSynaraHarnessPolicyTextPartForProviderSession,
   takeSynaraHarnessPolicyForSession,
@@ -50,6 +52,14 @@ describe("Synara harness policy", () => {
     assert.include(policy, "detached: true");
   });
 
+  it("names PowerShell's backgrounding verbs, not just the POSIX ones", () => {
+    // findings.md #16: the enumeration listed `&`, `nohup`, `start /b` and run-in-background
+    // flags, so on Windows the agent read `Start-Process` as unlisted and used it.
+    const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
+
+    assert.include(policy, "Start-Process");
+  });
+
   it("never advertises gateway mutation to providers without scoped MCP", () => {
     const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: false });
     assert.include(policy, "Synara MCP control is unavailable");
@@ -57,11 +67,34 @@ describe("Synara harness policy", () => {
   });
 
   it("delivers a private host-context block once per provider session", () => {
-    const state: { harnessPolicyDelivered?: boolean } = {};
+    const state: SynaraHarnessPolicyDeliveryState = {};
     assert.include(
       takeSynaraHarnessPolicyForSession(state, { gatewayControlAvailable: true }) ?? "",
       "<synara_host_context>",
     );
+    assert.isNull(takeSynaraHarnessPolicyForSession(state, { gatewayControlAvailable: true }));
+  });
+
+  it("re-delivers to a session that only ever saw an older policy version", () => {
+    // Delivery used to latch on a bare boolean, so a session already open when the policy
+    // changed kept the old rules for its whole life — exactly how a long-lived session
+    // misses a newly added constraint.
+    const state: SynaraHarnessPolicyDeliveryState = {
+      deliveredHarnessPolicyVersion: "2026-01-01.1",
+    };
+
+    assert.include(
+      takeSynaraHarnessPolicyForSession(state, { gatewayControlAvailable: true }) ?? "",
+      SYNARA_HARNESS_POLICY_MARKER,
+    );
+    assert.strictEqual(state.deliveredHarnessPolicyVersion, SYNARA_HARNESS_POLICY_VERSION);
+  });
+
+  it("stays silent for a session already holding the current policy version", () => {
+    const state: SynaraHarnessPolicyDeliveryState = {
+      deliveredHarnessPolicyVersion: SYNARA_HARNESS_POLICY_VERSION,
+    };
+
     assert.isNull(takeSynaraHarnessPolicyForSession(state, { gatewayControlAvailable: true }));
   });
 
@@ -76,7 +109,7 @@ describe("Synara harness policy", () => {
       "pi",
     ] as const) {
       for (const lifecycle of ["fresh", "load", "fork"] as const) {
-        const state: { harnessPolicyDelivered?: boolean } = {};
+        const state: SynaraHarnessPolicyDeliveryState = {};
         const first =
           takeSynaraHarnessPolicyTextPartForProviderSession(state, {
             provider,

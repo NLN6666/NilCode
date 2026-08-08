@@ -150,7 +150,7 @@ interface OpenCodeTurnSnapshot {
 }
 
 interface OpenCodeSessionContext {
-  harnessPolicyDelivered?: boolean;
+  deliveredHarnessPolicyVersion?: string;
   readonly gatewayControlAvailable: boolean;
   gatewaySessionLease?: AgentGatewaySessionLease;
   session: ProviderSession;

@@ -172,3 +172,32 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 | `detached: true`                | 无状态服务（dev server 等） | 信号 / 强杀，无所谓            |
 
 实测（`minecraftAcceptance.test.ts`）：supervised PTY 下 `Done (9.981s)!` 命中就绪、`list` 有回应、`stop` 后三个维度 `All chunks are saved`。
+
+---
+
+## 16. 实机上 Agent 仍用 PowerShell 起服务，服务面板空白（纯 prompt 约束不成立）
+
+**现象：** 面板功能上线并装到实机后，Agent 依旧在 Bash 里用 PowerShell 起长驻服务，服务面板里什么都没有。
+
+**排查结论：不是 UI bug，不是构建陈旧，是唯一入口被绕过且无人察觉。**
+
+证据（实机 `C:\Users\kingt\.synara`，打包版 `app.asar` 构建于 2026-08-08 17:58）：
+
+| 检查                                                    | 结果                                                    |
+| ------------------------------------------------------- | ------------------------------------------------------- |
+| `grep -a -c synara_start_daemon app.asar`               | 6 —— 工具在打包产物里                                   |
+| `grep -a -c "Never background it from a shell instead"` | 2 —— 策略原文也在                                       |
+| `serverLayers.ts` 的 `DaemonBrokerLive`                 | 无条件提供，工具必然被 advertise                        |
+| `.synara/userdata/`、`.synara/dev/` 下的 `daemons/`     | **不存在**                                              |
+| `server.log` 中 "daemon" 出现次数                       | **0**                                                   |
+| `server.log` 末次会话                                   | `claudeAgent` / `claude-opus-5` / `hasMcpServers: true` |
+
+**判别方法：** 想确认实机跑的是不是新构建，别问、别看 git，直接 `grep -a` 打包后的 `app.asar` 找特征字符串。想确认某个 daemon 是否真被启动过，看 `<stateDir>/daemons/` 目录在不在 —— broker 启动任何 daemon 都要建目录写 `output.log`，目录不存在即"一次都没成功调用过"，比翻日志强。
+
+**三个结构性弱点（都不是实现 bug，是约束强度不够）：**
+
+1. **零运行时约束。** 整条规则只是 system prompt 里的一行字。Agent 在 Bash 里跑 PowerShell 时，没有任何东西检测、阻止或回一句提示 —— 它不知道自己违规，用户也收不到告警。
+2. **规则被稀释。** daemon 规则是 `controlPolicy` 数组第 7 条，前后被 browser\_\*、automation、thread 创建等约 20 条挤着；而 Claude Code preset 本身在强推它自己的 Bash `run_in_background`。宿主的一行字对抗的是 provider 原生习惯。
+3. **枚举漏了 Windows 惯用法。** `harnessPolicy.ts:25` 点名了 `&`、`nohup`、`start /b`、run-in-background flag，**唯独没有 PowerShell 的 `Start-Process`** —— 而这正是 Windows 上 Agent 的首选写法。
+
+**次生缺口（本次不触发，但会咬别的 provider）：** `takeSynaraHarnessPolicyForSession`（`harnessPolicy.ts:96`）只判断 `harnessPolicyDelivered` 布尔值，**不比对 `SYNARA_HARNESS_POLICY_VERSION`**。claudeAgent 走 `systemPrompt.append`（`ClaudeAdapter.ts:5257`）每次会话都带，不受影响；codex / cursor / grok / droid / pi / opencode / antigravity 走一次性投递，策略版本升级后，同一 server 进程里已开着的会话永远收不到新规则。

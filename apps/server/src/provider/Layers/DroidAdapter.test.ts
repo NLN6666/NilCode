@@ -17,7 +17,7 @@ import {
 
 describe("Droid Synara harness policy", () => {
   it("delivers private scoped host context once", () => {
-    const state: { harnessPolicyDelivered?: boolean } = {};
+    const state: { deliveredHarnessPolicyVersion?: string } = {};
     expect(takeDroidSynaraHarnessPolicyTextPart(state, true)?.text).toContain(
       SYNARA_HARNESS_POLICY_MARKER,
     );
