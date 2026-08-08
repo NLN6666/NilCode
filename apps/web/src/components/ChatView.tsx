@@ -118,6 +118,8 @@ import {
   formatComposerMentionToken,
   filterPromptProviderMentionReferences,
   filterPromptSkillReferences,
+  collectPromptLaunchMentionTargets,
+  formatLaunchMentionTargetToken,
   LAUNCH_MENTION_INSERT_TEXT,
   promptIncludesColorPreviewMention,
   promptIncludesLaunchMention,
@@ -3761,6 +3763,17 @@ export default function ChatView({
     isServerThread &&
     activeThread !== undefined &&
     threadExportBlockedReason(activeThread) === null;
+  // Loading the launch config also asks the server to mirror it onto the
+  // project's actions, so this subscription is what keeps `.nilcode/launch.json`
+  // authoritative after an external edit or a `git pull`. Declared ahead of the
+  // composer menu because the menu offers one `@Launch:<name>` row per entry.
+  const launchConfigQuery = useQuery(
+    projectLaunchConfigQueryOptions({
+      projectId: activeProject?.id ?? null,
+      cwd: activeProject?.cwd ?? null,
+    }),
+  );
+  const existingLaunchConfigurations = launchConfigQuery.data?.configurations;
   const normalComposerMenuItems = useComposerCommandMenuItems({
     composerTrigger: effectiveComposerTrigger,
     provider: selectedProvider,
@@ -3787,6 +3800,7 @@ export default function ChatView({
       projects: composerThreadProjects,
       currentThreadId: threadId,
     },
+    ...(existingLaunchConfigurations ? { launchConfigurations: existingLaunchConfigurations } : {}),
   });
   const composerMenuItems = useMemo(() => {
     if (composerCommandPicker === "fork-target") {
@@ -4755,20 +4769,9 @@ export default function ChatView({
     stopActiveThreadSession,
     runProjectScript,
   });
-  // Loading the launch config also asks the server to mirror it onto the
-  // project's actions, so this subscription is what keeps `.nilcode/launch.json`
-  // authoritative after an external edit or a `git pull`.
-  const launchConfigQuery = useQuery(
-    projectLaunchConfigQueryOptions({
-      projectId: activeProject?.id ?? null,
-      cwd: activeProject?.cwd ?? null,
-    }),
-  );
-
   // Prefill rather than dispatch: the composer draft is the user's, and an agent
   // turn is theirs to spend. They review the prompt and send it themselves.
   const projectScriptsCopy = useMessages().projectTools.scripts;
-  const existingLaunchConfigurations = launchConfigQuery.data?.configurations;
   const detectProjectServices = useMemo(() => {
     if (activeProjectCwd === null || activeProjectCwd.length === 0) {
       return undefined;
@@ -8267,6 +8270,7 @@ export default function ChatView({
     // injects the fence-format instructions only when the flag is set.
     const colorPreviewForSend = promptIncludesColorPreviewMention(outgoingMessageText);
     const launchForSend = promptIncludesLaunchMention(outgoingMessageText);
+    const launchTargetsForSend = collectPromptLaunchMentionTargets(outgoingMessageText);
     const turnAttachmentsPromise = stageUploadComposerAttachments({
       threadId: threadIdForSend,
       images: composerImagesSnapshot,
@@ -8542,6 +8546,7 @@ export default function ChatView({
               : {}),
             ...(colorPreviewForSend ? { colorPreview: true } : {}),
             ...(launchForSend ? { launch: true } : {}),
+            ...(launchTargetsForSend.length > 0 ? { launchTargets: launchTargetsForSend } : {}),
           },
           modelSelection: selectedModelSelectionForSend,
           ...(providerOptionsForDispatchForSend
@@ -10350,7 +10355,7 @@ export default function ChatView({
         applyComposerTriggerReplacement({
           snapshot,
           trigger,
-          base: `${LAUNCH_MENTION_INSERT_TEXT} `,
+          base: `${item.target === undefined ? LAUNCH_MENTION_INSERT_TEXT : formatLaunchMentionTargetToken(item.target)} `,
         });
         return;
       }

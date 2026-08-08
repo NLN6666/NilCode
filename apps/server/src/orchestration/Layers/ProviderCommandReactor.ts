@@ -549,6 +549,7 @@ const make = Effect.gen(function* () {
     >;
     readonly threadId: ThreadId;
     readonly maxChars: number;
+    readonly targets?: ReadonlyArray<string>;
   }) {
     if (input.maxChars <= 0) {
       return "";
@@ -577,7 +578,12 @@ const make = Effect.gen(function* () {
           ),
         )
       : [];
-    return buildLaunchInstructions({ maxChars: input.maxChars, daemons, configurations });
+    return buildLaunchInstructions({
+      maxChars: input.maxChars,
+      daemons,
+      configurations,
+      ...(input.targets !== undefined ? { targets: input.targets } : {}),
+    });
   });
 
   const editResendTurnStartKeys = new Set<string>();
@@ -1342,6 +1348,7 @@ const make = Effect.gen(function* () {
     readonly mentions?: ReadonlyArray<ProviderMentionReference>;
     readonly colorPreview?: boolean;
     readonly launch?: boolean;
+    readonly launchTargets?: ReadonlyArray<string>;
     readonly reviewTarget?: ProviderReviewTarget;
     readonly modelSelection?: ModelSelection;
     readonly providerOptions?: ProviderStartOptions;
@@ -1419,6 +1426,7 @@ const make = Effect.gen(function* () {
               thread,
               threadId: input.threadId,
               maxChars: availablePromptInjectionChars(steerMessageWithColorPreview.length),
+              ...(input.launchTargets !== undefined ? { targets: input.launchTargets } : {}),
             })
           : "";
       const steerMessageWithInjections = steerLaunchText
@@ -1627,6 +1635,7 @@ const make = Effect.gen(function* () {
             thread,
             threadId: input.threadId,
             maxChars: availablePromptInjectionChars(providerInputWithColorPreview.length),
+            ...(input.launchTargets !== undefined ? { targets: input.launchTargets } : {}),
           })
         : "";
     const providerInputWithInjections = launchInlineText
@@ -2350,6 +2359,7 @@ const make = Effect.gen(function* () {
         ...(message.mentions !== undefined ? { mentions: message.mentions } : {}),
         ...(message.colorPreview !== undefined ? { colorPreview: message.colorPreview } : {}),
         ...(message.launch !== undefined ? { launch: message.launch } : {}),
+        ...(message.launchTargets !== undefined ? { launchTargets: message.launchTargets } : {}),
         ...(event.payload.modelSelection !== undefined
           ? { modelSelection: event.payload.modelSelection }
           : {}),

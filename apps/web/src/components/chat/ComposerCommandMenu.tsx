@@ -195,9 +195,13 @@ export type ComposerCommandItem =
       description: string;
     }
   | {
-      /** `@Launch`: a mode for the turn being sent, not a reference to anything. */
+      /**
+       * `@Launch`: a mode for the turn being sent. `target` names one service from
+       * `.nilcode/launch.json` (`@Launch:mc-server`); absent means the bare mode.
+       */
       id: string;
       type: "launch";
+      target?: string;
       label: string;
       description: string;
     }

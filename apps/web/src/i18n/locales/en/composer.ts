@@ -118,6 +118,8 @@ export const composer = {
     launch: {
       description: "Let this turn run servers in the background and read their logs",
       keywords: "launch start run server daemon service background log terminal minecraft",
+      /** Fallback for a `@Launch:<name>` row whose entry declares no runnable command. */
+      target: "Declared in .nilcode/launch.json",
     },
 
     /** Right-aligned kind label on each row. */

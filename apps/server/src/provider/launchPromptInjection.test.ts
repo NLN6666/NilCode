@@ -115,6 +115,56 @@ describe("buildLaunchInstructions", () => {
     expect(clipped).not.toContain("bun dev");
   });
 
+  it("replaces the full catalog with only the targeted services", () => {
+    const configurations: LaunchConfiguration[] = [
+      { name: "mc-server", command: "java -jar server.jar", port: 25565 },
+      { name: "web", command: "bun dev", port: 5173 },
+    ];
+    const result = buildLaunchInstructions({
+      maxChars: UNLIMITED,
+      daemons: [],
+      configurations,
+      targets: ["mc-server"],
+    });
+    expect(result).toContain("The user pointed this turn at one service: mc-server.");
+    expect(result).toContain("java -jar server.jar");
+    expect(result).not.toContain("bun dev");
+  });
+
+  it("matches a target case-insensitively", () => {
+    const result = buildLaunchInstructions({
+      maxChars: UNLIMITED,
+      daemons: [],
+      configurations: [{ name: "mc-server", command: "java -jar server.jar" }],
+      targets: ["MC-Server"],
+    });
+    expect(result).toContain("java -jar server.jar");
+    expect(result).not.toContain("Not declared");
+  });
+
+  it("reports targets that no configuration declares instead of dropping them", () => {
+    const result = buildLaunchInstructions({
+      maxChars: UNLIMITED,
+      daemons: [],
+      configurations: [{ name: "web", command: "bun dev" }],
+      targets: ["mc-server", "web"],
+    });
+    expect(result).toContain("The user pointed this turn at these services: mc-server, web.");
+    expect(result).toContain("bun dev");
+    expect(result).toContain("Not declared in `.nilcode/launch.json`: mc-server.");
+  });
+
+  it("still names the target when the project declares nothing at all", () => {
+    const result = buildLaunchInstructions({
+      maxChars: UNLIMITED,
+      daemons: [],
+      configurations: [],
+      targets: ["mc-server"],
+    });
+    expect(result).toContain("The user pointed this turn at one service: mc-server.");
+    expect(result).toContain("Not declared in `.nilcode/launch.json`: mc-server.");
+  });
+
   it("never exceeds the budget it was given", () => {
     const daemons = [
       daemon({ name: "mc-server", state: "ready", pid: 4821 }),

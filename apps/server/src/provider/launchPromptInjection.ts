@@ -97,6 +97,62 @@ function renderConfigurationSection(
   ].join("\n");
 }
 
+function normalizeTargetKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/**
+ * The section that replaces the full listing when the user wrote `@Launch:<name>`.
+ *
+ * Unmatched names are reported rather than dropped. Silently omitting one would
+ * read as "this project declares nothing by that name" only if the model already
+ * knew the full list — otherwise it looks like the user named nothing at all,
+ * and the model invents a command line for a service it was never shown.
+ */
+function renderTargetedConfigurationSection(input: {
+  readonly targets: ReadonlyArray<string>;
+  readonly configurations: ReadonlyArray<LaunchConfiguration>;
+}): string {
+  const byKey = new Map(
+    input.configurations.map((configuration) => [
+      normalizeTargetKey(configuration.name),
+      configuration,
+    ]),
+  );
+  const matched: LaunchConfiguration[] = [];
+  const unmatched: string[] = [];
+  for (const target of input.targets) {
+    const configuration = byKey.get(normalizeTargetKey(target));
+    if (configuration) {
+      matched.push(configuration);
+    } else {
+      unmatched.push(target);
+    }
+  }
+
+  const lines = [
+    input.targets.length === 1
+      ? `The user pointed this turn at one service: ${input.targets[0]}.`
+      : `The user pointed this turn at these services: ${input.targets.join(", ")}.`,
+  ];
+  if (matched.length > 0) {
+    lines.push(
+      "",
+      `Declared in \`${LAUNCH_CONFIG_RELATIVE_PATH}\` — run them as written:`,
+      ...matched.map(describeConfiguration),
+    );
+  }
+  if (unmatched.length > 0) {
+    lines.push(
+      "",
+      `Not declared in \`${LAUNCH_CONFIG_RELATIVE_PATH}\`: ${unmatched.join(", ")}.`,
+      "Work out how to run them from the project itself, and offer to record the",
+      "result in that file so the user does not have to explain it again.",
+    );
+  }
+  return lines.join("\n");
+}
+
 function render(sections: ReadonlyArray<string>): string {
   return [OPEN_TAG, sections.join("\n\n"), CLOSE_TAG].join("\n");
 }
@@ -115,16 +171,25 @@ export function buildLaunchInstructions(input: {
   readonly maxChars: number;
   readonly daemons: ReadonlyArray<DaemonSnapshot>;
   readonly configurations: ReadonlyArray<LaunchConfiguration>;
+  /** Services named by `@Launch:<name>`. Empty means the bare `@Launch` mode. */
+  readonly targets?: ReadonlyArray<string>;
 }): string {
   const core = render([LAUNCH_INSTRUCTIONS_CORE]);
   if (input.maxChars <= 0 || core.length > input.maxChars) {
     return "";
   }
 
-  const optionalSections = [
-    renderDaemonSection(input.daemons),
-    renderConfigurationSection(input.configurations),
-  ].filter((section): section is string => section !== null);
+  const targets = input.targets ?? [];
+  // A targeted turn swaps the full catalog for the named services. Listing both
+  // would bury the one thing the user actually pointed at.
+  const configurationSection =
+    targets.length > 0
+      ? renderTargetedConfigurationSection({ targets, configurations: input.configurations })
+      : renderConfigurationSection(input.configurations);
+
+  const optionalSections = [renderDaemonSection(input.daemons), configurationSection].filter(
+    (section): section is string => section !== null,
+  );
 
   const accepted: string[] = [LAUNCH_INSTRUCTIONS_CORE];
   let rendered = core;

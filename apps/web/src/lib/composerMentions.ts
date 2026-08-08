@@ -199,13 +199,73 @@ export const LAUNCH_MENTION_ICON_NAME = "server";
 
 const LAUNCH_MENTION_KEY = normalizeMentionNameKey(LAUNCH_MENTION_TOKEN);
 
+/**
+ * Separates the mode from the service it points at: `@Launch:mc-server`.
+ *
+ * A colon rather than a second `@` or a space, so the whole thing stays one
+ * mention token under the existing `[^\s@]+` trigger form and needs no parser
+ * changes. Service names containing spaces still work through the quoted form
+ * (`@"Launch:my server"`), which `formatComposerMentionToken` produces.
+ */
+const LAUNCH_MENTION_TARGET_SEPARATOR = ":";
+const LAUNCH_MENTION_TARGET_PREFIX = `${LAUNCH_MENTION_KEY}${LAUNCH_MENTION_TARGET_SEPARATOR}`;
+
+/** True for both the bare `@Launch` mode and a `@Launch:<name>` reference. */
 export function isLaunchMentionToken(token: string): boolean {
-  return normalizeMentionNameKey(token) === LAUNCH_MENTION_KEY;
+  const key = normalizeMentionNameKey(token);
+  return key === LAUNCH_MENTION_KEY || key.startsWith(LAUNCH_MENTION_TARGET_PREFIX);
 }
 
-/** True when the outgoing prompt carries an `@Launch` mention token. */
+/**
+ * The service a `@Launch:<name>` token points at, with its original casing.
+ *
+ * Returns null for the bare `@Launch` and for any non-launch token. An empty
+ * name (a trailing `@Launch:` the user has not finished typing) is null too:
+ * targeting nothing is the bare mode, not a reference to a service called "".
+ */
+export function launchMentionTargetFromToken(token: string): string | null {
+  const normalizedToken = token.startsWith("@") ? token.slice(1) : token;
+  if (!normalizeMentionNameKey(normalizedToken).startsWith(LAUNCH_MENTION_TARGET_PREFIX)) {
+    return null;
+  }
+  const target = normalizedToken
+    .slice(LAUNCH_MENTION_TOKEN.length + LAUNCH_MENTION_TARGET_SEPARATOR.length)
+    .trim();
+  return target.length > 0 ? target : null;
+}
+
+/** The insert text for a `@Launch:<name>` row, quoted when the name needs it. */
+export function formatLaunchMentionTargetToken(name: string): string {
+  return formatComposerMentionToken(
+    `${LAUNCH_MENTION_TOKEN}${LAUNCH_MENTION_TARGET_SEPARATOR}${name}`,
+  );
+}
+
+/** True when the outgoing prompt carries an `@Launch` token, targeted or not. */
 export function promptIncludesLaunchMention(prompt: string): boolean {
-  return collectPromptMentionNameKeys(prompt).has(LAUNCH_MENTION_KEY);
+  return collectPromptMentionPaths(prompt).some(isLaunchMentionToken);
+}
+
+/**
+ * Every service named by a `@Launch:<name>` token in the prompt, deduplicated
+ * case-insensitively but reported with the casing the user typed.
+ */
+export function collectPromptLaunchMentionTargets(prompt: string): string[] {
+  const seen = new Set<string>();
+  const targets: string[] = [];
+  for (const path of collectPromptMentionPaths(prompt)) {
+    const target = launchMentionTargetFromToken(path);
+    if (target === null) {
+      continue;
+    }
+    const key = normalizeMentionNameKey(target);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    targets.push(target);
+  }
+  return targets;
 }
 
 export function isPluginProviderMentionReference(mention: ProviderMentionReference): boolean {
@@ -269,15 +329,20 @@ const PROMPT_MENTION_NAME_REGEX = createComposerMentionTokenRegex({
   includeTrailingTokenAtEnd: true,
 });
 
-function collectPromptMentionNameKeys(prompt: string): Set<string> {
-  const names = new Set<string>();
+/** Every `@...` token in the prompt, with its original casing preserved. */
+function collectPromptMentionPaths(prompt: string): string[] {
+  const paths: string[] = [];
   for (const match of prompt.matchAll(PROMPT_MENTION_NAME_REGEX)) {
     const mentionName = extractComposerMentionPath(match);
     if (mentionName.length > 0) {
-      names.add(normalizeMentionNameKey(mentionName));
+      paths.push(mentionName);
     }
   }
-  return names;
+  return paths;
+}
+
+function collectPromptMentionNameKeys(prompt: string): Set<string> {
+  return new Set(collectPromptMentionPaths(prompt).map(normalizeMentionNameKey));
 }
 
 export function filterPromptProviderMentionReferences(
