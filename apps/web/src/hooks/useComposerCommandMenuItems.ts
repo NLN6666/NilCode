@@ -1,6 +1,7 @@
 import type {
   AgentMcpToolDescriptor,
   AgentMcpToolSourceError,
+  LaunchConfiguration,
   ProjectEntry,
   ProviderAgentDescriptor,
   ProviderNativeCommandDescriptor,
@@ -26,6 +27,9 @@ import {
 import {
   COLOR_PREVIEW_MENTION_INSERT_TEXT,
   COLOR_PREVIEW_MENTION_TOKEN,
+  formatLaunchMentionTargetToken,
+  LAUNCH_MENTION_INSERT_TEXT,
+  LAUNCH_MENTION_TOKEN,
 } from "~/lib/composerMentions";
 import { basenameOfPath } from "../file-icons";
 import type { ComposerTrigger } from "../composer-logic";
@@ -35,6 +39,7 @@ import {
   getProviderNativeSlashCommandSearchTerms,
   shouldHideProviderNativeCommandFromComposerMenu,
 } from "../composerSlashCommands";
+import { launchConfigurationCommand } from "@synara/shared/launchConfig";
 import { threadMentionPathForThreadId } from "@synara/shared/threadMentions";
 import { useMessages } from "~/i18n/context";
 import type { Messages } from "~/i18n/locales/en";
@@ -64,6 +69,7 @@ const THREAD_MENTION_SUGGESTION_LIMIT = 20;
 
 const EMPTY_MCP_TOOLS: readonly AgentMcpToolDescriptor[] = [];
 const EMPTY_MCP_TOOL_ERRORS: readonly AgentMcpToolSourceError[] = [];
+const EMPTY_LAUNCH_CONFIGURATIONS: readonly LaunchConfiguration[] = [];
 
 // Descriptions are long prose; ranking them at the same weight as a name would let a single
 // verbose tool outrank an exact server-name hit.
@@ -154,8 +160,9 @@ export const COLOR_PREVIEW_MENTION_ITEM_ID = "color-preview";
 
 // Localized keywords are a synonym bag, not a name: weighting them keeps `@pre` scoring against
 // the literal token first, and (weight > 0) disables fuzzy matching so unrelated queries cannot
-// subsequence their way into a hit.
-const COLOR_PREVIEW_MENTION_KEYWORD_FIELD_WEIGHT = 200;
+// subsequence their way into a hit. Shared by every turn-mode row (`@Preview`, `@Launch`) so they
+// rank against their own token on equal terms.
+const TURN_MODE_MENTION_KEYWORD_FIELD_WEIGHT = 200;
 
 /**
  * The single `@Preview` row. It is a constant rather than a discovery result — nothing is probed
@@ -175,8 +182,59 @@ export function buildColorPreviewMentionComposerItems(input: {
   };
   return rankProviderDiscoveryItems([item], input.query, () => [
     { value: COLOR_PREVIEW_MENTION_TOKEN },
-    { value: input.keywords, weight: COLOR_PREVIEW_MENTION_KEYWORD_FIELD_WEIGHT },
+    { value: input.keywords, weight: TURN_MODE_MENTION_KEYWORD_FIELD_WEIGHT },
   ]);
+}
+
+export const LAUNCH_MENTION_ITEM_ID = "launch";
+
+// A project may declare up to 50 services; a bare `@` must not bury every other
+// mention kind under them. The ranker orders by relevance first, so a user who
+// types part of a service name still reaches it past this cut.
+const LAUNCH_TARGET_SUGGESTION_LIMIT = 8;
+
+/**
+ * The `@Launch` rows: the bare mode, then one `@Launch:<name>` per declared
+ * service. Same shape as the `@Preview` row above — a turn mode rather than a
+ * reference — ranked through the shared ranker so the localized wording and the
+ * service names both filter like every other mention suggestion.
+ */
+export function buildLaunchMentionComposerItems(input: {
+  readonly query: string;
+  readonly description: string;
+  readonly keywords: string;
+  readonly targetDescription: (configuration: LaunchConfiguration) => string;
+  readonly configurations?: readonly LaunchConfiguration[];
+}): ComposerCommandItem[] {
+  const modeItem: ComposerCommandItem = {
+    id: LAUNCH_MENTION_ITEM_ID,
+    type: "launch",
+    label: LAUNCH_MENTION_INSERT_TEXT,
+    description: input.description,
+  };
+  const modeItems = rankProviderDiscoveryItems([modeItem], input.query, () => [
+    { value: LAUNCH_MENTION_TOKEN },
+    { value: input.keywords, weight: TURN_MODE_MENTION_KEYWORD_FIELD_WEIGHT },
+  ]);
+
+  const targetItems = rankProviderDiscoveryItems(
+    input.configurations ?? EMPTY_LAUNCH_CONFIGURATIONS,
+    input.query,
+    (configuration) => [
+      { value: `${LAUNCH_MENTION_TOKEN}:${configuration.name}` },
+      { value: configuration.name },
+    ],
+  )
+    .slice(0, LAUNCH_TARGET_SUGGESTION_LIMIT)
+    .map((configuration) => ({
+      id: `${LAUNCH_MENTION_ITEM_ID}:${configuration.name}`,
+      type: "launch" as const,
+      target: configuration.name,
+      label: formatLaunchMentionTargetToken(configuration.name),
+      description: input.targetDescription(configuration),
+    }));
+
+  return [...modeItems, ...targetItems];
 }
 
 function threadSuggestionTitle(title: string): string {
@@ -387,6 +445,8 @@ export interface ComposerCommandMenuInput {
     readonly projects: readonly Project[];
     readonly currentThreadId: string | null;
   };
+  /** `.nilcode/launch.json` entries, offered as `@Launch:<name>` rows. */
+  launchConfigurations?: readonly LaunchConfiguration[];
 }
 
 /**
@@ -419,6 +479,7 @@ export function buildComposerCommandMenuItems(
     mcpToolErrors = EMPTY_MCP_TOOL_ERRORS,
     dynamicAgents,
     threadMentionSources,
+    launchConfigurations = EMPTY_LAUNCH_CONFIGURATIONS,
   } = input;
 
   if (!composerTrigger) return [];
@@ -508,6 +569,16 @@ export function buildComposerCommandMenuItems(
       description: composerCopy.commandMenu.colorPreview.description,
       keywords: composerCopy.commandMenu.colorPreview.keywords,
     });
+    const launchItems = buildLaunchMentionComposerItems({
+      query: composerTrigger.query,
+      description: composerCopy.commandMenu.launch.description,
+      keywords: composerCopy.commandMenu.launch.keywords,
+      configurations: launchConfigurations,
+      // The command line is what distinguishes two similarly named services, and
+      // it is already what the project actions row shows for the same entry.
+      targetDescription: (configuration) =>
+        launchConfigurationCommand(configuration) ?? composerCopy.commandMenu.launch.target,
+    });
     // Keep mention suggestions ordered by primary intent. Delegation targets sit
     // right after plugins/chats — ahead of file paths, which the trailing "Files"
     // hint already tells users to reach by typing. Turn modes follow the targets:
@@ -518,6 +589,7 @@ export function buildComposerCommandMenuItems(
       ...threadItems,
       ...agentItems,
       ...colorPreviewItems,
+      ...launchItems,
       ...localRootItems,
       ...pathItems,
     ];

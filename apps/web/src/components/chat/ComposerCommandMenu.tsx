@@ -35,7 +35,7 @@ import {
   WorktreeIcon,
 } from "~/lib/icons";
 import { CentralIcon } from "~/lib/central-icons";
-import { COLOR_PREVIEW_MENTION_ICON_NAME } from "~/lib/composerMentions";
+import { COLOR_PREVIEW_MENTION_ICON_NAME, LAUNCH_MENTION_ICON_NAME } from "~/lib/composerMentions";
 import { formatSkillScope } from "~/lib/providerDiscovery";
 import { cn } from "~/lib/utils";
 import { resolveAgentChipColor } from "../composerInlineChip";
@@ -162,6 +162,7 @@ function commandMenuSecondaryText(item: ComposerCommandItem): string | null {
     item.type === "skill" ||
     item.type === "local-root" ||
     item.type === "color-preview" ||
+    item.type === "launch" ||
     item.type === "thread" ||
     item.type === "mcp-tool"
   ) {
@@ -190,6 +191,17 @@ export type ComposerCommandItem =
       /** `@Preview`: a mode for the turn being sent, not a reference to anything. */
       id: string;
       type: "color-preview";
+      label: string;
+      description: string;
+    }
+  | {
+      /**
+       * `@Launch`: a mode for the turn being sent. `target` names one service from
+       * `.nilcode/launch.json` (`@Launch:mc-server`); absent means the bare mode.
+       */
+      id: string;
+      type: "launch";
+      target?: string;
       label: string;
       description: string;
     }
@@ -552,6 +564,9 @@ function commandMenuItemGlyph(item: ComposerCommandItem, theme: "light" | "dark"
     case "color-preview":
       // Same glyph the inserted `@Preview` chip uses, so the row previews the token.
       return <CentralIcon name={COLOR_PREVIEW_MENTION_ICON_NAME} className={cls} />;
+    case "launch":
+      // Same glyph the inserted `@Launch` chip uses, so the row previews the token.
+      return <CentralIcon name={LAUNCH_MENTION_ICON_NAME} className={cls} />;
     case "fork-target":
       return item.target === "local" ? (
         <DeviceLaptopIcon className={cls} />

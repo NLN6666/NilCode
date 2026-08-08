@@ -5,14 +5,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  collectPromptLaunchMentionTargets,
   createComposerMentionTokenRegex,
   extractComposerMentionPath,
   filterPromptProviderMentionReferences,
   filterPromptSkillReferences,
   formatComposerMentionToken,
+  formatLaunchMentionTargetToken,
   isColorPreviewMentionToken,
+  isLaunchMentionToken,
   isThreadProviderMentionReference,
+  launchMentionTargetFromToken,
   promptIncludesColorPreviewMention,
+  promptIncludesLaunchMention,
   resolveMentionChipKind,
 } from "./composerMentions";
 
@@ -184,5 +189,57 @@ describe("@Preview color-preview mention", () => {
     expect(promptIncludesColorPreviewMention("@Previews")).toBe(false);
     expect(promptIncludesColorPreviewMention("mail@Preview")).toBe(false);
     expect(promptIncludesColorPreviewMention("")).toBe(false);
+  });
+});
+
+describe("@Launch mention", () => {
+  it("recognizes the bare mode and a targeted reference", () => {
+    expect(isLaunchMentionToken("Launch")).toBe(true);
+    expect(isLaunchMentionToken("launch")).toBe(true);
+    expect(isLaunchMentionToken("Launch:mc-server")).toBe(true);
+    expect(isLaunchMentionToken("Launcher")).toBe(false);
+    expect(isLaunchMentionToken("src/launch.ts")).toBe(false);
+  });
+
+  it("extracts the target with the casing the user typed", () => {
+    expect(launchMentionTargetFromToken("Launch:MC-Server")).toBe("MC-Server");
+    expect(launchMentionTargetFromToken("@Launch:mc-server")).toBe("mc-server");
+    // The bare mode targets nothing, and neither does a half-typed token.
+    expect(launchMentionTargetFromToken("Launch")).toBe(null);
+    expect(launchMentionTargetFromToken("Launch:")).toBe(null);
+    expect(launchMentionTargetFromToken("src/app.ts")).toBe(null);
+  });
+
+  it("quotes a target name that would otherwise split the token", () => {
+    expect(formatLaunchMentionTargetToken("mc-server")).toBe("@Launch:mc-server");
+    expect(formatLaunchMentionTargetToken("my server")).toBe('@"Launch:my server"');
+    expect(launchMentionTargetFromToken(parseMentionToken('@"Launch:my server"'))).toBe(
+      "my server",
+    );
+  });
+
+  it("renders as its own chip kind", () => {
+    expect(resolveMentionChipKind("Launch")).toBe("launch");
+    expect(resolveMentionChipKind("Launch:mc-server")).toBe("launch");
+    expect(resolveMentionChipKind("src/launch.json")).toBe("path");
+  });
+
+  it("detects the mention in an outgoing prompt, targeted or not", () => {
+    expect(promptIncludesLaunchMention("@Launch start it")).toBe(true);
+    expect(promptIncludesLaunchMention("@Launch:mc-server tail the log")).toBe(true);
+    expect(promptIncludesLaunchMention("launch the server")).toBe(false);
+    expect(promptIncludesLaunchMention("@Launcher")).toBe(false);
+  });
+
+  it("collects targets in order, deduplicated case-insensitively", () => {
+    expect(collectPromptLaunchMentionTargets("@Launch:mc-server and @Launch:web")).toEqual([
+      "mc-server",
+      "web",
+    ]);
+    // The bare mode contributes no target, and a repeat in other casing is not a second one.
+    expect(
+      collectPromptLaunchMentionTargets("@Launch @Launch:mc-server again @Launch:MC-Server"),
+    ).toEqual(["mc-server"]);
+    expect(collectPromptLaunchMentionTargets("@Launch nothing targeted")).toEqual([]);
   });
 });

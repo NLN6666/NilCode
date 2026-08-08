@@ -9,6 +9,7 @@ import { getFileIconName, inferEntryKindFromPath } from "~/file-icons";
 import {
   COLOR_PREVIEW_MENTION_ICON_NAME,
   findThreadProviderMentionReferenceForToken,
+  LAUNCH_MENTION_ICON_NAME,
   resolveMentionChipKind,
   threadIdFromProviderMentionReference,
   type MentionChipKind,
@@ -31,6 +32,9 @@ function composerMentionChipCentralIconName(path: string, kind: MentionChipKind 
   }
   if (kind === "preview") {
     return COLOR_PREVIEW_MENTION_ICON_NAME;
+  }
+  if (kind === "launch") {
+    return LAUNCH_MENTION_ICON_NAME;
   }
   if (inferEntryKindFromPath(path) === "directory") {
     return "folder-2";
@@ -80,6 +84,9 @@ export const MentionChipIcon = function MentionChipIcon(props: {
   }
   if (resolvedKind === "preview") {
     return <CentralIcon name={COLOR_PREVIEW_MENTION_ICON_NAME} className={className} />;
+  }
+  if (resolvedKind === "launch") {
+    return <CentralIcon name={LAUNCH_MENTION_ICON_NAME} className={className} />;
   }
   const kind = inferEntryKindFromPath(props.path);
   if (kind === "directory") {

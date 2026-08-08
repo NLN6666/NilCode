@@ -31,6 +31,23 @@ import {
   TurnId,
 } from "./baseSchemas";
 
+/**
+ * Services named by `@Launch:<name>` tokens on a turn.
+ *
+ * The bounds mirror `LAUNCH_CONFIGURATION_NAME_MAX_LENGTH` and
+ * `LAUNCH_CONFIGURATIONS_MAX_COUNT` but are declared here rather than imported:
+ * `launchConfig.ts` already imports this module for `ProjectScriptIcon`, so
+ * reaching back would close a cycle. A name the user typed need not match a
+ * declared service anyway — the server reports unmatched targets rather than
+ * rejecting them — so these are transport limits, not a shared validation rule.
+ */
+export const LAUNCH_MENTION_TARGET_MAX_LENGTH = 64;
+export const LAUNCH_MENTION_TARGETS_MAX_COUNT = 50;
+
+export const LaunchMentionTargets = Schema.Array(
+  TrimmedNonEmptyString.check(Schema.isMaxLength(LAUNCH_MENTION_TARGET_MAX_LENGTH)),
+).check(Schema.isMaxLength(LAUNCH_MENTION_TARGETS_MAX_COUNT));
+
 export const ORCHESTRATION_WS_METHODS = {
   getSnapshot: "orchestration.getSnapshot",
   getShellSnapshot: "orchestration.getShellSnapshot",
@@ -513,6 +530,9 @@ export const OrchestrationMessage = Schema.Struct({
   mentions: Schema.optional(Schema.Array(ProviderMentionReference)),
   /** Set by the composer's `@Preview` mention: inject the color-preview prompt for this turn. */
   colorPreview: Schema.optional(Schema.Boolean),
+  /** Set by the composer's `@Launch` mention: inject the background-service prompt for this turn. */
+  launch: Schema.optional(Schema.Boolean),
+  launchTargets: Schema.optional(LaunchMentionTargets),
   dispatchMode: Schema.optional(TurnDispatchMode),
   dispatchOrigin: Schema.optional(MessageDispatchOrigin),
   turnId: Schema.NullOr(TurnId),
@@ -1320,6 +1340,8 @@ export const ThreadTurnStartCommand = Schema.Struct({
     skills: Schema.optional(Schema.Array(ProviderSkillReference)),
     mentions: Schema.optional(Schema.Array(ProviderMentionReference)),
     colorPreview: Schema.optional(Schema.Boolean),
+    launch: Schema.optional(Schema.Boolean),
+    launchTargets: Schema.optional(LaunchMentionTargets),
   }).check(TurnMessageContentCheck),
   modelSelection: Schema.optional(ModelSelection),
   providerOptions: Schema.optional(ProviderStartOptions),
@@ -1351,6 +1373,8 @@ const ClientThreadTurnStartCommand = Schema.Struct({
     skills: Schema.optional(Schema.Array(ProviderSkillReference)),
     mentions: Schema.optional(Schema.Array(ProviderMentionReference)),
     colorPreview: Schema.optional(Schema.Boolean),
+    launch: Schema.optional(Schema.Boolean),
+    launchTargets: Schema.optional(LaunchMentionTargets),
   }).check(TurnMessageContentCheck),
   modelSelection: Schema.optional(ModelSelection),
   providerOptions: Schema.optional(ProviderStartOptions),
@@ -1946,6 +1970,8 @@ export const ThreadMessageSentPayload = Schema.Struct({
   skills: Schema.optional(Schema.Array(ProviderSkillReference)),
   mentions: Schema.optional(Schema.Array(ProviderMentionReference)),
   colorPreview: Schema.optional(Schema.Boolean),
+  launch: Schema.optional(Schema.Boolean),
+  launchTargets: Schema.optional(LaunchMentionTargets),
   dispatchMode: Schema.optional(TurnDispatchMode),
   dispatchOrigin: Schema.optional(MessageDispatchOrigin),
   turnId: Schema.NullOr(TurnId),

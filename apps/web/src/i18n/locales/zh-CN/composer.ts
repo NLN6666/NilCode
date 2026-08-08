@@ -90,6 +90,12 @@ export const composer: Messages["composer"] = {
       keywords: "配色 主题 预览 色卡 调色板 preview",
     },
 
+    launch: {
+      description: "让本轮可以在后台启动服务并实时读取日志",
+      keywords: "启动 运行 服务 服务器 后台 常驻 日志 终端 我的世界 launch server daemon",
+      target: "在 .nilcode/launch.json 中声明",
+    },
+
     meta: {
       switchModel: "切换模型",
       delegateTask: "委派给子智能体",

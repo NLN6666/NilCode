@@ -110,6 +110,18 @@ export const composer = {
       keywords: "color theme palette swatch preview",
     },
 
+    /**
+     * The `@Launch` row. Like `@Preview` it is a mode for the turn, not a reference. The copy
+     * names the outcome the user wants ("keep it running, read its log") rather than the daemon
+     * machinery underneath.
+     */
+    launch: {
+      description: "Let this turn run servers in the background and read their logs",
+      keywords: "launch start run server daemon service background log terminal minecraft",
+      /** Fallback for a `@Launch:<name>` row whose entry declares no runnable command. */
+      target: "Declared in .nilcode/launch.json",
+    },
+
     /** Right-aligned kind label on each row. */
     meta: {
       switchModel: "switch model",

@@ -31,6 +31,7 @@ import {
   COLOR_PREVIEW_MENTION_INSERT_TEXT,
   composerMentionPathNeedsQuoting,
   formatComposerMentionToken,
+  LAUNCH_MENTION_INSERT_TEXT,
   skillMentionPrefix,
 } from "~/lib/composerMentions";
 import {
@@ -242,6 +243,14 @@ export function useKanbanTaskComposerEditor(input: UseKanbanTaskComposerEditorIn
         snapshot,
         trigger,
         base: `${COLOR_PREVIEW_MENTION_INSERT_TEXT} `,
+      });
+      return;
+    }
+    if (item.type === "launch") {
+      applyComposerTriggerReplacement({
+        snapshot,
+        trigger,
+        base: `${LAUNCH_MENTION_INSERT_TEXT} `,
       });
       return;
     }
