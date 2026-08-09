@@ -62,6 +62,7 @@ import { CrossTaskOriginLabel, type CrossTaskOrigin } from "./CrossTaskOriginLab
 import { SynaraThreadCreationCard } from "./SynaraThreadCreationCard";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { AdvisorNoteCard } from "./AdvisorNoteCard";
+import { AdvisorObservationRow } from "./AdvisorObservationRow";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import { DiffStatLabel } from "./DiffStatLabel";
 import { ReviewChangesButton } from "./ReviewChangesButton";
@@ -2237,6 +2238,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             note={row.note}
             chatTypographyStyle={chatTypographyStyle}
           />
+        </div>
+      )}
+
+      {row.kind === "advisor-observation" && (
+        <div className="min-w-0 py-0.5">
+          <AdvisorObservationRow count={row.count} reasons={row.reasons} />
         </div>
       )}
 

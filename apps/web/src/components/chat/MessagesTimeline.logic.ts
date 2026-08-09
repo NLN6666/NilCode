@@ -5,7 +5,7 @@
 
 import { type MessageId, type TurnId } from "@synara/contracts";
 import { type TimelineEntry, type WorkLogEntry, formatElapsed } from "../../session-logic";
-import type { WorkLogAdvisorNote } from "../../workLog";
+import type { WorkLogAdvisorNote, WorkLogAdvisorObservation } from "../../workLog";
 import { normalizeCompactToolLabel as normalizeCompactToolLabelValue } from "../../lib/toolCallLabel";
 import {
   isSummarizableToolCallEntry,
@@ -254,6 +254,18 @@ export type MessagesTimelineRow =
       createdAt: string;
       message: string;
       note: WorkLogAdvisorNote;
+    }
+  | {
+      // One row standing for a run of consecutive advisor observations. `count`
+      // is how many evaluations it folds; `createdAt` is the newest of them, so
+      // the row reads as "last looked at <time>".
+      kind: "advisor-observation";
+      id: string;
+      createdAt: string;
+      count: number;
+      // Kept from the folded run so a withheld/quarantined observation is not
+      // silently absorbed into a pile of ordinary silences.
+      reasons: ReadonlyArray<WorkLogAdvisorObservation["reason"]>;
     }
   | { kind: "working"; id: string; createdAt: string | null }
   | {
@@ -601,6 +613,31 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
 
+    if (timelineEntry.kind === "advisor-observation") {
+      // A run of consecutive observations collapses into one row: the advisor
+      // evaluates several times per turn, and one line per evaluation would
+      // drown the transcript in "it looked and said nothing".
+      const observations = [timelineEntry.observation];
+      let cursor = index + 1;
+      while (cursor < input.timelineEntries.length) {
+        const nextEntry = input.timelineEntries[cursor];
+        if (!nextEntry || nextEntry.kind !== "advisor-observation") break;
+        observations.push(nextEntry.observation);
+        cursor += 1;
+      }
+      const newest = input.timelineEntries[cursor - 1]!;
+      flushPendingWorkGroup({ attachToPreviousAssistant: false });
+      nextRows.push({
+        kind: "advisor-observation",
+        id: timelineEntry.id,
+        createdAt: newest.createdAt,
+        count: observations.length,
+        reasons: observations.map((observation) => observation.reason),
+      });
+      index = cursor - 1;
+      continue;
+    }
+
     const message = timelineEntry.message;
     const leadingWorkEntries =
       message.role === "assistant" ? pendingWorkGroup?.groupedEntries : undefined;
@@ -783,10 +820,14 @@ function collapseSettledTurns(
         foldIndices.push(scan);
         continue;
       }
-      if (prev.kind === "proposed-plan" || prev.kind === "advisor") {
-        // The plan card and the advisor note stay visible, but neither should
-        // strand earlier narration/work outside the final "Worked for..."
-        // disclosure.
+      if (
+        prev.kind === "proposed-plan" ||
+        prev.kind === "advisor" ||
+        prev.kind === "advisor-observation"
+      ) {
+        // The plan card, the advisor note and the advisor's observation row all
+        // stay visible, but none should strand earlier narration/work outside
+        // the final "Worked for..." disclosure.
         continue;
       }
       break;
@@ -1110,6 +1151,15 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.message === ba.message &&
         a.note.severity === ba.note.severity &&
         a.note.channel === ba.note.channel
+      );
+    }
+
+    case "advisor-observation": {
+      const bo = b as typeof a;
+      return (
+        a.createdAt === bo.createdAt &&
+        a.count === bo.count &&
+        stringArraysEqual(a.reasons, bo.reasons)
       );
     }
 

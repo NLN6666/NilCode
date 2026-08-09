@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
-import { ADVISOR_ACTIVITY_KIND } from "../advisorEventDigest.ts";
+import { ADVISOR_ACTIVITY_KIND, ADVISOR_OBSERVATION_KIND } from "../advisorEventDigest.ts";
 import { AdvisorSession } from "../Services/AdvisorSession.ts";
 import { AdvisorReactor } from "../Services/AdvisorReactor.ts";
 import { AdvisorReactorLive, formatAdvisorDelivery } from "./AdvisorReactor.ts";
@@ -225,12 +225,30 @@ describe("AdvisorReactor", () => {
     expect(recorder.evaluations[0]?.workInProgress).toBe(false);
   });
 
-  it("dispatches nothing when the advisor stays silent", async () => {
+  // Silence is the advisor's designed steady state, so it must not put words in
+  // front of the agent. But it must still leave a trace: without one, an advisor
+  // working perfectly and an advisor that never ran are the same empty transcript.
+  // See findings.md #18.
+  it("sends the agent nothing when the advisor stays silent", async () => {
     const recorder = await withReactor({ verdicts: [{ verdict: "silent" }] }, (input) =>
       oneTurn(input).pipe(Effect.as(input.recorder)),
     );
 
-    expect(recorder.commands).toEqual([]);
+    expect(recorder.commands.filter((command) => command.type === "thread.turn.start")).toEqual([]);
+  });
+
+  it("records an observation when the advisor stays silent", async () => {
+    const recorder = await withReactor({ verdicts: [{ verdict: "silent" }] }, (input) =>
+      oneTurn(input).pipe(Effect.as(input.recorder)),
+    );
+
+    const observations = recorder.commands.filter(
+      (command) =>
+        command.type === "thread.activity.append" &&
+        command.activity.kind === ADVISOR_OBSERVATION_KIND,
+    );
+    expect(observations).toHaveLength(1);
+    expect(observations[0]).toMatchObject({ activity: { payload: { reason: "silent" } } });
   });
 
   // A settled turn plus a non-blocker is the aside path: the note waits for the

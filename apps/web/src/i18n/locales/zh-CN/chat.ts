@@ -372,6 +372,12 @@ export const chat: Chat = {
       aside: "已排入下一轮",
       preserve: "未发送给模型",
     },
+    observation: {
+      reviewed: "监察已查看本轮工作",
+      reviewedRepeated: (count) => `监察已查看本轮工作 ${count} 次`,
+      withheld: "监察提出了意见，但被规则拦下",
+      quarantined: "监察的输出格式有误，已丢弃",
+    },
   },
 
   themePreview: {

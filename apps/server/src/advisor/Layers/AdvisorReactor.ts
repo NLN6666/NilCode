@@ -29,7 +29,11 @@ import { Effect, Layer, Option, Ref, Stream } from "effect";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
-import { ADVISOR_ACTIVITY_KIND } from "../advisorEventDigest.ts";
+import {
+  ADVISOR_ACTIVITY_KIND,
+  ADVISOR_OBSERVATION_KIND,
+  ADVISOR_OWN_ACTIVITY_KINDS,
+} from "../advisorEventDigest.ts";
 import {
   INITIAL_ADVISOR_PIPELINE_STATE,
   ingestAdvisorActivity,
@@ -153,6 +157,47 @@ export const make = Effect.gen(function* () {
         .pipe(Effect.catchCause(() => Effect.void));
     });
 
+  /**
+   * Record that the advisor looked and nothing reached the transcript.
+   *
+   * Without this row a working advisor and an advisor that never ran are the same
+   * empty transcript, which is precisely why the feature got reported as broken
+   * while its logs showed 8 clean evaluations out of 8. See findings.md #18.
+   *
+   * `reason` is kept because the three ways to produce no advice are not equally
+   * interesting: the model having nothing to say is the designed steady state,
+   * whereas advice the guards withheld means the advisor did speak and a rule ate
+   * it - a thing the user may want to go and change.
+   */
+  const recordObservation = (input: {
+    readonly threadId: ThreadId;
+    readonly reason: "silent" | "withheld" | "quarantined";
+  }) =>
+    Effect.gen(function* () {
+      const marker = yield* nextMarker(input.threadId);
+      const createdAt = new Date().toISOString();
+
+      yield* orchestrationEngine
+        .dispatch({
+          type: "thread.activity.append",
+          commandId: CommandId.makeUnsafe(advisorDeliveryId(marker, "observation-command")),
+          threadId: input.threadId,
+          activity: {
+            id: EventId.makeUnsafe(advisorDeliveryId(marker, "observation")),
+            tone: "info",
+            kind: ADVISOR_OBSERVATION_KIND,
+            // The web app renders this row from `reason` and its own copy catalog.
+            // This text is the fallback for anything reading raw activity summaries.
+            summary: "Advisor reviewed the work.",
+            payload: { reason: input.reason },
+            turnId: null,
+            createdAt,
+          },
+          createdAt,
+        })
+        .pipe(Effect.catchCause(() => Effect.void));
+    });
+
   const evaluateThread = (input: {
     readonly threadId: ThreadId;
     readonly delta: string;
@@ -245,6 +290,15 @@ export const make = Effect.gen(function* () {
           channel: resolved.action.channel,
           severity: resolved.action.severity,
           message: resolved.action.message,
+        });
+      } else {
+        yield* recordObservation({
+          threadId: input.threadId,
+          reason: resolved.quarantined
+            ? "quarantined"
+            : verdict.verdict === "silent"
+              ? "silent"
+              : "withheld",
         });
       }
       return resolved.state;
@@ -359,8 +413,10 @@ export const make = Effect.gen(function* () {
         return;
       }
       // Self-excitation: the advisor's own advice card is an activity like any
-      // other, and feeding it back would let the advisor comment on itself.
-      if (event.payload.activity.kind === ADVISOR_ACTIVITY_KIND) {
+      // other, and feeding it back would let the advisor comment on itself. The
+      // observation row it writes on every evaluation would do worse - it would
+      // trigger the next evaluation, which writes another one.
+      if (ADVISOR_OWN_ACTIVITY_KINDS.has(event.payload.activity.kind)) {
         return;
       }
       yield* handleActivity(event);

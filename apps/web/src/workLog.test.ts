@@ -1,5 +1,6 @@
 import {
   ADVISOR_ACTIVITY_KIND,
+  ADVISOR_OBSERVATION_KIND,
   MessageId,
   TurnId,
   type OrchestrationThreadActivity,
@@ -3634,6 +3635,52 @@ describe("advisor notes in the transcript", () => {
       kind: "advisor",
       message: "this duplicates shared/text",
       note: { severity: "nit", channel: "aside" },
+    });
+  });
+
+  // Silence is the advisor's designed answer, so the observation row is the only
+  // thing distinguishing a healthy advisor from one that never ran. See findings.md #18.
+  const advisorObservationActivity = (payload: { reason: string }) =>
+    makeActivity({
+      id: "advisor:thread-1:2:observation",
+      createdAt: "2026-02-23T00:00:04.000Z",
+      kind: ADVISOR_OBSERVATION_KIND,
+      summary: "Advisor reviewed the work.",
+      tone: "info",
+      payload,
+    });
+
+  it("carries the observation reason onto the entry", () => {
+    const entries = deriveWorkLogEntries(
+      [advisorObservationActivity({ reason: "withheld" })],
+      undefined,
+    );
+
+    expect(entries[0]?.advisorObservation).toEqual({ reason: "withheld" });
+  });
+
+  // Unlike a malformed note, an unreadable reason must NOT drop the row: its job is
+  // to prove the advisor ran, which is true whatever the reason string says.
+  it("keeps the observation and falls back to silent for an unknown reason", () => {
+    const entries = deriveWorkLogEntries(
+      [advisorObservationActivity({ reason: "something-new" })],
+      undefined,
+    );
+
+    expect(entries[0]?.advisorObservation).toEqual({ reason: "silent" });
+  });
+
+  it("promotes an observation out of the work log into its own entry", () => {
+    const entries = deriveTimelineEntries(
+      [],
+      [],
+      deriveWorkLogEntries([advisorObservationActivity({ reason: "silent" })], undefined),
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      kind: "advisor-observation",
+      observation: { reason: "silent" },
     });
   });
 

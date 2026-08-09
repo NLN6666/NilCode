@@ -1,10 +1,13 @@
 import {
   ADVISOR_ACTIVITY_KIND,
   ADVISOR_DELIVERY_CHANNELS,
+  ADVISOR_OBSERVATION_KIND,
+  ADVISOR_OBSERVATION_REASONS,
   ADVISOR_SEVERITIES,
   isToolLifecycleItemType,
   STUDIO_OUTPUTS_ACTIVITY_KIND,
   type AdvisorDeliveryChannel,
+  type AdvisorObservationReason,
   type AdvisorSeverity,
   type OrchestrationLatestTurnState,
   type OrchestrationThreadActivity,
@@ -92,11 +95,19 @@ export interface WorkLogEntry {
   // Present only on advisor notes. Its presence is what promotes the entry out
   // of the work log and into its own transcript card.
   advisorNote?: WorkLogAdvisorNote;
+  // Present only on advisor observations - the advisor looked and said nothing.
+  // Mutually exclusive with `advisorNote`; the two come from different activity
+  // kinds.
+  advisorObservation?: WorkLogAdvisorObservation;
 }
 
 export interface WorkLogAdvisorNote {
   readonly severity: AdvisorSeverity;
   readonly channel: AdvisorDeliveryChannel;
+}
+
+export interface WorkLogAdvisorObservation {
+  readonly reason: AdvisorObservationReason;
 }
 
 export type WorkLogReasoningStatus = "inProgress" | "completed" | "failed";
@@ -225,12 +236,25 @@ export type TimelineEntry =
       createdAt: string;
       message: string;
       note: WorkLogAdvisorNote;
+    }
+  | {
+      // The advisor looked and said nothing. Carries no message by construction.
+      id: string;
+      kind: "advisor-observation";
+      createdAt: string;
+      observation: WorkLogAdvisorObservation;
     };
 
 export function isAdvisorWorkEntry(
   entry: Pick<WorkLogEntry, "advisorNote">,
 ): entry is WorkLogEntry & { advisorNote: WorkLogAdvisorNote } {
   return entry.advisorNote !== undefined;
+}
+
+export function isAdvisorObservationWorkEntry(
+  entry: Pick<WorkLogEntry, "advisorObservation">,
+): entry is WorkLogEntry & { advisorObservation: WorkLogAdvisorObservation } {
+  return entry.advisorObservation !== undefined;
 }
 
 const orderedActivitiesCache = new WeakMap<
@@ -497,6 +521,26 @@ function extractWorkLogAdvisorNote(
   return { severity, channel };
 }
 
+/**
+ * The reason the advisor reactor recorded for an evaluation that said nothing.
+ *
+ * An unrecognised reason degrades to `silent` rather than to null: the row's job is
+ * to prove the advisor ran, and that is true regardless of which reason string the
+ * server wrote. Dropping the row over an unknown enum member would resurrect the
+ * exact blind spot this activity exists to close.
+ */
+function extractWorkLogAdvisorObservation(
+  activity: OrchestrationThreadActivity,
+  payload: Record<string, unknown> | null,
+): WorkLogAdvisorObservation | null {
+  if (activity.kind !== ADVISOR_OBSERVATION_KIND) {
+    return null;
+  }
+  const reason: AdvisorObservationReason =
+    ADVISOR_OBSERVATION_REASONS.find((value) => value === payload?.reason) ?? "silent";
+  return { reason };
+}
+
 function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
   const payload =
     activity.payload && typeof activity.payload === "object"
@@ -525,6 +569,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   const advisorNote = extractWorkLogAdvisorNote(activity, payload);
   if (advisorNote) {
     entry.advisorNote = advisorNote;
+  }
+  const advisorObservation = extractWorkLogAdvisorObservation(activity, payload);
+  if (advisorObservation) {
+    entry.advisorObservation = advisorObservation;
   }
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
@@ -2255,22 +2303,31 @@ export function deriveTimelineEntries(
     createdAt: proposedPlan.createdAt,
     proposedPlan,
   }));
-  const workRows: TimelineEntry[] = workEntries.map((entry) =>
-    isAdvisorWorkEntry(entry)
-      ? {
-          id: entry.id,
-          kind: "advisor",
-          createdAt: entry.createdAt,
-          message: entry.label,
-          note: entry.advisorNote,
-        }
-      : {
-          id: entry.id,
-          kind: "work",
-          createdAt: entry.createdAt,
-          entry,
-        },
-  );
+  const workRows: TimelineEntry[] = workEntries.map((entry) => {
+    if (isAdvisorWorkEntry(entry)) {
+      return {
+        id: entry.id,
+        kind: "advisor",
+        createdAt: entry.createdAt,
+        message: entry.label,
+        note: entry.advisorNote,
+      };
+    }
+    if (isAdvisorObservationWorkEntry(entry)) {
+      return {
+        id: entry.id,
+        kind: "advisor-observation",
+        createdAt: entry.createdAt,
+        observation: entry.advisorObservation,
+      };
+    }
+    return {
+      id: entry.id,
+      kind: "work",
+      createdAt: entry.createdAt,
+      entry,
+    };
+  });
 
   return mergeTimelineEntries(
     mergeTimelineEntries(

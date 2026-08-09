@@ -77,6 +77,7 @@ import { providerQueryKeys } from "../lib/providerReactQuery";
 import { invalidateProjectFileQueriesForCwds, projectQueryKeys } from "../lib/projectReactQuery";
 import { collectActiveTerminalThreadIds } from "../lib/terminalStateCleanup";
 import { useProjectRunStore } from "../projectRunStore";
+import { applyDaemonEvent, useDaemonStore } from "../daemonStore";
 import { dockTerminalThreadId } from "../lib/dockTerminalScope";
 import { projectServiceTerminalThreadId } from "../lib/projectServiceTerminalScope";
 import { TaskCompletionNotifications } from "../notifications/taskCompletion";
@@ -1832,6 +1833,16 @@ function EventRouter() {
       }
       invalidateLocalServers();
     });
+    // Background services are subscribed here rather than from the services pane, even
+    // though only that pane renders them. The dock entry that opens the pane is itself
+    // gated on "is anything running", so a pane-scoped subscription cannot work: no
+    // subscription means no roster, no roster means no entry, and the pane the user
+    // needs to open to start the subscription is the one they can never find.
+    // See findings.md #17. The stream is one event per daemon state change, which is
+    // far cheaper than a feature nobody can reach.
+    const unsubDaemonEvent = api.daemons.onEvent((event) => {
+      applyDaemonEvent(useDaemonStore.getState(), event);
+    });
     // The channel's initial snapshot may have arrived before this listener was
     // registered, so seed from the authoritative registry on mount.
     void api.projects
@@ -2043,6 +2054,7 @@ function EventRouter() {
       unsubThreadDetailEviction();
       unsubTerminalEvent();
       unsubDevServerEvent();
+      unsubDaemonEvent();
       unsubWelcome();
       unsubServerConfigUpdated();
       unsubProviderStatusesUpdated();
