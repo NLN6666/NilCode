@@ -83,6 +83,7 @@ import {
   type CommandResult,
 } from "../providerCliOutput";
 import { probeProviderCliVersion } from "../providerCliVersionProbe";
+import { killChildIfRunning } from "../../childProcessCleanup";
 import { ProviderHealth, type ProviderHealthShape } from "../Services/ProviderHealth";
 import {
   orderProviderStatuses,
@@ -2594,7 +2595,7 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
             env: updateEnv,
           }),
         );
-        yield* Effect.addFinalizer(() => child.kill().pipe(Effect.ignore));
+        yield* Effect.addFinalizer(() => killChildIfRunning(child));
         const [stdout, stderr, exitCode] = yield* Effect.all(
           [
             collectUint8StreamText({

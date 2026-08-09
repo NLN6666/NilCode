@@ -45,6 +45,7 @@ import {
   type ExecuteGitResult,
 } from "../Services/GitCore.ts";
 import { ServerConfig } from "../../config.ts";
+import { killChildIfRunning } from "../../childProcessCleanup.ts";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
@@ -632,7 +633,7 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
           // Scope-bound: an RPC interruption closes this Scope and kills the child
           // before execute settles. The spawner's own finalizer safely handles the
           // second cleanup attempt.
-          yield* Effect.addFinalizer(() => child.kill().pipe(Effect.ignore));
+          yield* Effect.addFinalizer(() => killChildIfRunning(child));
 
           const [stdout, stderr, exitCode] = yield* Effect.all(
             [

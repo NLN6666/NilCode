@@ -28,12 +28,21 @@ const CHECKPOINT_DIFF_MAX_OUTPUT_BYTES = 10_000_000;
 // per-command timeouts would allow.
 const CHECKPOINT_CAPTURE_TIMEOUT_MS = 180_000;
 
+// How long a "this directory is not a Git repository" answer stays cached.
+// Short enough that a project the user `git init`s mid-session starts getting
+// checkpoints within one turn or two, long enough that a burst of turns in a
+// non-Git project does not re-spawn the probe every time.
+const NON_GIT_REPOSITORY_CACHE_TTL_MS = 30_000;
+
 const makeCheckpointStore = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const git = yield* GitCore;
   const captureLock = yield* Semaphore.make(1);
   const inFlightCaptures = new Map<string, Deferred.Deferred<void, CheckpointStoreError>>();
+  // One permit per repository worktree, guarding the durable checkpoint index
+  // that every capture in that repository shares.
+  const checkpointIndexLocks = new Map<string, Semaphore.Semaphore>();
 
   // Normalize the cwd so captures for the same repo reached via differently
   // written paths (trailing slash, relative segments) share one in-flight slot.
@@ -68,33 +77,78 @@ const makeCheckpointStore = Effect.gen(function* () {
       })
       .pipe(Effect.map((result) => result.code === 0));
 
-  const seedCheckpointIndex = (cwd: string, tempIndexPath: string) =>
+  // Resolve a Git-managed path for this worktree (`git rev-parse --git-path X`),
+  // memoized per resolved cwd: it is a pure function of the repository layout
+  // and re-probing it costs one process spawn on every user turn.
+  const gitPathCache = new Map<string, string | null>();
+  const resolveGitPath = (cwd: string, name: string) =>
     Effect.gen(function* () {
-      const indexPathResult = yield* git.execute({
-        operation: "CheckpointStore.resolveWorkingIndex",
+      const cacheKey = `${path.resolve(cwd)}\0${name}`;
+      const cached = gitPathCache.get(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const result = yield* git.execute({
+        operation: "CheckpointStore.resolveGitPath",
         cwd,
-        args: ["rev-parse", "--git-path", "index"],
+        args: ["rev-parse", "--git-path", name],
         allowNonZeroExit: true,
       });
-      const indexPathRaw = indexPathResult.stdout.trim();
-      if (indexPathResult.code !== 0 || indexPathRaw.length === 0) {
-        return null;
-      }
+      const raw = result.stdout.trim();
+      const resolved =
+        result.code !== 0 || raw.length === 0
+          ? null
+          : path.isAbsolute(raw)
+            ? raw
+            : path.resolve(cwd, raw);
+      gitPathCache.set(cacheKey, resolved);
+      return resolved;
+    });
 
-      const indexPath = path.isAbsolute(indexPathRaw)
-        ? indexPathRaw
-        : path.resolve(cwd, indexPathRaw);
-      const indexExists = yield* fs.exists(indexPath).pipe(Effect.orElseSucceed(() => false));
-      if (!indexExists) {
-        return null;
-      }
+  // Checkpoints run a full `git add -A` over the worktree before every user
+  // turn. A throwaway index makes that scan hash every path that differs from
+  // the working index on every turn, which costs seconds on a workspace with a
+  // large or churning tree. A durable index dedicated to checkpointing keeps
+  // Git's stat cache from the previous checkpoint, so each turn only re-hashes
+  // what actually changed since then. It lives inside the Git directory, so it
+  // is never itself part of the scanned worktree.
+  const resolveCheckpointIndexPath = (cwd: string) =>
+    resolveGitPath(cwd, "synara-checkpoint-index");
 
-      // Preserve Git's stat cache in the throwaway index. Starting every
-      // checkpoint from `read-tree HEAD` discards it, forcing `git add -A` to
-      // rescan and re-hash the whole worktree before every user turn.
-      const indexInfo = yield* fs.stat(indexPath);
-      yield* fs.copyFile(indexPath, tempIndexPath);
-      return indexInfo;
+  // Seed a fresh checkpoint index from the working index so the very first
+  // capture inherits Git's stat cache instead of re-hashing every tracked file.
+  const seedCheckpointIndex = (cwd: string, checkpointIndexPath: string) =>
+    Effect.gen(function* () {
+      const alreadySeeded = yield* fs
+        .exists(checkpointIndexPath)
+        .pipe(Effect.orElseSucceed(() => false));
+      if (alreadySeeded) {
+        return true;
+      }
+      const workingIndexPath = yield* resolveGitPath(cwd, "index");
+      if (workingIndexPath === null) {
+        return false;
+      }
+      const workingIndexExists = yield* fs
+        .exists(workingIndexPath)
+        .pipe(Effect.orElseSucceed(() => false));
+      if (!workingIndexExists) {
+        return false;
+      }
+      const workingIndexInfo = yield* fs.stat(workingIndexPath);
+      yield* fs.copyFile(workingIndexPath, checkpointIndexPath);
+      // Copying advances the file timestamp, and Git compares entry mtimes
+      // against the index timestamp to decide which cached-clean entries are
+      // "racily clean" and must be re-read. Restoring the source timestamp
+      // keeps same-timestamp rewrites in that re-read set.
+      if (workingIndexInfo.mtime !== undefined) {
+        yield* fs.utimes(
+          checkpointIndexPath,
+          workingIndexInfo.atime ?? workingIndexInfo.mtime,
+          workingIndexInfo.mtime,
+        );
+      }
+      return true;
     });
 
   const resolveCheckpointCommit = (
@@ -105,31 +159,83 @@ const makeCheckpointStore = Effect.gen(function* () {
       .execute({
         operation: "CheckpointStore.resolveCheckpointCommit",
         cwd,
-        args: ["rev-parse", "--verify", "--quiet", `${checkpointRef}^{commit}`],
-        allowNonZeroExit: true,
+        // `rev-parse --verify --quiet` reports "no such ref" as exit code 1,
+        // and a non-zero exit is expensive: the process spawner reacts to it by
+        // shelling out to `taskkill /pid <pid> /T /F`, which costs ~560ms on
+        // Windows even though the child has already exited and the sweep
+        // provably reaps nothing. This probe runs on every turn via the
+        // `skipIfExists` path, so it must not report "absent" through the exit
+        // code. `for-each-ref` exits 0 either way and simply prints nothing
+        // when the ref does not exist.
+        args: ["for-each-ref", "--format=%(refname)%09%(objectname)", checkpointRef],
       })
       .pipe(
         Effect.map((result) => {
-          if (result.code !== 0) {
-            return null;
+          // The argument is a pattern, so match the exact ref rather than
+          // trusting a single-line result. Git forbids a ref from being a path
+          // prefix of another, but matching explicitly keeps this correct
+          // without depending on that rule.
+          for (const line of result.stdout.split("\n")) {
+            const separator = line.indexOf("\t");
+            if (separator < 0) {
+              continue;
+            }
+            if (line.slice(0, separator) !== checkpointRef) {
+              continue;
+            }
+            const commit = line.slice(separator + 1).trim();
+            return commit.length > 0 ? commit : null;
           }
-          const commit = result.stdout.trim();
-          return commit.length > 0 ? commit : null;
+          return null;
         }),
       );
 
+  // This probe sits in front of every pre-turn checkpoint, so an uncached
+  // answer costs a process spawn on every turn.
+  //
+  // The affirmative is cached for the life of the process: a directory that is
+  // a Git worktree stays one.
+  //
+  // The negative needs a cache too, but a bounded one. Outside a repository
+  // `rev-parse` exits non-zero, and a non-zero exit makes the spawner shell out
+  // to `taskkill` (~560ms on Windows) — so a project with no Git would pay that
+  // on every single message. Caching it forever is wrong, because a project can
+  // still be `git init`-ed while the server runs; a short TTL keeps the repeated
+  // per-turn probe cheap while still noticing a new repository promptly.
+  const knownGitRepositories = new Set<string>();
+  const knownNonGitRepositoriesUntil = new Map<string, number>();
   const isGitRepository: CheckpointStoreShape["isGitRepository"] = (cwd) =>
-    git
-      .execute({
-        operation: "CheckpointStore.isGitRepository",
-        cwd,
-        args: ["rev-parse", "--is-inside-work-tree"],
-        allowNonZeroExit: true,
-      })
-      .pipe(
-        Effect.map((result) => result.code === 0 && result.stdout.trim() === "true"),
-        Effect.catch(() => Effect.succeed(false)),
-      );
+    Effect.suspend(() => {
+      const key = path.resolve(cwd);
+      if (knownGitRepositories.has(key)) {
+        return Effect.succeed(true);
+      }
+      const negativeUntil = knownNonGitRepositoriesUntil.get(key);
+      if (negativeUntil !== undefined && Date.now() < negativeUntil) {
+        return Effect.succeed(false);
+      }
+      return git
+        .execute({
+          operation: "CheckpointStore.isGitRepository",
+          cwd,
+          args: ["rev-parse", "--is-inside-work-tree"],
+          allowNonZeroExit: true,
+        })
+        .pipe(
+          Effect.map((result) => result.code === 0 && result.stdout.trim() === "true"),
+          Effect.catch(() => Effect.succeed(false)),
+          Effect.tap((inside) =>
+            Effect.sync(() => {
+              if (inside) {
+                knownNonGitRepositoriesUntil.delete(key);
+                knownGitRepositories.add(key);
+                return;
+              }
+              knownNonGitRepositoriesUntil.set(key, Date.now() + NON_GIT_REPOSITORY_CACHE_TTL_MS);
+            }),
+          ),
+        );
+    });
 
   const captureCheckpointOnce: CheckpointStoreShape["captureCheckpoint"] = (input) =>
     Effect.gen(function* () {
@@ -145,56 +251,55 @@ const makeCheckpointStore = Effect.gen(function* () {
         }
       }
 
-      yield* Effect.acquireUseRelease(
-        fs.makeTempDirectory({ prefix: "synara-fs-checkpoint-" }),
-        (tempDir) =>
+      const checkpointIndexPath = yield* resolveCheckpointIndexPath(input.cwd);
+      if (checkpointIndexPath === null) {
+        return yield* new GitCommandError({
+          operation,
+          command: "git rev-parse --git-path synara-checkpoint-index",
+          cwd: input.cwd,
+          detail: "Could not resolve the checkpoint index path for this repository.",
+        });
+      }
+
+      // The checkpoint index is shared by every ref in this repository, so two
+      // captures for different refs must not drive it at the same time.
+      const repoKey = path.resolve(input.cwd);
+      // Get-or-create must be atomic: two concurrent captures for the same
+      // repo (different refs) that both see `undefined` here would each mint
+      // their own semaphore, and the index would end up with no mutual
+      // exclusion at all. `Effect.sync` runs synchronously end-to-end (no
+      // `yield*` inside it), so no other fiber can observe the map between
+      // the `get` and the `set`.
+      const repoLock = yield* Effect.sync(() => {
+        const existing = checkpointIndexLocks.get(repoKey);
+        if (existing) {
+          return existing;
+        }
+        const created = Semaphore.makeUnsafe(1);
+        checkpointIndexLocks.set(repoKey, created);
+        return created;
+      });
+
+      yield* repoLock
+        .withPermits(1)(
           Effect.gen(function* () {
-            const tempIndexPath = path.join(tempDir, `index-${randomUUID()}`);
             const commitEnv: NodeJS.ProcessEnv = {
               ...process.env,
-              GIT_INDEX_FILE: tempIndexPath,
+              GIT_INDEX_FILE: checkpointIndexPath,
               GIT_AUTHOR_NAME: "Synara",
               GIT_AUTHOR_EMAIL: "synara@users.noreply.github.com",
               GIT_COMMITTER_NAME: "Synara",
               GIT_COMMITTER_EMAIL: "synara@users.noreply.github.com",
             };
 
-            const workingIndexInfo = yield* seedCheckpointIndex(input.cwd, tempIndexPath);
-            if (workingIndexInfo === null && (yield* hasHeadCommit(input.cwd))) {
+            const seeded = yield* seedCheckpointIndex(input.cwd, checkpointIndexPath);
+            if (!seeded && (yield* hasHeadCommit(input.cwd))) {
               yield* git.execute({
                 operation,
                 cwd: input.cwd,
                 args: ["read-tree", "HEAD"],
                 env: commitEnv,
               });
-            }
-            if (workingIndexInfo !== null) {
-              // A copied index can describe a rapid same-size rewrite as clean
-              // when its cached stat tuple still matches. Really-refresh makes
-              // Git verify those racily-clean entries and leaves changed paths
-              // for the following add to hash, without discarding the cache for
-              // the rest of a large workspace.
-              yield* git.execute({
-                operation,
-                cwd: input.cwd,
-                args: ["update-index", "--really-refresh"],
-                env: commitEnv,
-                allowNonZeroExit: true,
-              });
-
-              // Copying or refreshing the temporary index advances its file
-              // timestamp. Git uses that timestamp to decide whether an entry
-              // whose cached stat tuple still matches is "racily clean" and
-              // needs hashing. Restore the working index's original timestamp
-              // so rapid same-size rewrites remain newer than (or equal to) the
-              // index snapshot and `git add` verifies their contents.
-              if (workingIndexInfo.mtime !== undefined) {
-                yield* fs.utimes(
-                  tempIndexPath,
-                  workingIndexInfo.atime ?? workingIndexInfo.mtime,
-                  workingIndexInfo.mtime,
-                );
-              }
             }
 
             yield* git.execute({
@@ -242,20 +347,42 @@ const makeCheckpointStore = Effect.gen(function* () {
               cwd: input.cwd,
               args: ["update-ref", input.checkpointRef, commitOid],
             });
-          }),
-        (tempDir) => fs.remove(tempDir, { recursive: true }),
-      ).pipe(
-        Effect.catchTags({
-          PlatformError: (error) =>
-            Effect.fail(
-              new CheckpointInvariantError({
-                operation: "CheckpointStore.captureCheckpoint",
-                detail: "Failed to capture checkpoint.",
-                cause: error,
-              }),
+          }).pipe(
+            // A crashed or interrupted capture can leave the durable index (or
+            // Git's lock beside it) in a state the next capture cannot reuse.
+            // Discard both so the next turn re-seeds from the working index
+            // instead of failing forever. This must stay INSIDE the body
+            // handed to `withPermits`: the semaphore releases its permit as
+            // part of that body's own completion (its `onExit` finalizer),
+            // so an `onError` attached outside would run only after a
+            // sibling capture for a different ref on this same repo could
+            // already be mid-flight against the very index file being
+            // deleted here.
+            Effect.onError(() =>
+              Effect.all(
+                [
+                  // `force` so a capture that failed before either file existed
+                  // is not reported as a second, misleading failure.
+                  fs.remove(checkpointIndexPath, { force: true }).pipe(Effect.ignore),
+                  fs.remove(`${checkpointIndexPath}.lock`, { force: true }).pipe(Effect.ignore),
+                ],
+                { discard: true },
+              ),
             ),
-        }),
-      );
+          ),
+        )
+        .pipe(
+          Effect.catchTags({
+            PlatformError: (error) =>
+              Effect.fail(
+                new CheckpointInvariantError({
+                  operation: "CheckpointStore.captureCheckpoint",
+                  detail: "Failed to capture checkpoint.",
+                  cause: error,
+                }),
+              ),
+          }),
+        );
     });
 
   const captureCheckpoint: CheckpointStoreShape["captureCheckpoint"] = (input) =>
