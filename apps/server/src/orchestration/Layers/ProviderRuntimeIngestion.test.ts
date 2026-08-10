@@ -7107,7 +7107,8 @@ describe("ProviderRuntimeIngestion", () => {
     });
     await waitForThread(
       harness.engine,
-      (entry) => entry.session?.status === "running" && entry.session.activeTurnId === "turn-child-aborted",
+      (entry) =>
+        entry.session?.status === "running" && entry.session.activeTurnId === "turn-child-aborted",
       2000,
       abortedChildThreadId,
     );
@@ -7129,9 +7130,7 @@ describe("ProviderRuntimeIngestion", () => {
     });
     const abortedChildThread = await waitForThread(
       harness.engine,
-      (entry) =>
-        entry.session?.status === "interrupted" &&
-        entry.session.activeTurnId === null,
+      (entry) => entry.session?.status === "interrupted" && entry.session.activeTurnId === null,
       2000,
       abortedChildThreadId,
     );

@@ -342,8 +342,7 @@ function buildSubagentAgentState(
   const requestedModel = firstStringValue(object, ["requestedModel", "requested_model"]);
   const model = directModel ?? requestedModel;
   const effort = firstStringValue(object, ["effort", "reasoningEffort", "reasoning_effort"]);
-  const background =
-    typeof object?.background === "boolean" ? object.background : undefined;
+  const background = typeof object?.background === "boolean" ? object.background : undefined;
   const prompt = firstStringValue(object, ["prompt", "task", "message"]);
   const status = firstStringValue(object, ["status", "state"]);
   const message = firstStringValue(object, ["summary", "message", "latestUpdate", "latest_update"]);

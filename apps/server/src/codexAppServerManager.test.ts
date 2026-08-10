@@ -362,7 +362,7 @@ function createCollabNotificationHarness() {
       threadId: asThreadId("thread_1"),
       runtimeMode: "full-access",
       model: "gpt-5.3-codex",
-      activeTurnId: "turn_parent",
+      activeTurnId: "turn_parent" as string | undefined,
       resumeCursor: { threadId: "provider_parent" },
       createdAt: "2026-02-10T00:00:00.000Z",
       updatedAt: "2026-02-10T00:00:00.000Z",
@@ -3440,7 +3440,9 @@ describe("collab child conversation routing", () => {
         },
       });
 
-      expect(context.collabReceiverParents.get("child_provider_background")).toBe("provider_parent");
+      expect(context.collabReceiverParents.get("child_provider_background")).toBe(
+        "provider_parent",
+      );
       expect(context.collabReceiverTurns.has("child_provider_background")).toBe(false);
       emitEvent.mockClear();
       updateSession.mockClear();
@@ -3904,55 +3906,55 @@ describe("collab child conversation routing", () => {
         turn: { id: "turn_child_1" },
       },
     },
-  ])("forwards mapped child $method lifecycle notifications without mutating the parent session state", ({
-    method,
-    params,
-  }) => {
-    const { manager, context, emitEvent, updateSession } = createCollabNotificationHarness();
+  ])(
+    "forwards mapped child $method lifecycle notifications without mutating the parent session state",
+    ({ method, params }) => {
+      const { manager, context, emitEvent, updateSession } = createCollabNotificationHarness();
 
-    handleServerNotificationForTest(manager, context, {
-      method: "item/completed",
-      params: {
-        item: {
-          type: "collabAgentToolCall",
-          id: "call_collab_1",
-          receiverThreadIds: ["child_provider_1"],
+      handleServerNotificationForTest(manager, context, {
+        method: "item/completed",
+        params: {
+          item: {
+            type: "collabAgentToolCall",
+            id: "call_collab_1",
+            receiverThreadIds: ["child_provider_1"],
+          },
+          threadId: "provider_parent",
+          turnId: "turn_parent",
         },
-        threadId: "provider_parent",
-        turnId: "turn_parent",
-      },
-    });
-    emitEvent.mockClear();
-    updateSession.mockClear();
+      });
+      emitEvent.mockClear();
+      updateSession.mockClear();
 
-    handleServerNotificationForTest(manager, context, {
-      method,
-      params,
-    });
-
-    expect(emitEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
+      handleServerNotificationForTest(manager, context, {
         method,
-        turnId: "turn_child_1",
-        providerThreadId: "child_provider_1",
-        providerParentThreadId: "provider_parent",
-        parentTurnId: "turn_parent",
-      }),
-    );
-    if (method === "turn/completed") {
+        params,
+      });
+
       expect(emitEvent).toHaveBeenCalledWith(
         expect.objectContaining({
-          payload: expect.objectContaining({
-            turn: expect.objectContaining({
-              status: "failed",
-              error: { message: "Child turn failed" },
-            }),
-          }),
+          method,
+          turnId: "turn_child_1",
+          providerThreadId: "child_provider_1",
+          providerParentThreadId: "provider_parent",
+          parentTurnId: "turn_parent",
         }),
       );
-    }
-    expect(updateSession).not.toHaveBeenCalled();
-  });
+      if (method === "turn/completed") {
+        expect(emitEvent).toHaveBeenCalledWith(
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              turn: expect.objectContaining({
+                status: "failed",
+                error: { message: "Child turn failed" },
+              }),
+            }),
+          }),
+        );
+      }
+      expect(updateSession).not.toHaveBeenCalled();
+    },
+  );
 
   it("forwards unmapped child lifecycle notifications without inventing a parent turn", () => {
     const { manager, context, emitEvent, updateSession } = createCollabNotificationHarness();

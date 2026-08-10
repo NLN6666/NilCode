@@ -40,6 +40,7 @@
 ### Task 1: Normalize truthful Codex agent metadata
 
 **Files:**
+
 - Modify: `packages/shared/src/subagents.ts`
 - Test: `packages/shared/src/subagents.test.ts`
 - Modify: `apps/web/src/workLog.ts`
@@ -47,6 +48,7 @@
 - Modify: `findings-codex-agent-view.md`
 
 **Interfaces:**
+
 - Consumes: `decodeSubagentReceiverAgents`, `decodeSubagentAgentStates`, `extractSubagentIdentityHints`, and `buildSubagentIdentityDirectory`.
 - Produces: `ParsedSubagentAgentState` with optional `effort`, `background`, and `modelIsRequestedHint`; UI work-log entries that expose only confirmed models while retaining effort/background metadata.
 
@@ -55,20 +57,22 @@
 Add test cases that pass both camelCase and snake_case Codex agent-state shapes. The assertions must distinguish actual and requested models:
 
 ```ts
-expect(decodeSubagentAgentStates({
-  agentStates: {
-    "child-1": {
-      model: "gpt-5.6-codex",
-      requestedModel: "gpt-5.5-codex",
-      reasoningEffort: "high",
-      background: true,
+expect(
+  decodeSubagentAgentStates({
+    agentStates: {
+      "child-1": {
+        model: "gpt-5.6-codex",
+        requestedModel: "gpt-5.5-codex",
+        reasoningEffort: "high",
+        background: true,
+      },
+      "child-2": {
+        requested_model: "gpt-5.5-codex",
+        reasoning_effort: "medium",
+      },
     },
-    "child-2": {
-      requested_model: "gpt-5.5-codex",
-      reasoning_effort: "medium",
-    },
-  },
-})).toMatchObject({
+  }),
+).toMatchObject({
   "child-1": {
     model: "gpt-5.6-codex",
     effort: "high",
@@ -111,12 +115,14 @@ In `buildSubagentAgentState`, parse `model`/`modelName`/`model_name` separately 
 In `apps/web/src/workLog.test.ts`, construct `collab_agent_tool_call` activities for these cases:
 
 ```ts
-receiverAgents: [{
-  threadId: "child-requested",
-  requestedModel: "gpt-5.5-codex",
-  reasoningEffort: "high",
-  background: true,
-}]
+receiverAgents: [
+  {
+    threadId: "child-requested",
+    requestedModel: "gpt-5.5-codex",
+    reasoningEffort: "high",
+    background: true,
+  },
+];
 ```
 
 Assert the resulting subagent has `effort: "high"` and `background: true` but no `model`. Add a second activity with direct `model: "gpt-5.6-codex"`, followed by a sparse `agentStates` status update, and assert the merged entry retains the actual model, effort, and background while gaining the terminal status.
@@ -160,11 +166,13 @@ git commit -m "fix: normalize Codex agent metadata"
 ### Task 2: Forward child turn lifecycle without mutating the parent session
 
 **Files:**
+
 - Modify: `apps/server/src/codexAppServerManager.ts`
 - Test: `apps/server/src/codexAppServerManager.test.ts`
 - Modify: `findings-codex-agent-view.md`
 
 **Interfaces:**
+
 - Consumes: `resolveCollaborationRoute`, `handleServerNotification`, and provider refs emitted by `CodexAppServerManager`.
 - Produces: child `turn/started`, `turn/completed`, and `turn/aborted` provider events carrying child/parent routing refs while retaining the existing early returns that protect parent session state.
 
@@ -177,7 +185,7 @@ expect.objectContaining({
   providerThreadId: "child_provider_1",
   providerParentThreadId: "provider_parent",
   parentTurnId: "turn_parent",
-})
+});
 ```
 
 Assert `turnId` remains the child turn ID, failure details remain in `payload`, and `updateSession` is never called. Keep explicit coverage that parent lifecycle notifications still update the parent session.
@@ -197,9 +205,9 @@ Expected: the new child turn assertions fail because `shouldSuppressChildConvers
 Remove only these methods from `shouldSuppressChildConversationNotification`:
 
 ```ts
-"turn/started"
-"turn/completed"
-"turn/aborted"
+"turn/started";
+"turn/completed";
+"turn/aborted";
 ```
 
 Keep the child checks inside the later `turn/started`, `turn/completed`, and `turn/aborted` handlers. This ordering intentionally emits the provider event first, then returns before `updateSession`, so ingestion can update the materialized child thread without changing the parent Codex session.
@@ -232,12 +240,14 @@ git commit -m "fix: route Codex child turn lifecycle"
 ### Task 3: Prove full Codex child conversation and dock behavior end to end
 
 **Files:**
+
 - Test: `apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.test.ts`
 - Test: `apps/web/src/components/chat/ComposerSubagentStrip.logic.test.ts`
 - Test: `apps/web/src/components/chat/SubagentDetailSections.browser.tsx`
 - Modify: `findings-codex-agent-view.md`
 
 **Interfaces:**
+
 - Consumes: provider events from Task 2, normalized metadata from Task 1, `deriveComposerSubagentStripItems`, and `onOpenSubagentThread`.
 - Produces: regression proof that a Codex agent becomes one child thread, receives complete timeline data and terminal state, renders correct strip metadata, and opens via the right-dock callback.
 
@@ -246,14 +256,14 @@ git commit -m "fix: route Codex child turn lifecycle"
 Starting from the existing `creates and routes subagent runtime events into child threads` test, emit one mapped child sequence with stable provider refs:
 
 ```ts
-turn.started
-content.delta                  // assistant_text
-item.completed                 // assistant_message
-item.started / item.completed  // command_execution
-content.delta                  // reasoning summary stream
-item.completed                 // reasoning summary item
-turn.tasks.updated             // mapped from Codex turn/plan/updated
-turn.completed                 // completed
+turn.started;
+content.delta; // assistant_text
+item.completed; // assistant_message
+item.started / item.completed; // command_execution
+content.delta; // reasoning summary stream
+item.completed; // reasoning summary item
+turn.tasks.updated; // mapped from Codex turn/plan/updated
+turn.completed; // completed
 ```
 
 Assert there is exactly one local child ID (`subagent:thread-1:child-provider-1`), its session becomes `ready` with no active turn, and its messages/activities/proposed plan contain the child data. Assert the parent thread does not receive the child message, child lifecycle activity, child command activity, or child plan.
@@ -324,11 +334,13 @@ If `SubagentDetailSections.browser.tsx` did not change, omit it from `git add` r
 ### Task 4: Final review and completion gate
 
 **Files:**
+
 - Review: all commits produced by Tasks 1-3
 - Modify if required by review: only files already named in Tasks 1-3
 - Modify: `findings-codex-agent-view.md`
 
 **Interfaces:**
+
 - Consumes: the complete feature diff and focused-test evidence.
 - Produces: an independent code-review verdict, resolved important findings, and an explicit list of any checks still awaiting authorization.
 

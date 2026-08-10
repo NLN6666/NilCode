@@ -3500,12 +3500,15 @@ piCompaction.layer("ProviderServiceLive Pi compaction", (it) => {
 
       yield* waitUntilEffect(
         () =>
-          directory.getBinding(threadId).pipe(
-            Effect.map((binding) =>
-              asRuntimePayloadRecord(Option.getOrUndefined(binding)?.runtimePayload).lastRuntimeEvent ===
-              "thread.state.changed",
+          directory
+            .getBinding(threadId)
+            .pipe(
+              Effect.map(
+                (binding) =>
+                  asRuntimePayloadRecord(Option.getOrUndefined(binding)?.runtimePayload)
+                    .lastRuntimeEvent === "thread.state.changed",
+              ),
             ),
-          ),
         500,
         20,
         "Pi compacted runtime binding after compaction race",
@@ -3585,7 +3588,9 @@ piCompaction.layer("ProviderServiceLive Pi compaction", (it) => {
       assert.equal(runtimePayload.activeTurnId, turn.turnId);
       yield* sleep(150);
       assert.equal(
-        piCompaction.pi.stopSession.mock.calls.some(([stoppedThreadId]) => stoppedThreadId === threadId),
+        piCompaction.pi.stopSession.mock.calls.some(
+          ([stoppedThreadId]) => stoppedThreadId === threadId,
+        ),
         false,
       );
     }).pipe(
@@ -3611,7 +3616,11 @@ idleCleanup.layer("ProviderServiceLive idle cleanup", (it) => {
         threadId,
         runtimeMode: "full-access",
       });
-      const turn = yield* provider.sendTurn({ threadId, input: "compact this turn", attachments: [] });
+      const turn = yield* provider.sendTurn({
+        threadId,
+        input: "compact this turn",
+        attachments: [],
+      });
       idleCleanup.codex.stopSession.mockClear();
 
       yield* provider.compactThread({ threadId });

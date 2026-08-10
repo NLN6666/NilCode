@@ -63,3 +63,9 @@ Section 10 的 BLOCKED 结论来自不完整的测试夹具，而不是生产路
 - `ProviderService.test.ts`: 85/85 passed，覆盖 Codex compact acknowledgement、真实 compacted lifecycle、Pi 同步 compact 与两条并发交错回归。
 
 `bun fmt`、`bun lint` 与 `bun typecheck` 仍等待用户明确授权，当前不能据此宣称完成全部仓库门禁。
+
+## 14. 最终重型门禁
+
+用户明确授权后执行 `bun fmt && bun lint && bun typecheck`。首轮 typecheck 发现本功能新增 manager 测试夹具将 `activeTurnId` 推断为必需 `string`，随后赋 `undefined` 触发 TS2322。将夹具字段显式标注为 `string | undefined` 后，包级 server typecheck 通过，独立代码审查结论为 APPROVED。
+
+再次完整执行重型门禁：`bun fmt` 通过；`bun lint` 为 0 errors、432 个既有 warnings；全部 7 个 workspace 的 `bun typecheck` 通过。格式化产生的功能外差异未纳入提交，根 `findings.md` 的既有未提交内容保持原样。

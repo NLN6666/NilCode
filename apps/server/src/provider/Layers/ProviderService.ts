@@ -599,8 +599,8 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           Effect.flatMap(() => effect),
           Effect.onExit((exit) =>
             Exit.isSuccess(exit)
-              ? (scheduleIdleStopOnSuccess === true ||
-                  (typeof scheduleIdleStopOnSuccess === "function" && scheduleIdleStopOnSuccess()))
+              ? scheduleIdleStopOnSuccess === true ||
+                (typeof scheduleIdleStopOnSuccess === "function" && scheduleIdleStopOnSuccess())
                 ? Effect.sync(() => scheduleRuntimeIdleStop(threadId))
                 : Effect.void
               : displacedIdleStop
@@ -2710,7 +2710,8 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
                   binding.status !== bindingBeforeCompaction.status ||
                   currentActiveTurnId !== previousActiveTurnId ||
                   previousActiveTurnId !== undefined ||
-                  currentRuntimePayload.lastRuntimeEvent !== previousRuntimePayload.lastRuntimeEvent ||
+                  currentRuntimePayload.lastRuntimeEvent !==
+                    previousRuntimePayload.lastRuntimeEvent ||
                   currentRuntimePayload.lastRuntimeEventAt !==
                     previousRuntimePayload.lastRuntimeEventAt ||
                   hasNewDispatch
@@ -2718,20 +2719,22 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
                   return;
                 }
 
-              yield* directory.upsert({
-                threadId: input.threadId,
-                provider: binding.provider,
-                ...(binding.adapterKey !== undefined ? { adapterKey: binding.adapterKey } : {}),
-                ...(binding.runtimeMode !== undefined ? { runtimeMode: binding.runtimeMode } : {}),
-                status: "stopped",
-                resumeCursor: binding.resumeCursor,
-                runtimePayload: {
-                  ...runtimePayloadRecord(binding.runtimePayload),
-                  activeTurnId: null,
-                  lastRuntimeEvent: "provider.compactThread",
-                  lastRuntimeEventAt: new Date().toISOString(),
-                },
-              });
+                yield* directory.upsert({
+                  threadId: input.threadId,
+                  provider: binding.provider,
+                  ...(binding.adapterKey !== undefined ? { adapterKey: binding.adapterKey } : {}),
+                  ...(binding.runtimeMode !== undefined
+                    ? { runtimeMode: binding.runtimeMode }
+                    : {}),
+                  status: "stopped",
+                  resumeCursor: binding.resumeCursor,
+                  runtimePayload: {
+                    ...runtimePayloadRecord(binding.runtimePayload),
+                    activeTurnId: null,
+                    lastRuntimeEvent: "provider.compactThread",
+                    lastRuntimeEventAt: new Date().toISOString(),
+                  },
+                });
                 scheduleIdleStopOnSuccess = true;
               }),
             );

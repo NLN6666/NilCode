@@ -1745,11 +1745,9 @@ function extractCollabSubagents(
             item.agentType ??
             item.agent_type,
         ) ?? undefined,
-      model:
-        asTrimmedString(
-          item.model ?? item.modelName ?? item.model_name,
-        ) ?? undefined,
-      effort: asTrimmedString(item.effort ?? item.reasoningEffort ?? item.reasoning_effort) ?? undefined,
+      model: asTrimmedString(item.model ?? item.modelName ?? item.model_name) ?? undefined,
+      effort:
+        asTrimmedString(item.effort ?? item.reasoningEffort ?? item.reasoning_effort) ?? undefined,
       background: typeof item.background === "boolean" ? item.background : undefined,
       prompt: asTrimmedString(item.prompt ?? item.task ?? item.message) ?? undefined,
     },

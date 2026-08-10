@@ -121,3 +121,7 @@ The only runner output was Node's existing experimental SQLite warning. `bun fmt
 After the concurrency fix received an independent APPROVED review, the final focused pass reran `ProviderService.test.ts`: 85/85 tests passed. The combined Codex manager and provider-runtime-ingestion run passed 228 tests, skipped 2, and retained the single unrelated PATH-resolved Codex CLI version-gate baseline failure documented above. Shared metadata, web presentation/transcript, and Chromium dock tests also passed (30/30, 210/210, and 6/6 respectively).
 
 The heavyweight `bun fmt`, `bun lint`, and `bun typecheck` gate remains pending explicit user authorization.
+
+## Phase 8: heavyweight workspace gate
+
+After explicit authorization, the final rerun of `bun fmt && bun lint && bun typecheck` completed successfully. Lint reported 0 errors and 432 pre-existing warnings; typecheck completed all 7 workspaces successfully. A first-pass TS2322 in the Codex manager test harness was fixed by explicitly typing the optional active turn ID and independently reviewed before the successful rerun.
