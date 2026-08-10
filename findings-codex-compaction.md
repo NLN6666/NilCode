@@ -88,3 +88,30 @@ bun run --cwd apps/server test -- src/provider/Layers/ProviderService.test.ts
 ```
 
 The test runner emitted Node's existing experimental SQLite warning only. `bun fmt`, `bun lint`, and `bun typecheck` were not run as explicitly prohibited by the task instructions.
+
+## Phase 6: synchronous Pi binding-write race
+
+### RED
+
+The Pi-specific completion path read and wrote the binding outside `withBindingWriteLock`. Two controlled interleavings reproduced the resulting stale write:
+
+1. A real `thread.state.changed(compacted)` binding update landing while synchronous Pi compaction held its old snapshot was overwritten with `provider.compactThread`.
+2. A new `sendTurn` dispatched immediately after synchronous compact could persist `running` and its new `activeTurnId`, then be overwritten to `stopped`/`null`; the success callback also scheduled idle cleanup for that live thread.
+
+The first focused run initially exposed two test-harness errors (a restoration closure was scoped outside the Effect generator, then the delayed `getBinding` wrapper discarded its Option). Both were corrected before evaluating behavior. The final RED run failed for the intended behavior: it timed out waiting for the compacted runtime binding and received `"stopped"` where the immediate next turn required `"running"`.
+
+### GREEN
+
+Synchronous compact now captures its pre-adapter binding, then enters `withBindingWriteLock` for its final re-read and write. It declines to synthesize a terminal binding or idle cleanup when provider/lifecycle/status/runtime-event/active-turn ownership changed, an active turn exists, or a turn dispatch is in flight or outstanding. The adapter invocation remains outside that lock, so it cannot wait on the runtime-event handler; a delayed runtime event simply acquires the lock after compact returns.
+
+Verification:
+
+```sh
+bun run --cwd apps/server test -- src/provider/Layers/ProviderService.test.ts -t "does not let synchronous Pi compaction overwrite a compacted runtime binding|keeps an immediately dispatched Pi turn running after compaction|persists synchronous Pi compaction and schedules idle cleanup|keeps an active turn bound after compact start acknowledgement|schedules idle cleanup only after an inactive compacted state event"
+# PASS: 5 tests
+
+bun run --cwd apps/server test -- src/provider/Layers/ProviderService.test.ts
+# PASS: 85 tests
+```
+
+The only runner output was Node's existing experimental SQLite warning. `bun fmt`, `bun lint`, and `bun typecheck` were intentionally not run.

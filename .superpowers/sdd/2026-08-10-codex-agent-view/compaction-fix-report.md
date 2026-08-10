@@ -76,3 +76,21 @@ bun run --cwd apps/server test -- src/provider/Layers/ProviderService.test.ts
 ```
 
 `bun fmt`, `bun lint`, and `bun typecheck` were intentionally not run per the task instruction. The only output warning was Node's existing experimental SQLite warning.
+
+## Important review follow-up: serialize synchronous completion
+
+The prior Pi regression restored synchronous completion semantics but left its `getBinding`/`upsert` terminal transition outside the per-thread binding lock. A compacted runtime event or immediately dispatched turn could therefore win briefly and then be overwritten by Pi's old snapshot.
+
+`compactThread` now captures the expected binding before invoking the synchronous adapter, then makes its final decision inside `withBindingWriteLock`. It re-reads the binding and refuses to clear `activeTurnId`, write `stopped`, or schedule idle cleanup if the provider/lifecycle/status/runtime event changed, an active turn exists, or a dispatch is in flight/outstanding. The adapter call remains outside the lock, avoiding a wait cycle with runtime event handling. Codex continues to wait exclusively for its asynchronous lifecycle event.
+
+TDD evidence:
+
+```sh
+bun run --cwd apps/server test -- src/provider/Layers/ProviderService.test.ts -t "does not let synchronous Pi compaction overwrite a compacted runtime binding|keeps an immediately dispatched Pi turn running after compaction|persists synchronous Pi compaction and schedules idle cleanup|keeps an active turn bound after compact start acknowledgement|schedules idle cleanup only after an inactive compacted state event"
+# PASS: 5 tests
+
+bun run --cwd apps/server test -- src/provider/Layers/ProviderService.test.ts
+# PASS: 85 tests
+```
+
+`bun fmt`, `bun lint`, and `bun typecheck` were not run as directed. Node emitted only its existing experimental SQLite warning.

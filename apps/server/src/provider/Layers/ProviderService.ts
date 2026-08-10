@@ -2656,7 +2656,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           schema: ProviderCompactThreadInput,
           payload: rawInput,
         });
-        let completesSynchronously = false;
+        let scheduleIdleStopOnSuccess = false;
         yield* runIdleSensitiveProviderWork(
           input.threadId,
           Effect.gen(function* () {
@@ -2671,13 +2671,53 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
                 `Context compaction is unavailable for provider '${routed.adapter.provider}'.`,
               );
             }
+            const bindingBeforeCompaction = Option.getOrUndefined(
+              yield* directory.getBinding(input.threadId),
+            );
             yield* routed.adapter.compactThread(input.threadId);
-            completesSynchronously = routed.adapter.provider !== "codex";
-            if (!completesSynchronously) {
+            if (routed.adapter.provider === "codex" || !bindingBeforeCompaction) {
               return;
             }
-            const binding = Option.getOrUndefined(yield* directory.getBinding(input.threadId));
-            if (binding) {
+            yield* withBindingWriteLock(
+              input.threadId,
+              Effect.gen(function* () {
+                // Synchronous adapters finish compactThread before returning, but
+                // their runtime events and a following turn can still race its
+                // terminal binding update. Re-read under the same lock used by
+                // runtime events and turn persistence so stale compact snapshots
+                // cannot clear newer lifecycle or dispatch ownership.
+                const binding = Option.getOrUndefined(yield* directory.getBinding(input.threadId));
+                const previousRuntimePayload = runtimePayloadRecord(
+                  bindingBeforeCompaction.runtimePayload,
+                );
+                const currentRuntimePayload = runtimePayloadRecord(binding?.runtimePayload);
+                const dispatchState = dispatchStateByThread.get(input.threadId);
+                const hasNewDispatch =
+                  dispatchState !== undefined &&
+                  (dispatchState.inFlightGenerations.size > 0 ||
+                    dispatchState.outstandingTurnIds.size > 0);
+                const previousActiveTurnId = runtimeActiveTurnId(
+                  bindingBeforeCompaction.runtimePayload,
+                );
+                const currentActiveTurnId = runtimeActiveTurnId(binding?.runtimePayload);
+
+                if (
+                  !binding ||
+                  binding.provider !== routed.adapter.provider ||
+                  binding.provider !== bindingBeforeCompaction.provider ||
+                  binding.lifecycleGeneration !== routed.lifecycleGeneration ||
+                  binding.lifecycleGeneration !== bindingBeforeCompaction.lifecycleGeneration ||
+                  binding.status !== bindingBeforeCompaction.status ||
+                  currentActiveTurnId !== previousActiveTurnId ||
+                  previousActiveTurnId !== undefined ||
+                  currentRuntimePayload.lastRuntimeEvent !== previousRuntimePayload.lastRuntimeEvent ||
+                  currentRuntimePayload.lastRuntimeEventAt !==
+                    previousRuntimePayload.lastRuntimeEventAt ||
+                  hasNewDispatch
+                ) {
+                  return;
+                }
+
               yield* directory.upsert({
                 threadId: input.threadId,
                 provider: binding.provider,
@@ -2692,9 +2732,11 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
                   lastRuntimeEventAt: new Date().toISOString(),
                 },
               });
-            }
+                scheduleIdleStopOnSuccess = true;
+              }),
+            );
           }),
-          { scheduleIdleStopOnSuccess: () => completesSynchronously },
+          { scheduleIdleStopOnSuccess: () => scheduleIdleStopOnSuccess },
         );
       });
 

@@ -3444,6 +3444,158 @@ piCompaction.layer("ProviderServiceLive Pi compaction", (it) => {
       assert.deepEqual(piCompaction.pi.stopSession.mock.calls[0]?.[0], threadId);
     }),
   );
+
+  it.effect("does not let synchronous Pi compaction overwrite a compacted runtime binding", () => {
+    let restoreDirectoryGetBinding: (() => void) | undefined;
+    return Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const directory = yield* ProviderSessionDirectory;
+      const threadId = asThreadId("thread-pi-compaction-runtime-race");
+      const compactSnapshotRead = yield* Deferred.make<void>();
+      const releaseCompactSnapshot = yield* Deferred.make<void>();
+      const originalGetBinding = directory.getBinding;
+      let blockNextCompactBindingRead = false;
+
+      yield* provider.startSession(threadId, {
+        provider: "pi",
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "approval-required",
+      });
+      yield* piCompaction.pi.waitForRuntimeSubscribers();
+      piCompaction.pi.compactThread.mockImplementationOnce(() =>
+        Effect.sync(() => {
+          blockNextCompactBindingRead = true;
+        }),
+      );
+      Object.assign(directory, {
+        getBinding: (candidateThreadId: ThreadId) => {
+          if (!blockNextCompactBindingRead || candidateThreadId !== threadId) {
+            return originalGetBinding(candidateThreadId);
+          }
+          blockNextCompactBindingRead = false;
+          return originalGetBinding(candidateThreadId).pipe(
+            Effect.tap(() => Deferred.succeed(compactSnapshotRead, undefined)),
+            Effect.tap(() => Deferred.await(releaseCompactSnapshot)),
+          );
+        },
+      });
+      restoreDirectoryGetBinding = () => {
+        Object.assign(directory, { getBinding: originalGetBinding });
+      };
+
+      const compact = yield* provider.compactThread({ threadId }).pipe(Effect.forkChild);
+      yield* Deferred.await(compactSnapshotRead);
+      piCompaction.pi.emit({
+        type: "thread.state.changed",
+        eventId: asEventId("runtime-pi-compaction-race"),
+        provider: "pi",
+        createdAt: "2026-08-10T00:10:00.000Z",
+        threadId,
+        payload: { state: "compacted" },
+      });
+      yield* sleep(50);
+      yield* Deferred.succeed(releaseCompactSnapshot, undefined);
+      yield* Fiber.join(compact);
+
+      yield* waitUntilEffect(
+        () =>
+          directory.getBinding(threadId).pipe(
+            Effect.map((binding) =>
+              asRuntimePayloadRecord(Option.getOrUndefined(binding)?.runtimePayload).lastRuntimeEvent ===
+              "thread.state.changed",
+            ),
+          ),
+        500,
+        20,
+        "Pi compacted runtime binding after compaction race",
+      );
+      const binding = Option.getOrUndefined(yield* directory.getBinding(threadId));
+      assert.equal(binding?.status, "stopped");
+      assert.equal(
+        asRuntimePayloadRecord(binding?.runtimePayload).lastRuntimeEvent,
+        "thread.state.changed",
+      );
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          restoreDirectoryGetBinding?.();
+        }),
+      ),
+    );
+  });
+
+  it.effect("keeps an immediately dispatched Pi turn running after compaction", () => {
+    let restoreDirectoryGetBinding: (() => void) | undefined;
+    return Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const directory = yield* ProviderSessionDirectory;
+      const threadId = asThreadId("thread-pi-compaction-next-turn-race");
+      const compactSnapshotRead = yield* Deferred.make<void>();
+      const releaseCompactSnapshot = yield* Deferred.make<void>();
+      const originalGetBinding = directory.getBinding;
+      let blockNextCompactBindingRead = false;
+
+      yield* provider.startSession(threadId, {
+        provider: "pi",
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "approval-required",
+      });
+      piCompaction.pi.stopSession.mockClear();
+      piCompaction.pi.compactThread.mockImplementationOnce(() =>
+        Effect.sync(() => {
+          blockNextCompactBindingRead = true;
+        }),
+      );
+      Object.assign(directory, {
+        getBinding: (candidateThreadId: ThreadId) => {
+          if (!blockNextCompactBindingRead || candidateThreadId !== threadId) {
+            return originalGetBinding(candidateThreadId);
+          }
+          blockNextCompactBindingRead = false;
+          return originalGetBinding(candidateThreadId).pipe(
+            Effect.tap(() => Deferred.succeed(compactSnapshotRead, undefined)),
+            Effect.tap(() => Deferred.await(releaseCompactSnapshot)),
+          );
+        },
+      });
+      restoreDirectoryGetBinding = () => {
+        Object.assign(directory, { getBinding: originalGetBinding });
+      };
+
+      const compact = yield* provider.compactThread({ threadId }).pipe(Effect.forkChild);
+      yield* Deferred.await(compactSnapshotRead);
+      const nextTurn = yield* provider
+        .sendTurn({ threadId, input: "continue after compact", attachments: [] })
+        .pipe(Effect.forkChild);
+      yield* waitUntil(
+        () => piCompaction.pi.sendTurn.mock.calls.length > 0,
+        500,
+        20,
+        "Pi turn dispatch while compaction is paused",
+      );
+      yield* Deferred.succeed(releaseCompactSnapshot, undefined);
+      yield* Fiber.join(compact);
+      const turn = yield* Fiber.join(nextTurn);
+
+      const binding = Option.getOrUndefined(yield* directory.getBinding(threadId));
+      const runtimePayload = asRuntimePayloadRecord(binding?.runtimePayload);
+      assert.equal(binding?.status, "running");
+      assert.equal(runtimePayload.activeTurnId, turn.turnId);
+      yield* sleep(150);
+      assert.equal(
+        piCompaction.pi.stopSession.mock.calls.some(([stoppedThreadId]) => stoppedThreadId === threadId),
+        false,
+      );
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          restoreDirectoryGetBinding?.();
+        }),
+      ),
+    );
+  });
 });
 
 const idleCleanup = makeProviderServiceLayer({ runtimeIdleStopMs: 100 });
