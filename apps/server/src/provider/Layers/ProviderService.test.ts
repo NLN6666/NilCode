@@ -2810,6 +2810,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         input: "hello",
         attachments: [],
       });
+      yield* routing.codex.waitForRuntimeSubscribers();
 
       routing.codex.emit({
         type: "thread.state.changed",
@@ -2819,7 +2820,21 @@ routing.layer("ProviderServiceLive routing", (it) => {
         threadId: session.threadId,
         payload: { state: "compacted" },
       });
-      yield* sleep(50);
+      yield* waitUntilEffect(
+        () =>
+          runtimeRepository.getByThreadId({ threadId: session.threadId }).pipe(
+            Effect.map((runtime) => {
+              if (Option.isNone(runtime)) return false;
+              return (
+                asRuntimePayloadRecord(runtime.value.runtimePayload).lastRuntimeEvent ===
+                "thread.state.changed"
+              );
+            }),
+          ),
+        500,
+        20,
+        "compacted runtime state persistence",
+      );
 
       const runtime = yield* runtimeRepository.getByThreadId({
         threadId: session.threadId,
@@ -3398,6 +3413,75 @@ piInteractionRouting.layer("ProviderServiceLive Pi interaction generation", (it)
 
 const idleCleanup = makeProviderServiceLayer({ runtimeIdleStopMs: 100 });
 idleCleanup.layer("ProviderServiceLive idle cleanup", (it) => {
+  it.effect("keeps an active turn bound after compact start acknowledgement", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const directory = yield* ProviderSessionDirectory;
+      const threadId = asThreadId("thread-idle-compact-start-active");
+
+      yield* provider.startSession(threadId, {
+        provider: "codex",
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const turn = yield* provider.sendTurn({ threadId, input: "compact this turn", attachments: [] });
+      idleCleanup.codex.stopSession.mockClear();
+
+      yield* provider.compactThread({ threadId });
+
+      const binding = Option.getOrUndefined(yield* directory.getBinding(threadId));
+      const runtimePayload = asRuntimePayloadRecord(binding?.runtimePayload);
+      assert.equal(binding?.status, "running");
+      assert.equal(runtimePayload.activeTurnId, turn.turnId);
+
+      yield* sleep(150);
+      assert.equal(idleCleanup.codex.stopSession.mock.calls.length, 0);
+
+      yield* provider.stopSession({ threadId });
+    }),
+  );
+
+  it.effect("schedules idle cleanup only after an inactive compacted state event", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const directory = yield* ProviderSessionDirectory;
+      const threadId = asThreadId("thread-idle-compact-start-inactive");
+
+      yield* provider.startSession(threadId, {
+        provider: "codex",
+        threadId,
+        runtimeMode: "full-access",
+      });
+      idleCleanup.codex.stopSession.mockClear();
+      yield* idleCleanup.codex.waitForRuntimeSubscribers();
+
+      yield* provider.compactThread({ threadId });
+      yield* sleep(150);
+
+      const beforeCompacted = Option.getOrUndefined(yield* directory.getBinding(threadId));
+      assert.equal(beforeCompacted?.status, "running");
+      assert.equal(asRuntimePayloadRecord(beforeCompacted?.runtimePayload).activeTurnId, null);
+      assert.equal(idleCleanup.codex.stopSession.mock.calls.length, 0);
+
+      idleCleanup.codex.emit({
+        type: "thread.state.changed",
+        eventId: asEventId("runtime-idle-compact-start-inactive"),
+        provider: "codex",
+        createdAt: "2026-08-10T00:00:00.000Z",
+        threadId,
+        payload: { state: "compacted" },
+      });
+
+      yield* waitUntil(
+        () => idleCleanup.codex.stopSession.mock.calls.length > 0,
+        500,
+        20,
+        "compacted-state idle cleanup",
+      );
+      assert.deepEqual(idleCleanup.codex.stopSession.mock.calls[0]?.[0], threadId);
+    }),
+  );
+
   it.effect("does not schedule idle cleanup for a stale terminal event", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService;
@@ -4299,7 +4383,7 @@ idleCleanup.layer("ProviderServiceLive idle cleanup", (it) => {
     }),
   );
 
-  it.effect("reschedules idle cleanup after successful compact work", () =>
+  it.effect("reschedules idle cleanup after a compacted runtime event", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService;
       const runtimeRepository = yield* ProviderSessionRuntimeRepository;
@@ -4353,6 +4437,16 @@ idleCleanup.layer("ProviderServiceLive idle cleanup", (it) => {
         }),
       );
       yield* provider.compactThread({ threadId });
+      yield* sleep(150);
+      assert.equal(idleCleanup.codex.stopSession.mock.calls.length, 0);
+      idleCleanup.codex.emit({
+        type: "thread.state.changed",
+        eventId: asEventId("runtime-idle-compact-success"),
+        provider: "codex",
+        createdAt: "2026-08-10T00:00:00.000Z",
+        threadId,
+        payload: { state: "compacted" },
+      });
 
       yield* waitUntil(
         () => idleCleanup.codex.stopSession.mock.calls.length > 0,
