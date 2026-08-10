@@ -17,3 +17,7 @@
 ## 4. Codex 子会话生命周期通知当前会被提前过滤
 
 `codexAppServerManager.ts` 的 `shouldSuppressChildConversationNotification` 会过滤 child thread 与 turn 的 started/completed/aborted 等通知。实施前必须用现有 ingestion 和 UI 测试确认这是否造成状态或时间线缺口；不得直接全量放行，以免污染父 session 生命周期。
+
+## 5. FastCtx 恢复
+
+实施计划阶段 FastCtx 已重新出现在工具注册表中。后续本地文件读取、搜索和命令执行继续使用 FastCtx；此前 PowerShell 兜底仅发生在工具尚未暴露时。
