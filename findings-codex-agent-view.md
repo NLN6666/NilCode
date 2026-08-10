@@ -21,3 +21,7 @@
 ## 5. FastCtx 恢复
 
 实施计划阶段 FastCtx 已重新出现在工具注册表中。后续本地文件读取、搜索和命令执行继续使用 FastCtx；此前 PowerShell 兜底仅发生在工具尚未暴露时。
+
+## 6. 根目录聚焦测试命令不能直接接文件路径
+
+基线命令 `bun run test <test-files>` 失败，因为根脚本是 `turbo run test`，Turbo 会把文件路径解释为任务名并报 `Missing tasks in project`。正确方式是按 workspace 运行，例如 `bun run --cwd apps/server test -- src/codexAppServerManager.test.ts`；实施计划中的所有聚焦命令已据此更正。

@@ -89,7 +89,7 @@ Also extend identity-directory coverage so a later requested-model hint cannot r
 Run:
 
 ```text
-bun run test packages/shared/src/subagents.test.ts
+bun run --cwd packages/shared test -- src/subagents.test.ts
 ```
 
 Expected: failure because agent-state records do not yet expose effort/background/requested-hint provenance.
@@ -126,7 +126,7 @@ Assert the resulting subagent has `effort: "high"` and `background: true` but no
 Run:
 
 ```text
-bun run test apps/web/src/workLog.test.ts
+bun run --cwd apps/web test -- src/workLog.test.ts
 ```
 
 Expected: the requested-only case fails because `extractCollabSubagents` currently copies hinted models into `WorkLogSubagent.model`.
@@ -140,7 +140,8 @@ When mapping receiver agents, agent states, and fallback identity hints in `extr
 Run:
 
 ```text
-bun run test packages/shared/src/subagents.test.ts apps/web/src/workLog.test.ts
+bun run --cwd packages/shared test -- src/subagents.test.ts
+bun run --cwd apps/web test -- src/workLog.test.ts
 ```
 
 Expected: all selected tests pass.
@@ -186,7 +187,7 @@ Assert `turnId` remains the child turn ID, failure details remain in `payload`, 
 Run:
 
 ```text
-bun run test apps/server/src/codexAppServerManager.test.ts
+bun run --cwd apps/server test -- src/codexAppServerManager.test.ts
 ```
 
 Expected: the new child turn assertions fail because `shouldSuppressChildConversationNotification` returns before `emitEvent`.
@@ -212,7 +213,7 @@ Add a test where the parent session is running and a child turn arrives before `
 Run:
 
 ```text
-bun run test apps/server/src/codexAppServerManager.test.ts
+bun run --cwd apps/server test -- src/codexAppServerManager.test.ts
 ```
 
 Expected: all manager tests pass; child turn events are emitted and parent session update calls remain absent.
@@ -266,7 +267,7 @@ Emit a failed `turn.completed` and a `turn.aborted` for separate child IDs. Asse
 Run:
 
 ```text
-bun run test apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.test.ts
+bun run --cwd apps/server test -- src/orchestration/Layers/ProviderRuntimeIngestion.test.ts
 ```
 
 Expected after Task 2: routing and lifecycle assertions pass through the existing `providerRefs` target resolution without a production change to `ProviderRuntimeIngestion.ts`. If this expectation fails, stop Task 3 with `BLOCKED` and report the exact event type and assertion because the approved plan's generic-route premise is wrong.
@@ -284,7 +285,7 @@ Keep the existing `SubagentDetailSections.browser.tsx` tests for callback preced
 Run:
 
 ```text
-bun run test apps/web/src/components/chat/ComposerSubagentStrip.logic.test.ts apps/web/src/components/chat/SubagentDetailSections.test.tsx apps/web/src/components/chat/MessagesTimeline.test.tsx
+bun run --cwd apps/web test -- src/components/chat/ComposerSubagentStrip.logic.test.ts src/components/chat/SubagentDetailSections.test.tsx src/components/chat/MessagesTimeline.test.tsx
 ```
 
 Run the browser component test with:
@@ -300,7 +301,9 @@ Expected: metadata, status partitioning, dock callback precedence, lazy subscrip
 Run:
 
 ```text
-bun run test packages/shared/src/subagents.test.ts apps/server/src/codexAppServerManager.test.ts apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.test.ts apps/web/src/workLog.test.ts apps/web/src/lib/subagentPresentation.test.ts apps/web/src/components/chat/ComposerSubagentStrip.logic.test.ts apps/web/src/components/chat/SubagentDetailSections.test.tsx apps/web/src/components/chat/MessagesTimeline.test.tsx
+bun run --cwd packages/shared test -- src/subagents.test.ts
+bun run --cwd apps/server test -- src/codexAppServerManager.test.ts src/orchestration/Layers/ProviderRuntimeIngestion.test.ts
+bun run --cwd apps/web test -- src/workLog.test.ts src/lib/subagentPresentation.test.ts src/components/chat/ComposerSubagentStrip.logic.test.ts src/components/chat/SubagentDetailSections.test.tsx src/components/chat/MessagesTimeline.test.tsx
 ```
 
 Expected: all selected tests pass. Do not claim the task fully complete until the separately authorized heavyweight workspace checks also pass.
@@ -339,7 +342,7 @@ Review for spec compliance, actual-versus-requested model truthfulness, parent/c
 
 - [ ] **Step 3: Re-run only tests covering review fixes**
 
-Use `bun run test` with the exact affected test files. Do not repeat the whole focused suite unless the review fix crosses task boundaries.
+Use each package's `bun run --cwd <workspace> test -- <exact affected test files>` command. Do not repeat the whole focused suite unless the review fix crosses task boundaries.
 
 - [ ] **Step 4: Handle heavyweight workspace checks**
 
