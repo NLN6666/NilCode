@@ -25,3 +25,7 @@
 ## 6. 根目录聚焦测试命令不能直接接文件路径
 
 基线命令 `bun run test <test-files>` 失败，因为根脚本是 `turbo run test`，Turbo 会把文件路径解释为任务名并报 `Missing tasks in project`。正确方式是按 workspace 运行，例如 `bun run --cwd apps/server test -- src/codexAppServerManager.test.ts`；实施计划中的所有聚焦命令已据此更正。
+
+## 7. Codex manager 全文件基线存在无关 PATH 版本门控失败
+
+实施前运行 `bun run --cwd apps/server test -- src/codexAppServerManager.test.ts`：124 项中 121 通过、2 跳过，唯一失败是 `codex CLI version gate > re-probes when a PATH-resolved codex is replaced behind the same bare name`，其 promise 在当前机器解析到的 Codex 环境中未按测试预期拒绝。`collab child conversation routing` 组全部通过；本功能使用该 describe 的 `-t` 聚焦命令作为干净基线，不修改无关版本门控测试。
