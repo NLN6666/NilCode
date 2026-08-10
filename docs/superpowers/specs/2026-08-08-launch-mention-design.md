@@ -51,19 +51,19 @@ composer 打 @Launch
 
 ## 分层与文件
 
-| 文件 | 改动 | 职责 |
-|---|---|---|
-| `apps/server/src/provider/launchPromptInjection.ts` | 新建 | 纯函数 `buildLaunchInstructions({ maxChars, daemons, configurations })`。不碰 IO，可完整单测 |
-| `apps/server/src/provider/launchPromptInjection.test.ts` | 新建 | 预算边界、按段丢弃、空快照 |
-| `apps/server/src/orchestration/Layers/ProviderCommandReactor.ts` | 改 | 取数（`broker.list` + `readProjectLaunchConfig`）喂给纯函数；注入位置紧跟 `colorPreviewInlineText`，共用同一预算链。steer 与 dispatch 两条路径都要 |
-| `packages/contracts/src/orchestration.ts` | 改 | 4 处 `colorPreview` 旁加 `launch: Schema.optional(Schema.Boolean)` |
-| `apps/server/src/orchestration/decider.ts` / `projector.ts` | 改 | 照 `colorPreview` 透传 |
-| `apps/web/src/lib/composerMentions.ts` | 改 | `LAUNCH_MENTION_TOKEN` / `_INSERT_TEXT` / `_ICON_NAME` / `isLaunchMentionToken` / `promptIncludesLaunchMention`；`MentionChipKind` 加 `"launch"`；`resolveMentionChipKind` 加分支 |
-| `apps/web/src/hooks/useComposerCommandMenuItems.ts` | 改 | `buildLaunchMentionComposerItems`，复用同一 ranker 与关键词权重 |
-| `apps/web/src/components/chat/ComposerCommandMenu.tsx` | 改 | `ComposerCommandItem` 加 `"launch"` 分支 + 图标 + 副文案 |
-| `apps/web/src/components/chat/MentionChipIcon.tsx` | 改 | chip 图标 |
-| `apps/web/src/components/ChatView.tsx` | 改 | 发送时检测并挂字段（`:8266` 附近）；`:10341` 附近的插入入口 |
-| `apps/web/src/i18n/locales/{en,zh-CN}/composer.ts` | 改 | 菜单文案 + 搜索关键词。中文需能被「启动」「服务器」「后台」「日志」命中 |
+| 文件                                                             | 改动 | 职责                                                                                                                                                                              |
+| ---------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/server/src/provider/launchPromptInjection.ts`              | 新建 | 纯函数 `buildLaunchInstructions({ maxChars, daemons, configurations })`。不碰 IO，可完整单测                                                                                      |
+| `apps/server/src/provider/launchPromptInjection.test.ts`         | 新建 | 预算边界、按段丢弃、空快照                                                                                                                                                        |
+| `apps/server/src/orchestration/Layers/ProviderCommandReactor.ts` | 改   | 取数（`broker.list` + `readProjectLaunchConfig`）喂给纯函数；注入位置紧跟 `colorPreviewInlineText`，共用同一预算链。steer 与 dispatch 两条路径都要                                |
+| `packages/contracts/src/orchestration.ts`                        | 改   | 4 处 `colorPreview` 旁加 `launch: Schema.optional(Schema.Boolean)`                                                                                                                |
+| `apps/server/src/orchestration/decider.ts` / `projector.ts`      | 改   | 照 `colorPreview` 透传                                                                                                                                                            |
+| `apps/web/src/lib/composerMentions.ts`                           | 改   | `LAUNCH_MENTION_TOKEN` / `_INSERT_TEXT` / `_ICON_NAME` / `isLaunchMentionToken` / `promptIncludesLaunchMention`；`MentionChipKind` 加 `"launch"`；`resolveMentionChipKind` 加分支 |
+| `apps/web/src/hooks/useComposerCommandMenuItems.ts`              | 改   | `buildLaunchMentionComposerItems`，复用同一 ranker 与关键词权重                                                                                                                   |
+| `apps/web/src/components/chat/ComposerCommandMenu.tsx`           | 改   | `ComposerCommandItem` 加 `"launch"` 分支 + 图标 + 副文案                                                                                                                          |
+| `apps/web/src/components/chat/MentionChipIcon.tsx`               | 改   | chip 图标                                                                                                                                                                         |
+| `apps/web/src/components/ChatView.tsx`                           | 改   | 发送时检测并挂字段（`:8266` 附近）；`:10341` 附近的插入入口                                                                                                                       |
+| `apps/web/src/i18n/locales/{en,zh-CN}/composer.ts`               | 改   | 菜单文案 + 搜索关键词。中文需能被「启动」「服务器」「后台」「日志」命中                                                                                                           |
 
 **分层理由：** 注入文本的构造是纯函数（好测、是这个功能的实际产物、会反复调优），取数留在 Reactor（那里已在 Effect 上下文中，`broker.list` 与 `resolveProjectedThreadWorkspaceCwd` 都可直接 `yield*`）。这与 `colorPreviewPromptInjection.ts` 的既有分法一致。
 
