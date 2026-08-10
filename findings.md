@@ -272,3 +272,15 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 **根因：不是 bug，是设计与期望的落差。** `ADVISOR_SYSTEM_PROMPT` 明确写着 _"Silence is the expected answer... Do not narrate, do not confirm that things look good - that is noise"_。advisor 在严格执行指令；用户看到的「没显示」就是它按设计沉默。
 
 **判别方法：** `server.log` 是跨构建追加的。任何「功能 X 没生效」的诊断，都必须先 `grep -n "<X> started" server.log | tail -1` 拿到末次启动行号，再 `tail -n +<行号>` 切出当前构建的区间。不切分就统计，等于拿已删代码的错误日志去诊断现有代码。
+
+---
+
+## 19. 浏览器预览下方控制台的 `Add to chat` 被空回调静默吞掉
+
+**现象：** 在浏览器预览下方的服务控制台选中文字，菜单正常显示 `Add to chat`；点击后菜单关闭，但聊天编辑器没有新增 terminal context。
+
+**根因：** `BrowserPaneTerminalSplit.tsx` 给 `ThreadTerminalDrawer` 传入了 `onAddTerminalContext={() => {}}`。`ThreadTerminalDrawer` 只用“回调是否存在”判断是否展示菜单，因此空函数同时造成了两个行为：按钮可见，点击却必然丢弃选区。
+
+**对照：** 独立 dock 控制台 `DockTerminalPane.tsx` 已通过 `terminalContextComposerRegistry` 订阅 `SINGLE_CHAT_PANE_SCOPE_ID` 对应的 composer target，并把真实 target 传给 `ThreadTerminalDrawer`。浏览器服务控制台没有复用这条已存在的接线。
+
+**修复边界：** 浏览器服务控制台应订阅相同 pane scope 的 composer target；target 不存在时传 `undefined`，使菜单能力与真实可用性一致。补测试覆盖 target 注册前不可用、注册后点击可转发、注销后再次不可用。
