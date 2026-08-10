@@ -33,3 +33,7 @@
 ## 8. Codex agent-state 元数据 shape 与请求模型兼容性
 
 已通过共享解码测试验证：实际模型使用 `model`、`modelName` 或 `model_name`，请求提示使用 `requestedModel` 或 `requested_model`；前者优先。执行信息使用 `effort`、`reasoningEffort`、`reasoning_effort` 与显式 boolean `background`。请求模型仍在通用 identity hint 中保留，用于后续实际模型缺失时的内部关联；UI work-log 投影会隐藏该未确认模型，避免把请求值显示为实际运行值。
+
+## 9. Child turn 生命周期在事件发送后保持父会话隔离
+
+已验证：将 `turn/started`、`turn/completed` 与 `turn/aborted` 从子会话通知抑制列表移除后，通用 provider runtime 会收到 child event 及 child/parent provider 路由 refs。三个 handler 中 `isChildConversation` 的后续早退保持不变，因此不会调用 `updateSession`、改变父会话 active turn，亦不会在未知映射时虚构 `parentTurnId`。协作路由聚焦测试 19 项通过。
