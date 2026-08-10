@@ -10,15 +10,12 @@
 
 import { type ProjectId, type ThreadId } from "@synara/contracts";
 import { resolveThreadWorkspaceCwd } from "@synara/shared/threadEnvironment";
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
+import { useTerminalContextComposerTarget } from "~/hooks/useTerminalContextComposerTarget";
 import { useTerminalSurfaceController } from "~/hooks/useTerminalSurfaceController";
 import { SINGLE_CHAT_PANE_SCOPE_ID } from "~/lib/chatPaneScope";
 import { dockTerminalThreadId } from "~/lib/dockTerminalScope";
-import {
-  getTerminalContextComposerTarget,
-  subscribeTerminalContextComposerTarget,
-} from "~/lib/terminalContextComposerRegistry";
 import { projectScriptRuntimeEnv } from "~/projectScripts";
 import { useStore } from "~/store";
 import { createProjectSelector, createThreadWorkspaceMetadataSelector } from "~/storeSelectors";
@@ -57,20 +54,7 @@ export function DockTerminalPane(props: {
   const terminal = useTerminalSurfaceController(scopeId);
   const { terminalState, openTerminalThreadPage, bumpFocusRequest, newTerminalGroup } = terminal;
   const closedBySessionExitRef = useRef(false);
-  const subscribeToComposerTarget = useCallback(
-    (listener: () => void) =>
-      subscribeTerminalContextComposerTarget(SINGLE_CHAT_PANE_SCOPE_ID, listener),
-    [],
-  );
-  const readComposerTarget = useCallback(
-    () => getTerminalContextComposerTarget(SINGLE_CHAT_PANE_SCOPE_ID),
-    [],
-  );
-  const composerTarget = useSyncExternalStore(
-    subscribeToComposerTarget,
-    readComposerTarget,
-    readComposerTarget,
-  );
+  const composerTarget = useTerminalContextComposerTarget(SINGLE_CHAT_PANE_SCOPE_ID);
 
   // A dock terminal pane normally shows a live terminal. An `exit` is final,
   // though: do not recreate a replacement terminal just as the panel closes.

@@ -22,7 +22,9 @@ import type { ProjectId, ThreadId } from "@synara/contracts";
 import { resolveThreadWorkspaceCwd } from "@synara/shared/threadEnvironment";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { useTerminalContextComposerTarget } from "~/hooks/useTerminalContextComposerTarget";
 import { useMessages } from "~/i18n/context";
+import { SINGLE_CHAT_PANE_SCOPE_ID } from "~/lib/chatPaneScope";
 import { TerminalIcon } from "~/lib/icons";
 import { resolveProjectScriptTerminalScope } from "~/lib/projectServiceTerminalScope";
 import { cn } from "~/lib/utils";
@@ -53,6 +55,7 @@ export function BrowserPaneTerminalSplit(props: {
     }) ?? props.hostThreadId;
   const terminal = useTerminalSurfaceController(scopeId);
   const terminalState = terminal.terminalState;
+  const composerTarget = useTerminalContextComposerTarget(SINGLE_CHAT_PANE_SCOPE_ID);
   const setTerminalOpen = useTerminalStateStore((store) => store.setTerminalOpen);
   const project = useStore(
     useMemo(() => createProjectSelector(props.projectId), [props.projectId]),
@@ -230,7 +233,7 @@ export function BrowserPaneTerminalSplit(props: {
               onResizeTerminalSplit={terminal.resizeTerminalSplit}
               onTerminalMetadataChange={terminal.setTerminalMetadata}
               onTerminalActivityChange={terminal.setTerminalActivity}
-              onAddTerminalContext={() => {}}
+              onAddTerminalContext={composerTarget}
             />
           ) : null}
         </div>
