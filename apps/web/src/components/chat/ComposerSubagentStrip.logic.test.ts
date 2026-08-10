@@ -698,6 +698,9 @@ describe("deriveComposerSubagentStripItems", () => {
                         status: "inProgress",
                       },
                     ],
+                    agentStates: {
+                      "child-provider-requested": { status: "inProgress" },
+                    },
                   },
                 },
               },
@@ -709,6 +712,11 @@ describe("deriveComposerSubagentStripItems", () => {
       }),
     );
 
+    expect(requestedOnlyRows).toHaveLength(1);
+    expect(requestedOnlyRows[0]).toMatchObject({
+      threadId: "child-provider-requested",
+      statusKind: "running",
+    });
     expect(requestedOnlyRows[0]?.modelLabel).toBeUndefined();
   });
 });

@@ -7010,6 +7010,11 @@ describe("ProviderRuntimeIngestion", () => {
     expect(parentThread.messages).toHaveLength(0);
     expect(parentThread.proposedPlans).toHaveLength(0);
     expect(
+      parentThread.activities.some(
+        (activity) => activity.id === "provider-reasoning:thread-1:item-child-reasoning",
+      ),
+    ).toBe(false);
+    expect(
       [
         "evt-child-command-started",
         "evt-child-command-completed",
@@ -7017,6 +7022,12 @@ describe("ProviderRuntimeIngestion", () => {
         "evt-child-turn-completed",
       ].some((eventId) => parentThread.activities.some((activity) => activity.id === eventId)),
     ).toBe(false);
+    const finalReadModel = await Effect.runPromise(harness.engine.getReadModel());
+    expect(
+      finalReadModel.threads
+        .filter((thread) => thread.parentThreadId === asThreadId("thread-1"))
+        .map((thread) => thread.id),
+    ).toEqual([childThreadId]);
   });
 
   it("keeps failed and aborted provider-native child threads readable", async () => {
