@@ -284,3 +284,7 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 **对照：** 独立 dock 控制台 `DockTerminalPane.tsx` 已通过 `terminalContextComposerRegistry` 订阅 `SINGLE_CHAT_PANE_SCOPE_ID` 对应的 composer target，并把真实 target 传给 `ThreadTerminalDrawer`。浏览器服务控制台没有复用这条已存在的接线。
 
 **修复边界：** 浏览器服务控制台应订阅相同 pane scope 的 composer target；target 不存在时传 `undefined`，使菜单能力与真实可用性一致。补测试覆盖 target 注册前不可用、注册后点击可转发、注销后再次不可用。
+
+**执行记录：** `subagent-driven-development/scripts/task-brief ... 1` 返回 `task 1 not found`，因为本计划的实施步骤是编号列表而不是 `Task 1` 标题。后续按同一计划内容手工生成单任务 brief，未改变需求或实现范围。
+
+**实施结果：** 新增共享 `useTerminalContextComposerTarget` hook，浏览器服务控制台与独立 dock 控制台均通过 `SINGLE_CHAT_PANE_SCOPE_ID` 获取当前 composer target；无 target 时传 `undefined`。唯一一次 review 仅发现 SDD 临时报告被误纳入提交，已从最终实现提交中移除。最终聚焦验证为 3 个测试文件、10 个用例全部通过。
