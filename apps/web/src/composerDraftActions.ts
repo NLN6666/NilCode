@@ -64,7 +64,6 @@ import {
   normalizeProviderKind,
   normalizeProviderModelOptions,
   reconcileProviderScopedModelSelection,
-  stripNonStickyModelOptions,
 } from "./composerDraftModels";
 import { browserElementDedupKey } from "./lib/browserElementContext";
 import { isComposerAppSnapCaptureSource } from "./lib/composerImageSource";
@@ -493,8 +492,7 @@ export const createComposerDraftStoreState =
       });
     },
     setStickyModelSelection: (modelSelection) => {
-      const rawNormalized = normalizeModelSelection(modelSelection);
-      const normalized = rawNormalized ? stripNonStickyModelOptions(rawNormalized) : null;
+      const normalized = normalizeModelSelection(modelSelection);
       set((state) => {
         if (!normalized) {
           return state;
@@ -937,13 +935,11 @@ export const createComposerDraftStoreState =
             return state;
           }
           if (providerOpts) {
-            nextStickyMap[normalizedProvider] = stripNonStickyModelOptions(
-              makeModelSelection(
-                normalizedProvider,
-                stickyBase.model,
-                providerOpts,
-                stickyBase.provider === "claudeAgent" ? stickyBase.supportsAutoMode : undefined,
-              ),
+            nextStickyMap[normalizedProvider] = makeModelSelection(
+              normalizedProvider,
+              stickyBase.model,
+              providerOpts,
+              stickyBase.provider === "claudeAgent" ? stickyBase.supportsAutoMode : undefined,
             );
           } else if (stickyBase.options) {
             nextStickyMap[normalizedProvider] = buildModelSelection(

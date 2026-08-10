@@ -661,7 +661,9 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
-  it.effect("forwards the 1m Claude auto-compact budget without changing the model id", () => {
+  // Claude Code serves the extended window only under the `[1m]` model id; the
+  // budget setting alone leaves the session at 200k.
+  it.effect("forwards the 1m Claude auto-compact budget on the extended-window model id", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
@@ -679,7 +681,7 @@ describe("ClaudeAdapterLive", () => {
       });
 
       const createInput = harness.getLastCreateQueryInput();
-      assert.equal(createInput?.options.model, "claude-opus-4-6");
+      assert.equal(createInput?.options.model, "claude-opus-4-6[1m]");
       assert.equal(autoCompactWindowFromOptions(createInput?.options), 1_000_000);
       assert.isUndefined(createInput?.options.betas);
     }).pipe(
@@ -733,7 +735,7 @@ describe("ClaudeAdapterLive", () => {
       });
 
       const createInput = harness.getLastCreateQueryInput();
-      assert.equal(createInput?.options.model, "claude-sonnet-5");
+      assert.equal(createInput?.options.model, "claude-sonnet-5[1m]");
       assert.equal(autoCompactWindowFromOptions(createInput?.options), 1_000_000);
       assert.equal(createInput?.options.effort, undefined);
       assert.equal(effortLevelFromOptions(createInput?.options), "xhigh");
@@ -2239,12 +2241,14 @@ describe("ClaudeAdapterLive", () => {
         childEvents.some((event) => event.type === "turn.started"),
         true,
       );
-      assert.equal(
-        childEvents.some(
-          (event) => event.type === "tool.progress" && event.payload.toolName === "Grep",
-        ),
-        true,
-      );
+      const subagentProgress = childEvents.find((event) => event.type === "tool.progress");
+      assert.equal(subagentProgress?.type, "tool.progress");
+      if (subagentProgress?.type === "tool.progress") {
+        assert.equal(subagentProgress.payload.toolName, "Grep");
+        // The Task tool is only the routing parent here, not the call being
+        // reported on, so the inner tool keeps its own identity.
+        assert.equal(subagentProgress.payload.toolUseId, "tool-subagent-heartbeat-1");
+      }
 
       const collabStarted = runtimeEvents.find(
         (event) =>
@@ -2395,6 +2399,12 @@ describe("ClaudeAdapterLive", () => {
       );
       assert.equal(progress?.type, "tool.progress");
       assert.equal(progress?.providerRefs?.providerThreadId, undefined);
+      // Heartbeats carry a synthetic per-beat id derived from the real call.
+      // Reporting it verbatim gives every beat its own tool-call identity, and the
+      // timeline then renders one never-settling row per beat.
+      if (progress?.type === "tool.progress") {
+        assert.equal(progress.payload.toolUseId, "tool-bash-1");
+      }
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
@@ -6114,10 +6124,11 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
           usage: {
             usedTokens: 321,
             lastUsedTokens: 321,
-            // The pair matters: 200k is where this session compacts, 1M is what
-            // the model holds. Collapsing them reported Opus 5 as a 200k model.
+            // A session addressed by the plain slug runs at the standard window,
+            // so the compaction budget and the model window coincide here. The
+            // 1M pair only appears on the `[1m]` model id.
             maxTokens: 200_000,
-            contextWindowTokens: 1_000_000,
+            contextWindowTokens: 200_000,
             toolUses: 2,
             durationMs: 654,
           },
@@ -6191,7 +6202,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
             inputTokens: 23863,
             outputTokens: 679,
             maxTokens: 200000,
-            contextWindowTokens: 1_000_000,
+            contextWindowTokens: 200_000,
           },
         });
       }
@@ -6255,7 +6266,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
             lastUsedTokens: 200000,
             totalProcessedTokens: 535000,
             maxTokens: 200000,
-            contextWindowTokens: 1_000_000,
+            contextWindowTokens: 200_000,
           },
         });
       }
@@ -6336,7 +6347,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
               lastUsedTokens: 190000,
               totalProcessedTokens: 535000,
               maxTokens: 200000,
-              contextWindowTokens: 1_000_000,
+              contextWindowTokens: 200_000,
             },
           });
         }
@@ -6416,7 +6427,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
             lastUsedTokens: 190000,
             totalProcessedTokens: 535000,
             maxTokens: 200000,
-            contextWindowTokens: 1_000_000,
+            contextWindowTokens: 200_000,
           },
         });
       }
@@ -6494,7 +6505,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
             usedTokens: 190000,
             lastUsedTokens: 190000,
             maxTokens: 200_000,
-            contextWindowTokens: 1_000_000,
+            contextWindowTokens: 200_000,
             totalProcessedTokens: 535000,
           },
         });
@@ -7780,7 +7791,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
     );
   });
 
-  it.effect("updates the auto-compact budget live without changing the Claude model id", () => {
+  it.effect("switches to the extended-window model id when the budget goes live to 1M", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
@@ -7803,7 +7814,9 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
         attachments: [],
       });
 
-      assert.deepEqual(harness.query.setModelCalls, ["claude-opus-4-6"]);
+      // The window is a property of the model id, so raising it is a setModel
+      // switch plus the budget setting - not a restart.
+      assert.deepEqual(harness.query.setModelCalls, ["claude-opus-4-6[1m]"]);
       assert.deepEqual(harness.query.applyFlagSettingsCalls, [{ autoCompactWindow: 1_000_000 }]);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
@@ -8277,7 +8290,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
       const secondQuery = harness.queries[1];
       assert.ok(secondQuery);
       assert.equal(firstQuery.closeCalls, 1);
-      assert.equal(harness.createInputs[1]?.options.model, "claude-fable-5");
+      assert.equal(harness.createInputs[1]?.options.model, "claude-fable-5[1m]");
       assert.equal(autoCompactWindowFromOptions(harness.createInputs[1]?.options), 1_000_000);
       assert.equal(yield* adapter.hasSession(THREAD_ID), true);
       assert.equal((yield* adapter.listSessions()).length, 1);

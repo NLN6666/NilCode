@@ -49,7 +49,6 @@ import {
   normalizeModelSelection,
   normalizeProviderKind,
   normalizeProviderModelOptions,
-  sanitizeStickyModelSelectionMap,
 } from "./composerDraftModels";
 import { normalizeAssistantSelectionAttachment } from "./lib/assistantSelections";
 import {
@@ -1399,10 +1398,18 @@ export function normalizeCurrentPersistedComposerDraftStoreState(
     normalizedPersistedState.stickyModelSelectionByProvider &&
     typeof normalizedPersistedState.stickyModelSelectionByProvider === "object"
   ) {
-    stickyModelSelectionByProvider =
-      normalizedPersistedState.stickyModelSelectionByProvider as Partial<
-        Record<ProviderKind, ModelSelection>
-      >;
+    // Persisted entries predate the current option names (Claude's window moved
+    // from `contextWindow` to `autoCompactWindow`), so run each through the same
+    // normalizer a live selection goes through and drop anything that no longer
+    // resolves onto the provider it is filed under.
+    for (const [provider, selection] of Object.entries(
+      normalizedPersistedState.stickyModelSelectionByProvider as Record<string, unknown>,
+    )) {
+      const normalized = normalizeModelSelection(selection);
+      if (normalized && normalized.provider === provider) {
+        stickyModelSelectionByProvider[normalized.provider] = normalized;
+      }
+    }
     stickyActiveProvider = normalizeProviderKind(normalizedPersistedState.stickyActiveProvider);
   } else {
     // Legacy migration path
@@ -1435,7 +1442,7 @@ export function normalizeCurrentPersistedComposerDraftStoreState(
     draftsByThreadId: normalizePersistedDraftsByThreadId(normalizedPersistedState.draftsByThreadId),
     draftThreadsByThreadId,
     projectDraftThreadIdByProjectId,
-    stickyModelSelectionByProvider: sanitizeStickyModelSelectionMap(stickyModelSelectionByProvider),
+    stickyModelSelectionByProvider,
     stickyActiveProvider,
   };
 }

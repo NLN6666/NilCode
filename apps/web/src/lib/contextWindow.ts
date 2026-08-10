@@ -142,8 +142,17 @@ export function deriveLatestContextWindowSnapshot(
 
   const usedTokens = usageSnapshot?.usedTokens ?? 0;
   const maxTokens = configuredMaxTokens ?? usageSnapshot?.maxTokens ?? null;
+  // The runtime's `usedPercent` is computed against *its* `maxTokens` (Claude
+  // reports the auto-compact threshold, e.g. 167k inside a 200k window). Reusing
+  // it while the meter denominator is the configured session window would print
+  // a ratio that contradicts the "used/max" pair right next to it, so only trust
+  // it when both agree on the denominator.
+  const percentMatchesDenominator =
+    usageSnapshot?.maxTokens === null ||
+    usageSnapshot?.maxTokens === undefined ||
+    usageSnapshot.maxTokens === maxTokens;
   const usedPercentage =
-    usageSnapshot?.usedPercent ??
+    (percentMatchesDenominator ? usageSnapshot?.usedPercent : null) ??
     (maxTokens !== null && maxTokens > 0 ? Math.min(100, (usedTokens / maxTokens) * 100) : null);
   const hasReliableTokenUsage =
     usageSnapshot === null ||

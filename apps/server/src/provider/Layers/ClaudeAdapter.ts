@@ -1035,6 +1035,22 @@ function toolLifecycleEventData(
   };
 }
 
+// A heartbeat beat arrives under a synthetic per-beat id ("<toolUseId>-heartbeat-<n>")
+// with the real call in parent_tool_use_id. Reporting the synthetic id gives every beat
+// its own tool-call identity, so the client cannot fold it into the tool's row: each
+// beat becomes a separate row that no item.completed ever settles, and it ticks
+// "Bash - No activity for ..." for the rest of the turn.
+// Only a parent the id is derived from is safe to prefer. Progress raised inside a
+// subagent carries the Task tool as its parent (and an unrelated tool_use_id), and must
+// keep reporting the inner tool it actually describes.
+function toolProgressToolUseId(message: {
+  readonly tool_use_id: string;
+  readonly parent_tool_use_id: string | null;
+}): string {
+  const parent = message.parent_tool_use_id;
+  return parent && message.tool_use_id.startsWith(`${parent}-`) ? parent : message.tool_use_id;
+}
+
 // Receiver identity for the shared subagent-thread machinery: ingestion spawns a
 // child thread per receiverThreadId on collab_agent_tool_call items and titles it
 // from these hints (see extractSubagentIdentityHints in @synara/shared/subagents).
@@ -4455,7 +4471,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             ...base,
             type: "tool.progress",
             payload: {
-              toolUseId: message.tool_use_id,
+              toolUseId: toolProgressToolUseId(message),
               toolName: message.tool_name,
               elapsedSeconds: message.elapsed_time_seconds,
               ...(message.task_id ? { summary: `task:${message.task_id}` } : {}),

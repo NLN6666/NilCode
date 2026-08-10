@@ -175,14 +175,25 @@ export function resolveClaudeApiModelIdContextWindowMaxTokens(
     return undefined;
   }
   const slug = stripClaudeContextWindowSuffix(apiModelId);
+  const caps = getModelCapabilities("claudeAgent", slug);
   // models.dev leads: a model released after this build shipped has no local
   // entry at all, and a window revised mid-generation would otherwise stay
   // wrong until the next release. The built-in table remains the offline
   // baseline for a cold cache or an unreachable catalog.
-  return (
+  const capacity =
     positiveFiniteNumber(readCachedCloudModelContextWindow("claudeAgent", slug)) ??
-    positiveFiniteNumber(getModelCapabilities("claudeAgent", slug).contextWindowTokens)
-  );
+    positiveFiniteNumber(caps.contextWindowTokens);
+  if (capacity === undefined) {
+    return undefined;
+  }
+  // The catalogued capacity is the model's *extended* window, which Claude Code
+  // only serves under the `[1m]` model id. Addressed by its plain slug the very
+  // same model runs at the standard 200k window, so reporting 1M here would
+  // present a 200k session as five times larger than it is.
+  const runsExtendedWindow = /1m/iu.test(apiModelId.slice(slug.length));
+  return !runsExtendedWindow && hasAutoCompactWindowOption(caps, "1m")
+    ? Math.min(capacity, CLAUDE_CONTEXT_WINDOW_MAX_TOKENS["200k"])
+    : capacity;
 }
 
 export function resolveSelectedClaudeAutoCompactWindow(

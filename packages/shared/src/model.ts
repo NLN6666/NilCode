@@ -587,8 +587,33 @@ export function normalizeClaudeModelOptions(
   return Object.keys(nextOptions).length > 0 ? nextOptions : undefined;
 }
 
+/**
+ * Claude Code gates the extended window behind a distinct model id
+ * (`claude-opus-5[1m]`), not behind a setting. Verified against the CLI's
+ * `getContextUsage` control request: `claude-opus-5` reports
+ * `rawMaxTokens: 200000` even when `settings.autoCompactWindow` is 1_000_000,
+ * while `claude-opus-5[1m]` reports 1_000_000. `autoCompactWindow` only lowers
+ * the compaction budget *within* whatever ceiling the model id carries, so both
+ * are required for a 1M thread.
+ */
 export function resolveApiModelId(modelSelection: ModelSelection): string {
-  return modelSelection.model;
+  if (modelSelection.provider !== "claudeAgent") {
+    return modelSelection.model;
+  }
+  // Already carries an explicit window suffix; leave the caller's id alone.
+  if (/\[[^\]]+\]$/u.test(modelSelection.model)) {
+    return modelSelection.model;
+  }
+  const requested =
+    trimOrNull(modelSelection.options?.autoCompactWindow) ??
+    trimOrNull(modelSelection.options?.contextWindow);
+  if (requested?.toLowerCase() !== "1m") {
+    return modelSelection.model;
+  }
+  const caps = getModelCapabilities("claudeAgent", modelSelection.model);
+  return hasAutoCompactWindowOption(caps, "1m")
+    ? `${modelSelection.model}[1m]`
+    : modelSelection.model;
 }
 
 /**

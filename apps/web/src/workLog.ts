@@ -1136,12 +1136,19 @@ function mergeDerivedWorkLogEntries(
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
   const preview = next.preview ?? previous.preview;
-  const toolTitle = mergeWorkLogToolTitle(previous, next);
+  // A tool-progress beat (`tool.progress` projects as an untyped `mcp_tool_call`
+  // update carrying only timing) folds into the call it reports on. It knows
+  // nothing about that call, so it must not restate the row: without this the
+  // last beat of a backgrounded command renames a settled "Ran <cmd>" row to
+  // the bare tool name and reopens its lifecycle kind.
   const preservePreviousToolSemantics =
     next.activityKind === "tool.updated" &&
     next.itemType === "mcp_tool_call" &&
     previous.itemType !== undefined &&
     previous.itemType !== "mcp_tool_call";
+  const toolTitle = preservePreviousToolSemantics
+    ? (previous.toolTitle ?? next.toolTitle)
+    : mergeWorkLogToolTitle(previous, next);
   const itemType = preservePreviousToolSemantics
     ? previous.itemType
     : (next.itemType ?? previous.itemType);
@@ -1169,6 +1176,9 @@ function mergeDerivedWorkLogEntries(
   return {
     ...previous,
     ...next,
+    ...(preservePreviousToolSemantics
+      ? { label: previous.label, activityKind: previous.activityKind }
+      : {}),
     ...(turnId !== undefined ? { turnId } : {}),
     ...(detail ? { detail } : {}),
     ...(command ? { command } : {}),

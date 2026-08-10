@@ -191,6 +191,38 @@ describe("contextWindow", () => {
     expect(snapshot?.maxTokens).toBe(1_000_000);
   });
 
+  // Claude reports `usedPercent` against its auto-compact threshold, which is
+  // below the configured session window. Publishing both untouched printed
+  // "51% · 85k/1m" - a percentage of a denominator the meter never shows.
+  it("recomputes the percentage when the configured window overrides the runtime one", () => {
+    const snapshot = deriveLatestContextWindowSnapshot([
+      makeActivity("activity-1", "context-window.configured", { maxTokens: 1_000_000 }),
+      makeActivity("activity-2", "context-window.updated", {
+        usedTokens: 85_299,
+        usedPercent: 51.08,
+        maxTokens: 167_000,
+      }),
+    ]);
+
+    expect(snapshot?.maxTokens).toBe(1_000_000);
+    expect(snapshot?.usedPercentage).toBeCloseTo(8.53, 2);
+    // The raw runtime figure stays available for anything that wants it.
+    expect(snapshot?.usedPercent).toBe(51.08);
+  });
+
+  it("keeps the runtime percentage when both agree on the denominator", () => {
+    const snapshot = deriveLatestContextWindowSnapshot([
+      makeActivity("activity-1", "context-window.configured", { maxTokens: 167_000 }),
+      makeActivity("activity-2", "context-window.updated", {
+        usedTokens: 85_299,
+        usedPercent: 51.08,
+        maxTokens: 167_000,
+      }),
+    ]);
+
+    expect(snapshot?.usedPercentage).toBe(51.08);
+  });
+
   it("falls back to runtime usage after the configured window is cleared", () => {
     const snapshot = deriveLatestContextWindowSnapshot([
       makeActivity("activity-1", "context-window.configured", {

@@ -564,39 +564,6 @@ export function reconcileProviderScopedModelSelection(
   );
 }
 
-export function stripNonStickyModelOptions(selection: ModelSelection): ModelSelection {
-  if (
-    selection.provider !== "claudeAgent" ||
-    (!selection.options?.contextWindow && !selection.options?.autoCompactWindow)
-  ) {
-    return selection;
-  }
-  const {
-    contextWindow: _contextWindow,
-    autoCompactWindow: _autoCompactWindow,
-    ...rest
-  } = selection.options;
-  return makeModelSelection(
-    selection.provider,
-    selection.model,
-    Object.keys(rest).length > 0 ? rest : undefined,
-    selection.supportsAutoMode,
-  );
-}
-
-export function sanitizeStickyModelSelectionMap(
-  map: Partial<Record<ProviderKind, ModelSelection>>,
-): Partial<Record<ProviderKind, ModelSelection>> {
-  const claude = map.claudeAgent;
-  if (
-    claude?.provider !== "claudeAgent" ||
-    (!claude.options?.contextWindow && !claude.options?.autoCompactWindow)
-  ) {
-    return map;
-  }
-  return { ...map, claudeAgent: stripNonStickyModelOptions(claude) };
-}
-
 export function legacySyncModelSelectionOptions(
   modelSelection: ModelSelection | null,
   modelOptions: ProviderModelOptions | null | undefined,

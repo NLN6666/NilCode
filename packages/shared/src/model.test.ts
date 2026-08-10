@@ -656,21 +656,33 @@ describe("normalizeClaudeModelOptions", () => {
 });
 
 describe("resolveApiModelId", () => {
-  it("keeps native-1M Claude model ids unchanged", () => {
+  // Claude Code only serves the extended window under the `[1m]` model id; the
+  // plain slug reports a 200k window no matter what `autoCompactWindow` says.
+  it("tags a 1M Claude selection with the extended-window model id", () => {
     expect(
       resolveApiModelId({
         provider: "claudeAgent",
         model: "claude-opus-4-6",
         options: { autoCompactWindow: "1m" },
       }),
-    ).toBe("claude-opus-4-6");
+    ).toBe("claude-opus-4-6[1m]");
     expect(
       resolveApiModelId({
         provider: "claudeAgent",
         model: "claude-sonnet-5",
+        options: { contextWindow: "1m" },
+      }),
+    ).toBe("claude-sonnet-5[1m]");
+  });
+
+  it("leaves models without a 1M option alone", () => {
+    expect(
+      resolveApiModelId({
+        provider: "claudeAgent",
+        model: "claude-haiku-4-5",
         options: { autoCompactWindow: "1m" },
       }),
-    ).toBe("claude-sonnet-5");
+    ).toBe("claude-haiku-4-5");
   });
 
   it("leaves Claude models unchanged for the default context window", () => {
@@ -681,6 +693,9 @@ describe("resolveApiModelId", () => {
         options: { contextWindow: "200k" },
       }),
     ).toBe("claude-opus-4-6");
+    expect(resolveApiModelId({ provider: "claudeAgent", model: "claude-opus-4-6" })).toBe(
+      "claude-opus-4-6",
+    );
   });
 });
 

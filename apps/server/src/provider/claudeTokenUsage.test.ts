@@ -192,9 +192,23 @@ describe("Claude context selection", () => {
 
     // A cold cache or an unusable catalog value must not erase the local baseline.
     cachedContextWindowMock.mockReturnValue(undefined);
-    expect(resolveClaudeApiModelIdContextWindowMaxTokens("claude-opus-5")).toBe(1_000_000);
+    expect(resolveClaudeApiModelIdContextWindowMaxTokens("claude-opus-5[1m]")).toBe(1_000_000);
     cachedContextWindowMock.mockReturnValue(0);
-    expect(resolveClaudeApiModelIdContextWindowMaxTokens("claude-opus-5")).toBe(1_000_000);
+    expect(resolveClaudeApiModelIdContextWindowMaxTokens("claude-opus-5[1m]")).toBe(1_000_000);
+  });
+
+  // Claude Code gates the extended window behind the `[1m]` model id: the CLI's
+  // getContextUsage reports rawMaxTokens 200000 for `claude-opus-5` and
+  // 1000000 for `claude-opus-5[1m]`. Publishing the catalogued 1M capacity for
+  // the plain slug told the UI a 200k session was five times larger.
+  it("caps a plain 1M-capable slug at the standard window", () => {
+    cachedContextWindowMock.mockReturnValue(1_000_000);
+    expect(resolveClaudeApiModelIdContextWindowMaxTokens("claude-opus-5")).toBe(200_000);
+    expect(resolveClaudeApiModelIdContextWindowMaxTokens("claude-opus-5[1m]")).toBe(1_000_000);
+
+    // Models with no extended-window option are reported at face value.
+    cachedContextWindowMock.mockReturnValue(200_000);
+    expect(resolveClaudeApiModelIdContextWindowMaxTokens("claude-haiku-4-5")).toBe(200_000);
   });
 
   it("reports the model window alongside a smaller compaction budget", () => {

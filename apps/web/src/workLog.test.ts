@@ -2138,6 +2138,78 @@ describe("deriveWorkLogEntries", () => {
     });
   });
 
+  // A backgrounded command keeps emitting progress beats after its tool result
+  // lands. The beat carries only timing, so it must not restate the settled row.
+  it("keeps a settled command row intact when a late progress beat arrives", () => {
+    const beat = makeActivity({
+      id: "background-command-late-beat",
+      createdAt: "2026-02-23T00:00:32.000Z",
+      kind: "tool.updated",
+      summary: "Bash",
+      payload: {
+        itemType: "mcp_tool_call",
+        title: "MCP tool call",
+        data: {
+          toolUseId: "background-command",
+          toolName: "Bash",
+          elapsedSeconds: 30,
+        },
+      },
+    });
+    const lifecycle: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "background-command-start",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        kind: "tool.started",
+        summary: "Command run started",
+        payload: {
+          itemType: "command_execution",
+          status: "inProgress",
+          title: "Command run",
+          detail: "Bash: ls -R Python/",
+          data: {
+            toolCallId: "background-command",
+            toolName: "Bash",
+            input: { command: "ls -R Python/" },
+          },
+        },
+      }),
+      makeActivity({
+        id: "background-command-complete",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        kind: "tool.completed",
+        summary: "Command run",
+        payload: {
+          itemType: "command_execution",
+          status: "completed",
+          title: "Command run",
+          detail: "Bash: ls -R Python/",
+          data: {
+            toolCallId: "background-command",
+            toolName: "Bash",
+            input: { command: "ls -R Python/" },
+          },
+        },
+      }),
+    ];
+    const settled = deriveWorkLogEntries(lifecycle, undefined)[0];
+    // The beat reads as the bare tool name, so letting it restate the row is
+    // observable: guard against that specific downgrade, not a generic merge.
+    expect(deriveWorkLogEntries([beat], undefined)[0]?.toolTitle).not.toBe(settled?.toolTitle);
+
+    const entries = deriveWorkLogEntries([...lifecycle, beat], undefined);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      label: settled?.label,
+      toolTitle: settled?.toolTitle,
+      itemType: "command_execution",
+      activityKind: "tool.completed",
+      toolStatus: "completed",
+      liveActivity: { state: "completed" },
+    });
+  });
+
   it("settles orphaned tool activity when its owning turn completes", () => {
     const turnId = TurnId.makeUnsafe("turn-with-orphaned-tool");
     const entries = deriveWorkLogEntries(
