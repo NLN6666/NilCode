@@ -211,6 +211,18 @@ describe("decodeSubagentReceiverAgents", () => {
     ]);
   });
 
+  it.each([
+    ["nested receiver", { receiverAgents: [{ threadId: "child-provider-1", background: false }] }],
+    ["flat receiver", { receiverThreadId: "child-provider-1", background: false }],
+  ])("preserves explicit foreground state from a $s", (_label, item) => {
+    expect(decodeSubagentReceiverAgents(item, ["child-provider-1"])).toEqual([
+      {
+        providerThreadId: "child-provider-1",
+        background: false,
+      },
+    ]);
+  });
+
   it("distinguishes flat direct models from requested model hints", () => {
     expect(
       decodeSubagentReceiverAgents(
@@ -411,6 +423,26 @@ describe("resolveSubagentIdentityHint", () => {
       model: "gpt-5.6-codex",
       effort: "high",
       background: true,
+      status: "completed",
+    });
+  });
+
+  it("keeps an explicit foreground transition through later sparse updates", () => {
+    const directory = buildSubagentIdentityDirectory([
+      ...extractSubagentIdentityHints({
+        receiverAgents: [{ threadId: "child-provider-1", background: true }],
+      }),
+      ...extractSubagentIdentityHints({
+        receiverThreadId: "child-provider-1",
+        background: false,
+      }),
+      ...extractSubagentIdentityHints({
+        agentStates: { "child-provider-1": { status: "completed" } },
+      }),
+    ]);
+
+    expect(directory.byProviderThreadId.get("child-provider-1")).toMatchObject({
+      background: false,
       status: "completed",
     });
   });

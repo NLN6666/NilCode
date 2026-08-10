@@ -203,7 +203,7 @@ function resolveSubagentIdentityFromParentActivity(input: {
   return {
     nickname: normalizeWhitespace(resolved.nickname),
     role: normalizeRole(resolved.role),
-    model: normalizeWhitespace(resolved.model),
+    model: resolved.modelIsRequestedHint === true ? null : normalizeWhitespace(resolved.model),
     effort: normalizeWhitespace(resolved.effort),
   };
 }

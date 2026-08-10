@@ -248,7 +248,12 @@ export function decodeSubagentReceiverAgents(
       const effort =
         firstStringValue(object, ["effort", "reasoningEffort", "reasoning_effort"]) ??
         topLevelEffort;
-      const background = object.background === true || item.background === true;
+      const background =
+        typeof object.background === "boolean"
+          ? object.background
+          : typeof item.background === "boolean"
+            ? item.background
+            : undefined;
       const prompt = firstStringValue(object, ["prompt", "task", "message"]) ?? topLevelPrompt;
 
       return [
@@ -259,7 +264,7 @@ export function decodeSubagentReceiverAgents(
           ...(role ? { role } : {}),
           ...(model ? { model } : {}),
           ...(effort ? { effort } : {}),
-          ...(background ? { background } : {}),
+          ...(background !== undefined ? { background } : {}),
           ...(prompt ? { prompt } : {}),
           ...(model && !directModel && !topLevelDirectModel ? { modelIsRequestedHint: true } : {}),
         },
@@ -306,7 +311,7 @@ export function decodeSubagentReceiverAgents(
       ...(topLevelModel ? { model: topLevelModel } : {}),
       ...(topLevelModel && !topLevelDirectModel ? { modelIsRequestedHint: true } : {}),
       ...(topLevelEffort ? { effort: topLevelEffort } : {}),
-      ...(item.background === true ? { background: true } : {}),
+      ...(typeof item.background === "boolean" ? { background: item.background } : {}),
       ...(topLevelPrompt ? { prompt: topLevelPrompt } : {}),
     },
   ];
@@ -449,7 +454,7 @@ export function extractSubagentIdentityHints(
       hint.role ?? "",
       hint.model ?? "",
       hint.effort ?? "",
-      hint.background ? "1" : "0",
+      hint.background === undefined ? "" : hint.background ? "1" : "0",
       hint.prompt ?? "",
       hint.status ?? "",
       hint.message ?? "",

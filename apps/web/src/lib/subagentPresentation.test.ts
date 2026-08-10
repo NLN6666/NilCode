@@ -259,6 +259,44 @@ describe("resolveSubagentPresentationForThread", () => {
     expect(presentation.modelLabel).toBe("Sonnet 4.6 · high");
   });
 
+  it("hides requested-only models while preserving a resolved child dock identity", () => {
+    const presentation = resolveSubagentPresentationForThread({
+      thread: {
+        id: "subagent:thread-1:child-provider-1",
+        title: "Subagent child-provider-1",
+        parentThreadId: "thread-1",
+        subagentNickname: null,
+        subagentRole: null,
+      },
+      threads: [
+        {
+          id: "thread-1",
+          activities: [
+            {
+              payload: {
+                data: {
+                  item: {
+                    receiverAgents: [
+                      {
+                        threadId: "child-provider-1",
+                        agentNickname: "Locke",
+                        agentRole: "explorer",
+                        requestedModel: "gpt-5.5-codex",
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(presentation.fullLabel).toBe("Locke [explorer]");
+    expect(presentation.modelLabel).toBeNull();
+  });
+
   it("leaves the model unresolved rather than borrowing one when the parent activity has none", () => {
     const presentation = resolveSubagentPresentationForThread({
       thread: {

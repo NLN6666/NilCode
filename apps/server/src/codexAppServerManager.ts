@@ -3156,11 +3156,11 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
     if (notification.method === "turn/completed") {
       if (isChildConversation) {
+        this.forgetCollabReceiverRouting(context, notification.params);
         return;
       }
       this.clearTaskCompleteFallback(context, rawRoute.turnId);
       context.collabReceiverTurns.clear();
-      context.collabReceiverParents.clear();
       if (rawRoute.turnId) {
         context.reviewTurnIds.delete(rawRoute.turnId);
       }
@@ -3181,11 +3181,11 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
     if (notification.method === "turn/aborted") {
       if (isChildConversation) {
+        this.forgetCollabReceiverRouting(context, notification.params);
         return;
       }
       this.clearTaskCompleteFallback(context, rawRoute.turnId);
       context.collabReceiverTurns.clear();
-      context.collabReceiverParents.clear();
       if (rawRoute.turnId) {
         context.reviewTurnIds.delete(rawRoute.turnId);
       }
@@ -3535,7 +3535,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       }
 
       context.collabReceiverTurns.clear();
-      context.collabReceiverParents.clear();
       context.reviewTurnIds.delete(turnId);
       const gatewayTurnAuthorityRetired = context.gatewaySessionLease !== undefined;
       if (gatewayTurnAuthorityRetired) {
@@ -3840,6 +3839,15 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       return undefined;
     }
     return context.collabReceiverParents.get(providerConversationId);
+  }
+
+  private forgetCollabReceiverRouting(context: CodexSessionContext, params: unknown): void {
+    const providerConversationId = this.readProviderConversationId(params);
+    if (!providerConversationId) {
+      return;
+    }
+    context.collabReceiverTurns.delete(providerConversationId);
+    context.collabReceiverParents.delete(providerConversationId);
   }
 
   private rememberCollabReceiverTurns(

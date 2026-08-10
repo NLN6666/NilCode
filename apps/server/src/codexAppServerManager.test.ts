@@ -3307,6 +3307,77 @@ describe("respondToUserInput", () => {
 });
 
 describe("collab child conversation routing", () => {
+  it.each(["turn/completed", "turn/aborted"])(
+    "keeps background child routing after parent %s until the child settles",
+    (parentTerminalMethod) => {
+      const { manager, context, emitEvent, updateSession } = createCollabNotificationHarness();
+
+      handleServerNotificationForTest(manager, context, {
+        method: "item/completed",
+        params: {
+          item: {
+            type: "collabAgentToolCall",
+            id: "call_collab_background",
+            receiverThreadIds: ["child_provider_background"],
+          },
+          threadId: "provider_parent",
+          turnId: "turn_parent",
+        },
+      });
+
+      handleServerNotificationForTest(manager, context, {
+        method: parentTerminalMethod,
+        params: {
+          threadId: "provider_parent",
+          turn: { id: "turn_parent", status: "completed" },
+        },
+      });
+
+      expect(context.collabReceiverParents.get("child_provider_background")).toBe("provider_parent");
+      expect(context.collabReceiverTurns.has("child_provider_background")).toBe(false);
+      emitEvent.mockClear();
+      updateSession.mockClear();
+
+      handleServerNotificationForTest(manager, context, {
+        method: "item/agentMessage/delta",
+        params: {
+          threadId: "child_provider_background",
+          turnId: "turn_child_background",
+          itemId: "msg_child_background",
+          delta: "still working",
+        },
+      });
+      handleServerNotificationForTest(manager, context, {
+        method: "turn/completed",
+        params: {
+          threadId: "child_provider_background",
+          turn: { id: "turn_child_background", status: "completed" },
+        },
+      });
+
+      expect(emitEvent).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          method: "item/agentMessage/delta",
+          providerThreadId: "child_provider_background",
+          providerParentThreadId: "provider_parent",
+        }),
+      );
+      expect(emitEvent.mock.calls[0]?.[0]).not.toHaveProperty("parentTurnId");
+      expect(emitEvent).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          method: "turn/completed",
+          providerThreadId: "child_provider_background",
+          providerParentThreadId: "provider_parent",
+        }),
+      );
+      expect(context.collabReceiverTurns.has("child_provider_background")).toBe(false);
+      expect(context.collabReceiverParents.has("child_provider_background")).toBe(false);
+      expect(updateSession).not.toHaveBeenCalled();
+    },
+  );
+
   it("tracks the current collabToolCall receiver shape", () => {
     const { manager, context } = createCollabNotificationHarness();
 
