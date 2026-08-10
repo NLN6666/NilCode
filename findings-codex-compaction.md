@@ -115,3 +115,9 @@ bun run --cwd apps/server test -- src/provider/Layers/ProviderService.test.ts
 ```
 
 The only runner output was Node's existing experimental SQLite warning. `bun fmt`, `bun lint`, and `bun typecheck` were intentionally not run.
+
+## Phase 7: final fresh verification
+
+After the concurrency fix received an independent APPROVED review, the final focused pass reran `ProviderService.test.ts`: 85/85 tests passed. The combined Codex manager and provider-runtime-ingestion run passed 228 tests, skipped 2, and retained the single unrelated PATH-resolved Codex CLI version-gate baseline failure documented above. Shared metadata, web presentation/transcript, and Chromium dock tests also passed (30/30, 210/210, and 6/6 respectively).
+
+The heavyweight `bun fmt`, `bun lint`, and `bun typecheck` gate remains pending explicit user authorization.

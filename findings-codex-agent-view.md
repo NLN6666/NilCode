@@ -51,3 +51,15 @@ Section 10 的 BLOCKED 结论来自不完整的测试夹具，而不是生产路
 ## 12. 新父 turn 与父 turn watchdog 都必须保留存活 child 的 provider-parent 路由
 
 `sendTurn` 和 `abandonTurn` 原本同时清空 `collabReceiverTurns` 与 `collabReceiverParents`。前者应该在父 turn 边界退休，后者仍是 background child 在其独立 terminal 通知前被识别为 child conversation、并附带 `providerParentThreadId` 的唯一映射。两处现在只清理 `collabReceiverTurns`；child `turn/completed` / `turn/aborted` 和 session disposal/replacement 仍负责删除 provider-parent 映射。TDD RED 的定向 manager run 如预期有 2 项失败（映射变为 `undefined`）；GREEN 的等价定向 run 为 24 passed、106 skipped。未触碰根 `findings.md`、mock service worker 或生成路由树。
+
+## 13. 最终聚焦回归证据
+
+2026-08-10 在最终实现与审查修复提交后重新执行完整聚焦套件：
+
+- `packages/shared/src/subagents.test.ts`: 30/30 passed。
+- Web unit focused suite: 210/210 passed（work log、presentation、strip、detail sections、small-transcript path）。
+- `SubagentDetailSections.browser.tsx`: Chromium 6/6 passed。
+- Server manager + ingestion: 228 passed、2 skipped、1 failed。唯一失败仍是第 7 节记录的 PATH-resolved Codex CLI 版本门控环境基线；全部 child routing 与 `ProviderRuntimeIngestion` 测试通过。
+- `ProviderService.test.ts`: 85/85 passed，覆盖 Codex compact acknowledgement、真实 compacted lifecycle、Pi 同步 compact 与两条并发交错回归。
+
+`bun fmt`、`bun lint` 与 `bun typecheck` 仍等待用户明确授权，当前不能据此宣称完成全部仓库门禁。
