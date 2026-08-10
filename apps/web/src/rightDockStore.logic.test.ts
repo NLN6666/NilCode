@@ -9,12 +9,62 @@ import {
   findMissingSidechatPaneIds,
   isRightDockPaneKind,
   openPaneInState,
+  resolveProjectSharedBrowserDockState,
   resolveVisibleDockSidechatThreadIds,
   sanitizeRightDockStateByThreadId,
   sanitizeRightDockThreadState,
   setDockOpenInState,
   updatePaneInState,
 } from "./rightDockStore.logic";
+
+describe("project-shared browser dock continuity", () => {
+  it("opens the same browser pane when a sibling thread has no dock state", () => {
+    const previousThread = openPaneInState(createDefaultRightDockState(), {
+      paneId: "browser-a",
+      kind: "browser",
+    });
+
+    const nextThread = resolveProjectSharedBrowserDockState({
+      threadState: createDefaultRightDockState(),
+      projectBrowserVisible: previousThread.open,
+      createPaneId: () => "browser-b",
+    });
+
+    expect(nextThread.open).toBe(true);
+    expect(nextThread.activePaneId).toBe("browser-b");
+    expect(nextThread.panes).toMatchObject([{ id: "browser-b", kind: "browser" }]);
+  });
+
+  it("does not disturb thread-owned panes when the shared browser is not visible", () => {
+    const threadState = openPaneInState(createDefaultRightDockState(), {
+      paneId: "diff-a",
+      kind: "diff",
+    });
+
+    expect(
+      resolveProjectSharedBrowserDockState({
+        threadState,
+        projectBrowserVisible: false,
+        createPaneId: () => "browser-unused",
+      }),
+    ).toBe(threadState);
+  });
+
+  it("collapses a stale browser pane when the project browser is hidden", () => {
+    const threadState = openPaneInState(createDefaultRightDockState(), {
+      paneId: "browser-a",
+      kind: "browser",
+    });
+
+    expect(
+      resolveProjectSharedBrowserDockState({
+        threadState,
+        projectBrowserVisible: false,
+        createPaneId: () => "browser-unused",
+      }),
+    ).toEqual({ ...threadState, open: false });
+  });
+});
 
 describe("RIGHT_DOCK_PANE_KINDS (single source of truth)", () => {
   it("lists every supported kind", () => {

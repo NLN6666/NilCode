@@ -8,6 +8,7 @@ import {
   type ReactNode,
   startTransition,
   Suspense,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -56,7 +57,11 @@ import {
   type WorkspaceFileOpener,
 } from "../../lib/workspaceFileOpener";
 import { resolveSubagentPresentationForThread } from "../../lib/subagentPresentation";
-import { selectRightDockState, useRightDockStore } from "../../rightDockStore";
+import {
+  selectRightDockState,
+  selectSharedBrowserVisibility,
+  useRightDockStore,
+} from "../../rightDockStore";
 import {
   resolveActivePane,
   findMissingSidechatPaneIds,
@@ -202,8 +207,18 @@ export function SingleChatSurface(props: {
   const setActivePane = useRightDockStore((store) => store.setActivePane);
   const setDockOpen = useRightDockStore((store) => store.setDockOpen);
   const updatePane = useRightDockStore((store) => store.updatePane);
+  const setSharedBrowserVisible = useRightDockStore((store) => store.setSharedBrowserVisible);
+  const reconcileSharedBrowser = useRightDockStore((store) => store.reconcileSharedBrowser);
   const activeProject = useStore(
     useMemo(() => createProjectSelector(props.projectId), [props.projectId]),
+  );
+  const sharedBrowserProjectId =
+    activeProject?.browserSharing === "shared" ? activeProject.id : null;
+  const sharedBrowserVisible = useRightDockStore(
+    useMemo(
+      () => selectSharedBrowserVisibility(sharedBrowserProjectId),
+      [sharedBrowserProjectId],
+    ),
   );
   const threadWorkspaceMetadata = useStore(
     useMemo(() => createThreadWorkspaceMetadataSelector(props.threadId), [props.threadId]),
@@ -302,6 +317,45 @@ export function SingleChatSurface(props: {
   const [editorDiffOptionsControl, setEditorDiffOptionsControl] = useState<ReactNode | null>(null);
 
   const activePane = resolveActivePane(dockState);
+  const browserVisibleInCurrentThread = activePane?.kind === "browser";
+
+  useEffect(() => {
+    if (sharedBrowserProjectId === null) {
+      return;
+    }
+    if (sharedBrowserVisible === undefined) {
+      setSharedBrowserVisible(sharedBrowserProjectId, browserVisibleInCurrentThread);
+      return;
+    }
+    reconcileSharedBrowser(props.threadId, sharedBrowserVisible);
+  }, [
+    browserVisibleInCurrentThread,
+    props.threadId,
+    reconcileSharedBrowser,
+    setSharedBrowserVisible,
+    sharedBrowserProjectId,
+    sharedBrowserVisible,
+  ]);
+
+  const syncSharedBrowserVisibility = useCallback(
+    (visible: boolean) => {
+      if (sharedBrowserProjectId !== null) {
+        setSharedBrowserVisible(sharedBrowserProjectId, visible);
+      }
+    },
+    [setSharedBrowserVisible, sharedBrowserProjectId],
+  );
+
+  const closeDockPane = useCallback(
+    (paneId: string) => {
+      const pane = dockState.panes.find((candidate) => candidate.id === paneId);
+      if (pane?.kind === "browser") {
+        syncSharedBrowserVisibility(false);
+      }
+      closePane(props.threadId, paneId);
+    },
+    [closePane, dockState.panes, props.threadId, syncSharedBrowserVisibility],
+  );
   const {
     activePaneRuntimeMode,
     requestActivePaneLive: requestActiveDockPaneLive,
@@ -326,25 +380,34 @@ export function SingleChatSurface(props: {
 
   const handleToggleDiff = () => {
     requestImmediateDockHydration("diff");
+    syncSharedBrowserVisibility(false);
     toggleSingletonPane(props.threadId, { kind: "diff" });
   };
   const handleToggleBrowser = () => {
     requestImmediateDockHydration("browser");
+    syncSharedBrowserVisibility(!browserVisibleInCurrentThread);
     toggleSingletonPane(props.threadId, { kind: "browser" });
   };
   const handleToggleDevice = () => {
     requestImmediateDockHydration("device");
+    syncSharedBrowserVisibility(false);
     toggleSingletonPane(props.threadId, { kind: "device" });
   };
   const handleToggleRightDock = () => {
-    setDockOpen(props.threadId, !dockState.open);
+    const nextOpen = !dockState.open;
+    if (activePane?.kind === "browser") {
+      syncSharedBrowserVisibility(nextOpen);
+    }
+    setDockOpen(props.threadId, nextOpen);
   };
   const handleOpenBrowserUrl = () => {
     requestImmediateDockHydration("browser");
+    syncSharedBrowserVisibility(true);
     openPane(props.threadId, { kind: "browser" });
   };
   const handleOpenTurnDiff = (turnId: TurnId, filePath?: string) => {
     requestImmediateDockHydration("diff");
+    syncSharedBrowserVisibility(false);
     openPane(props.threadId, {
       kind: "diff",
       diffTurnId: turnId,
@@ -475,6 +538,7 @@ export function SingleChatSurface(props: {
         return false;
       }
       requestImmediateDockHydration("file");
+      syncSharedBrowserVisibility(false);
       openPane(props.threadId, { kind: "file", filePath: targetPath });
       return true;
     },
@@ -551,15 +615,20 @@ export function SingleChatSurface(props: {
 
     if (panelPatch.panel === "browser") {
       requestImmediateDockHydration("browser");
+      syncSharedBrowserVisibility(true);
       openPane(props.threadId, { kind: "browser" });
     } else if (panelPatch.panel === "diff") {
       requestImmediateDockHydration("diff");
+      syncSharedBrowserVisibility(false);
       openPane(props.threadId, {
         kind: "diff",
         diffTurnId: panelPatch.diffTurnId ?? null,
         diffFilePath: panelPatch.diffFilePath ?? null,
       });
     } else {
+      if (activePane?.kind === "browser") {
+        syncSharedBrowserVisibility(false);
+      }
       setDockOpen(props.threadId, false);
     }
     void navigate({
@@ -575,11 +644,14 @@ export function SingleChatSurface(props: {
     props.threadId,
     requestImmediateDockHydration,
     setDockOpen,
+    activePane?.kind,
+    syncSharedBrowserVisibility,
   ]);
 
   useBrowserPanelDesktopBridge({
     onToggle: () => {
       requestImmediateDockHydration("browser");
+      syncSharedBrowserVisibility(!browserVisibleInCurrentThread);
       toggleSingletonPane(props.threadId, { kind: "browser" });
     },
     onOpen: (requestedThreadId) => {
@@ -587,7 +659,10 @@ export function SingleChatSurface(props: {
         currentThreadId: props.threadId,
         requestedThreadId,
         requestImmediateBrowserHydration: () => requestImmediateDockHydration("browser"),
-        openBrowserPane: (threadId) => openPane(threadId, { kind: "browser" }),
+        openBrowserPane: (threadId) => {
+          syncSharedBrowserVisibility(true);
+          openPane(threadId, { kind: "browser" });
+        },
       });
     },
   });
@@ -599,7 +674,10 @@ export function SingleChatSurface(props: {
             currentThreadId: props.threadId,
             requestedThreadId: event.threadId,
             requestImmediateDeviceHydration: () => requestImmediateDockHydration("device"),
-            openDevicePane: (threadId) => openPane(threadId, { kind: "device" }),
+            openDevicePane: (threadId) => {
+              syncSharedBrowserVisibility(false);
+              openPane(threadId, { kind: "device" });
+            },
             navigateToThread: (threadId) => {
               void navigate({
                 to: "/$threadId",
@@ -650,7 +728,7 @@ export function SingleChatSurface(props: {
         if (pane?.threadId) {
           clearSidechatPaneRetention(pane.threadId);
         }
-        closePane(props.threadId, paneId);
+        closeDockPane(paneId);
         continue;
       }
       timerIds.push(
@@ -658,7 +736,7 @@ export function SingleChatSurface(props: {
           if (pane?.threadId) {
             clearSidechatPaneRetention(pane.threadId);
           }
-          closePane(props.threadId, paneId);
+          closeDockPane(paneId);
         }, remainingGraceMs),
       );
     }
@@ -668,7 +746,7 @@ export function SingleChatSurface(props: {
       }
     };
   }, [
-    closePane,
+    closeDockPane,
     dockState,
     props.threadId,
     sidechatPaneRetentionVersion,
@@ -777,6 +855,7 @@ export function SingleChatSurface(props: {
 
   const handleAddDockPane = (kind: RightDockPaneKind) => {
     requestImmediateDockHydration(kind);
+    syncSharedBrowserVisibility(kind === "browser");
     if (kind === "sidechat") {
       // Sidechat spawns a thread; reuse the composer's /side flow (correct model
       // selection) published via the registry instead of opening an empty pane.
@@ -818,7 +897,7 @@ export function SingleChatSurface(props: {
             <BrowserDockPane
               threadId={props.threadId}
               paneId={pane.id}
-              onClosePanel={() => closePane(props.threadId, pane.id)}
+              onClosePanel={() => closeDockPane(pane.id)}
               runtimeMode={context.runtimeMode}
               onRequestLive={requestActiveDockPaneLive}
             />
@@ -953,7 +1032,9 @@ export function SingleChatSurface(props: {
   };
 
   const handleSelectDockPane = (paneId: string) => {
-    requestImmediateDockHydration(dockState.panes.find((pane) => pane.id === paneId)?.kind);
+    const paneKind = dockState.panes.find((pane) => pane.id === paneId)?.kind;
+    requestImmediateDockHydration(paneKind);
+    syncSharedBrowserVisibility(paneKind === "browser");
     setActivePane(props.threadId, paneId);
   };
 
@@ -1132,9 +1213,15 @@ export function SingleChatSurface(props: {
           {...(paneLabelOverrides ? { paneLabelOverrides } : {})}
           {...(paneIconOverrides ? { paneIconOverrides } : {})}
           onSelectPane={handleSelectDockPane}
-          onClosePane={(paneId) => closePane(props.threadId, paneId)}
-          onCollapse={() => setDockOpen(props.threadId, false)}
-          onOpenChange={(open) => setDockOpen(props.threadId, open)}
+          onClosePane={closeDockPane}
+          onCollapse={() => {
+            if (activePane?.kind === "browser") syncSharedBrowserVisibility(false);
+            setDockOpen(props.threadId, false);
+          }}
+          onOpenChange={(open) => {
+            if (activePane?.kind === "browser") syncSharedBrowserVisibility(open);
+            setDockOpen(props.threadId, open);
+          }}
           onAddPane={handleAddDockPane}
           renderPane={renderDockPane}
         />

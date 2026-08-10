@@ -74,6 +74,23 @@ export function createDefaultRightDockState(): RightDockThreadState {
   };
 }
 
+export function resolveProjectSharedBrowserDockState(input: {
+  readonly threadState: RightDockThreadState;
+  readonly projectBrowserVisible: boolean;
+  readonly createPaneId: () => string;
+}): RightDockThreadState {
+  if (!input.projectBrowserVisible) {
+    const activePane = resolveActivePane(input.threadState);
+    return activePane?.kind === "browser"
+      ? { ...input.threadState, open: false }
+      : input.threadState;
+  }
+  return openPaneInState(input.threadState, {
+    paneId: input.createPaneId(),
+    kind: "browser",
+  });
+}
+
 export function isRightDockPaneKind(value: unknown): value is RightDockPaneKind {
   return typeof value === "string" && RIGHT_DOCK_PANE_KIND_SET.has(value);
 }

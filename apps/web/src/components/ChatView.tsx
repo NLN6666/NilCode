@@ -112,6 +112,7 @@ const TERMINAL_INTERRUPT_SEQUENCE = "\u0003";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import {
   serverConfigQueryOptions,
+  serverLocalServersQueryOptions,
   serverQueryKeys,
   serverSettingsQueryOptions,
 } from "~/lib/serverReactQuery";
@@ -460,6 +461,10 @@ import {
   selectThreadTerminalState,
   useTerminalStateStore,
 } from "../terminalStateStore";
+import {
+  findLocalServerForProjectScript,
+  resolveRunningProjectScriptIds,
+} from "../projectScriptServiceState";
 import {
   resolveSplitViewFocusedThreadId,
   selectSplitView,
@@ -4255,6 +4260,10 @@ export default function ChatView({
           description: error instanceof Error ? error.message : url,
         });
       });
+      // A project service preview reaches here only after its port responds. Refresh the
+      // process snapshot at that point so Actions can recover even when Windows terminal
+      // activity detection missed the long-running subprocess transition.
+      void queryClient.invalidateQueries({ queryKey: serverQueryKeys.localServers() });
       if (onOpenBrowserUrl) {
         onOpenBrowserUrl(url);
         return;
@@ -4269,7 +4278,14 @@ export default function ChatView({
         }),
       });
     },
-    [activeProject?.browserSharing, activeProjectId, navigate, onOpenBrowserUrl, threadId],
+    [
+      activeProject?.browserSharing,
+      activeProjectId,
+      navigate,
+      onOpenBrowserUrl,
+      queryClient,
+      threadId,
+    ],
   );
 
   const envLocked = Boolean(
@@ -4936,12 +4952,47 @@ export default function ChatView({
       ? null
       : selectThreadTerminalState(state.terminalStateByThreadId, serviceScopeId),
   );
-  const runningProjectScriptIds = useMemo(
+  const terminalRunningProjectScriptIds = useMemo(
     () =>
       serviceTerminalState === null
         ? new Set<string>()
         : selectRunningServiceScriptIds(serviceTerminalState),
     [serviceTerminalState],
+  );
+  const launchedProjectScriptIds = useMemo(
+    () =>
+      new Set(
+        serviceTerminalState === null
+          ? []
+          : Object.values(serviceTerminalState.serviceScriptIdsByTerminalId),
+      ),
+    [serviceTerminalState],
+  );
+  const shouldDiscoverProjectServices =
+    activeProjectCwd !== null &&
+    (activeProjectScripts?.some((script) => script.port !== null && script.port !== undefined) ??
+      false);
+  const projectLocalServersQuery = useQuery(
+    serverLocalServersQueryOptions(shouldDiscoverProjectServices),
+  );
+  const projectLocalServers = projectLocalServersQuery.data?.servers;
+  const runningProjectScriptIds = useMemo(
+    () =>
+      activeProjectCwd === null || activeProjectScripts === undefined
+        ? terminalRunningProjectScriptIds
+        : resolveRunningProjectScriptIds({
+            scripts: activeProjectScripts,
+            terminalRunningScriptIds: terminalRunningProjectScriptIds,
+            launchedScriptIds: launchedProjectScriptIds,
+            localServers: projectLocalServers ?? [],
+          }),
+    [
+      activeProjectCwd,
+      activeProjectScripts,
+      launchedProjectScriptIds,
+      projectLocalServers,
+      terminalRunningProjectScriptIds,
+    ],
   );
 
   const stopProjectScript = useCallback(
@@ -4955,12 +5006,18 @@ export default function ChatView({
       if (!api || !activeThreadId || serviceScopeId === null || serviceTerminalState === null) {
         return;
       }
+      const serviceTerminalIds = selectServiceTerminalIdsForScript(
+        serviceTerminalState,
+        script.id,
+      );
       // Ctrl-C, not terminal.close: after a dev server stops the next thing anyone
-      // does is read why, and closing the terminal would take the log with it. The
-      // process exiting clears `runningTerminalIds`, which flips the button back.
-      for (const terminalId of selectServiceTerminalIdsForScript(serviceTerminalState, script.id)) {
+      // does is read why, and closing the terminal would take the log with it.
+      for (const terminalId of serviceTerminalIds) {
         void api.terminal
           .write({ threadId: serviceScopeId, terminalId, data: TERMINAL_INTERRUPT_SEQUENCE })
+          .finally(() => {
+            void queryClient.invalidateQueries({ queryKey: serverQueryKeys.localServers() });
+          })
           .catch((error: unknown) => {
             setThreadError(
               activeThreadId,
@@ -4968,8 +5025,52 @@ export default function ChatView({
             );
           });
       }
+      if (serviceTerminalIds.length > 0 || activeProjectCwd === null) {
+        return;
+      }
+
+      // Terminal activity can miss a subprocess transition on Windows. The project-scoped
+      // launch identity plus the declared listening port still gives us a safe process
+      // target, so Actions can stop the service without relying on a cwd the OS omitted.
+      const localServer = findLocalServerForProjectScript({
+        script,
+        localServers: projectLocalServers ?? [],
+        launchedScriptIds: launchedProjectScriptIds,
+      });
+      const port = script.port;
+      if (localServer === null || port === null || port === undefined) {
+        return;
+      }
+      if (!localServer.isStoppable) {
+        setThreadError(
+          activeThreadId,
+          localServer.stopDisabledReason ?? `The process running "${script.name}" cannot be stopped.`,
+        );
+        return;
+      }
+      void api.server
+        .stopLocalServer({ pid: localServer.pid, port })
+        .finally(() => {
+          void queryClient.invalidateQueries({ queryKey: serverQueryKeys.localServers() });
+        })
+        .catch((error: unknown) => {
+          setThreadError(
+            activeThreadId,
+            error instanceof Error ? error.message : `Failed to stop "${script.name}".`,
+          );
+        });
     },
-    [activeProjectId, activeThreadId, serviceScopeId, serviceTerminalState, setThreadError],
+    [
+      activeProjectCwd,
+      activeProjectId,
+      activeThreadId,
+      launchedProjectScriptIds,
+      projectLocalServers,
+      queryClient,
+      serviceScopeId,
+      serviceTerminalState,
+      setThreadError,
+    ],
   );
   const persistProjectScripts = useCallback(
     async (input: {

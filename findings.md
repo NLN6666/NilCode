@@ -288,3 +288,19 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 **执行记录：** `subagent-driven-development/scripts/task-brief ... 1` 返回 `task 1 not found`，因为本计划的实施步骤是编号列表而不是 `Task 1` 标题。后续按同一计划内容手工生成单任务 brief，未改变需求或实现范围。
 
 **实施结果：** 新增共享 `useTerminalContextComposerTarget` hook，浏览器服务控制台与独立 dock 控制台均通过 `SINGLE_CHAT_PANE_SCOPE_ID` 获取当前 composer target；无 target 时传 `undefined`。唯一一次 review 仅发现 SDD 临时报告被误纳入提交，已从最终实现提交中移除。最终聚焦验证为 3 个测试文件、10 个用例全部通过。
+
+---
+
+## 20. Actions 服务状态与 Browser 页面共享只完成了半条状态链
+
+**现象（2026-08-10）：** 同一项目中通过 Action 启动声明了端口的服务后，终端与 Browser 已显示服务页面，但顶部 Action 仍显示 Run；切换到同项目的其他任务后，Browser 的可见状态/页面也没有完整延续。
+
+**Actions 根因：** `ProjectScriptsControl` 完全依赖 `runningScriptIds`。该集合只由项目 synthetic terminal scope 的 `runningTerminalIds + serviceScriptIdsByTerminalId` 推导；终端子进程活动探测漏报时，即使 `server.listLocalServers()` 已通过监听端口确认服务存活，Actions 仍不知道。现有项目级 `projectRunStore`/`DevServerManager` 是另一套 server-owned registry，不覆盖从 Actions 终端启动的服务。
+
+**Browser 根因：** 底层已有 `project-browser:<projectId>` 共享 surface 和单 owner claim；但共享仍受 `browserSharing`（默认 isolated）控制，而且 `rightDockStore` 的 open/panes/activePaneId 仍按 thread 持久化。因此“同页面”和“同面板状态”分属两条状态链，前者可共享、后者切任务即更换。
+
+**排查错误/约束：** LCC 索引停在 `823ee638`，当前 HEAD 为 `eb7affe3`，检索结果明确标记 `index_stale`；关键结论均使用 FastCtx 对当前文件复核。子代理最初给出的 `BrowserDockPane.tsx` 与 `browserSurface.ts` 路径缺少真实子目录，实际分别位于 `apps/web/src/components/chat/` 与 `packages/shared/src/`。
+
+**实施边界：** Actions 只在“项目级 Action 启动身份 + 声明端口监听”同时成立时用本地进程扫描补齐运行态；不能只凭端口或缺失的 Windows cwd 认领进程，否则会串到其他项目，同端口的多个 Action 也会同时误亮。终端活动真实存在时仍发 Ctrl-C 并保留日志，activity 漏报时才按已确认的 pid/port 停止进程。Browser 同时统一项目 surface 与按 projectId 持久化的 Browser dock 可见/激活状态，isolated 模式保持原有 thread 隔离。
+
+**测试命令坑：** `bun run test <file...>` 会把文件路径传给 Turbo 当成 task，报 `Missing tasks in project`；Web 聚焦测试必须使用 `bun run --cwd apps/web test -- <file...>`。

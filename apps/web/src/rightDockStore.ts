@@ -3,11 +3,12 @@
 // Layer: UI state store
 // Exports: dock store hook, per-thread selector, and stable default snapshot.
 
-import type { ThreadId } from "@synara/contracts";
+import type { ProjectId, ThreadId } from "@synara/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { randomUUID } from "./lib/utils";
+import { sanitizeStringKeyedRecord } from "./persistedRecord";
 import {
   type OpenPaneInput,
   type RightDockPane,
@@ -15,6 +16,7 @@ import {
   closePaneInState,
   createDefaultRightDockState,
   openPaneInState,
+  resolveProjectSharedBrowserDockState,
   sanitizeRightDockStateByThreadId,
   setActivePaneInState,
   setDockOpenInState,
@@ -26,6 +28,9 @@ const RIGHT_DOCK_STORAGE_KEY = "synara:right-dock-state:v1";
 
 interface RightDockStore {
   dockStateByThreadId: Record<string, RightDockThreadState | undefined>;
+  sharedBrowserVisibleByProjectId: Record<string, boolean | undefined>;
+  setSharedBrowserVisible: (projectId: ProjectId, visible: boolean) => void;
+  reconcileSharedBrowser: (threadId: ThreadId, visible: boolean) => void;
   openPane: (
     threadId: ThreadId,
     input: Omit<OpenPaneInput, "paneId"> & { paneId?: string },
@@ -88,6 +93,27 @@ export const useRightDockStore = create<RightDockStore>()(
   persist(
     (set) => ({
       dockStateByThreadId: {},
+      sharedBrowserVisibleByProjectId: {},
+      setSharedBrowserVisible: (projectId, visible) =>
+        set((store) => {
+          if (store.sharedBrowserVisibleByProjectId[projectId] === visible) {
+            return {};
+          }
+          return {
+            sharedBrowserVisibleByProjectId: {
+              ...store.sharedBrowserVisibleByProjectId,
+              [projectId]: visible,
+            },
+          };
+        }),
+      reconcileSharedBrowser: (threadId, visible) =>
+        commit(set, threadId, (state) =>
+          resolveProjectSharedBrowserDockState({
+            threadState: state,
+            projectBrowserVisible: visible,
+            createPaneId: randomUUID,
+          }),
+        ),
       openPane: (threadId, input) =>
         commit(set, threadId, (state) =>
           openPaneInState(state, { ...input, paneId: input.paneId ?? randomUUID() }),
@@ -124,6 +150,11 @@ export const useRightDockStore = create<RightDockStore>()(
         dockStateByThreadId: sanitizeRightDockStateByThreadId(
           (persisted as { dockStateByThreadId?: unknown } | undefined)?.dockStateByThreadId,
         ),
+        sharedBrowserVisibleByProjectId: sanitizeStringKeyedRecord(
+          (persisted as { sharedBrowserVisibleByProjectId?: unknown } | undefined)
+            ?.sharedBrowserVisibleByProjectId,
+          (entry) => (typeof entry === "boolean" ? entry : null),
+        ),
       }),
     },
   ),
@@ -134,4 +165,9 @@ export function selectRightDockState(threadId: ThreadId | null) {
   // changes while mounting a thread that has no persisted dock state yet.
   return (store: RightDockStore) =>
     (threadId ? store.dockStateByThreadId[threadId] : undefined) ?? DEFAULT_RIGHT_DOCK_STATE;
+}
+
+export function selectSharedBrowserVisibility(projectId: ProjectId | null) {
+  return (store: RightDockStore): boolean | undefined =>
+    projectId === null ? undefined : store.sharedBrowserVisibleByProjectId[projectId];
 }
