@@ -131,6 +131,68 @@ describe("discoverSkillsCatalog", () => {
     expect(byName.get("pi-only")?.scope).toBe("pi");
   });
 
+  // Runtime isolation: a provider-scoped scan walks only the folders that provider
+  // actually loads. Anything else would offer a skill the agent will never run.
+  describe("provider isolation", () => {
+    const writeOneSkillPerOrigin = async () => {
+      await writeSkill(path.join(synaraBaseDir, "skills", "portable"), "portable", "Synara skill");
+      await writeSkill(path.join(homeDir, ".codex", "skills", "codex-only"), "codex-only", "Codex");
+      await writeSkill(
+        path.join(homeDir, ".claude", "skills", "claude-only"),
+        "claude-only",
+        "Claude",
+      );
+      await writeSkill(path.join(homeDir, ".pi", "agent", "skills", "pi-only"), "pi-only", "Pi");
+    };
+
+    it("hides other providers' folders from a provider-scoped scan", async () => {
+      await writeOneSkillPerOrigin();
+
+      const names = (
+        await discoverSkillsCatalog({ homeDir, synaraBaseDir, provider: "codex" })
+      ).map((skill) => skill.name);
+
+      expect(names).toContain("codex-only");
+      expect(names).not.toContain("claude-only");
+      expect(names).not.toContain("pi-only");
+    });
+
+    it("keeps the portable Synara folder visible to every provider", async () => {
+      await writeOneSkillPerOrigin();
+
+      for (const provider of ["codex", "claudeAgent", "pi"] as const) {
+        const names = (await discoverSkillsCatalog({ homeDir, synaraBaseDir, provider })).map(
+          (skill) => skill.name,
+        );
+        expect(names).toContain("portable");
+      }
+    });
+
+    // Grok reads Claude's folder for real, so isolating it away would under-report.
+    it("keeps cross-provider folders the CLI genuinely reads", async () => {
+      await writeOneSkillPerOrigin();
+
+      const names = (await discoverSkillsCatalog({ homeDir, synaraBaseDir, provider: "grok" })).map(
+        (skill) => skill.name,
+      );
+
+      expect(names).toContain("claude-only");
+      expect(names).not.toContain("codex-only");
+    });
+
+    it("spans every origin when no provider is given, for the Settings view", async () => {
+      await writeOneSkillPerOrigin();
+
+      const names = (await discoverSkillsCatalog({ homeDir, synaraBaseDir })).map(
+        (skill) => skill.name,
+      );
+
+      expect(names).toEqual(
+        expect.arrayContaining(["portable", "codex-only", "claude-only", "pi-only"]),
+      );
+    });
+  });
+
   it("discovers only the registered Claude plugin version for Grok with its native namespace", async () => {
     const currentInstallPath = claudePluginInstallPath("skill-forge", "workflow-kit", "1.21.0");
     const staleInstallPath = claudePluginInstallPath("skill-forge", "workflow-kit", "1.20.0");

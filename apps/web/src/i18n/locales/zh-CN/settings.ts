@@ -378,8 +378,9 @@ export const settings: Settings = {
       description:
         "在上面的 Synara 技能文件夹中添加一个包含 SKILL.md 的技能目录，或为任意受支持的提供商安装技能。",
     },
-    providerCopies: (_count, names) => `提供商副本：${names}`,
+    providerReach: (count, names) => `${count} 个提供商会加载：${names}`,
     enableSkill: (name) => `启用 ${name} 技能`,
+    enableSkillForProvider: (name, provider) => `为 ${provider} 启用 ${name} 技能`,
     toggleAll: "启用全部技能",
     toggleSection: (title) => `启用「${title}」下的全部技能`,
     sharedSkills: "共享技能",
@@ -392,7 +393,7 @@ export const settings: Settings = {
     overview: {
       title: "代理 MCP 服务器",
       description:
-        "本地 Codex 与 Claude 代理可调用的服务器。关闭某一项会修改该代理自己的配置文件；Synara 本身从不启动这些服务器。",
+        "本地各编码代理可调用的服务器。关闭某一项会修改该代理自己的配置文件；Synara 本身从不启动这些服务器。",
     },
     refresh: "刷新",
     refreshing: "正在刷新…",
@@ -403,14 +404,8 @@ export const settings: Settings = {
     parseError: (message) => `该文件无法解析，因此其中的服务器无法修改：${message}`,
     notConfigured: "未配置",
     noServers: "没有服务器",
-    empty: {
-      codex: "此 Codex 配置中未声明任何 MCP 服务器。",
-      claudeAgent: "此 Claude 配置中未声明任何 MCP 服务器。",
-    },
-    unavailable: {
-      codex: "在这台机器上未找到 Codex 配置。",
-      claudeAgent: "在这台机器上未找到 Claude 配置。",
-    },
+    empty: (provider) => `此 ${provider} 配置中未声明任何 MCP 服务器。`,
+    unavailable: (provider) => `在这台机器上未找到 ${provider} 配置。`,
     noCommand: "（无命令）",
     updateFailedTitle: "无法更新该 MCP 服务器",
     updateFailedDescription: "配置文件未被修改。",

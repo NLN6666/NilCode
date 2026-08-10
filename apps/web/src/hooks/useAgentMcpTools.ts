@@ -4,8 +4,8 @@
 // Exports: AGENT_MCP_TOOLS_QUERY_KEY, agentMcpProviderForProviderKind,
 //          agentMcpToolsQueryOptions, shouldProbeAgentMcpTools, useAgentMcpTools
 
+import { AgentMcpProvider } from "@synara/contracts";
 import type {
-  AgentMcpProvider,
   AgentMcpToolCatalog,
   AgentMcpToolDescriptor,
   AgentMcpToolSourceError,
@@ -26,11 +26,15 @@ const EMPTY_ERRORS: ReadonlyArray<AgentMcpToolSourceError> = [];
 const STALE_REVALIDATION_POLL_MS = 1_500;
 
 /**
- * Synara manages MCP servers only for the two agents whose config exposes a single global switch,
- * so `&` has nothing to offer on the other seven providers.
+ * Every `AgentMcpProvider` is spelled the same as its `ProviderKind`, so this is a membership
+ * test rather than a mapping. The two providers left out are Cursor, whose on/off state lives in
+ * the editor's UI rather than its config file, and Pi, which reaches MCP through an npm
+ * extension instead of a config file — `&` has nothing to offer on either.
  */
+const AGENT_MCP_PROVIDER_KINDS = new Set<string>(AgentMcpProvider.literals);
+
 export function agentMcpProviderForProviderKind(provider: ProviderKind): AgentMcpProvider | null {
-  return provider === "codex" || provider === "claudeAgent" ? provider : null;
+  return AGENT_MCP_PROVIDER_KINDS.has(provider) ? (provider as AgentMcpProvider) : null;
 }
 
 export function agentMcpToolsQueryOptions(input?: { enabled?: boolean }) {

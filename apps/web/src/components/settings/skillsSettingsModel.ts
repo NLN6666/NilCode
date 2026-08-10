@@ -1,10 +1,18 @@
 // FILE: skillsSettingsModel.ts
-// Purpose: Groups duplicate skill copies for Settings -> Skills so shared names render once.
+// Purpose: Groups duplicate skill copies for Settings -> Skills so shared names render once,
+//          and resolves which providers each skill actually reaches so toggles can be scoped
+//          per provider.
 // Layer: Settings UI logic
-// Exports: origin metadata, canonical skill grouping, section ordering, and bulk toggle helpers.
+// Exports: origin metadata, canonical skill grouping, section ordering, and per-provider
+//          toggle helpers.
 
-import type { ProviderKind, ProviderSkillDescriptor } from "@synara/contracts";
+import type {
+  DisabledSkillsByProvider,
+  ProviderKind,
+  ProviderSkillDescriptor,
+} from "@synara/contracts";
 import { PROVIDER_DISPLAY_NAMES } from "@synara/contracts";
+import { providersForSkillOrigin, skillNameKey } from "@synara/shared/skillOrigins";
 import { DEFAULT_PROVIDER_ORDER } from "~/providerOrdering";
 
 export interface SkillOriginInfo {
@@ -23,6 +31,7 @@ export interface SettingsSkillGroup {
   readonly displayName: string;
   readonly description: string;
   readonly primarySkill: ProviderSkillDescriptor;
+  /** Providers that actually load this skill — the set its toggles govern. */
   readonly providers: ReadonlyArray<ProviderKind>;
   readonly sources: ReadonlyArray<SettingsSkillSource>;
   readonly section: string;
@@ -34,8 +43,14 @@ export interface SettingsSkillSection {
   readonly groups: ReadonlyArray<SettingsSkillGroup>;
 }
 
-/** Aggregate switch state for a range of skill rows (the whole panel, or one section). */
+/** Aggregate switch state for a range of skill/provider pairs (a row, a section, the panel). */
 export type SkillToggleState = "all" | "none" | "partial";
+
+/** One skill scoped to the providers a switch governs. A per-provider switch passes one. */
+export interface SkillToggleTarget {
+  readonly key: string;
+  readonly providers: ReadonlyArray<ProviderKind>;
+}
 
 const SHARED_SKILLS_SECTION = "shared";
 const PERSONAL_ORIGIN = "personal";
@@ -44,9 +59,8 @@ export const ORIGIN_SECTION_ORDER = [
   "codex",
   "claude",
   "cursor",
-  "antigravity",
   "grok",
-  "droid",
+  "factory",
   "kilo",
   "opencode",
   "pi",
@@ -69,39 +83,31 @@ export interface SettingsSkillLabels {
   };
 }
 
-/** Provider behind an origin scope, independent of any display copy. */
-function originProvider(scope: string | undefined): ProviderKind | null {
-  switch (scope) {
-    case "codex":
-      return "codex";
-    case "claude":
-      return "claudeAgent";
-    case "cursor":
-      return "cursor";
-    case "antigravity":
-      return "antigravity";
-    case "grok":
-      return "grok";
-    case "droid":
-      return "droid";
-    case "kilo":
-      return "kilo";
-    case "opencode":
-      return "opencode";
-    case "pi":
-      return "pi";
-    default:
-      return null;
-  }
-}
+/**
+ * Provider that owns an origin folder on disk, used only for labelling the section. This is
+ * not the set of providers that read the folder — several agents read `~/.claude/skills`, but
+ * only Claude owns it. Use {@link providersForSkillOrigin} for reach.
+ */
+const ORIGIN_OWNER_PROVIDER: Readonly<Record<string, ProviderKind>> = {
+  codex: "codex",
+  claude: "claudeAgent",
+  cursor: "cursor",
+  grok: "grok",
+  // Factory Droid's folder is `~/.factory/skills`; discovery names the origin after the
+  // directory, so the owner lookup has to bridge `factory` back to the `droid` kind.
+  factory: "droid",
+  kilo: "kilo",
+  opencode: "opencode",
+  pi: "pi",
+};
 
 export function skillOriginInfo(
   scope: string | undefined,
   labels: SettingsSkillLabels["origins"],
 ): SkillOriginInfo {
-  const provider = originProvider(scope);
-  if (provider) {
-    return { label: PROVIDER_DISPLAY_NAMES[provider], provider };
+  const owner = scope ? ORIGIN_OWNER_PROVIDER[scope] : undefined;
+  if (owner) {
+    return { label: PROVIDER_DISPLAY_NAMES[owner], provider: owner };
   }
   switch (scope) {
     case "synara":
@@ -115,13 +121,8 @@ export function skillOriginInfo(
   }
 }
 
-export function providersForSkillOrigin(origin: string): ProviderKind[] {
-  const provider = originProvider(origin);
-  return provider ? [provider] : [];
-}
-
 export function settingsSkillNameKey(name: string): string {
-  return name.trim().toLowerCase();
+  return skillNameKey(name);
 }
 
 export function skillDisplayName(skill: ProviderSkillDescriptor): string {
@@ -231,43 +232,82 @@ export function buildSettingsSkillSections(
     .sort((left, right) => sectionRank(left.key) - sectionRank(right.key));
 }
 
-/**
- * Switch state for a range of skill rows. `partial` is what puts the panel header and
- * section header switches into their indeterminate rendering. An empty range reports
- * `"all"`, but the panel hides those switches rather than showing an inert control.
- */
-export function skillToggleState(
-  keys: ReadonlyArray<string>,
-  disabledKeys: ReadonlySet<string>,
-): SkillToggleState {
-  if (keys.length === 0) {
-    return "all";
-  }
-  const disabledCount = keys.filter((key) => disabledKeys.has(settingsSkillNameKey(key))).length;
-  if (disabledCount === 0) {
-    return "all";
-  }
-  return disabledCount === keys.length ? "none" : "partial";
+/** Groups reduced to the skill/provider pairs their row switch governs. */
+export function toggleTargetsForGroups(
+  groups: ReadonlyArray<SettingsSkillGroup>,
+): SkillToggleTarget[] {
+  return groups.map((group) => ({ key: group.key, providers: group.providers }));
+}
+
+export function isSkillDisabledForProvider(
+  disabled: DisabledSkillsByProvider,
+  provider: ProviderKind,
+  key: string,
+): boolean {
+  const normalized = settingsSkillNameKey(key);
+  return disabled[provider].some((name) => settingsSkillNameKey(name) === normalized);
 }
 
 /**
- * Next `settings.skills.disabled` list after toggling `keys` as a batch. Names outside
- * `keys` survive verbatim — including entries for skills no longer in the catalog, so an
- * opt-out outlives uninstalling and reinstalling the provider that shipped the skill.
+ * Switch state across every skill/provider pair in `targets`. `partial` is what puts the
+ * panel, section, and row switches into their indeterminate rendering. An empty range
+ * reports `"all"`, but the panel hides those switches rather than showing an inert control.
  */
-export function nextDisabledSkillNames(
-  currentDisabled: ReadonlyArray<string>,
-  keys: ReadonlyArray<string>,
-  enabled: boolean,
-): string[] {
-  const next = new Set(currentDisabled.map((name) => settingsSkillNameKey(name)));
-  for (const key of keys) {
-    const normalized = settingsSkillNameKey(key);
-    if (enabled) {
-      next.delete(normalized);
-    } else {
-      next.add(normalized);
+export function skillToggleState(
+  targets: ReadonlyArray<SkillToggleTarget>,
+  disabled: DisabledSkillsByProvider,
+): SkillToggleState {
+  let pairs = 0;
+  let disabledPairs = 0;
+  for (const target of targets) {
+    for (const provider of target.providers) {
+      pairs += 1;
+      if (isSkillDisabledForProvider(disabled, provider, target.key)) {
+        disabledPairs += 1;
+      }
     }
   }
-  return [...next].toSorted();
+  if (pairs === 0 || disabledPairs === 0) {
+    return "all";
+  }
+  return disabledPairs === pairs ? "none" : "partial";
+}
+
+/**
+ * Next `settings.skills.disabled` map after toggling `targets` as a batch. Only the
+ * providers named in `targets` are rewritten; the rest are returned untouched so a toggle
+ * in one provider's row never disturbs another's opt-outs.
+ *
+ * Names outside `targets` survive verbatim — including entries for skills no longer in the
+ * catalog, so an opt-out outlives uninstalling and reinstalling the provider that shipped
+ * the skill.
+ */
+export function nextDisabledSkills(
+  current: DisabledSkillsByProvider,
+  targets: ReadonlyArray<SkillToggleTarget>,
+  enabled: boolean,
+): DisabledSkillsByProvider {
+  const keysByProvider = new Map<ProviderKind, Set<string>>();
+  for (const target of targets) {
+    const normalized = settingsSkillNameKey(target.key);
+    for (const provider of target.providers) {
+      const keys = keysByProvider.get(provider) ?? new Set<string>();
+      keys.add(normalized);
+      keysByProvider.set(provider, keys);
+    }
+  }
+
+  const next: Record<ProviderKind, readonly string[]> = { ...current };
+  for (const [provider, keys] of keysByProvider) {
+    const names = new Set(current[provider].map((name) => settingsSkillNameKey(name)));
+    for (const key of keys) {
+      if (enabled) {
+        names.delete(key);
+      } else {
+        names.add(key);
+      }
+    }
+    next[provider] = [...names].toSorted();
+  }
+  return next;
 }

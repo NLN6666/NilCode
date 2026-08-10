@@ -128,7 +128,9 @@ const make = Effect.gen(function* () {
         Effect.orElseSucceed(() => DEFAULT_SERVER_SETTINGS),
       );
       return {
-        skills: filterDisabledSkills(merged, settings.skills.disabled),
+        // Opt-outs are per provider: silencing a skill for Codex leaves the
+        // same-named skill under another provider's folder untouched.
+        skills: filterDisabledSkills(merged, settings.skills.disabled[parsed.provider]),
         source: nativeResult?.source ? `${nativeResult.source}+synara.catalog` : "synara.catalog",
         cached: nativeResult?.cached ?? false,
       } satisfies ProviderListSkillsResult;

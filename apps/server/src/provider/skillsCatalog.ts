@@ -1,9 +1,9 @@
 // FILE: skillsCatalog.ts
 // Purpose: Generic Agent Skill discovery primitives (SKILL.md walking, frontmatter
-//          parsing re-exported from ./frontmatter) plus the unified cross-provider skills catalog backing Synara
-//          portable skills. Aggregates `~/.synara/skills` with every provider-native
-//          skills folder, deduping by name with provider-native copies winning for
-//          the active provider.
+//          parsing re-exported from ./frontmatter) plus the skills catalog backing Synara
+//          portable skills. A provider-scoped scan is isolated to the folders that provider
+//          actually loads (see `@synara/shared/skillOrigins`) plus `~/.synara/skills` and the
+//          workspace; only the provider-less scan Settings uses spans every origin.
 // Layer: Server provider discovery helper
 // Exports: parseSkillFrontmatter, collectSkillsFromRoots, discoverSkillsCatalog,
 //          mergeSkillsIntoCatalog, filterDisabledSkills, ensureSynaraSkillsDir
@@ -12,6 +12,12 @@ import * as fs from "node:fs/promises";
 import * as nodePath from "node:path";
 
 import type { ProviderKind, ProviderSkillDescriptor } from "@synara/contracts";
+import {
+  SKILL_HOME_ORIGIN_ORDER,
+  type SkillHomeOrigin,
+  skillNameKey,
+  skillOriginsForProvider,
+} from "@synara/shared/skillOrigins";
 import { discoverClaudePluginSkillRoots } from "./claudePluginSkills.ts";
 
 import {
@@ -205,10 +211,6 @@ export async function readSkillDescriptor(input: {
   };
 }
 
-export function skillNameKey(name: string): string {
-  return name.trim().toLowerCase();
-}
-
 async function collectSkillDescriptorsFromRoots(
   roots: ReadonlyArray<SkillRoot>,
 ): Promise<ProviderSkillDescriptor[]> {
@@ -262,7 +264,11 @@ export interface SkillsCatalogDiscoveryInput {
   readonly homeDir: string;
   /** Synara base dir (usually `~/.synara`); skills live in `{base}/skills`. */
   readonly synaraBaseDir: string;
-  /** Provider whose native copies should win when the same skill exists in several roots. */
+  /**
+   * Scopes the scan. With a provider, only the folders that provider actually loads are
+   * walked — a Codex session never sees `~/.claude/skills`. Without one, every origin is
+   * walked; that is the machine-wide view Settings renders.
+   */
   readonly provider?: ProviderKind | null;
   /** Settings needs every origin; composer/provider pickers keep one winner by name. */
   readonly includeDuplicateOrigins?: boolean;
@@ -274,20 +280,6 @@ export interface SkillsCatalogRootInput extends SkillsCatalogDiscoveryInput {
   /** Native provider scans can opt out; the catalog itself always includes Synara. */
   readonly includeSynaraRoot?: boolean;
 }
-
-const HOME_ORIGIN_ORDER = [
-  "synara",
-  "codex",
-  "claude",
-  "cursor",
-  "grok",
-  "factory",
-  "kilo",
-  "opencode",
-  "pi",
-  "agents",
-] as const;
-export type SkillsCatalogOrigin = (typeof HOME_ORIGIN_ORDER)[number] | "project";
 
 // Composer skill pickers refetch aggressively (per keystroke, per provider); a
 // short TTL absorbs that burst while still picking up new skill files quickly.
@@ -327,8 +319,6 @@ export async function ensureSynaraSkillsDir(synaraBaseDir: string): Promise<stri
   }
   return dir;
 }
-
-type SkillsHomeOrigin = (typeof HOME_ORIGIN_ORDER)[number];
 
 interface SkillOriginRootSpec {
   readonly homeRoots: (input: SkillsCatalogDiscoveryInput) => string[];
@@ -381,66 +371,38 @@ const SKILL_ORIGIN_ROOTS = {
     homeRoots: (input) => [nodePath.join(input.homeDir, ".agents", "skills")],
     projectRootNames: [".agents"],
   },
-} as const satisfies Record<SkillsHomeOrigin, SkillOriginRootSpec>;
+} as const satisfies Record<SkillHomeOrigin, SkillOriginRootSpec>;
 
-const PROVIDER_SKILL_ORIGIN_PREFERENCES = {
-  codex: ["codex", "agents"],
-  claudeAgent: ["claude"],
-  cursor: ["cursor", "agents", "claude", "codex"],
-  antigravity: ["agents"],
-  grok: ["grok", "claude", "agents"],
-  droid: ["factory", "agents", "claude", "codex"],
-  kilo: ["kilo", "agents", "claude"],
-  opencode: ["opencode", "claude", "agents"],
-  pi: ["pi", "agents"],
-} as const satisfies Partial<Record<ProviderKind, readonly SkillsHomeOrigin[]>>;
-
-function homeRootsForOrigin(
-  origin: SkillsHomeOrigin,
-  input: SkillsCatalogDiscoveryInput,
-): string[] {
+function homeRootsForOrigin(origin: SkillHomeOrigin, input: SkillsCatalogDiscoveryInput): string[] {
   return SKILL_ORIGIN_ROOTS[origin].homeRoots(input);
 }
 
-function projectRootNamesForOrigin(origin: SkillsHomeOrigin): readonly string[] {
+function projectRootNamesForOrigin(origin: SkillHomeOrigin): readonly string[] {
   return SKILL_ORIGIN_ROOTS[origin].projectRootNames;
 }
 
-// Native copies first so an agent keeps using its own skill, then Synara as the
-// portable fallback, then the remaining provider homes for cross-provider reuse.
-function preferredOriginsForProvider(
-  provider: ProviderKind | null | undefined,
-): ReadonlyArray<SkillsHomeOrigin> {
-  return provider ? (PROVIDER_SKILL_ORIGIN_PREFERENCES[provider] ?? []) : [];
-}
-
+/**
+ * Origins to walk, native folders first so an agent keeps using its own copy of a skill.
+ *
+ * A provider-scoped scan stops at the folders that provider genuinely reads. It must not
+ * fall back to "and every other provider's folder too": offering a Codex session a skill
+ * out of `~/.claude/skills` mentions something Codex will never load, and the mention then
+ * fails at turn time rather than in the picker.
+ *
+ * Without a provider this returns every origin — the machine-wide view Settings needs to
+ * list what exists on disk regardless of who can load it.
+ */
 function orderedOriginsForProvider(
   provider: ProviderKind | null | undefined,
   includeSynaraRoot = true,
-  includeRemainingOrigins = true,
-): SkillsHomeOrigin[] {
-  const preferred = preferredOriginsForProvider(provider);
-  const ordered = [...preferred];
-  if (includeSynaraRoot && !ordered.includes("synara")) {
-    ordered.push("synara");
-  }
-  if (!includeRemainingOrigins) {
-    return ordered.filter((origin) => includeSynaraRoot || origin !== "synara");
-  }
-  for (const origin of HOME_ORIGIN_ORDER) {
-    if (!includeSynaraRoot && origin === "synara") {
-      continue;
-    }
-    if (!ordered.includes(origin)) {
-      ordered.push(origin);
-    }
-  }
-  return ordered;
+): SkillHomeOrigin[] {
+  const ordered = provider ? skillOriginsForProvider(provider) : [...SKILL_HOME_ORIGIN_ORDER];
+  return includeSynaraRoot ? ordered : ordered.filter((origin) => origin !== "synara");
 }
 
 function rootsForOrderedOrigins(
   input: SkillsCatalogRootInput,
-  orderedOrigins: ReadonlyArray<SkillsHomeOrigin>,
+  orderedOrigins: ReadonlyArray<SkillHomeOrigin>,
 ): SkillRoot[] {
   const homeRoots = orderedOrigins.flatMap((origin) =>
     homeRootsForOrigin(origin, input).map((path) => ({
@@ -490,8 +452,16 @@ export function skillsCatalogRoots(input: SkillsCatalogRootInput): SkillRoot[] {
   );
 }
 
+/**
+ * Only the provider's own folders — no `~/.synara/skills`. Used by adapters that report
+ * their native skills separately from the catalog. Without a provider there is no native
+ * folder to name, so the result is empty rather than "everyone's".
+ */
 export function providerNativeSkillRoots(input: SkillsCatalogRootInput): SkillRoot[] {
-  return rootsForOrderedOrigins(input, orderedOriginsForProvider(input.provider, false, false));
+  if (!input.provider) {
+    return [];
+  }
+  return rootsForOrderedOrigins(input, orderedOriginsForProvider(input.provider, false));
 }
 
 export async function discoverSkillsCatalog(

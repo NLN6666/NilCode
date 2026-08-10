@@ -35,11 +35,30 @@ describe("shouldProbeAgentMcpTools", () => {
   });
 
   it("never probes on a provider whose MCP servers Synara does not manage", () => {
-    const unmanaged: ReadonlyArray<ProviderKind> = ["cursor", "grok", "droid", "opencode"];
+    // Cursor keeps its on/off state in the editor's UI rather than `~/.cursor/mcp.json`, and Pi
+    // reaches MCP through an npm extension instead of a config file, so neither has a document
+    // Synara could read or edit.
+    const unmanaged: ReadonlyArray<ProviderKind> = ["cursor", "pi"];
 
     for (const provider of unmanaged) {
       expect(agentMcpProviderForProviderKind(provider)).toBeNull();
       expect(shouldProbeAgentMcpTools({ provider, composerTriggerKind: "mcp-tool" })).toBe(false);
+    }
+  });
+
+  it("manages the agents whose config file exposes a per-server switch", () => {
+    const managed: ReadonlyArray<ProviderKind> = [
+      "codex",
+      "claudeAgent",
+      "droid",
+      "antigravity",
+      "grok",
+      "opencode",
+      "kilo",
+    ];
+
+    for (const provider of managed) {
+      expect(agentMcpProviderForProviderKind(provider)).toBe(provider);
     }
   });
 });

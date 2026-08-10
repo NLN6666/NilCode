@@ -80,14 +80,33 @@ export const PiServerProviderSettings = Schema.Struct({
 });
 export type PiServerProviderSettings = typeof PiServerProviderSettings.Type;
 
-const DisabledSkillNames = Schema.Array(Schema.String.check(Schema.isMaxLength(256))).pipe(
-  Schema.withDecodingDefault(() => []),
-);
+const DisabledSkillNamesPatch = Schema.Array(Schema.String.check(Schema.isMaxLength(256)));
+const DisabledSkillNames = DisabledSkillNamesPatch.pipe(Schema.withDecodingDefault(() => []));
 
-// User-level skill toggles. Skills are keyed by lowercased name because the
-// unified catalog dedupes provider copies of the same skill by name.
+/**
+ * Skill opt-outs, one list per provider. Skills are keyed by lowercased name, but a name
+ * is only unique within a provider: `verify` under `~/.codex/skills` and `verify` under
+ * `~/.claude/skills` are two different files, and silencing one must not silence the other.
+ *
+ * Settings written before this was per-provider hold a flat array; `serverSettings.ts`
+ * fans those out to every provider before decoding, so an existing opt-out keeps applying
+ * everywhere it used to.
+ */
+export const DisabledSkillsByProvider = Schema.Struct({
+  codex: DisabledSkillNames,
+  claudeAgent: DisabledSkillNames,
+  cursor: DisabledSkillNames,
+  antigravity: DisabledSkillNames,
+  grok: DisabledSkillNames,
+  droid: DisabledSkillNames,
+  kilo: DisabledSkillNames,
+  opencode: DisabledSkillNames,
+  pi: DisabledSkillNames,
+});
+export type DisabledSkillsByProvider = typeof DisabledSkillsByProvider.Type;
+
 export const SkillsServerSettings = Schema.Struct({
-  disabled: DisabledSkillNames,
+  disabled: DisabledSkillsByProvider.pipe(Schema.withDecodingDefault(() => ({}))),
 });
 export type SkillsServerSettings = typeof SkillsServerSettings.Type;
 
@@ -217,7 +236,21 @@ export const ServerSettingsPatch = Schema.Struct({
   ),
   skills: Schema.optionalKey(
     Schema.Struct({
-      disabled: Schema.optionalKey(Schema.Array(Schema.String.check(Schema.isMaxLength(256)))),
+      // Patched per provider: omitting a provider leaves its list untouched, so a toggle
+      // in one provider's section never rewrites another's opt-outs.
+      disabled: Schema.optionalKey(
+        Schema.Struct({
+          codex: Schema.optionalKey(DisabledSkillNamesPatch),
+          claudeAgent: Schema.optionalKey(DisabledSkillNamesPatch),
+          cursor: Schema.optionalKey(DisabledSkillNamesPatch),
+          antigravity: Schema.optionalKey(DisabledSkillNamesPatch),
+          grok: Schema.optionalKey(DisabledSkillNamesPatch),
+          droid: Schema.optionalKey(DisabledSkillNamesPatch),
+          kilo: Schema.optionalKey(DisabledSkillNamesPatch),
+          opencode: Schema.optionalKey(DisabledSkillNamesPatch),
+          pi: Schema.optionalKey(DisabledSkillNamesPatch),
+        }),
+      ),
     }),
   ),
   network: Schema.optionalKey(

@@ -16,6 +16,7 @@ import {
   type ServerSettingsView,
 } from "@synara/contracts";
 import { deepMerge, type DeepPartial } from "@synara/shared/Struct";
+import { PROVIDER_DESCRIPTORS } from "@synara/shared/providerMetadata";
 import { applyServerSettingsPatch } from "@synara/shared/serverSettings";
 import {
   Cause,
@@ -62,7 +63,42 @@ export interface ServerSettingsSnapshot {
   readonly settings: ServerSettings;
 }
 
-const SERVER_SETTINGS_MIGRATION_VERSION = 1;
+const SERVER_SETTINGS_MIGRATION_VERSION = 2;
+
+const ALL_PROVIDER_KINDS = PROVIDER_DESCRIPTORS.map((descriptor) => descriptor.kind);
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Rewrites the pre-v2 `skills.disabled` flat array into one list per provider.
+ *
+ * This must run before schema decode. The schema no longer accepts an array there, and a
+ * settings file that fails to decode is quarantined wholesale and replaced with defaults —
+ * so without this every unrelated setting would silently reset on upgrade.
+ *
+ * The old list was global, so it fans out to every provider: a user who opted out of a
+ * skill keeps that opt-out everywhere it already applied, and can now narrow it per
+ * provider from Settings.
+ */
+export function migrateLegacyDisabledSkills(settings: unknown): unknown {
+  if (!isPlainRecord(settings)) {
+    return settings;
+  }
+  const skills = settings.skills;
+  if (!isPlainRecord(skills) || !Array.isArray(skills.disabled)) {
+    return settings;
+  }
+  const disabled = skills.disabled;
+  return {
+    ...settings,
+    skills: {
+      ...skills,
+      disabled: Object.fromEntries(ALL_PROVIDER_KINDS.map((provider) => [provider, disabled])),
+    },
+  };
+}
 
 export function toServerSettingsView(settings: ServerSettings): ServerSettingsView {
   return settings;
@@ -214,7 +250,9 @@ function decodeSettingsFromJson(settingsPath: string, raw: string) {
       parsed !== null && typeof parsed === "object" && "settings" in parsed
         ? (parsed as { revision?: unknown; migrationVersion?: unknown; settings: unknown })
         : null;
-    const decoded = Schema.decodeUnknownExit(ServerSettings)(envelope?.settings ?? parsed);
+    const decoded = Schema.decodeUnknownExit(ServerSettings)(
+      migrateLegacyDisabledSkills(envelope?.settings ?? parsed),
+    );
     if (decoded._tag === "Failure") {
       return { _tag: "Failure" as const, error: Cause.pretty(decoded.cause) };
     }

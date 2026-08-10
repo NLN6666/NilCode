@@ -89,7 +89,10 @@ const runListSkills = (input: {
 }) => {
   const baseLayer = Layer.mergeAll(
     makeConfigLayer(),
-    ServerSettingsService.layerTest({ skills: { disabled: input.disabled ?? [] } }),
+    // Opt-outs are per provider, so the list under test belongs to the provider being listed.
+    ServerSettingsService.layerTest({
+      skills: { disabled: { [input.provider]: input.disabled ?? [] } },
+    }),
     makeRegistryLayer(input.adapter),
   ).pipe(Layer.provideMerge(NodeServices.layer));
   const testLayer = ProviderDiscoveryServiceLive.pipe(Layer.provideMerge(baseLayer));
@@ -182,7 +185,12 @@ describe("ProviderDiscoveryService.listSkills", () => {
       provider: "opencode",
     });
 
-    expect(result.skills.map((skill) => skill.name)).toEqual(["portable"]);
+    // Asserted by membership, not by an exact list: `cwd` is a temp dir, and on Windows
+    // that sits under the real user profile, so the project-ancestor walk legitimately
+    // reaches the developer's own `~/.claude/skills`. A real `homeDir` dedupes those away.
+    const names = result.skills.map((skill) => skill.name);
+    expect(names).toContain("portable");
+    expect(names).not.toContain("muted");
   });
 
   it("falls back to the catalog when native discovery fails", async () => {
@@ -202,7 +210,8 @@ describe("ProviderDiscoveryService.listSkills", () => {
       provider: "codex",
     });
 
-    expect(result.skills.map((skill) => skill.name)).toEqual(["portable"]);
+    expect(result.skills.map((skill) => skill.name)).toContain("portable");
+    expect(result.source).toBe("synara.catalog");
   });
 });
 

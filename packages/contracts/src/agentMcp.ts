@@ -4,10 +4,35 @@ import { TrimmedNonEmptyString } from "./baseSchemas";
 
 /**
  * The coding agents whose own MCP server configuration Synara manages. A subset of
- * `ProviderKind`: only Codex (`CODEX_HOME/config.toml`) and Claude (`~/.claude.json`)
- * expose a single global on/off field we can edit surgically.
+ * `ProviderKind`: an agent qualifies only when its config file declares servers *and*
+ * exposes a per-server on/off field we can edit surgically.
+ *
+ * | provider      | config file                              | switch                                |
+ * | ------------- | ---------------------------------------- | ------------------------------------- |
+ * | `codex`       | `CODEX_HOME/config.toml`                 | `[mcp_servers.x] enabled`             |
+ * | `claudeAgent` | `~/.claude.json`                         | `mcpServers.x.disabled`               |
+ * | `droid`       | `~/.factory/mcp.json`                    | `mcpServers.x.disabled`               |
+ * | `antigravity` | `~/.gemini/antigravity/mcp_config.json`  | `mcpServers.x.disabled`               |
+ * | `grok`        | `~/.grok/config.toml`                    | `enabled` + `disabled_mcp_servers[]`  |
+ * | `opencode`    | `~/.config/opencode/opencode.json`       | `mcp.x.enabled`                       |
+ * | `kilo`        | `~/.config/kilo/kilo.jsonc`              | `mcp.x.enabled`                       |
+ *
+ * The remaining two are excluded for cause, not for lack of effort:
+ * - **Cursor** declares servers in `~/.cursor/mcp.json` but keeps the on/off state in the
+ *   editor's own UI state, not the file — there is no key to write, so a toggle here would
+ *   silently do nothing.
+ * - **Pi** reaches MCP through the `pi-mcp-adapter` npm extension rather than a config
+ *   file of its own, so there is no stable document to read or edit.
  */
-export const AgentMcpProvider = Schema.Literals(["codex", "claudeAgent"]);
+export const AgentMcpProvider = Schema.Literals([
+  "codex",
+  "claudeAgent",
+  "droid",
+  "antigravity",
+  "grok",
+  "opencode",
+  "kilo",
+]);
 export type AgentMcpProvider = typeof AgentMcpProvider.Type;
 
 /**

@@ -1,13 +1,21 @@
 // FILE: agentCatalog.ts
-// Purpose: Cross-provider subagent discovery. Scans the on-disk agent definitions
-//          Claude Code (`.claude/agents/**/*.md`) and Codex (`.codex/agents/*.toml`)
-//          actually load, so the composer can `@`-mention the user's real subagents.
+// Purpose: Cross-provider subagent discovery. Scans the on-disk agent definitions each
+//          CLI actually loads, so the composer can `@`-mention the user's real subagents.
 //          Runtime-reported agents (Claude SDK/plugin) are merged on top by the
 //          adapters via `mergeAgentDescriptors`.
+//
+//          Providers served here are exactly the ones that define subagents as files:
+//          Claude Code, Codex, Cursor, Factory Droid and Grok. OpenCode and Kilo are
+//          absent on purpose — their runtimes report agents over the SDK inventory
+//          (`OpenCodeAdapter.listAgents`), which is authoritative and already covers
+//          both config-declared and file-declared agents. Antigravity has no on-disk
+//          subagent format, and Pi's arrive through an npm extension package rather
+//          than a stable directory.
 // Layer: Server provider discovery helper
-// Exports: AgentCatalogProvider, AgentRoot, parseCodexAgentToml, agentCatalogRoots,
-//          collectAgentsFromRoots, discoverAgentCatalog, mergeAgentDescriptors,
-//          agentNameKey, resolveEnabledClaudePlugins, clearAgentCatalogCacheForTests
+// Exports: AgentCatalogProvider, AGENT_CATALOG_PROVIDERS, AgentRoot, parseCodexAgentToml,
+//          agentCatalogRoots, collectAgentsFromRoots, discoverAgentCatalog,
+//          mergeAgentDescriptors, agentNameKey, resolveEnabledClaudePlugins,
+//          clearAgentCatalogCacheForTests
 
 import * as fs from "node:fs/promises";
 import * as nodePath from "node:path";
@@ -18,21 +26,17 @@ import { parseScalarFrontmatter, readFrontmatterString, readdirOrEmpty } from ".
 import { ancestorsFromDeepest } from "./skillsCatalog.ts";
 
 /** Providers whose subagents are defined as files on disk. */
-export type AgentCatalogProvider = "claudeAgent" | "codex";
+export type AgentCatalogProvider = "claudeAgent" | "codex" | "cursor" | "droid" | "grok";
 
 export interface AgentRoot {
   readonly path: string;
-  readonly source: Extract<ProviderAgentSource, "project" | "user" | "sdk">;
+  readonly source: Extract<ProviderAgentSource, "project" | "user" | "sdk" | "builtin">;
   /**
    * Plugin namespace. Plugin subagents are mentioned as `<prefix>:<name>` because
    * their frontmatter only carries the bare name; Claude Code adds the namespace.
    */
   readonly namePrefix?: string;
 }
-
-// Nested namespaces are common under `~/.claude/agents` (e.g. `ccg/planner.md`);
-// keep the walk shallow so a stray deep tree can't stall composer discovery.
-const CLAUDE_AGENT_WALK_MAX_DEPTH = 3;
 
 // ── Codex TOML ───────────────────────────────────────────────────────
 
@@ -135,12 +139,72 @@ interface AgentRootSpec {
   readonly subDir: string;
   /** Codex only loads role files from the home dir; a project copy is never picked up. */
   readonly supportsProjectRoots: boolean;
+  /**
+   * Definition syntax, which also selects the extension that is scanned. Every CLI
+   * but Codex keys its subagents off YAML frontmatter in a markdown file.
+   */
+  readonly format: "markdown" | "toml";
+  /**
+   * How far below a root the scan descends. Only Claude Code namespaces subagents in
+   * nested folders (`ccg/planner.md`); the rest document a flat scan — Factory's docs
+   * say outright that "the CLI scans the top level of each `droids/` folder" — so a
+   * deeper walk would offer mentions the CLI cannot spawn.
+   */
+  readonly walkMaxDepth: number;
+  /**
+   * Read-only definitions the CLI ships with, relative to the home dir. Grok's
+   * `general-purpose` / `explore` / `plan` are real `spawn_subagent` targets that
+   * exist only here, so omitting them would hide the agents most users actually use.
+   */
+  readonly bundledHomeRoot?: readonly string[];
 }
 
+// Nested namespaces are common under `~/.claude/agents` (e.g. `ccg/planner.md`);
+// keep the walk shallow so a stray deep tree can't stall composer discovery.
+const CLAUDE_AGENT_WALK_MAX_DEPTH = 3;
+
 const AGENT_ROOT_SPECS = {
-  claudeAgent: { dirName: ".claude", subDir: "agents", supportsProjectRoots: true },
-  codex: { dirName: ".codex", subDir: "agents", supportsProjectRoots: false },
+  claudeAgent: {
+    dirName: ".claude",
+    subDir: "agents",
+    supportsProjectRoots: true,
+    format: "markdown",
+    walkMaxDepth: CLAUDE_AGENT_WALK_MAX_DEPTH,
+  },
+  codex: {
+    dirName: ".codex",
+    subDir: "agents",
+    supportsProjectRoots: false,
+    format: "toml",
+    walkMaxDepth: 0,
+  },
+  cursor: {
+    dirName: ".cursor",
+    subDir: "agents",
+    supportsProjectRoots: true,
+    format: "markdown",
+    walkMaxDepth: 0,
+  },
+  droid: {
+    dirName: ".factory",
+    subDir: "droids",
+    supportsProjectRoots: true,
+    format: "markdown",
+    walkMaxDepth: 0,
+  },
+  grok: {
+    dirName: ".grok",
+    subDir: "agents",
+    supportsProjectRoots: true,
+    format: "markdown",
+    walkMaxDepth: 0,
+    bundledHomeRoot: [".grok", "bundled", "agents"],
+  },
 } as const satisfies Record<AgentCatalogProvider, AgentRootSpec>;
+
+export const AGENT_CATALOG_PROVIDERS = Object.keys(AGENT_ROOT_SPECS) as ReadonlyArray<
+  keyof typeof AGENT_ROOT_SPECS
+>;
 
 export interface AgentCatalogInput {
   readonly provider: AgentCatalogProvider;
@@ -151,10 +215,12 @@ export interface AgentCatalogInput {
 }
 
 // Project roots come first (deepest ancestor first) so the closest definition
-// wins, then the user's home root. A cwd under the home dir would otherwise
-// reach the home root twice; it is scanned once and keeps the "user" source.
+// wins, then the user's home root, then anything the CLI bundles. A cwd under the
+// home dir would otherwise reach the home root twice; it is scanned once and keeps
+// the "user" source. Bundled definitions come last so a user-authored agent of the
+// same name overrides the shipped one, which is what every CLI here does.
 export function agentCatalogRoots(input: AgentCatalogInput): AgentRoot[] {
-  const spec = AGENT_ROOT_SPECS[input.provider];
+  const spec: AgentRootSpec = AGENT_ROOT_SPECS[input.provider];
   const homeRoot = nodePath.join(input.homeDir, spec.dirName, spec.subDir);
   const resolvedHomeRoot = nodePath.resolve(homeRoot);
 
@@ -170,12 +236,26 @@ export function agentCatalogRoots(input: AgentCatalogInput): AgentRoot[] {
     }
   }
 
-  return [...projectRoots, { path: homeRoot, source: "user" }];
+  const bundledRoots: AgentRoot[] = spec.bundledHomeRoot
+    ? [
+        {
+          path: nodePath.join(input.homeDir, ...spec.bundledHomeRoot),
+          source: "builtin",
+        },
+      ]
+    : [];
+
+  return [...projectRoots, { path: homeRoot, source: "user" }, ...bundledRoots];
 }
 
 // ── Descriptor reads ─────────────────────────────────────────────────
 
-async function readClaudeAgentDescriptor(input: {
+/**
+ * Reads one markdown definition. Claude Code, Cursor, Factory Droid and Grok all use
+ * the same shape here — YAML frontmatter carrying `name` / `description` / `model` —
+ * so they share a reader rather than four near-identical ones.
+ */
+async function readMarkdownAgentDescriptor(input: {
   readonly agentPath: string;
   readonly source: AgentRoot["source"];
   readonly namePrefix?: string | undefined;
@@ -188,7 +268,7 @@ async function readClaudeAgentDescriptor(input: {
   }
 
   const frontmatter = parseScalarFrontmatter(raw);
-  // Claude Code keys subagents by the frontmatter `name`, not by the filename.
+  // These CLIs key subagents by the frontmatter `name`, not by the filename.
   const name = readFrontmatterString(frontmatter, ["name"]);
   if (!name) {
     return null;
@@ -328,18 +408,20 @@ export async function collectAgentsFromRoots(input: {
   readonly provider: AgentCatalogProvider;
   readonly roots: ReadonlyArray<AgentRoot>;
 }): Promise<ProviderAgentDescriptor[]> {
-  const isClaude = input.provider === "claudeAgent";
+  const spec: AgentRootSpec = AGENT_ROOT_SPECS[input.provider];
+  const isMarkdown = spec.format === "markdown";
   const perRoot = await Promise.all(
     input.roots.map(async (root) => {
       const agentPaths = await collectAgentFilePaths({
         rootPath: root.path,
-        extension: isClaude ? ".md" : ".toml",
-        maxDepth: isClaude ? CLAUDE_AGENT_WALK_MAX_DEPTH : 0,
+        extension: isMarkdown ? ".md" : ".toml",
+        // Plugin roots are supplied by the caller and keep the provider's own depth.
+        maxDepth: spec.walkMaxDepth,
       });
       const descriptors = await Promise.all(
         agentPaths.map((agentPath) =>
-          isClaude
-            ? readClaudeAgentDescriptor({
+          isMarkdown
+            ? readMarkdownAgentDescriptor({
                 agentPath,
                 source: root.source,
                 namePrefix: root.namePrefix,

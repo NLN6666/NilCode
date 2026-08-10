@@ -192,6 +192,10 @@
       "types": "./src/subagents.ts",
       "import": "./src/subagents.ts"
     },
+    "./skillOrigins": {
+      "types": "./src/skillOrigins.ts",
+      "import": "./src/skillOrigins.ts"
+    },
     "./agentMentions": {
       "types": "./src/agentMentions.ts",
       "import": "./src/agentMentions.ts"

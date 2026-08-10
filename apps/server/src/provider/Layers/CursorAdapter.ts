@@ -55,6 +55,7 @@ import {
   withAgentGatewayTurnCancellation,
 } from "../../agentGateway/sessionLease.ts";
 import { ServerConfig, type ServerConfigShape } from "../../config.ts";
+import { listAgentsFromFileSystem } from "../fileSystemAgentCatalog.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
 import { loadProviderPromptImageBlocks } from "../promptAttachments.ts";
 import {
@@ -1547,6 +1548,15 @@ export function makeCursorAdapter(
           }),
       });
 
+    // Cursor loads custom subagents from `.cursor/agents/*.md`; `cursor-agent` exposes
+    // no list over its protocol, so scanning the directories it reads is the only path.
+    const listAgents: NonNullable<CursorAdapterShape["listAgents"]> = (input) =>
+      listAgentsFromFileSystem({
+        provider: PROVIDER,
+        homeDir: serverConfig.homeDir,
+        cwd: input.cwd,
+      });
+
     const listModels: NonNullable<CursorAdapterShape["listModels"]> = (input) => {
       const binaryPath = input.binaryPath?.trim();
       const apiEndpoint = input.apiEndpoint?.trim();
@@ -1720,6 +1730,7 @@ export function makeCursorAdapter(
       listSessions,
       getComposerCapabilities,
       listSkills,
+      listAgents,
       listModels,
       hasSession,
       stopAll,

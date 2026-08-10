@@ -3,7 +3,7 @@
 // Layer: Web utility tests
 // Exports: Vitest suites for providerUpdates.ts
 
-import { DEFAULT_ADVISOR_SETTINGS } from "@synara/contracts";
+import { DEFAULT_ADVISOR_SETTINGS, DEFAULT_SERVER_SETTINGS } from "@synara/contracts";
 import type { ProviderKind, ServerProviderStatus, ServerSettings } from "@synara/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -79,7 +79,7 @@ function serverSettings(overrides: Partial<ServerSettings["providers"]> = {}): S
       ...overrides,
     },
     advisor: DEFAULT_ADVISOR_SETTINGS,
-    skills: { disabled: [] },
+    skills: DEFAULT_SERVER_SETTINGS.skills,
     network: { proxy: { mode: "env", url: "", noProxy: "" } },
   };
 }

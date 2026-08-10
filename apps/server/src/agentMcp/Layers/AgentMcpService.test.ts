@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import type { AgentMcpProvider } from "@synara/contracts";
+
+import { AGENT_MCP_PROVIDERS } from "../agentMcpSources";
 import type { AgentMcpServiceShape } from "../Services/AgentMcpService";
 import { makeAgentMcpService, type AgentMcpServiceOptions } from "./AgentMcpService";
 
@@ -37,11 +40,22 @@ const CLAUDE_CONFIG = `${JSON.stringify(
 let directory: string;
 let codexConfigPath: string;
 let claudeConfigPath: string;
+/**
+ * Every provider is pointed inside the temp dir, including the ones a case does not write.
+ * Left unset they would resolve against the real home directory and the assertions below would
+ * start reporting whatever MCP servers the developer happens to have configured.
+ */
+let configPaths: Record<AgentMcpProvider, string>;
 
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), "synara-agent-mcp-"));
   codexConfigPath = join(directory, "config.toml");
   claudeConfigPath = join(directory, ".claude.json");
+  configPaths = Object.fromEntries(
+    AGENT_MCP_PROVIDERS.map((provider) => [provider, join(directory, `${provider}.absent`)]),
+  ) as Record<AgentMcpProvider, string>;
+  configPaths.codex = codexConfigPath;
+  configPaths.claudeAgent = claudeConfigPath;
 });
 
 afterEach(() => {
@@ -79,20 +93,21 @@ const run = <A, E>(
   fileSystemLayer: Layer.Layer<FileSystem.FileSystem> = NodeServices.layer,
   options?: AgentMcpServiceOptions,
 ) =>
-  makeAgentMcpService({ codexConfigPath, claudeConfigPath, ...options }).pipe(
+  makeAgentMcpService({ ...configPaths, ...options }).pipe(
     Effect.flatMap(body),
     Effect.provide(fileSystemLayer),
     Effect.runPromise,
   );
 
+const NEWLINE = String.fromCharCode(10);
+
 describe("AgentMcpService", () => {
   it("reports a missing config as unavailable rather than an error", async () => {
     const catalog = await run((service) => service.listServers());
 
-    expect(catalog.sources.map((source) => [source.provider, source.available])).toEqual([
-      ["codex", false],
-      ["claudeAgent", false],
-    ]);
+    // Every managed provider is reported, each as simply unconfigured rather than failing.
+    expect(catalog.sources.map((source) => source.provider)).toEqual([...AGENT_MCP_PROVIDERS]);
+    expect(catalog.sources.every((source) => !source.available)).toBe(true);
   });
 
   it("aggregates both providers and never leaks secret values", async () => {
@@ -255,5 +270,77 @@ describe("AgentMcpService", () => {
     );
 
     expect(error.code).toBe("conflict");
+  });
+});
+
+// End-to-end coverage for the providers added beyond the original Codex/Claude pair: each has
+// its own dialect and its own write strategy, and every one of them edits a real user config.
+describe("AgentMcpService across the remaining agents", () => {
+  it("reads and toggles a Factory Droid server through its disabled flag", async () => {
+    writeFileSync(
+      configPaths.droid,
+      JSON.stringify({ mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } } }, null, 2),
+    );
+
+    const view = await run((service) =>
+      service.setServerEnabled({ provider: "droid", name: "linear", enabled: false }),
+    );
+
+    expect(view.servers).toEqual([expect.objectContaining({ name: "linear", enabled: false })]);
+    expect(JSON.parse(readFileSync(configPaths.droid, "utf8")).mcpServers.linear.disabled).toBe(
+      true,
+    );
+  });
+
+  it("toggles an OpenCode server through its positive enabled flag", async () => {
+    writeFileSync(
+      configPaths.opencode,
+      JSON.stringify({ mcp: { ctx: { type: "local", command: ["npx", "ctx"] } } }, null, 2),
+    );
+
+    const view = await run((service) =>
+      service.setServerEnabled({ provider: "opencode", name: "ctx", enabled: false }),
+    );
+
+    expect(view.servers).toEqual([expect.objectContaining({ name: "ctx", enabled: false })]);
+    expect(JSON.parse(readFileSync(configPaths.opencode, "utf8")).mcp.ctx.enabled).toBe(false);
+  });
+
+  // Grok's list overrides the table field, so enabling has to clear both or the read-back
+  // verification in `setServerEnabled` would never converge and the call would report a conflict.
+  it("clears both of Grok's switches when enabling a listed server", async () => {
+    writeFileSync(
+      configPaths.grok,
+      [
+        'disabled_mcp_servers = ["muted"]',
+        "",
+        "[mcp_servers.muted]",
+        'command = "uvx"',
+        "enabled = false",
+        "",
+      ].join(NEWLINE),
+    );
+
+    const view = await run((service) =>
+      service.setServerEnabled({ provider: "grok", name: "muted", enabled: true }),
+    );
+
+    expect(view.servers).toEqual([expect.objectContaining({ name: "muted", enabled: true })]);
+    const written = readFileSync(configPaths.grok, "utf8");
+    expect(written).not.toContain("disabled_mcp_servers");
+    expect(written).not.toContain("enabled = false");
+  });
+
+  it("reads an Antigravity config written with a byte order mark", async () => {
+    writeFileSync(
+      configPaths.antigravity,
+      `﻿${JSON.stringify({ mcpServers: { ida: { serverUrl: "http://127.0.0.1:13337" } } }, null, 2)}`,
+    );
+
+    const catalog = await run((service) => service.listServers());
+    const source = catalog.sources.find((entry) => entry.provider === "antigravity");
+
+    expect(source?.parseError).toBeUndefined();
+    expect(source?.servers.map((server) => server.name)).toEqual(["ida"]);
   });
 });

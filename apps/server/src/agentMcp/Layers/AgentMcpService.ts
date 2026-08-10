@@ -7,18 +7,12 @@ import { Effect, FileSystem, Layer } from "effect";
 
 import { writeFileStringAtomically } from "../../atomicWrite";
 import { PRIVATE_FILE_MODE } from "../../privatePathPermissions";
-import { applyClaudeMcpDisabled } from "../claudeJsonDocument";
 import {
-  CLAUDE_AGENT_MCP_PROVIDER,
-  parseClaudeMcpServers,
-  resolveClaudeMcpConfigPath,
-} from "../claudeSource";
-import { applyCodexMcpEnabled } from "../codexTomlDocument";
-import {
-  CODEX_AGENT_MCP_PROVIDER,
-  parseCodexMcpServers,
-  resolveCodexMcpConfigPath,
-} from "../codexSource";
+  AGENT_MCP_PROVIDERS,
+  AGENT_MCP_SOURCE_SPECS,
+  type AgentMcpSourceSpec,
+} from "../agentMcpSources";
+import { redactMcpServerConnection } from "../mcpConfigParser";
 import {
   AgentMcpError,
   AgentMcpService,
@@ -36,10 +30,8 @@ interface AgentMcpSourceAdapter {
   readonly apply: (text: string, name: string, enabled: boolean) => string;
 }
 
-export interface AgentMcpServiceOptions {
-  readonly codexConfigPath?: string;
-  readonly claudeConfigPath?: string;
-}
+/** Per-provider config path overrides; anything omitted resolves from the real home dir. */
+export type AgentMcpServiceOptions = Partial<Record<AgentMcpProvider, string>>;
 
 function describeCause(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
@@ -78,21 +70,21 @@ export const makeAgentMcpService = (options: AgentMcpServiceOptions = {}) =>
     const fileSystem = yield* FileSystem.FileSystem;
 
     // Keyed by provider so the map is total over `AgentMcpProvider`: a lookup can never miss,
-    // and adding a third agent is a single entry rather than a new failure path.
-    const adapters: Record<AgentMcpProvider, AgentMcpSourceAdapter> = {
-      [CODEX_AGENT_MCP_PROVIDER]: {
-        provider: CODEX_AGENT_MCP_PROVIDER,
-        configPath: options.codexConfigPath ?? resolveCodexMcpConfigPath(),
-        parse: parseCodexMcpServers,
-        apply: applyCodexMcpEnabled,
-      },
-      [CLAUDE_AGENT_MCP_PROVIDER]: {
-        provider: CLAUDE_AGENT_MCP_PROVIDER,
-        configPath: options.claudeConfigPath ?? resolveClaudeMcpConfigPath(),
-        parse: parseClaudeMcpServers,
-        apply: applyClaudeMcpDisabled,
-      },
-    };
+    // and adding an agent is a single entry in `AGENT_MCP_SOURCE_SPECS` rather than a new
+    // failure path here.
+    const toAdapter = (spec: AgentMcpSourceSpec): AgentMcpSourceAdapter => ({
+      provider: spec.provider,
+      configPath: options[spec.provider] ?? spec.resolveConfigPath({}),
+      // Redaction happens here rather than in each parser so no source can forget it.
+      parse: (text) => spec.parse(text).map(redactMcpServerConnection),
+      apply: spec.apply,
+    });
+    const adapters = Object.fromEntries(
+      AGENT_MCP_PROVIDERS.map((provider) => [
+        provider,
+        toAdapter(AGENT_MCP_SOURCE_SPECS[provider]),
+      ]),
+    ) as Record<AgentMcpProvider, AgentMcpSourceAdapter>;
 
     /** Current file contents, or undefined when the provider is simply not configured here. */
     const readText = (adapter: AgentMcpSourceAdapter) =>

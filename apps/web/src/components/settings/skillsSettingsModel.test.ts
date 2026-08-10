@@ -1,20 +1,37 @@
 // FILE: skillsSettingsModel.test.ts
-// Purpose: Locks down Settings -> Skills grouping for duplicate provider skill copies.
+// Purpose: Locks down Settings -> Skills grouping for duplicate provider skill copies and the
+//          per-provider toggle arithmetic behind the row, section, and panel switches.
 // Layer: Web settings logic tests
 
-import type { ProviderSkillDescriptor } from "@synara/contracts";
+import type { DisabledSkillsByProvider, ProviderSkillDescriptor } from "@synara/contracts";
 import { describe, expect, it } from "vitest";
 
 import { en } from "../../i18n/locales/en";
 import {
   buildSettingsSkillGroups,
   buildSettingsSkillSections,
-  nextDisabledSkillNames,
+  nextDisabledSkills,
   skillToggleState,
 } from "./skillsSettingsModel";
 
 // Rank/title assertions read against the real English catalog, exactly what the panel passes in.
 const SKILL_LABELS = en.settings.skills;
+
+const NONE_DISABLED: DisabledSkillsByProvider = {
+  codex: [],
+  claudeAgent: [],
+  cursor: [],
+  antigravity: [],
+  grok: [],
+  droid: [],
+  kilo: [],
+  opencode: [],
+  pi: [],
+};
+
+function disabledWith(patch: Partial<DisabledSkillsByProvider>): DisabledSkillsByProvider {
+  return { ...NONE_DISABLED, ...patch };
+}
 
 function skill(partial: Partial<ProviderSkillDescriptor>): ProviderSkillDescriptor {
   return {
@@ -52,7 +69,6 @@ describe("buildSettingsSkillGroups", () => {
 
     const shared = groups.find((group) => group.key === "check-code");
     expect(shared?.section).toBe("shared");
-    expect(shared?.providers).toEqual(["codex", "claudeAgent"]);
     expect(shared?.sources.map((source) => source.origin)).toEqual(["codex", "claude"]);
     expect(shared?.sources.map((source) => source.skill.path)).toEqual([
       "/Users/test/.codex/skills/check-code/SKILL.md",
@@ -64,7 +80,53 @@ describe("buildSettingsSkillGroups", () => {
     expect(cursorOnly?.providers).toEqual(["cursor"]);
   });
 
-  it("does not show provider icons for shared alias-only skills", () => {
+  // Reach, not ownership: Cursor and Droid read Codex's and Claude's folders, so a skill in
+  // either one is loaded by more agents than the folder's owner.
+  it("reports every provider that reads the origin folder, not just its owner", () => {
+    const groups = buildSettingsSkillGroups(
+      [
+        skill({
+          name: "check-code",
+          path: "/Users/test/.codex/skills/check-code/SKILL.md",
+          scope: "codex",
+        }),
+        skill({
+          name: "check-code",
+          path: "/Users/test/.claude/skills/check-code/SKILL.md",
+          scope: "claude",
+        }),
+      ],
+      SKILL_LABELS,
+    );
+
+    expect(groups[0]?.providers).toEqual([
+      "codex",
+      "claudeAgent",
+      "cursor",
+      "grok",
+      "droid",
+      "kilo",
+      "opencode",
+    ]);
+  });
+
+  it("treats `~/.factory/skills` as Droid's folder", () => {
+    const groups = buildSettingsSkillGroups(
+      [
+        skill({
+          name: "droid-only",
+          path: "/Users/test/.factory/skills/droid-only/SKILL.md",
+          scope: "factory",
+        }),
+      ],
+      SKILL_LABELS,
+    );
+
+    expect(groups[0]?.providers).toEqual(["droid"]);
+    expect(groups[0]?.sources[0]?.originInfo.provider).toBe("droid");
+  });
+
+  it("reaches every provider that reads the shared .agents folder", () => {
     const groups = buildSettingsSkillGroups(
       [
         skill({
@@ -77,8 +139,25 @@ describe("buildSettingsSkillGroups", () => {
       SKILL_LABELS,
     );
 
-    expect(groups[0]?.providers).toEqual([]);
+    // Claude is the one agent that does not read `.agents`.
+    expect(groups[0]?.providers).not.toContain("claudeAgent");
+    expect(groups[0]?.providers).toContain("codex");
     expect(groups[0]?.section).toBe("agents");
+  });
+
+  it("reaches every provider from the portable Synara folder", () => {
+    const groups = buildSettingsSkillGroups(
+      [
+        skill({
+          name: "portable",
+          path: "/Users/test/.synara/skills/portable/SKILL.md",
+          scope: "synara",
+        }),
+      ],
+      SKILL_LABELS,
+    );
+
+    expect(groups[0]?.providers).toHaveLength(9);
   });
 });
 
@@ -111,43 +190,114 @@ describe("buildSettingsSkillSections", () => {
 });
 
 describe("skillToggleState", () => {
-  it("reports all, none, and partial across a range of rows", () => {
-    const keys = ["alpha", "beta"];
-    expect(skillToggleState(keys, new Set())).toBe("all");
-    expect(skillToggleState(keys, new Set(["alpha", "beta"]))).toBe("none");
-    expect(skillToggleState(keys, new Set(["alpha"]))).toBe("partial");
+  const targets = [
+    { key: "alpha", providers: ["codex", "claudeAgent"] as const },
+    { key: "beta", providers: ["codex"] as const },
+  ];
+
+  it("reports all, none, and partial across a range of skill/provider pairs", () => {
+    expect(skillToggleState(targets, NONE_DISABLED)).toBe("all");
+    expect(
+      skillToggleState(targets, disabledWith({ codex: ["alpha", "beta"], claudeAgent: ["alpha"] })),
+    ).toBe("none");
+    expect(skillToggleState(targets, disabledWith({ codex: ["alpha"] }))).toBe("partial");
+  });
+
+  // The whole point of per-provider opt-outs: the same name under another provider is a
+  // different file and must not be counted.
+  it("ignores the same skill disabled for a provider outside the range", () => {
+    expect(
+      skillToggleState([{ key: "alpha", providers: ["codex"] }], disabledWith({ grok: ["alpha"] })),
+    ).toBe("all");
   });
 
   it("ignores disabled entries outside the range", () => {
-    expect(skillToggleState(["alpha"], new Set(["gamma"]))).toBe("all");
+    expect(
+      skillToggleState(
+        [{ key: "alpha", providers: ["codex"] }],
+        disabledWith({ codex: ["gamma"] }),
+      ),
+    ).toBe("all");
   });
 
   it("normalizes keys before comparing", () => {
-    expect(skillToggleState([" Alpha "], new Set(["alpha"]))).toBe("none");
+    expect(
+      skillToggleState(
+        [{ key: " Alpha ", providers: ["codex"] }],
+        disabledWith({ codex: ["alpha"] }),
+      ),
+    ).toBe("none");
   });
 
   it("treats an empty range as fully enabled", () => {
-    expect(skillToggleState([], new Set(["alpha"]))).toBe("all");
+    expect(skillToggleState([], disabledWith({ codex: ["alpha"] }))).toBe("all");
   });
 });
 
-describe("nextDisabledSkillNames", () => {
-  it("disables a whole batch in one patch", () => {
-    expect(nextDisabledSkillNames([], ["beta", "alpha"], false)).toEqual(["alpha", "beta"]);
+describe("nextDisabledSkills", () => {
+  it("disables a batch across exactly the providers named in the targets", () => {
+    const next = nextDisabledSkills(
+      NONE_DISABLED,
+      [
+        { key: "beta", providers: ["codex", "grok"] },
+        { key: "alpha", providers: ["codex"] },
+      ],
+      false,
+    );
+
+    expect(next.codex).toEqual(["alpha", "beta"]);
+    expect(next.grok).toEqual(["beta"]);
+    expect(next.claudeAgent).toEqual([]);
+  });
+
+  it("leaves other providers' lists untouched when one provider is toggled", () => {
+    const next = nextDisabledSkills(
+      disabledWith({ codex: ["alpha"], claudeAgent: ["alpha"] }),
+      [{ key: "alpha", providers: ["codex"] }],
+      true,
+    );
+
+    expect(next.codex).toEqual([]);
+    expect(next.claudeAgent).toEqual(["alpha"]);
   });
 
   it("enables a whole batch without touching unrelated entries", () => {
-    expect(nextDisabledSkillNames(["alpha", "beta", "gamma"], ["alpha", "beta"], true)).toEqual([
-      "gamma",
-    ]);
+    const next = nextDisabledSkills(
+      disabledWith({ codex: ["alpha", "beta", "gamma"] }),
+      [
+        { key: "alpha", providers: ["codex"] },
+        { key: "beta", providers: ["codex"] },
+      ],
+      true,
+    );
+
+    expect(next.codex).toEqual(["gamma"]);
   });
 
   it("keeps entries for skills missing from the catalog so opt-outs survive a reinstall", () => {
-    expect(nextDisabledSkillNames(["uninstalled"], ["alpha"], true)).toEqual(["uninstalled"]);
+    const next = nextDisabledSkills(
+      disabledWith({ codex: ["uninstalled"] }),
+      [{ key: "alpha", providers: ["codex"] }],
+      true,
+    );
+
+    expect(next.codex).toEqual(["uninstalled"]);
   });
 
   it("normalizes both the existing list and the incoming keys", () => {
-    expect(nextDisabledSkillNames([" Alpha "], ["ALPHA"], false)).toEqual(["alpha"]);
-    expect(nextDisabledSkillNames([" Alpha "], ["ALPHA"], true)).toEqual([]);
+    expect(
+      nextDisabledSkills(
+        disabledWith({ codex: [" Alpha "] }),
+        [{ key: "ALPHA", providers: ["codex"] }],
+        false,
+      ).codex,
+    ).toEqual(["alpha"]);
+    expect(
+      nextDisabledSkills(
+        disabledWith({ codex: [" Alpha "] }),
+        [{ key: "ALPHA", providers: ["codex"] }],
+        true,
+      ).codex,
+    ).toEqual([]);
   });
 });

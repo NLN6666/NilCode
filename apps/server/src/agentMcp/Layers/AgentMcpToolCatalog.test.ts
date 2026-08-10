@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { AgentMcpProvider } from "@synara/contracts";
+
+import { AGENT_MCP_PROVIDERS } from "../agentMcpSources";
 import type { McpServerConnection } from "../mcpConfigParser";
 import type { McpProbeToolDescriptor } from "../probe/McpProbeClient";
 import type { AgentMcpToolCatalogServiceShape } from "../Services/AgentMcpToolCatalogService";
@@ -33,12 +36,19 @@ let directory: string;
 let codexConfigPath: string;
 let claudeConfigPath: string;
 let cacheFilePath: string;
+/** See the note in AgentMcpService.test.ts: unset providers would read the real home dir. */
+let configPaths: Record<AgentMcpProvider, string>;
 
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), "synara-mcp-tools-"));
   codexConfigPath = join(directory, "config.toml");
   claudeConfigPath = join(directory, ".claude.json");
   cacheFilePath = join(directory, "agent-mcp-tools.json");
+  configPaths = Object.fromEntries(
+    AGENT_MCP_PROVIDERS.map((provider) => [provider, join(directory, `${provider}.absent`)]),
+  ) as Record<AgentMcpProvider, string>;
+  configPaths.codex = codexConfigPath;
+  configPaths.claudeAgent = claudeConfigPath;
 });
 
 afterEach(() => {
@@ -50,8 +60,7 @@ const run = <A>(
   options: AgentMcpToolCatalogOptions,
 ) =>
   makeAgentMcpToolCatalog({
-    codexConfigPath,
-    claudeConfigPath,
+    configPaths,
     cacheFilePath,
     ...options,
   }).pipe(Effect.flatMap(body), Effect.provide(NodeServices.layer), Effect.runPromise);

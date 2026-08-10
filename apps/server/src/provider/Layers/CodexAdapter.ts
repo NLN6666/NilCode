@@ -13,7 +13,6 @@ import {
   type ModelSelection,
   type ProviderComposerCapabilities,
   type ProviderEvent,
-  type ProviderAgentDescriptor,
   type ProviderListAgentsResult,
   type ProviderListModelsResult,
   type ProviderListPluginsResult,
@@ -72,7 +71,7 @@ import { makeRuntimeTaskListItem } from "../runtimeTaskList.ts";
 import { extractProposedPlanMarkdown } from "../planMode.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
 import { synaraSkillsDir } from "../skillsCatalog.ts";
-import { discoverAgentCatalog } from "../agentCatalog.ts";
+import { fileSystemAgentCatalog } from "../fileSystemAgentCatalog.ts";
 import { buildCodexSubagentPrompt } from "@synara/shared/agentMentions";
 import { makeBoundedCallbackIngress } from "../boundedCallbackIngress.ts";
 import { assignDerivedProviderRuntimeEventIds } from "../providerRuntimeEventIdentity.ts";
@@ -1719,19 +1718,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
     );
 
     const codexAgentCatalog = (cwd: string | undefined) =>
-      Effect.tryPromise(() =>
-        discoverAgentCatalog({
-          provider: PROVIDER,
-          homeDir: serverConfig.homeDir,
-          ...(cwd ? { cwd } : {}),
-        }),
-      ).pipe(
-        Effect.catchCause((cause) =>
-          Effect.logWarning("codex subagent catalog discovery failed", { cause }).pipe(
-            Effect.as([] as ProviderAgentDescriptor[]),
-          ),
-        ),
-      );
+      fileSystemAgentCatalog({ provider: PROVIDER, homeDir: serverConfig.homeDir, cwd });
     const runtimeEventQueue = yield* Queue.bounded<ProviderRuntimeEvent>(
       PROVIDER_ADAPTER_RUNTIME_EVENT_BUFFER_CAPACITY,
     );

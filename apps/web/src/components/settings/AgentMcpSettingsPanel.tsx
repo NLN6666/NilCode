@@ -1,5 +1,5 @@
 // FILE: AgentMcpSettingsPanel.tsx
-// Purpose: List the MCP servers Codex and Claude are configured with locally and flip their
+// Purpose: List the MCP servers each managed agent is configured with locally and flip their
 //          global enable switch in place.
 // Layer: Settings UI components
 // Exports: AgentMcpSettingsPanel
@@ -11,6 +11,7 @@ import type {
   AgentMcpSetEnabledInput,
   AgentMcpSourceView,
 } from "@synara/contracts";
+import { PROVIDER_DISPLAY_NAMES } from "@synara/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "~/components/ui/button";
@@ -24,8 +25,13 @@ import { SettingsListRow, SettingsSection } from "./SettingsPanelPrimitives";
 const AGENT_MCP_QUERY_KEY = ["server", "agentMcpServers"] as const;
 
 const PROVIDER_LABELS: Record<AgentMcpProvider, string> = {
-  codex: "Codex",
-  claudeAgent: "Claude",
+  codex: PROVIDER_DISPLAY_NAMES.codex,
+  claudeAgent: PROVIDER_DISPLAY_NAMES.claudeAgent,
+  droid: PROVIDER_DISPLAY_NAMES.droid,
+  antigravity: PROVIDER_DISPLAY_NAMES.antigravity,
+  grok: PROVIDER_DISPLAY_NAMES.grok,
+  opencode: PROVIDER_DISPLAY_NAMES.opencode,
+  kilo: PROVIDER_DISPLAY_NAMES.kilo,
 };
 
 /**
@@ -81,12 +87,14 @@ function AgentMcpSourceSection(props: {
       {!source.available ? (
         <SettingsListRow
           title={m.settings.agentMcp.notConfigured}
-          description={m.settings.agentMcp.unavailable[source.provider]}
+          description={m.settings.agentMcp.unavailable(PROVIDER_LABELS[source.provider])}
         />
       ) : source.servers.length === 0 ? (
         <SettingsListRow
           title={m.settings.agentMcp.noServers}
-          description={readOnly ? undefined : m.settings.agentMcp.empty[source.provider]}
+          description={
+            readOnly ? undefined : m.settings.agentMcp.empty(PROVIDER_LABELS[source.provider])
+          }
         />
       ) : (
         source.servers.map((server) => (

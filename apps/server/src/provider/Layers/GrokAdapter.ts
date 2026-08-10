@@ -57,6 +57,7 @@ import {
   withAgentGatewayTurnCancellation,
 } from "../../agentGateway/sessionLease.ts";
 import { ServerConfig, type ServerConfigShape } from "../../config.ts";
+import { listAgentsFromFileSystem } from "../fileSystemAgentCatalog.ts";
 import { buildProviderChildEnvironment } from "../../providerChildEnvironment.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
 import { loadProviderPromptImageBlocks } from "../promptAttachments.ts";
@@ -2410,6 +2411,16 @@ export function makeGrokAdapter(
         });
       });
 
+    // Grok resolves `spawn_subagent` types from `.grok/agents/*.md` plus the definitions
+    // it bundles (`general-purpose`, `explore`, `plan`); neither is reachable over the
+    // CLI protocol, so the directories Grok itself reads are the only source.
+    const listAgents: NonNullable<GrokAdapterShape["listAgents"]> = (input) =>
+      listAgentsFromFileSystem({
+        provider: PROVIDER,
+        homeDir: serverConfig.homeDir,
+        cwd: input.cwd,
+      });
+
     const listModels: NonNullable<GrokAdapterShape["listModels"]> = (input) => {
       const binaryPath = input.binaryPath?.trim() || grokSettings.binaryPath || "grok";
       return Effect.gen(function* () {
@@ -2529,6 +2540,7 @@ export function makeGrokAdapter(
       listSessions,
       getComposerCapabilities,
       compactThread,
+      listAgents,
       listModels,
       hasSession,
       stopAll,

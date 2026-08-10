@@ -15,16 +15,12 @@ import { join } from "node:path";
 
 import { writeFileStringAtomically } from "../../atomicWrite";
 import { ServerConfig } from "../../config";
-import { resolveClaudeMcpConfigPath } from "../claudeSource";
-import { resolveCodexMcpConfigPath } from "../codexSource";
 import {
-  CLAUDE_AGENT_MCP_PROVIDER,
-  CODEX_AGENT_MCP_PROVIDER,
-  hashMcpServerConnection,
-  parseClaudeMcpServerConnections,
-  parseCodexMcpServerConnections,
-  type McpServerConnection,
-} from "../mcpConfigParser";
+  AGENT_MCP_PROVIDERS,
+  AGENT_MCP_SOURCE_SPECS,
+  type AgentMcpSourceSpec,
+} from "../agentMcpSources";
+import { hashMcpServerConnection, type McpServerConnection } from "../mcpConfigParser";
 import {
   MCP_PROBE_TIMEOUT_MS,
   probeMcpServerTools,
@@ -51,8 +47,8 @@ const CACHE_FILE_NAME = "agent-mcp-tools.json";
 const CACHE_FORMAT_VERSION = 2;
 
 export interface AgentMcpToolCatalogOptions {
-  readonly codexConfigPath?: string;
-  readonly claudeConfigPath?: string;
+  /** Per-provider config path overrides; anything omitted resolves from the real home dir. */
+  readonly configPaths?: Partial<Record<AgentMcpProvider, string>>;
   readonly cacheFilePath?: string;
   readonly ttlMs?: number;
   readonly probeTimeoutMs?: number;
@@ -176,19 +172,18 @@ export const makeAgentMcpToolCatalog = (options: AgentMcpToolCatalogOptions = {}
           timeoutMs: options.probeTimeoutMs ?? MCP_PROBE_TIMEOUT_MS,
         }));
 
-    const sourcesByProvider: Record<
+    const sourcesByProvider = Object.fromEntries(
+      Object.values(AGENT_MCP_SOURCE_SPECS).map((spec) => [
+        spec.provider,
+        {
+          configPath: options.configPaths?.[spec.provider] ?? spec.resolveConfigPath({}),
+          parse: spec.parse,
+        },
+      ]),
+    ) as Record<
       AgentMcpProvider,
-      { readonly configPath: string; readonly parse: typeof parseCodexMcpServerConnections }
-    > = {
-      [CODEX_AGENT_MCP_PROVIDER]: {
-        configPath: options.codexConfigPath ?? resolveCodexMcpConfigPath(),
-        parse: parseCodexMcpServerConnections,
-      },
-      [CLAUDE_AGENT_MCP_PROVIDER]: {
-        configPath: options.claudeConfigPath ?? resolveClaudeMcpConfigPath(),
-        parse: parseClaudeMcpServerConnections,
-      },
-    };
+      { readonly configPath: string; readonly parse: AgentMcpSourceSpec["parse"] }
+    >;
 
     // Owned by the single service instance and only ever touched from the JS event loop, so a
     // plain Map is enough — no lock is needed around these.
@@ -365,11 +360,9 @@ export const makeAgentMcpToolCatalog = (options: AgentMcpToolCatalogOptions = {}
 
     const listTools: AgentMcpToolCatalogServiceShape["listTools"] = () =>
       Effect.gen(function* () {
-        const sources = yield* Effect.forEach(
-          [CODEX_AGENT_MCP_PROVIDER, CLAUDE_AGENT_MCP_PROVIDER] as const,
-          readSource,
-          { concurrency: "unbounded" },
-        );
+        const sources = yield* Effect.forEach(AGENT_MCP_PROVIDERS, readSource, {
+          concurrency: "unbounded",
+        });
         return yield* Effect.tryPromise({
           try: () => resolveCatalog(sources),
           catch: (cause) =>

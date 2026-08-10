@@ -1,19 +1,30 @@
 // FILE: mcpConfigParser.ts
-// Purpose: Parse Codex and Claude MCP configuration into connection records that keep everything
-//          needed to actually reach a server, plus the redaction step that projects one into the
-//          browser-facing descriptor.
+// Purpose: Parse every managed agent's MCP configuration into connection records that keep
+//          everything needed to actually reach a server, plus the redaction step that projects
+//          one into the browser-facing descriptor. The agents differ in file format (TOML, JSON,
+//          JSONC), in where the server table lives, and in the polarity of the on/off flag, so
+//          those differences are declared as dialects over one shared reader.
 // Layer: Agent MCP config reading
-// Exports: CODEX_AGENT_MCP_PROVIDER, CLAUDE_AGENT_MCP_PROVIDER, McpServerConnection,
-//          parseCodexMcpServerConnections, parseClaudeMcpServerConnections,
+// Exports: <PROVIDER>_AGENT_MCP_PROVIDER constants, GROK_DISABLED_LIST_KEY, McpServerConnection,
+//          parse{Codex,Claude,Droid,Antigravity,Grok,OpenCode,Kilo}McpServerConnections,
 //          redactMcpServerConnection, mcpConnectionStringRecord, hashMcpServerConnection
 
 import type { AgentMcpProvider, AgentMcpServerDescriptor } from "@synara/contracts";
 import { redactMcpUrl, redactedMcpKeys } from "@synara/shared/mcp/redact";
+import { type ParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
 import { createHash } from "node:crypto";
 import { parse as parseToml } from "smol-toml";
 
 export const CODEX_AGENT_MCP_PROVIDER = "codex" as const;
 export const CLAUDE_AGENT_MCP_PROVIDER = "claudeAgent" as const;
+export const DROID_AGENT_MCP_PROVIDER = "droid" as const;
+export const ANTIGRAVITY_AGENT_MCP_PROVIDER = "antigravity" as const;
+export const GROK_AGENT_MCP_PROVIDER = "grok" as const;
+export const OPENCODE_AGENT_MCP_PROVIDER = "opencode" as const;
+export const KILO_AGENT_MCP_PROVIDER = "kilo" as const;
+
+/** Top-level Grok array listing servers switched off by `grok mcp disable`. */
+export const GROK_DISABLED_LIST_KEY = "disabled_mcp_servers";
 
 /**
  * A launchable MCP server. Unlike `AgentMcpServerDescriptor` this keeps `env` values, the full
@@ -68,26 +79,119 @@ interface McpConfigDialect {
   readonly provider: AgentMcpProvider;
   /** Key of the table holding one entry per server. */
   readonly serversKey: string;
-  /** Key of the HTTP header table — Codex writes `http_headers`, Claude writes `headers`. */
+  /** Key of the HTTP header table — Codex writes `http_headers`, the rest write `headers`. */
   readonly headersKey: string;
-  readonly isEnabled: (entry: Record<string, unknown>) => boolean;
+  /** Key of the environment table — OpenCode-style configs write `environment`. */
+  readonly envKey: string;
+  /**
+   * Keys that may carry the endpoint of a remote server, tried in order. Antigravity accepts
+   * both `url` and its own older `serverUrl`, and files written by different versions of the
+   * IDE mix the two, so reading only one would classify a live HTTP server as broken stdio.
+   */
+  readonly urlKeys: ReadonlyArray<string>;
+  /**
+   * How the launch command is stored. OpenCode and Kilo put the whole argv in `command`
+   * (`["npx", "-y", "pkg"]`); everyone else splits it into `command` plus `args`.
+   */
+  readonly commandStyle: "argv" | "split";
+  /** `document` is passed because Grok's switch also lives outside the entry. */
+  readonly isEnabled: (
+    entry: Record<string, unknown>,
+    document: Record<string, unknown>,
+    name: string,
+  ) => boolean;
 }
+
+/** Codex, Grok: a missing `enabled` means on. */
+const enabledUnlessFalse = (entry: Record<string, unknown>) => entry["enabled"] !== false;
+/** Claude, Droid, Antigravity: `"disabled": true` switches off; a missing key means on. */
+const enabledUnlessDisabled = (entry: Record<string, unknown>) => entry["disabled"] !== true;
 
 const CODEX_DIALECT: McpConfigDialect = {
   provider: CODEX_AGENT_MCP_PROVIDER,
   serversKey: "mcp_servers",
   headersKey: "http_headers",
-  // Codex treats a missing `enabled` as on.
-  isEnabled: (entry) => entry["enabled"] !== false,
+  envKey: "env",
+  urlKeys: ["url"],
+  commandStyle: "split",
+  isEnabled: enabledUnlessFalse,
 };
 
 const CLAUDE_DIALECT: McpConfigDialect = {
   provider: CLAUDE_AGENT_MCP_PROVIDER,
   serversKey: "mcpServers",
   headersKey: "headers",
-  // Claude Code writes `"disabled": true`; a missing key means enabled.
-  isEnabled: (entry) => entry["disabled"] !== true,
+  envKey: "env",
+  urlKeys: ["url"],
+  commandStyle: "split",
+  isEnabled: enabledUnlessDisabled,
 };
+
+const DROID_DIALECT: McpConfigDialect = {
+  ...CLAUDE_DIALECT,
+  provider: DROID_AGENT_MCP_PROVIDER,
+};
+
+const ANTIGRAVITY_DIALECT: McpConfigDialect = {
+  ...CLAUDE_DIALECT,
+  provider: ANTIGRAVITY_AGENT_MCP_PROVIDER,
+  urlKeys: ["url", "serverUrl"],
+};
+
+/**
+ * Grok has two switches and both must be honoured: `[mcp_servers.<name>].enabled` and the
+ * top-level `disabled_mcp_servers` list. `grok mcp disable` writes the list, so reading only
+ * the table field would show a server the user switched off as running.
+ */
+const GROK_DIALECT: McpConfigDialect = {
+  provider: GROK_AGENT_MCP_PROVIDER,
+  serversKey: "mcp_servers",
+  headersKey: "headers",
+  envKey: "env",
+  urlKeys: ["url"],
+  commandStyle: "split",
+  isEnabled: (entry, document, name) =>
+    enabledUnlessFalse(entry) && !readStringArray(document[GROK_DISABLED_LIST_KEY]).includes(name),
+};
+
+const OPENCODE_DIALECT: McpConfigDialect = {
+  provider: OPENCODE_AGENT_MCP_PROVIDER,
+  serversKey: "mcp",
+  headersKey: "headers",
+  envKey: "environment",
+  urlKeys: ["url"],
+  commandStyle: "argv",
+  isEnabled: enabledUnlessFalse,
+};
+
+const KILO_DIALECT: McpConfigDialect = {
+  ...OPENCODE_DIALECT,
+  provider: KILO_AGENT_MCP_PROVIDER,
+};
+
+function readTransport(
+  entry: Record<string, unknown>,
+  dialect: McpConfigDialect,
+): McpConnectionTransport {
+  const url = dialect.urlKeys
+    .map((key) => entry[key])
+    .find((value): value is string => typeof value === "string");
+  if (url !== undefined) {
+    return { _tag: "http", url, headers: readRecord(entry[dialect.headersKey]) };
+  }
+
+  const env = readRecord(entry[dialect.envKey]);
+  if (dialect.commandStyle === "argv") {
+    const [command = "", ...args] = readStringArray(entry["command"]);
+    return { _tag: "stdio", command, args, env };
+  }
+  return {
+    _tag: "stdio",
+    command: typeof entry["command"] === "string" ? entry["command"] : "",
+    args: readStringArray(entry["args"]),
+    env,
+  };
+}
 
 function readConnections(
   document: Record<string, unknown>,
@@ -99,24 +203,52 @@ function readConnections(
   return Object.entries(servers as Record<string, unknown>).flatMap(([name, value]) => {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
     const entry = value as Record<string, unknown>;
-    const url = entry["url"];
     return [
       {
         provider: dialect.provider,
         name,
-        enabled: dialect.isEnabled(entry),
-        transport:
-          typeof url === "string"
-            ? { _tag: "http", url, headers: readRecord(entry[dialect.headersKey]) }
-            : {
-                _tag: "stdio",
-                command: typeof entry["command"] === "string" ? entry["command"] : "",
-                args: readStringArray(entry["args"]),
-                env: readRecord(entry["env"]),
-              },
+        enabled: dialect.isEnabled(entry, document, name),
+        transport: readTransport(entry, dialect),
       } satisfies McpServerConnection,
     ];
   });
+}
+
+/**
+ * Antigravity writes `mcp_config.json` with a UTF-8 BOM, which `JSON.parse` rejects outright.
+ * Stripping it costs nothing on the files that lack one and is the difference between reading
+ * that config and reporting it as corrupt.
+ */
+function parseJsonDocument(text: string): Record<string, unknown> {
+  return JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) as Record<
+    string,
+    unknown
+  >;
+}
+
+/**
+ * Kilo's config is `.jsonc` and OpenCode's tolerates the same relaxations, so both go through
+ * `jsonc-parser` — the parser their own editors use, and the one the write path already edits
+ * with, so a file that reads here is a file that can be written back.
+ *
+ * `parseJsonc` reports rather than throws, which would turn a truncated config into a silent
+ * "no servers configured"; the first reported error is re-thrown so the caller degrades the
+ * source to read-only instead. `offset` is translated to a line so the existing failure
+ * formatter can name one without ever quoting the file's contents.
+ */
+function parseJsoncDocument(text: string): Record<string, unknown> {
+  const errors: ParseError[] = [];
+  const document = parseJsonc(text, errors, {
+    allowTrailingComma: true,
+    disallowComments: false,
+  }) as Record<string, unknown> | undefined;
+
+  const failure = errors[0];
+  if (failure) {
+    const line = text.slice(0, failure.offset).split("\n").length;
+    throw new SyntaxError(`${printParseErrorCode(failure.error)} (line ${line} column 1)`);
+  }
+  return document && typeof document === "object" && !Array.isArray(document) ? document : {};
 }
 
 /**
@@ -132,7 +264,36 @@ export function parseCodexMcpServerConnections(text: string): ReadonlyArray<McpS
  * Throws `SyntaxError` on malformed input; callers surface it as `parseError`.
  */
 export function parseClaudeMcpServerConnections(text: string): ReadonlyArray<McpServerConnection> {
-  return readConnections(JSON.parse(text) as Record<string, unknown>, CLAUDE_DIALECT);
+  return readConnections(parseJsonDocument(text), CLAUDE_DIALECT);
+}
+
+/** Reads `~/.factory/mcp.json`. Same document shape as Claude's, down to the `disabled` flag. */
+export function parseDroidMcpServerConnections(text: string): ReadonlyArray<McpServerConnection> {
+  return readConnections(parseJsonDocument(text), DROID_DIALECT);
+}
+
+/** Reads Antigravity's `mcp_config.json` (BOM-prefixed, and `serverUrl` alongside `url`). */
+export function parseAntigravityMcpServerConnections(
+  text: string,
+): ReadonlyArray<McpServerConnection> {
+  return readConnections(parseJsonDocument(text), ANTIGRAVITY_DIALECT);
+}
+
+/** Reads `~/.grok/config.toml`, honouring both the table field and `disabled_mcp_servers`. */
+export function parseGrokMcpServerConnections(text: string): ReadonlyArray<McpServerConnection> {
+  return readConnections(parseToml(text) as Record<string, unknown>, GROK_DIALECT);
+}
+
+/** Reads the `mcp` object of an OpenCode `opencode.json`. */
+export function parseOpenCodeMcpServerConnections(
+  text: string,
+): ReadonlyArray<McpServerConnection> {
+  return readConnections(parseJsoncDocument(text), OPENCODE_DIALECT);
+}
+
+/** Reads the `mcp` object of a Kilo `kilo.jsonc`, which shares OpenCode's config schema. */
+export function parseKiloMcpServerConnections(text: string): ReadonlyArray<McpServerConnection> {
+  return readConnections(parseJsoncDocument(text), KILO_DIALECT);
 }
 
 /**

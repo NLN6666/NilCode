@@ -403,9 +403,11 @@ export const settings = {
       description:
         "Add a skill folder containing a SKILL.md to the Synara skills folder above, or install skills for any supported provider.",
     },
-    providerCopies: (count: number, names: string) =>
-      `Provider ${pluralize(count, "copy", "copies")}: ${names}`,
+    providerReach: (count: number, names: string) =>
+      `Loaded by ${count} ${pluralize(count, "provider")}: ${names}`,
     enableSkill: (name: string) => `Enable the ${name} skill`,
+    enableSkillForProvider: (name: string, provider: string) =>
+      `Enable the ${name} skill for ${provider}`,
     toggleAll: "Enable every skill",
     toggleSection: (title: string) => `Enable every skill under ${title}`,
     // Consumed as `SettingsSkillLabels` by skillsSettingsModel, which groups and titles the list.
@@ -419,7 +421,7 @@ export const settings = {
     overview: {
       title: "Agent MCP servers",
       description:
-        "Servers your local Codex and Claude agents can call. Turning one off edits that agent's own config file; Synara never starts these servers itself.",
+        "Servers your local coding agents can call. Turning one off edits that agent's own config file; Synara never starts these servers itself.",
     },
     refresh: "Refresh",
     refreshing: "Refreshing...",
@@ -431,14 +433,8 @@ export const settings = {
       `This file could not be parsed, so its servers cannot be changed: ${message}`,
     notConfigured: "Not configured",
     noServers: "No servers",
-    empty: {
-      codex: "No MCP servers are declared in this Codex config.",
-      claudeAgent: "No MCP servers are declared in this Claude config.",
-    },
-    unavailable: {
-      codex: "No Codex configuration was found on this machine.",
-      claudeAgent: "No Claude configuration was found on this machine.",
-    },
+    empty: (provider: string) => `No MCP servers are declared in this ${provider} config.`,
+    unavailable: (provider: string) => `No ${provider} configuration was found on this machine.`,
     noCommand: "(no command)",
     updateFailedTitle: "Could not update the MCP server",
     updateFailedDescription: "The config file was not changed.",

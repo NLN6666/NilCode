@@ -54,6 +54,7 @@ import {
   withAgentGatewayTurnCancellation,
 } from "../../agentGateway/sessionLease.ts";
 import { ServerConfig, type ServerConfigShape } from "../../config.ts";
+import { listAgentsFromFileSystem } from "../fileSystemAgentCatalog.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
 import { loadProviderPromptImageBlocks } from "../promptAttachments.ts";
 import { listFactoryPlugins, readFactoryPlugin } from "../FactoryPluginDiscovery.ts";
@@ -2189,6 +2190,15 @@ export function makeDroidAdapter(
       );
     };
 
+    // Factory loads custom droids from `.factory/droids/*.md`; the CLI reports no list
+    // over its protocol, so scanning the directories it reads is the only path.
+    const listAgents: NonNullable<DroidAdapterShape["listAgents"]> = (input) =>
+      listAgentsFromFileSystem({
+        provider: PROVIDER,
+        homeDir: serverConfig.homeDir,
+        cwd: input.cwd,
+      });
+
     const listCommands: NonNullable<DroidAdapterShape["listCommands"]> = (input) =>
       discoveryLock.withPermits(1)(
         Effect.gen(function* () {
@@ -2294,6 +2304,7 @@ export function makeDroidAdapter(
       listSessions,
       getComposerCapabilities,
       listCommands,
+      listAgents,
       listModels,
       listPlugins,
       readPlugin,

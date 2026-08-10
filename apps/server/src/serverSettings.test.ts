@@ -1,9 +1,13 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { DEFAULT_MODEL_BY_PROVIDER } from "@synara/contracts";
-import { Effect, FileSystem, Layer } from "effect";
+import { DEFAULT_MODEL_BY_PROVIDER, ServerSettings } from "@synara/contracts";
+import { Effect, FileSystem, Layer, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { ServerConfig } from "./config";
-import { ServerSettingsLive, ServerSettingsService } from "./serverSettings";
+import {
+  migrateLegacyDisabledSkills,
+  ServerSettingsLive,
+  ServerSettingsService,
+} from "./serverSettings";
 
 const serverConfigLayer = ServerConfig.layerTest(process.cwd(), {
   prefix: "synara-settings-test-",
@@ -59,7 +63,7 @@ describe("ServerSettingsService", () => {
     expect(result.updated.providers.codex.binaryPath).toBe("/usr/local/bin/codex");
     expect(result.parsed).toMatchObject({
       revision: 1,
-      migrationVersion: 1,
+      migrationVersion: 2,
       settings: {
         enableAssistantStreaming: true,
         enableProviderUpdateChecks: false,
@@ -127,5 +131,47 @@ describe("ServerSettingsService", () => {
 
     expect(settings.textGenerationModelSelection.provider).toBe("codex");
     expect(settings.textGenerationModelSelection.model).toBe(DEFAULT_MODEL_BY_PROVIDER.codex);
+  });
+});
+
+describe("migrateLegacyDisabledSkills", () => {
+  it("fans a legacy flat opt-out list out to every provider", () => {
+    const migrated = migrateLegacyDisabledSkills({
+      skills: { disabled: ["muted"] },
+    }) as { skills: { disabled: Record<string, readonly string[]> } };
+
+    expect(migrated.skills.disabled.codex).toEqual(["muted"]);
+    expect(migrated.skills.disabled.claudeAgent).toEqual(["muted"]);
+    expect(Object.keys(migrated.skills.disabled)).toHaveLength(9);
+  });
+
+  it("leaves an already per-provider map untouched", () => {
+    const settings = { skills: { disabled: { codex: ["muted"] } } };
+
+    expect(migrateLegacyDisabledSkills(settings)).toBe(settings);
+  });
+
+  it("leaves settings without a skills key untouched", () => {
+    const settings = { enableAssistantStreaming: true };
+
+    expect(migrateLegacyDisabledSkills(settings)).toBe(settings);
+  });
+
+  // The loader quarantines a settings file it cannot decode and falls back to defaults, so a
+  // legacy shape reaching the schema would silently reset every unrelated setting on upgrade.
+  it("keeps a legacy settings file decodable instead of quarantining it", () => {
+    const legacy = {
+      enableProviderUpdateChecks: false,
+      skills: { disabled: ["muted"] },
+    };
+
+    expect(Schema.decodeUnknownExit(ServerSettings)(legacy)._tag).toBe("Failure");
+
+    const decoded = Schema.decodeUnknownExit(ServerSettings)(migrateLegacyDisabledSkills(legacy));
+    expect(decoded._tag).toBe("Success");
+    if (decoded._tag === "Success") {
+      expect(decoded.value.enableProviderUpdateChecks).toBe(false);
+      expect(decoded.value.skills.disabled.grok).toEqual(["muted"]);
+    }
   });
 });

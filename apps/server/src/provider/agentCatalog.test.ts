@@ -177,6 +177,63 @@ describe("collectAgentsFromRoots", () => {
 
     expect(agents.map((agent) => agent.name)).toEqual(["good"]);
   });
+
+  it.each([
+    ["cursor", ".cursor/agents"],
+    ["droid", ".factory/droids"],
+    ["grok", ".grok/agents"],
+  ] as const)("reads %s markdown definitions keyed by frontmatter name", async (provider, dir) => {
+    await writeFile(
+      `${dir}/reviewer.md`,
+      "---\nname: security-reviewer\ndescription: Audits changes\nmodel: inherit\n---\n\nbody",
+    );
+    await writeFile(`${dir}/nameless.md`, "---\ndescription: no name here\n---\n");
+
+    const agents = await collectAgentsFromRoots({
+      provider,
+      roots: [{ path: nodePath.join(tempDir, ...dir.split("/")), source: "user" }],
+    });
+
+    expect(agents.map((agent) => agent.name)).toEqual(["security-reviewer"]);
+    expect(agents[0]).toMatchObject({ description: "Audits changes", model: "inherit" });
+  });
+
+  // Factory documents that the CLI "scans the top level of each droids/ folder", so a
+  // nested file is not loadable and must not be offered as a mention.
+  it.each([
+    ["cursor", ".cursor/agents"],
+    ["droid", ".factory/droids"],
+    ["grok", ".grok/agents"],
+  ] as const)("does not descend below the top level of a %s root", async (provider, dir) => {
+    await writeFile(`${dir}/top.md`, "---\nname: top\n---\n");
+    await writeFile(`${dir}/nested/deep.md`, "---\nname: deep\n---\n");
+
+    const agents = await collectAgentsFromRoots({
+      provider,
+      roots: [{ path: nodePath.join(tempDir, ...dir.split("/")), source: "user" }],
+    });
+
+    expect(agents.map((agent) => agent.name)).toEqual(["top"]);
+  });
+
+  it("lets a user-authored Grok agent override the bundled definition of the same name", async () => {
+    await writeFile(".grok/agents/explore.md", "---\nname: explore\ndescription: mine\n---\n");
+    await writeFile(
+      ".grok/bundled/agents/explore.md",
+      "---\nname: explore\ndescription: bundled\n---\n",
+    );
+
+    const agents = await collectAgentsFromRoots({
+      provider: "grok",
+      roots: [
+        { path: nodePath.join(tempDir, ".grok", "agents"), source: "user" },
+        { path: nodePath.join(tempDir, ".grok", "bundled", "agents"), source: "builtin" },
+      ],
+    });
+
+    expect(agents).toHaveLength(1);
+    expect(agents[0]).toMatchObject({ description: "mine", source: "user" });
+  });
 });
 
 describe("agentCatalogRoots", () => {
@@ -221,6 +278,36 @@ describe("agentCatalogRoots", () => {
     });
 
     expect(roots).toEqual([{ path: nodePath.join(homeDir, ".codex", "agents"), source: "user" }]);
+  });
+
+  it.each([
+    ["cursor", ".cursor", "agents"],
+    ["droid", ".factory", "droids"],
+    ["grok", ".grok", "agents"],
+  ] as const)("reads %s definitions from its own directory name", (provider, dirName, subDir) => {
+    const homeDir = nodePath.join(tempDir, "home");
+    const roots = agentCatalogRoots({
+      provider,
+      homeDir,
+      cwd: nodePath.join(tempDir, "repo"),
+    });
+
+    expect(roots.map((root) => root.path)).toContain(
+      nodePath.join(tempDir, "repo", dirName, subDir),
+    );
+    expect(roots.map((root) => root.path)).toContain(nodePath.join(homeDir, dirName, subDir));
+  });
+
+  // The bundled types (`general-purpose`, `explore`, `plan`) are the ones most Grok
+  // sessions actually spawn, and they exist nowhere else on disk.
+  it("appends Grok's bundled definitions after the user root", () => {
+    const homeDir = nodePath.join(tempDir, "home");
+    const roots = agentCatalogRoots({ provider: "grok", homeDir });
+
+    expect(roots).toEqual([
+      { path: nodePath.join(homeDir, ".grok", "agents"), source: "user" },
+      { path: nodePath.join(homeDir, ".grok", "bundled", "agents"), source: "builtin" },
+    ]);
   });
 });
 
