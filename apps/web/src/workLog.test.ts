@@ -3021,6 +3021,48 @@ describe("deriveWorkLogEntries", () => {
     });
     expect(requestedOnlyEntries[0]?.subagents?.[0]?.model).toBeUndefined();
 
+    const flatDirectEntries = deriveWorkLogEntries(
+      [
+        makeActivity({
+          id: "flat-direct-agent",
+          kind: "tool.updated",
+          summary: "Spawn subagent",
+          payload: {
+            itemType: "collab_agent_tool_call",
+            data: {
+              item: {
+                receiverThreadId: "child-flat-direct",
+                model: "gpt-5.6-codex",
+              },
+            },
+          },
+        }),
+      ],
+      undefined,
+    );
+    expect(flatDirectEntries[0]?.subagents?.[0]?.model).toBe("gpt-5.6-codex");
+
+    const flatRequestedEntries = deriveWorkLogEntries(
+      [
+        makeActivity({
+          id: "flat-requested-agent",
+          kind: "tool.updated",
+          summary: "Spawn subagent",
+          payload: {
+            itemType: "collab_agent_tool_call",
+            data: {
+              item: {
+                receiver_thread_id: "child-flat-requested",
+                requested_model: "gpt-5.5-codex",
+              },
+            },
+          },
+        }),
+      ],
+      undefined,
+    );
+    expect(flatRequestedEntries[0]?.subagents?.[0]?.model).toBeUndefined();
+
     const mergedEntries = deriveWorkLogEntries(
       [
         makeActivity({

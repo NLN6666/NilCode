@@ -205,9 +205,40 @@ describe("decodeSubagentReceiverAgents", () => {
         nickname: "Deep audit",
         // Worker-tier agent types are internal effort carriers, never a role.
         model: "sonnet",
-        modelIsRequestedHint: true,
         effort: "high",
         background: true,
+      },
+    ]);
+  });
+
+  it("distinguishes flat direct models from requested model hints", () => {
+    expect(
+      decodeSubagentReceiverAgents(
+        {
+          receiverThreadId: "child-direct",
+          model: "gpt-5.6-codex",
+        },
+        ["child-direct"],
+      ),
+    ).toEqual([
+      {
+        providerThreadId: "child-direct",
+        model: "gpt-5.6-codex",
+      },
+    ]);
+    expect(
+      decodeSubagentReceiverAgents(
+        {
+          receiver_thread_id: "child-requested",
+          requested_model: "gpt-5.5-codex",
+        },
+        ["child-requested"],
+      ),
+    ).toEqual([
+      {
+        providerThreadId: "child-requested",
+        model: "gpt-5.5-codex",
+        modelIsRequestedHint: true,
       },
     ]);
   });

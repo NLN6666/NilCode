@@ -182,13 +182,9 @@ export function decodeSubagentReceiverAgents(
   item: Record<string, unknown>,
   fallbackThreadIds: ReadonlyArray<string>,
 ): ReadonlyArray<ParsedSubagentReceiverAgent> {
-  const topLevelModel = firstStringValue(item, [
-    "model",
-    "modelName",
-    "model_name",
-    "requestedModel",
-    "requested_model",
-  ]);
+  const topLevelDirectModel = firstStringValue(item, ["model", "modelName", "model_name"]);
+  const topLevelRequestedModel = firstStringValue(item, ["requestedModel", "requested_model"]);
+  const topLevelModel = topLevelDirectModel ?? topLevelRequestedModel;
   const topLevelEffort = firstStringValue(item, ["effort", "reasoningEffort", "reasoning_effort"]);
   const topLevelPrompt = firstStringValue(item, ["prompt", "task", "message"]);
   const agentsValue =
@@ -248,7 +244,7 @@ export function decodeSubagentReceiverAgents(
       );
       const directModel = firstStringValue(object, ["model", "modelName", "model_name"]);
       const requestedModel = firstStringValue(object, ["requestedModel", "requested_model"]);
-      const model = directModel ?? requestedModel ?? topLevelModel;
+      const model = directModel ?? topLevelDirectModel ?? requestedModel ?? topLevelRequestedModel;
       const effort =
         firstStringValue(object, ["effort", "reasoningEffort", "reasoning_effort"]) ??
         topLevelEffort;
@@ -265,7 +261,7 @@ export function decodeSubagentReceiverAgents(
           ...(effort ? { effort } : {}),
           ...(background ? { background } : {}),
           ...(prompt ? { prompt } : {}),
-          ...(model && !directModel ? { modelIsRequestedHint: true } : {}),
+          ...(model && !directModel && !topLevelDirectModel ? { modelIsRequestedHint: true } : {}),
         },
       ];
     }) ?? [];
@@ -307,7 +303,8 @@ export function decodeSubagentReceiverAgents(
       ...(agentId ? { agentId } : {}),
       ...(nickname ? { nickname } : {}),
       ...(role ? { role } : {}),
-      ...(topLevelModel ? { model: topLevelModel, modelIsRequestedHint: true } : {}),
+      ...(topLevelModel ? { model: topLevelModel } : {}),
+      ...(topLevelModel && !topLevelDirectModel ? { modelIsRequestedHint: true } : {}),
       ...(topLevelEffort ? { effort: topLevelEffort } : {}),
       ...(item.background === true ? { background: true } : {}),
       ...(topLevelPrompt ? { prompt: topLevelPrompt } : {}),
