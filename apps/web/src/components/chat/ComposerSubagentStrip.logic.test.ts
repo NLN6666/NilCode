@@ -597,6 +597,120 @@ describe("deriveComposerSubagentStripItems", () => {
       isActive: true,
     });
   });
+
+  it("derives direct Codex execution metadata while hiding requested-only models", () => {
+    const parentThreadId = ThreadId.makeUnsafe("thread-1");
+    const childThreadId = localSubagentThreadId(parentThreadId, "child-provider-codex");
+    const childThread: Thread = {
+      id: childThreadId,
+      codexThreadId: null,
+      projectId: "project-1" as Thread["projectId"],
+      title: "Codex child",
+      modelSelection: { provider: "codex", model: "gpt-5.6-codex" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      session: {
+        provider: "codex",
+        status: "running",
+        createdAt: "2026-08-10T00:00:00.000Z",
+        updatedAt: "2026-08-10T00:00:00.000Z",
+        orchestrationStatus: "running",
+      },
+      messages: [],
+      proposedPlans: [],
+      error: null,
+      createdAt: "2026-08-10T00:00:00.000Z",
+      latestTurn: null,
+      parentThreadId,
+      turnDiffSummaries: [],
+      activities: [],
+      branch: null,
+      worktreePath: null,
+    };
+    const directModelEntries = deriveWorkLogEntries(
+      [
+        {
+          id: EventId.makeUnsafe("codex-direct-model"),
+          createdAt: "2026-08-10T00:00:00.000Z",
+          kind: "tool.updated",
+          summary: "Spawn Codex agent",
+          tone: "tool",
+          turnId: TurnId.makeUnsafe("turn-1"),
+          payload: {
+            itemType: "collab_agent_tool_call",
+            data: {
+              item: {
+                receiverAgents: [
+                  {
+                    threadId: "child-provider-codex",
+                    agentNickname: "Locke",
+                    agentRole: "explorer",
+                    model: "gpt-5.6-codex",
+                    reasoningEffort: "high",
+                    background: true,
+                    status: "inProgress",
+                  },
+                ],
+              },
+            },
+          },
+        },
+      ],
+      undefined,
+    );
+    const directModelRows = subagentRows(
+      deriveComposerSubagentStripItems({
+        workEntries: enrichSubagentWorkEntries(directModelEntries, [childThread], parentThreadId),
+        liveTurnId: TurnId.makeUnsafe("turn-1"),
+      }),
+    );
+
+    expect(directModelRows).toEqual([
+      expect.objectContaining({
+        threadId: childThreadId,
+        primaryLabel: "Locke",
+        role: "explorer",
+        modelLabel: "GPT-5.6 Codex · high",
+        isBackground: true,
+        statusKind: "running",
+      }),
+    ]);
+
+    const requestedOnlyRows = subagentRows(
+      deriveComposerSubagentStripItems({
+        workEntries: deriveWorkLogEntries(
+          [
+            {
+              id: EventId.makeUnsafe("codex-requested-model"),
+              createdAt: "2026-08-10T00:00:01.000Z",
+              kind: "tool.updated",
+              summary: "Spawn Codex agent",
+              tone: "tool",
+              turnId: TurnId.makeUnsafe("turn-1"),
+              payload: {
+                itemType: "collab_agent_tool_call",
+                data: {
+                  item: {
+                    receiverAgents: [
+                      {
+                        threadId: "child-provider-requested",
+                        requestedModel: "gpt-5.6-codex",
+                        status: "inProgress",
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+          undefined,
+        ),
+        liveTurnId: TurnId.makeUnsafe("turn-1"),
+      }),
+    );
+
+    expect(requestedOnlyRows[0]?.modelLabel).toBeUndefined();
+  });
 });
 
 describe("worker-tier role suppression", () => {

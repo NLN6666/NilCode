@@ -135,7 +135,15 @@ describe("SubagentDetailSections open-full-conversation routing", () => {
     await render(
       <SubagentDetailSections
         subagents={[
-          { threadId: "subagent:parent:a", resolvedThreadId: "thread-a", nickname: "Scout" },
+          {
+            threadId: "subagent:parent:a",
+            resolvedThreadId: "thread-a",
+            nickname: "Codex Scout",
+            role: "explorer",
+            model: "gpt-5.6-codex",
+            effort: "high",
+            background: true,
+          },
         ]}
         chatTypographyStyle={{ fontSize: "14px" }}
         footerTextStyle={{ fontSize: "11px" }}
@@ -146,6 +154,7 @@ describe("SubagentDetailSections open-full-conversation routing", () => {
 
     await page.getByRole("button", { name: "Open full conversation" }).click();
 
+    expect(onOpenSubagentThread).toHaveBeenCalledTimes(1);
     expect(onOpenSubagentThread).toHaveBeenCalledWith("thread-a");
     // Falling through to plain navigation would replace the parent view instead.
     expect(onOpenThread).not.toHaveBeenCalled();

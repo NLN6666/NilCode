@@ -6782,6 +6782,14 @@ describe("ProviderRuntimeIngestion", () => {
   it("creates and routes subagent runtime events into child threads", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
+    const childThreadId = asThreadId("subagent:thread-1:child-provider-1");
+    const childTurnId = asTurnId("turn-child");
+    const providerRefs = {
+      providerThreadId: "child-provider-1",
+      providerParentThreadId: "parent-provider-1",
+      providerTurnId: "turn-child",
+      parentProviderTurnId: "turn-parent",
+    } as const;
 
     harness.emit({
       type: "item.updated",
@@ -6815,16 +6823,11 @@ describe("ProviderRuntimeIngestion", () => {
       type: "turn.started",
       eventId: asEventId("evt-child-turn-started"),
       provider: "codex",
-      createdAt: new Date().toISOString(),
+      createdAt: now,
       threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-child"),
+      turnId: childTurnId,
       parentTurnId: asTurnId("turn-parent"),
-      providerRefs: {
-        providerThreadId: "child-provider-1",
-        providerParentThreadId: "parent-provider-1",
-        providerTurnId: "turn-child",
-        parentProviderTurnId: "turn-parent",
-      },
+      providerRefs,
       payload: {},
     });
 
@@ -6835,15 +6838,164 @@ describe("ProviderRuntimeIngestion", () => {
         entry.subagentNickname === "Locke" &&
         entry.subagentRole === "explorer" &&
         entry.session?.status === "running" &&
-        entry.session?.activeTurnId === "turn-child",
+        entry.session?.activeTurnId === childTurnId,
       2000,
-      asThreadId("subagent:thread-1:child-provider-1"),
+      childThreadId,
     );
 
     expect(childThread.title).toBe("Locke [explorer]");
     expect(childThread.creationSource).toBe("provider_native");
     expect(childThread.sourceThreadId).toBe("thread-1");
     expect(childThread.sourceTurnId).toBe("turn-parent");
+
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-child-message-delta"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: childTurnId,
+      itemId: asItemId("item-child-message"),
+      providerRefs,
+      payload: { streamKind: "assistant_text", delta: "Child-only answer" },
+    });
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-child-message-completed"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: childTurnId,
+      itemId: asItemId("item-child-message"),
+      providerRefs,
+      payload: { itemType: "assistant_message", status: "completed" },
+    });
+    harness.emit({
+      type: "item.started",
+      eventId: asEventId("evt-child-command-started"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: childTurnId,
+      itemId: asItemId("item-child-command"),
+      providerRefs,
+      payload: {
+        itemType: "command_execution",
+        status: "inProgress",
+        title: "Inspect child route",
+      },
+    });
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-child-command-completed"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: childTurnId,
+      itemId: asItemId("item-child-command"),
+      providerRefs,
+      payload: {
+        itemType: "command_execution",
+        status: "completed",
+        title: "Inspect child route",
+      },
+    });
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-child-reasoning-delta"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: childTurnId,
+      itemId: asItemId("item-child-reasoning"),
+      providerRefs,
+      payload: {
+        streamKind: "reasoning_summary_text",
+        summaryIndex: 0,
+        delta: "Inspect the child route.",
+      },
+    });
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-child-reasoning-completed"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: childTurnId,
+      itemId: asItemId("item-child-reasoning"),
+      providerRefs,
+      payload: {
+        itemType: "reasoning",
+        status: "completed",
+        title: "Reasoning",
+        detail: "Inspect the child route.",
+      },
+    });
+    harness.emit({
+      type: "turn.tasks.updated",
+      eventId: asEventId("evt-child-plan-updated"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: childTurnId,
+      providerRefs,
+      payload: {
+        explanation: "Child plan",
+        tasks: [{ task: "Inspect child route", status: "completed" }],
+      },
+    });
+    harness.emit({
+      type: "turn.proposed.completed",
+      eventId: asEventId("evt-child-proposed-plan-completed"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: childTurnId,
+      providerRefs,
+      payload: { planMarkdown: "# Child plan\n\n- Inspect child route" },
+    });
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-child-turn-completed"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: childTurnId,
+      providerRefs,
+      payload: { state: "completed" },
+    });
+
+    const completedChildThread = await waitForThread(
+      harness.engine,
+      (entry) =>
+        entry.session?.status === "ready" &&
+        entry.session?.activeTurnId === null &&
+        entry.messages.some(
+          (message) =>
+            message.id === "assistant:item-child-message" &&
+            message.text === "Child-only answer" &&
+            message.streaming === false,
+        ) &&
+        [
+          "evt-child-command-started",
+          "evt-child-command-completed",
+          "evt-child-plan-updated",
+          "evt-child-turn-completed",
+        ].every((eventId) => entry.activities.some((activity) => activity.id === eventId)) &&
+        entry.proposedPlans.some(
+          (plan) =>
+            plan.id === "plan:subagent:thread-1:child-provider-1:turn:turn-child" &&
+            plan.planMarkdown === "# Child plan\n\n- Inspect child route",
+        ),
+      2000,
+      childThreadId,
+    );
+    expect(completedChildThread.activities).toContainEqual(
+      expect.objectContaining({
+        id: "provider-reasoning:subagent:thread-1:child-provider-1:item-child-reasoning",
+        kind: "task.progress",
+      }),
+    );
 
     const parentThread = await waitForThread(harness.engine, (entry) =>
       entry.activities.some(
@@ -6854,6 +7006,127 @@ describe("ProviderRuntimeIngestion", () => {
     expect(
       parentThread.activities.some((activity) => activity.id === "evt-child-turn-started"),
     ).toBe(false);
+    expect(parentThread.session).toMatchObject({ status: "ready", activeTurnId: null });
+    expect(parentThread.messages).toHaveLength(0);
+    expect(parentThread.proposedPlans).toHaveLength(0);
+    expect(
+      [
+        "evt-child-command-started",
+        "evt-child-command-completed",
+        "evt-child-plan-updated",
+        "evt-child-turn-completed",
+      ].some((eventId) => parentThread.activities.some((activity) => activity.id === eventId)),
+    ).toBe(false);
+  });
+
+  it("keeps failed and aborted provider-native child threads readable", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+    const failedChildThreadId = asThreadId("subagent:thread-1:child-provider-failed");
+    const abortedChildThreadId = asThreadId("subagent:thread-1:child-provider-aborted");
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-child-failed-turn-started"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-child-failed"),
+      providerRefs: {
+        providerThreadId: "child-provider-failed",
+        providerParentThreadId: "parent-provider-1",
+      },
+      payload: {},
+    });
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-child-failed-turn-completed"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-child-failed"),
+      providerRefs: {
+        providerThreadId: "child-provider-failed",
+        providerParentThreadId: "parent-provider-1",
+      },
+      payload: { state: "failed", errorMessage: "Child command failed" },
+    });
+    const failedChildThread = await waitForThread(
+      harness.engine,
+      (entry) =>
+        entry.session?.status === "error" &&
+        entry.session.activeTurnId === null &&
+        entry.session.lastError === "Child command failed" &&
+        entry.activities.some((activity) => activity.id === "evt-child-failed-turn-completed"),
+      2000,
+      failedChildThreadId,
+    );
+    harness.emit({
+      type: "item.updated",
+      eventId: asEventId("evt-child-aborted-collab"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-parent"),
+      itemId: asItemId("item-child-aborted-collab"),
+      payload: {
+        itemType: "collab_agent_tool_call",
+        data: {
+          item: {
+            receiverThreadIds: ["child-provider-aborted"],
+          },
+        },
+      },
+    });
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-child-aborted-turn-started"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-child-aborted"),
+      parentTurnId: asTurnId("turn-parent"),
+      providerRefs: {
+        providerThreadId: "child-provider-aborted",
+        providerParentThreadId: "parent-provider-1",
+        providerTurnId: "turn-child-aborted",
+        parentProviderTurnId: "turn-parent",
+      },
+      payload: {},
+    });
+    await waitForThread(
+      harness.engine,
+      (entry) => entry.session?.status === "running" && entry.session.activeTurnId === "turn-child-aborted",
+      2000,
+      abortedChildThreadId,
+    );
+    harness.emit({
+      type: "turn.aborted",
+      eventId: asEventId("evt-child-aborted-turn-aborted"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-child-aborted"),
+      parentTurnId: asTurnId("turn-parent"),
+      providerRefs: {
+        providerThreadId: "child-provider-aborted",
+        providerParentThreadId: "parent-provider-1",
+        providerTurnId: "turn-child-aborted",
+        parentProviderTurnId: "turn-parent",
+      },
+      payload: { state: "interrupted", reason: "Child work cancelled" },
+    });
+    const abortedChildThread = await waitForThread(
+      harness.engine,
+      (entry) =>
+        entry.session?.status === "interrupted" &&
+        entry.session.activeTurnId === null,
+      2000,
+      abortedChildThreadId,
+    );
+
+    expect(failedChildThread.deletedAt).toBeNull();
+    expect(abortedChildThread.deletedAt).toBeNull();
   });
 
   it("handles collab receiver and child provider refs on the same event without duplicate thread creation", async () => {

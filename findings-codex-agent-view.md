@@ -37,3 +37,13 @@
 ## 9. Child turn 生命周期在事件发送后保持父会话隔离
 
 已验证：将 `turn/started`、`turn/completed` 与 `turn/aborted` 从子会话通知抑制列表移除后，通用 provider runtime 会收到 child event 及 child/parent provider 路由 refs。三个 handler 中 `isChildConversation` 的后续早退保持不变，因此不会调用 `updateSession`、改变父会话 active turn，亦不会在未知映射时虚构 `parentTurnId`。协作路由聚焦测试 19 项通过。
+
+## 10. Task 3 blocked: provider-native child `turn.aborted` does not settle the child session
+
+Task 3 的新增回归先通过 `item.updated` materialize child，再发送带稳定 `providerRefs` 的 `turn.started`，并确认 child session 为 `running`、active turn 为 `turn-child-aborted`。随后发送 `turn.aborted`（`state: "interrupted"`、`reason: "Child work cancelled"`）后，等待 child session `interrupted`、active turn `null` 且终态 activity `evt-child-aborted-turn-aborted` 超时。放宽断言检查到的 materialized child session 为 `null`；该 generic route 没有为 aborted child 写入 lifecycle state。按 Task 3 brief，不修改 `ProviderRuntimeIngestion.ts`，等待批准的生产修复。
+
+## 11. Task 3 child abort fixture resolution and focused evidence
+
+Section 10 的 BLOCKED 结论来自不完整的测试夹具，而不是生产路由缺口。真实 Codex child lifecycle event 同时包含顶层 `turnId` 与 `providerRefs.providerTurnId`；严格 terminal applicability 读取顶层 `event.turnId`。为 `turn.aborted` 补齐 `turnId: asTurnId("turn-child-aborted")` 后，新增 failed/aborted child 测试通过：failed child 为 `error` 且保留错误文本，aborted child 为 `interrupted` 且 active turn 清空。`turn.aborted` 本身不投影为 event-id lifecycle activity，因此断言限定为 brief 要求的可读 child session terminal state。
+
+已执行：server 新增 terminal 回归 1/1；web focused 84/84；browser 6/6；shared 27/27；完整 ingestion 101/101；完整 web focused 209/209。组合 server suite 的唯一失败是既有 `codex CLI version gate > re-probes when a PATH-resolved codex is replaced behind the same bare name`（224 passed、2 skipped、1 failed），本任务未修改该无关基线。
