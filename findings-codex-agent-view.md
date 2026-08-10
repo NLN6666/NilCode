@@ -47,3 +47,7 @@ Task 3 的新增回归先通过 `item.updated` materialize child，再发送带�
 Section 10 的 BLOCKED 结论来自不完整的测试夹具，而不是生产路由缺口。真实 Codex child lifecycle event 同时包含顶层 `turnId` 与 `providerRefs.providerTurnId`；严格 terminal applicability 读取顶层 `event.turnId`。为 `turn.aborted` 补齐 `turnId: asTurnId("turn-child-aborted")` 后，新增 failed/aborted child 测试通过：failed child 为 `error` 且保留错误文本，aborted child 为 `interrupted` 且 active turn 清空。`turn.aborted` 本身不投影为 event-id lifecycle activity，因此断言限定为 brief 要求的可读 child session terminal state。
 
 已执行：server 新增 terminal 回归 1/1；web focused 84/84；browser 6/6；shared 27/27；完整 ingestion 101/101；完整 web focused 209/209。组合 server suite 的唯一失败是既有 `codex CLI version gate > re-probes when a PATH-resolved codex is replaced behind the same bare name`（224 passed、2 skipped、1 failed），本任务未修改该无关基线。
+
+## 12. 新父 turn 与父 turn watchdog 都必须保留存活 child 的 provider-parent 路由
+
+`sendTurn` 和 `abandonTurn` 原本同时清空 `collabReceiverTurns` 与 `collabReceiverParents`。前者应该在父 turn 边界退休，后者仍是 background child 在其独立 terminal 通知前被识别为 child conversation、并附带 `providerParentThreadId` 的唯一映射。两处现在只清理 `collabReceiverTurns`；child `turn/completed` / `turn/aborted` 和 session disposal/replacement 仍负责删除 provider-parent 映射。TDD RED 的定向 manager run 如预期有 2 项失败（映射变为 `undefined`）；GREEN 的等价定向 run 为 24 passed、106 skipped。未触碰根 `findings.md`、mock service worker 或生成路由树。

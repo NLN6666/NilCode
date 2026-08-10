@@ -1703,7 +1703,7 @@ describe("startSession", () => {
 });
 
 describe("sendTurn", () => {
-  it("clears stale collaboration receiver routing before a new turn", async () => {
+  it("clears stale collaboration receiver turn routing before a new turn", async () => {
     const { manager, context } = createSendTurnHarness();
     context.collabReceiverTurns.set("reused-child", "old-turn");
     context.collabReceiverParents.set("reused-child", "old-parent");
@@ -1714,7 +1714,7 @@ describe("sendTurn", () => {
     });
 
     expect(context.collabReceiverTurns.size).toBe(0);
-    expect(context.collabReceiverParents.size).toBe(0);
+    expect(context.collabReceiverParents.get("reused-child")).toBe("old-parent");
   });
 
   it("sends text and image user input items to turn/start", async () => {
@@ -3307,6 +3307,113 @@ describe("respondToUserInput", () => {
 });
 
 describe("collab child conversation routing", () => {
+  it("keeps a background child routed after the parent starts its next turn", async () => {
+    const { manager, context, emitEvent, updateSession } = createCollabNotificationHarness();
+    const sendRequest = vi
+      .spyOn(
+        manager as unknown as { sendRequest: (...args: unknown[]) => Promise<unknown> },
+        "sendRequest",
+      )
+      .mockResolvedValue({ turn: { id: "turn_parent_next" } });
+
+    handleServerNotificationForTest(manager, context, {
+      method: "item/completed",
+      params: {
+        item: {
+          type: "collabAgentToolCall",
+          id: "call_collab_background",
+          receiverThreadIds: ["child_provider_background"],
+        },
+        threadId: "provider_parent",
+        turnId: "turn_parent",
+      },
+    });
+    handleServerNotificationForTest(manager, context, {
+      method: "turn/completed",
+      params: {
+        threadId: "provider_parent",
+        turn: { id: "turn_parent", status: "completed" },
+      },
+    });
+    context.session.status = "ready";
+    context.session.activeTurnId = undefined;
+
+    await manager.sendTurn({
+      threadId: asThreadId("thread_1"),
+      input: "Start the next parent turn",
+    });
+
+    expect(context.collabReceiverTurns.has("child_provider_background")).toBe(false);
+    expect(context.collabReceiverParents.get("child_provider_background")).toBe("provider_parent");
+    emitEvent.mockClear();
+    updateSession.mockClear();
+
+    handleServerNotificationForTest(manager, context, {
+      method: "item/agentMessage/delta",
+      params: {
+        threadId: "child_provider_background",
+        turnId: "turn_child_background",
+        itemId: "msg_child_background",
+        delta: "still working after the next parent turn",
+      },
+    });
+    handleServerNotificationForTest(manager, context, {
+      method: "turn/completed",
+      params: {
+        threadId: "child_provider_background",
+        turn: { id: "turn_child_background", status: "completed" },
+      },
+    });
+
+    expect(sendRequest).toHaveBeenCalledTimes(1);
+    expect(emitEvent).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        method: "item/agentMessage/delta",
+        providerThreadId: "child_provider_background",
+        providerParentThreadId: "provider_parent",
+      }),
+    );
+    expect(emitEvent).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        method: "turn/completed",
+        providerThreadId: "child_provider_background",
+        providerParentThreadId: "provider_parent",
+      }),
+    );
+    expect(updateSession).not.toHaveBeenCalled();
+    expect(context.collabReceiverTurns.has("child_provider_background")).toBe(false);
+    expect(context.collabReceiverParents.has("child_provider_background")).toBe(false);
+  });
+
+  it("keeps live background child parent routes while abandoning the parent turn", async () => {
+    const { manager, context } = createCollabNotificationHarness();
+    context.collabReceiverTurns.set("child_provider_background", "turn_parent");
+    context.collabReceiverParents.set("child_provider_background", "provider_parent");
+    (
+      manager as unknown as {
+        sessions: Map<ThreadId, typeof context>;
+        interruptTurn: (threadId: ThreadId, turnId: TurnId) => Promise<void>;
+      }
+    ).sessions.set(asThreadId("thread_1"), context);
+    vi.spyOn(
+      manager as unknown as {
+        interruptTurn: (threadId: ThreadId, turnId: TurnId) => Promise<void>;
+      },
+      "interruptTurn",
+    ).mockResolvedValue(undefined);
+
+    await manager.abandonTurn(
+      asThreadId("thread_1"),
+      TurnId.makeUnsafe("turn_parent"),
+      "Parent turn timed out",
+    );
+
+    expect(context.collabReceiverTurns.size).toBe(0);
+    expect(context.collabReceiverParents.get("child_provider_background")).toBe("provider_parent");
+  });
+
   it.each(["turn/completed", "turn/aborted"])(
     "keeps background child routing after parent %s until the child settles",
     (parentTerminalMethod) => {

@@ -1285,7 +1285,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       );
     }
     context.collabReceiverTurns.clear();
-    context.collabReceiverParents.clear();
 
     // Normal sends never interrupt active work. The orchestration layer decides
     // when a queued follow-up is ready to become a provider turn.
@@ -1744,7 +1743,6 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
     this.clearTaskCompleteFallback(context);
     context.collabReceiverTurns.clear();
-    context.collabReceiverParents.clear();
     context.reviewTurnIds.delete(turnId);
     this.updateSession(context, {
       status: "ready",
