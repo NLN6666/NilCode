@@ -29,7 +29,9 @@ export const sidebar = {
   help: {
     menu: "Help",
     whatsNew: "What’s new",
-    keyboardShortcuts: "Keyboard shortcuts",
+    versionFallback: (version: string) => `Version ${version}`,
+    fullChangelog: "Full changelog",
+    keyboardShortcuts: "Keybindings",
     sendFeedback: "Send feedback",
     docs: "Docs",
   },

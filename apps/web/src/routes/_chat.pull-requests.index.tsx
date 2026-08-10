@@ -79,6 +79,7 @@ import { useStore } from "~/store";
 import { PR_FINE_TEXT_CLASS_NAME } from "~/components/pullRequest/pullRequestText";
 import { useMessages } from "~/i18n/context";
 import type { Messages } from "~/i18n/locales/en";
+import { useAppSettings } from "~/appSettings";
 
 export interface PullRequestsSearch {
   involvement: PullRequestInvolvement;
@@ -159,6 +160,7 @@ function stateTabs(
 
 function PullRequestsRouteView() {
   const copy = useMessages().pullRequests;
+  const { settings } = useAppSettings();
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const trafficLightGutter = useDesktopTopBarTrafficLightGutterClassName();
@@ -504,6 +506,7 @@ function PullRequestsRouteView() {
                 <PullRequestList
                   entries={entries}
                   grouped={grouped}
+                  showDiffColors={settings.showPullRequestDiffColors}
                   selectedProjectId={search.selectedProjectId}
                   selectedRepo={search.selectedRepo}
                   selectedNumber={search.number}

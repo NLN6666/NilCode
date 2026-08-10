@@ -49,8 +49,8 @@ export const settingsNav = {
       description: "Control live responses, follow-ups, review defaults, and safety confirmations.",
     },
     shortcuts: {
-      label: "Keyboard shortcuts",
-      description: "Search and customize shortcuts, grouped by where they work.",
+      label: "Keybindings",
+      description: "Capture, customize, and add shortcuts for every Synara command.",
     },
     usage: {
       label: "Usage & limits",

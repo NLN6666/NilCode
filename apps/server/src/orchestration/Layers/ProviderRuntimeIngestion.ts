@@ -64,6 +64,7 @@ import { OrchestrationCommandReceiptRepository } from "../../persistence/Service
 import {
   PROVIDER_RUNTIME_INGESTION_CONSUMER,
   ProviderRuntimeEventRepository,
+  type PersistedProviderRuntimeEvent,
 } from "../../persistence/Services/ProviderRuntimeEvents.ts";
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
 import { isGitRepository } from "../../git/isRepo.ts";
@@ -110,7 +111,8 @@ const providerCommandId = (event: ProviderRuntimeEvent, tag: string, target = "e
 const DEFAULT_ASSISTANT_DELIVERY_MODE: AssistantDeliveryMode = "buffered";
 const PROVIDER_RUNTIME_INGESTION_CAPACITY = 1_024;
 const PROVIDER_RUNTIME_REPLAY_PAGE_SIZE = 128;
-const PROVIDER_RUNTIME_REPLAY_POLL_INTERVAL = Duration.millis(250);
+const PROVIDER_RUNTIME_REPLAY_POLL_MIN_MS = 250;
+const PROVIDER_RUNTIME_REPLAY_POLL_MAX_MS = 5_000;
 const TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY = 2_048;
 const TURN_MESSAGE_IDS_BY_TURN_TTL = Duration.minutes(60);
 const BUFFERED_MESSAGE_TEXT_BY_MESSAGE_ID_CACHE_CAPACITY = 1_024;
@@ -142,6 +144,22 @@ const MAX_BUFFERED_REASONING_SUMMARY_CHARS = 8_000;
 const MAX_BUFFERED_REASONING_SUMMARY_PARTS = 24;
 const BUFFERED_TEXT_TRUNCATION_MARKER = "... [truncated]";
 const STRICT_PROVIDER_LIFECYCLE_GUARD = process.env.SYNARA_STRICT_PROVIDER_LIFECYCLE_GUARD !== "0";
+
+/**
+ * Back off the durable-journal safety poll while the live persisted-event
+ * stream is healthy and the consumer is caught up. Live events still drain
+ * immediately; this poll only recovers rows whose notification was missed.
+ */
+export function nextRuntimeJournalSafetyPollDelayMs(
+  currentDelayMs: number,
+  hadBacklog: boolean,
+): number {
+  if (hadBacklog) return PROVIDER_RUNTIME_REPLAY_POLL_MIN_MS;
+  return Math.min(
+    PROVIDER_RUNTIME_REPLAY_POLL_MAX_MS,
+    Math.max(PROVIDER_RUNTIME_REPLAY_POLL_MIN_MS, currentDelayMs * 2),
+  );
+}
 
 type RuntimeIngestionDomainEvent = Extract<
   OrchestrationEvent,
@@ -628,6 +646,36 @@ const takeCached = <Key, Value>(cache: Cache.Cache<Key, Value>, key: Key) =>
   Cache.getOption(cache, key).pipe(
     Effect.flatMap((value) => Cache.invalidate(cache, key).pipe(Effect.as(value))),
   );
+
+export function selectProviderRuntimeJournalStream(input: {
+  readonly streamEvents: Stream.Stream<ProviderRuntimeEvent>;
+  readonly streamPersistedEvents?: Stream.Stream<PersistedProviderRuntimeEvent>;
+  readonly append: (
+    event: ProviderRuntimeEvent,
+  ) => Effect.Effect<PersistedProviderRuntimeEvent, unknown>;
+}) {
+  return (
+    input.streamPersistedEvents ??
+    input.streamEvents.pipe(
+      Stream.mapEffect((event) =>
+        input.append(event).pipe(
+          Effect.catchCause((cause) =>
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.failCause(cause)
+              : Effect.logWarning("provider runtime event journal ingestion failed", {
+                  eventId: event.eventId,
+                  eventType: event.type,
+                  cause: Cause.pretty(cause),
+                }).pipe(Effect.as(undefined)),
+          ),
+        ),
+      ),
+      Stream.filter(
+        (persisted): persisted is NonNullable<typeof persisted> => persisted !== undefined,
+      ),
+    )
+  );
+}
 
 const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
@@ -2892,11 +2940,13 @@ const make = Effect.gen(function* () {
     runtimeJournalDrainLock.withPermits(1)(
       Effect.gen(function* () {
         const replayFence = throughSequenceInclusive ?? (yield* runtimeEvents.getHighWaterSequence);
+        let hadBacklog = false;
         while (true) {
           const cursor = yield* runtimeEvents.getConsumerCursor(
             PROVIDER_RUNTIME_INGESTION_CONSUMER,
           );
-          if (cursor >= replayFence) return;
+          if (cursor >= replayFence) return hadBacklog;
+          hadBacklog = true;
 
           const page = yield* runtimeEvents.readAfter({
             sequenceExclusive: cursor,
@@ -2923,7 +2973,7 @@ const make = Effect.gen(function* () {
             // skipped (loop again from the fresh cursor), or the drain yields
             // to the durable poller, which retries from the exact cursor.
             if (yield* deadLetterPoisonHeadRow) continue;
-            return;
+            return hadBacklog;
           }
 
           const advancedCursor = yield* runtimeEvents.getConsumerCursor(
@@ -2945,9 +2995,21 @@ const make = Effect.gen(function* () {
       if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
       return Effect.logWarning("provider runtime journal drain failed", {
         cause: Cause.pretty(cause),
-      });
+      }).pipe(Effect.as(true));
     }),
   );
+
+  const pollRuntimeJournalSafely = Effect.gen(function* () {
+    // Keep the long-lived loop inside one generator fiber. Recursively chaining
+    // a fresh Effect for every tick retains work in Bun's Effect interpreter
+    // and grows CPU/RSS over time even though each individual poll is tiny.
+    let delayMs = PROVIDER_RUNTIME_REPLAY_POLL_MIN_MS;
+    while (true) {
+      yield* Effect.sleep(Duration.millis(delayMs));
+      const hadBacklog = yield* drainRuntimeJournalSafely;
+      delayMs = nextRuntimeJournalSafetyPollDelayMs(delayMs, hadBacklog);
+    }
+  });
 
   const reconcileSettledOpenTurns: ProviderRuntimeIngestionShape["reconcileSettledOpenTurns"] =
     runtimeEvents.pruneSettledOpenTurns.pipe(
@@ -3030,31 +3092,39 @@ const make = Effect.gen(function* () {
   const start: ProviderRuntimeIngestionShape["start"] = startDrainableWorkerProducers(
     worker,
     Effect.gen(function* () {
-      yield* Effect.forkScoped(
-        Stream.runForEach(providerService.streamEvents, (event) =>
-          // The advisor runs a provider session keyed by a derived thread id that
-          // is deliberately not a thread. Its events arrive on this stream like
-          // any other, but journalling them would grow the journal for a thread
-          // nothing can read back, and the projector below would resolve that id
-          // to nothing. Dropping them at the door is the whole isolation.
-          isAdvisorShadowThreadId(event.threadId)
-            ? Effect.void
-            : runtimeEvents.append(event).pipe(
-                Effect.flatMap((persisted) =>
-                  Deferred.await(startupRuntimeReplayComplete).pipe(
-                    Effect.andThen(drainRuntimeJournalThrough(persisted.sequence)),
-                  ),
-                ),
-                Effect.catchCause((cause) =>
-                  Cause.hasInterruptsOnly(cause)
-                    ? Effect.failCause(cause)
-                    : Effect.logWarning("provider runtime event journal ingestion failed", {
-                        eventId: event.eventId,
-                        eventType: event.type,
-                        cause: Cause.pretty(cause),
-                      }),
-                ),
+      const streamPersistedEvents = providerService.streamPersistedEvents;
+      const persistedRuntimeEvents = selectProviderRuntimeJournalStream({
+        // The advisor runs a provider session keyed by a derived thread id that
+        // is deliberately not a thread. Its events arrive on this stream like
+        // any other, but journalling them would grow the journal for a thread
+        // nothing can read back, and the projector below would resolve that id
+        // to nothing. Dropping them at the door is the whole isolation.
+        streamEvents: providerService.streamEvents.pipe(
+          Stream.filter((event) => !isAdvisorShadowThreadId(event.threadId)),
+        ),
+        ...(streamPersistedEvents === undefined
+          ? {}
+          : {
+              streamPersistedEvents: streamPersistedEvents.pipe(
+                Stream.filter((persisted) => !isAdvisorShadowThreadId(persisted.event.threadId)),
               ),
+            }),
+        append: (event) => runtimeEvents.append(event),
+      });
+      yield* Effect.forkScoped(
+        Stream.runForEach(persistedRuntimeEvents, (persisted) =>
+          Deferred.await(startupRuntimeReplayComplete).pipe(
+            Effect.andThen(drainRuntimeJournalThrough(persisted.sequence)),
+            Effect.catchCause((cause) =>
+              Cause.hasInterruptsOnly(cause)
+                ? Effect.failCause(cause)
+                : Effect.logWarning("provider runtime event journal ingestion failed", {
+                    eventId: persisted.event.eventId,
+                    eventType: persisted.event.type,
+                    cause: Cause.pretty(cause),
+                  }),
+            ),
+          ),
         ),
       );
       yield* Effect.forkScoped(
@@ -3080,12 +3150,7 @@ const make = Effect.gen(function* () {
       yield* rebuildAcceptedOpenTurnState;
       yield* drainRuntimeJournal;
       yield* Deferred.succeed(startupRuntimeReplayComplete, undefined);
-      yield* Effect.forkScoped(
-        Effect.sleep(PROVIDER_RUNTIME_REPLAY_POLL_INTERVAL).pipe(
-          Effect.andThen(drainRuntimeJournalSafely),
-          Effect.forever,
-        ),
-      );
+      yield* Effect.forkScoped(pollRuntimeJournalSafely);
     }),
   ).pipe(Effect.orDie);
 

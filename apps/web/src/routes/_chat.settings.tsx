@@ -28,6 +28,7 @@ import {
 } from "../appSettings";
 import { APP_VERSION } from "../branding";
 import { AdvancedSettingsPanel } from "~/components/settings/AdvancedSettingsPanel";
+import { AppIconPicker } from "~/components/settings/AppIconPicker";
 import {
   ArchivedSettingsPanel,
   WorktreesSettingsPanel,
@@ -58,12 +59,12 @@ import {
   SettingsSelectControl,
 } from "../components/settings/SettingControls";
 import {
-  SettingsCard,
   SettingsRow,
   SettingsSection,
   SettingsSectionShell,
 } from "../components/settings/SettingsPanelPrimitives";
 import { SkillsSettingsPanel } from "../components/settings/SkillsSettingsPanel";
+import { ThemeModePicker } from "../components/settings/ThemeModePicker";
 import { ThemePackEditor } from "../components/ThemePackEditor";
 import {
   CHAT_CONTENT_CARD_CLASS_NAME,
@@ -90,7 +91,8 @@ import { SidebarHeaderNavigationControls } from "../components/SidebarHeaderNavi
 import { useDesktopTopBarTrafficLightGutterClassName } from "../hooks/useDesktopTopBarGutter";
 import { useTheme } from "../hooks/useTheme";
 import { isUiDensity } from "../lib/appDensity";
-import { DeviceLaptopIcon, MoonIcon, RotateCcwIcon, SunIcon } from "../lib/icons";
+import { isElectron } from "../env";
+import { RotateCcwIcon } from "../lib/icons";
 import { cn, isMacPlatform } from "../lib/utils";
 import { ensureNativeApi, readNativeApi } from "../nativeApi";
 import { sameProviderOrder } from "../providerOrdering";
@@ -98,6 +100,7 @@ import {
   normalizeSettingsSection,
   SETTINGS_NAV_ITEMS,
   SETTINGS_TARGETS,
+  settingRowAnchorId,
 } from "../settingsNavigation";
 import { SETTINGS_PAGE_BACKGROUND_CLASS_NAME } from "../settingsPanelStyles";
 
@@ -107,20 +110,6 @@ const PROVIDER_SELECT_OPTIONS = PROVIDER_DESCRIPTORS.map((descriptor) => descrip
 
 // Option rows carry translated labels, so they are derived from the active catalog rather than
 // declared as module constants. Icons stay here because they never change with locale.
-function themeOptions(
-  m: Messages,
-): readonly SettingsSegmentedOption<"light" | "dark" | "system">[] {
-  return [
-    { value: "light", label: m.settings.appearance.theme.options.light, icon: <SunIcon /> },
-    { value: "dark", label: m.settings.appearance.theme.options.dark, icon: <MoonIcon /> },
-    {
-      value: "system",
-      label: m.settings.appearance.theme.options.system,
-      icon: <DeviceLaptopIcon />,
-    },
-  ];
-}
-
 function uiDensityOptions(m: Messages): readonly SettingsSegmentedOption<UiDensity>[] {
   return [
     { value: "compact", label: m.settings.appearance.uiDensity.options.compact },
@@ -214,6 +203,7 @@ function SettingsRouteView() {
     ...(settings.showChatsSection !== defaults.showChatsSection ? ["Chats section"] : []),
     ...(settings.showStudioSection !== defaults.showStudioSection ? ["Studio section"] : []),
     ...(settings.uiDensity !== defaults.uiDensity ? ["UI density"] : []),
+    ...(settings.desktopAppIcon !== defaults.desktopAppIcon ? ["App icon"] : []),
     ...(settings.chatFontSizePx !== defaults.chatFontSizePx ? ["Base font size"] : []),
     ...(settings.terminalFontSizePx !== defaults.terminalFontSizePx ? ["Terminal font size"] : []),
     ...(settings.terminalFontFamily !== defaults.terminalFontFamily ? ["Terminal font"] : []),
@@ -242,6 +232,9 @@ function SettingsRouteView() {
       ? ["Provider update checks"]
       : []),
     ...(settings.diffWordWrap !== defaults.diffWordWrap ? ["Diff line wrapping"] : []),
+    ...(settings.showPullRequestDiffColors !== defaults.showPullRequestDiffColors
+      ? ["Pull request diff colors"]
+      : []),
     ...(settings.confirmThreadDelete !== defaults.confirmThreadDelete
       ? ["Delete confirmation"]
       : []),
@@ -618,33 +611,29 @@ function SettingsRouteView() {
 
   const renderAppearancePanel = () => (
     <div className="space-y-6">
-      <SettingsSectionShell title={m.settings.appearance.theme.title}>
-        <SettingsCard>
-          <SettingsRow
-            anchorKey="appearance:theme"
-            title={m.settings.appearance.theme.title}
-            description={m.settings.appearance.theme.description}
-            resetAction={
-              theme !== "system" ? (
-                <SettingResetButton
-                  label={m.settings.appearance.theme.resetLabel}
-                  onClick={() => setTheme("system")}
-                />
-              ) : null
-            }
-            control={
-              <SettingsSegmentedControl
-                value={theme}
-                onValueChange={(value) => {
-                  if (value !== "system" && value !== "light" && value !== "dark") return;
-                  setTheme(value);
-                }}
-                ariaLabel={m.settings.appearance.theme.ariaLabel}
-                options={themeOptions(m)}
-              />
-            }
+      <SettingsSectionShell
+        title={m.settings.appearance.theme.title}
+        action={
+          theme !== "system" ? (
+            <SettingResetButton
+              label={m.settings.appearance.theme.resetLabel}
+              onClick={() => setTheme("system")}
+            />
+          ) : null
+        }
+      >
+        {/* The mode picker is the one settings control that sits directly on the page
+            instead of inside a card — the mockups are the whole UI, so boxing them in
+            a card reads as chrome around chrome. The anchor keeps search deep-links
+            working without the SettingsRow, and is derived from the locale-independent
+            search-entry id rather than the translated title. */}
+        <div id={settingRowAnchorId("appearance:theme")} className="scroll-mt-24 pb-1.5">
+          <ThemeModePicker
+            value={theme}
+            onValueChange={setTheme}
+            ariaLabel={m.settings.appearance.theme.ariaLabel}
           />
-        </SettingsCard>
+        </div>
 
         <div className="space-y-3">
           {(resolvedTheme === "dark"
@@ -660,6 +649,30 @@ function SettingsRouteView() {
           ))}
         </div>
       </SettingsSectionShell>
+
+      {isElectron ? (
+        <SettingsSection title={m.settings.appearance.app}>
+          <SettingsRow
+            anchorKey="appearance:app-icon"
+            title={m.settings.appearance.appIcon.title}
+            description={m.settings.appearance.appIcon.description}
+            resetAction={
+              settings.desktopAppIcon !== defaults.desktopAppIcon ? (
+                <SettingResetButton
+                  label={m.settings.appearance.appIcon.resetLabel}
+                  onClick={() => updateSettings({ desktopAppIcon: defaults.desktopAppIcon })}
+                />
+              ) : null
+            }
+            control={
+              <AppIconPicker
+                value={settings.desktopAppIcon}
+                onValueChange={(desktopAppIcon) => updateSettings({ desktopAppIcon })}
+              />
+            }
+          />
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection title={m.settings.appearance.typographyAndSpacing}>
         <SettingsRow
@@ -953,6 +966,12 @@ function SettingsRouteView() {
       </SettingsSection>
 
       <SettingsSection title={m.settings.behavior.review}>
+        {renderBooleanSettingRow({
+          settingKey: "showPullRequestDiffColors",
+          anchorKey: "behavior:pull-request-diff-colors",
+          ...m.settings.behavior.pullRequestDiffColors,
+        })}
+
         {renderBooleanSettingRow({
           settingKey: "diffWordWrap",
           anchorKey: "behavior:diff-line-wrapping",

@@ -94,7 +94,7 @@ export const dialogs: Messages["dialogs"] = {
   },
 
   shortcuts: {
-    title: "键盘快捷键",
+    title: "键位绑定",
     description: "显示当前情境下生效的按键绑定。",
     searchPlaceholder: "搜索快捷键…",
     searchLabel: "搜索快捷键",

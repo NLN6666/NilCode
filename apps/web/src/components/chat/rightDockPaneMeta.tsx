@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import type { Messages } from "~/i18n/locales/en";
 import type { LucideIcon } from "~/lib/icons";
 import {
+  DeviceMobileIcon,
   DiffIcon,
   FileIcon,
   FoldersIcon,
@@ -37,6 +38,10 @@ export interface RightDockLauncherItem extends RightDockPaneMeta {
 
 const RIGHT_DOCK_PANE_ICONS: Record<RightDockPaneKind, LucideIcon> = {
   browser: GlobeIcon,
+  // The contracts stay platform-neutral ("device") so Android emulators can plug
+  // in later, but the only backend today is the iOS Simulator, so that is what
+  // the label says.
+  device: DeviceMobileIcon,
   diff: DiffIcon,
   explorer: FoldersIcon,
   file: FileIcon,
@@ -74,6 +79,7 @@ const RIGHT_DOCK_LAUNCHER_ORDER: readonly RightDockPaneKind[] = [
   "browser",
   "explorer",
   "sidechat",
+  "device",
   "git",
 ];
 
@@ -102,6 +108,12 @@ export function resolveRightDockLauncherItems(input: {
   hasBackgroundServices: boolean;
   labels: RightDockPaneLabels;
   launcherLabels: RightDockLauncherLabels;
+  /**
+   * Simulators need a macOS server with Xcode. Off macOS the entry is hidden
+   * outright rather than shown disabled: there is nothing the user could do
+   * from this machine to make it work.
+   */
+  hasDeviceSupport?: boolean;
 }): readonly RightDockLauncherItem[] {
   return RIGHT_DOCK_LAUNCHER_ORDER.flatMap((kind) => {
     if (kind === "diff" && !input.hasReview) {
@@ -114,6 +126,9 @@ export function resolveRightDockLauncherItems(input: {
       return [];
     }
     if (kind === "services" && !input.hasBackgroundServices) {
+      return [];
+    }
+    if (kind === "device" && input.hasDeviceSupport !== true) {
       return [];
     }
     const meta = getRightDockPaneMeta(kind, input.labels);

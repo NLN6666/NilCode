@@ -14,6 +14,10 @@ describe("getRightDockPaneMeta", () => {
     // Stale persisted dock state can name a kind that no longer exists.
     expect(getRightDockPaneMeta("legacy-pane" as never, labels).label).toBe(labels.fallback);
   });
+
+  it("gives the platform-neutral device kind its user-facing iOS label", () => {
+    expect(getRightDockPaneMeta("device", en.chat.panes.kinds).label).toBe("iOS Simulator");
+  });
 });
 
 describe("resolveRightDockLauncherItems", () => {
@@ -97,5 +101,40 @@ describe("resolveRightDockLauncherItems", () => {
         hasBackgroundServices: true,
       }).map(({ kind }) => kind),
     ).toEqual(["terminal", "services", "browser", "explorer", "sidechat"]);
+  });
+
+  it("offers the simulator only when the server can host one", () => {
+    // Off macOS there is nothing the user could do from this machine to make
+    // simulators work, so the entry is hidden rather than shown disabled.
+    expect(
+      resolveRightDockLauncherItems({
+        ...LAUNCHER_INPUT,
+        hasWorkspace: true,
+        hasGitRepository: false,
+        hasReview: false,
+        hasDeviceSupport: true,
+      }).map(({ kind }) => kind),
+    ).toEqual(["terminal", "browser", "explorer", "sidechat", "device"]);
+
+    expect(
+      resolveRightDockLauncherItems({
+        ...LAUNCHER_INPUT,
+        hasWorkspace: true,
+        hasGitRepository: false,
+        hasReview: false,
+        hasDeviceSupport: false,
+      }).map(({ kind }) => kind),
+    ).not.toContain("device");
+  });
+
+  it("omits the simulator when support is unknown, so the entry cannot flicker in", () => {
+    expect(
+      resolveRightDockLauncherItems({
+        ...LAUNCHER_INPUT,
+        hasWorkspace: true,
+        hasGitRepository: false,
+        hasReview: false,
+      }).map(({ kind }) => kind),
+    ).not.toContain("device");
   });
 });

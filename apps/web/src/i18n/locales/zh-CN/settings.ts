@@ -9,7 +9,7 @@ import type { Settings } from "../en/settings";
 export const settings: Settings = {
   searchTitles: {
     fontSmoothing: "字体平滑",
-    keyboardShortcuts: "键盘快捷键",
+    keyboardShortcuts: "键位绑定",
     managedWorktrees: "受管工作树",
     archivedThreads: "已归档会话",
     usageAndBilling: "用量与账单",
@@ -162,6 +162,12 @@ export const settings: Settings = {
       resetLabel: "主题",
       options: { light: "浅色", dark: "深色", system: "跟随系统" },
     },
+    app: "应用",
+    appIcon: {
+      title: "应用图标",
+      description: "选择 Synara 在程序坞或任务栏中使用的图标。",
+      resetLabel: "应用图标",
+    },
     systemUiFont: {
       title: "使用系统界面字体",
       description: "忽略主题自定义的界面字体，改用系统原生字体渲染界面（macOS 上为 SF Pro）。",
@@ -235,6 +241,12 @@ export const settings: Settings = {
       description: "设置差异面板打开时的默认换行状态。面板内的换行开关只影响当前这次查看。",
       resetLabel: "差异自动换行",
       ariaLabel: "默认对差异内容自动换行",
+    },
+    pullRequestDiffColors: {
+      title: "拉取请求差异配色",
+      description: "在拉取请求摘要中，用绿色显示新增、红色显示删除。",
+      resetLabel: "拉取请求差异配色",
+      ariaLabel: "显示拉取请求差异配色",
     },
     safetyConfirmations: "安全确认",
     deleteConfirmation: {
@@ -970,7 +982,7 @@ export const settings: Settings = {
     refresh: "刷新",
     loading: "正在加载提供商用量…",
     footnote:
-      "用量从各提供商 CLI 本地存储的凭据中读取，并直接向提供商拉取。OAuth 提供商可能会通过其官方令牌端点刷新短期令牌；若某个提供商显示“未登录”，请用它的 CLI 重新认证。",
+      "用量从各提供商 CLI 本地存储的凭据中读取，并直接向提供商拉取。短期令牌会通过提供商自身的 CLI 或官方令牌端点刷新；若某个提供商显示“未登录”，请用它的 CLI 重新认证。",
   },
   appSnapShortcut: {
     recordAriaLabel: "录制 AppSnap 快捷键",

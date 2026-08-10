@@ -52,6 +52,8 @@ export const git: Messages["git"] = {
     addOriginPr: "创建 PR 前请先添加 origin 远程。",
     noCommitsPr: "没有可纳入 PR 的本地提交。",
     behindPr: "分支落后于上游。创建 PR 前请先拉取或变基。",
+    behindPullBeforePr: "分支落后于上游。创建 PR 前请先拉取。",
+    prAlreadyOpen: "该分支已存在一个打开的拉取请求。",
     createPrUnavailable: "当前无法创建 PR。",
     createBranchFirst: "推送或创建 PR 前，请先创建并检出一个分支。",
     branchUpToDate: "分支已是最新，无需操作。",

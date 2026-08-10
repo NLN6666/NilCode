@@ -59,6 +59,8 @@ export const git = {
     addOriginPr: 'Add an "origin" remote before creating a PR.',
     noCommitsPr: "No local commits to include in a PR.",
     behindPr: "Branch is behind upstream. Pull/rebase before creating a PR.",
+    behindPullBeforePr: "Branch is behind upstream. Pull before creating a PR.",
+    prAlreadyOpen: "A pull request is already open for this branch.",
     createPrUnavailable: "Create PR is currently unavailable.",
     createBranchFirst: "Create and checkout a branch before pushing or opening a PR.",
     branchUpToDate: "Branch is up to date. No action needed.",

@@ -17,6 +17,7 @@ import { CheckpointStoreLive } from "./checkpointing/Layers/CheckpointStore";
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor";
 import { OrchestrationReactorLive } from "./orchestration/Layers/OrchestrationReactor";
 import { StudioOutputReactorLive } from "./orchestration/Layers/StudioOutputReactor";
+import { ThreadGitMetadataReactorLive } from "./orchestration/Layers/ThreadGitMetadataReactor";
 import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderCommandReactor";
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion";
 import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus";
@@ -25,6 +26,8 @@ import { TurnCheckpointCoordinatorLive } from "./orchestration/Layers/TurnCheckp
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer";
 
 import { DevServerManagerLive } from "./devServerManager";
+import { DeviceServiceLive } from "./device/Layers/DeviceService";
+import type { DeviceService } from "./device/Services/DeviceService";
 import { KeybindingsLive } from "./keybindings";
 import { GitCoreLive } from "./git/Layers/GitCore";
 import { GitLayerLive, TextGenerationLayerLive } from "./git/runtimeLayer";
@@ -61,6 +64,19 @@ import { makeServerProviderLayer } from "./provider/runtimeLayer";
 
 export { makeServerProviderLayer } from "./provider/runtimeLayer";
 
+export function provideThreadDeletionReactorDeviceService<
+  ReactorServices,
+  ReactorError,
+  ReactorRequirements,
+  DeviceError,
+  DeviceRequirements,
+>(
+  reactorLayer: Layer.Layer<ReactorServices, ReactorError, ReactorRequirements>,
+  deviceServiceLayer: Layer.Layer<DeviceService, DeviceError, DeviceRequirements>,
+) {
+  return reactorLayer.pipe(Layer.provideMerge(deviceServiceLayer));
+}
+
 export function makeServerRuntimeServicesLayer(
   options: {
     readonly agentGatewayCredentialsLayer?: typeof AgentGatewayCredentialsWithSecretsLive;
@@ -92,6 +108,10 @@ export function makeServerRuntimeServicesLayer(
   const studioOutputReactorLayer = StudioOutputReactorLive.pipe(
     Layer.provideMerge(runtimeServicesLayer),
   );
+  const threadGitMetadataReactorLayer = ThreadGitMetadataReactorLive.pipe(
+    Layer.provideMerge(runtimeServicesLayer),
+    Layer.provideMerge(GitLayerLive),
+  );
   const providerCommandReactorLayer = ProviderCommandReactorLive.pipe(
     Layer.provideMerge(runtimeServicesLayer),
     Layer.provideMerge(OrchestrationEventDeliveryRepositoryLive),
@@ -99,6 +119,7 @@ export function makeServerRuntimeServicesLayer(
     Layer.provideMerge(GitCoreLive),
     Layer.provideMerge(TextGenerationLayerLive),
     Layer.provideMerge(ServerSettingsLive),
+    Layer.provideMerge(AgentGatewayOperationRepositoryLive),
   );
   const checkpointReactorLayer = CheckpointReactorLive.pipe(
     Layer.provideMerge(runtimeServicesLayer),
@@ -111,11 +132,15 @@ export function makeServerRuntimeServicesLayer(
     Layer.provideMerge(providerCommandReactorLayer),
     Layer.provideMerge(checkpointReactorLayer),
     Layer.provideMerge(studioOutputReactorLayer),
+    Layer.provideMerge(threadGitMetadataReactorLayer),
   );
-  const threadDeletionReactorLayer = ThreadDeletionReactorLive.pipe(
-    Layer.provideMerge(profileStatsArchiveLayer),
-    Layer.provideMerge(OrchestrationLayerLive),
-    Layer.provideMerge(TerminalLayerLive),
+  const threadDeletionReactorLayer = provideThreadDeletionReactorDeviceService(
+    ThreadDeletionReactorLive.pipe(
+      Layer.provideMerge(profileStatsArchiveLayer),
+      Layer.provideMerge(OrchestrationLayerLive),
+      Layer.provideMerge(TerminalLayerLive),
+    ),
+    DeviceServiceLive,
   );
   // The advisor watches the same domain events the browser sees, and reaches
   // its model through one short-lived CLI invocation per evaluation - never a
@@ -199,6 +224,9 @@ export function makeServerRuntimeServicesLayer(
     Layer.provideMerge(providerHealthLayer),
     Layer.provideMerge(BrowserAutomationHostLive),
     Layer.provideMerge(DaemonBrokerLive),
+    // The gateway exposes device_* tools only where a backend can exist, but it
+    // resolves the service on every platform to make that decision.
+    Layer.provideMerge(DeviceServiceLive),
   );
   const pullRequestServiceLayer = PullRequestServiceLive.pipe(
     Layer.provideMerge(GitLayerLive),
@@ -227,9 +255,11 @@ export function makeServerRuntimeServicesLayer(
     pullRequestServiceLayer,
     orchestrationReactorLayer,
     providerCommandReactorLayer,
+    threadGitMetadataReactorLayer,
     threadDeletionReactorLayer,
     advisorReactorLayer,
     devServerManagerLayer,
+    DeviceServiceLive,
     GitLayerLive,
     TextGenerationLayerLive,
     TerminalLayerLive,

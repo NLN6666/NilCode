@@ -88,7 +88,6 @@ import {
   SpaceId,
   type ProviderKind,
   ThreadId,
-  type GitStatusResult,
   type ResolvedKeybindingsConfig,
   WS_GITHUB_PROJECT_PROVISIONING_CAPABILITY,
 } from "@synara/contracts";
@@ -131,7 +130,7 @@ import {
   createSidebarTreeThreadsSelector,
 } from "../storeSelectors";
 import { derivePendingApprovals, derivePendingUserInputs } from "../session-logic";
-import { gitResolvePullRequestQueryOptions, gitStatusQueryOptions } from "../lib/gitReactQuery";
+import { useThreadPullRequests, type ThreadPullRequest } from "../hooks/useThreadPullRequests";
 import {
   providerComposerCapabilitiesQueryOptions,
   supportsThreadImport,
@@ -150,7 +149,7 @@ import {
   resolveNewThreadModelPrefetchCwd,
   resolveNewThreadModelPrefetchProvider,
 } from "../lib/providerModelPrefetch";
-import { serverConfigQueryOptions } from "../lib/serverReactQuery";
+import { serverConfigQueryOptions, serverSettingsQueryOptions } from "../lib/serverReactQuery";
 import {
   onNativeApiServerCapabilitiesChange,
   readNativeApi,
@@ -209,6 +208,9 @@ import {
 } from "./SidebarThreadRowContent";
 import { RenameDialog } from "./RenameDialog";
 import { RenameThreadDialog } from "./RenameThreadDialog";
+import ReleaseHistoryDialog from "./ReleaseHistoryDialog";
+import { WHATS_NEW_ENTRIES } from "../whatsNew/entries";
+import { sortEntriesByVersionDesc } from "../whatsNew/logic";
 import {
   SidebarSearchPalette,
   type ImportProviderKind,
@@ -217,6 +219,7 @@ import {
 import { useHandleNewChat } from "../hooks/useHandleNewChat";
 import { useHandleNewStudioChat } from "../hooks/useHandleNewStudioChat";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useProviderStatusesForLocalConfig } from "../hooks/useProviderStatusesForLocalConfig";
 import { useThreadHandoff } from "../hooks/useThreadHandoff";
 import { useFeedbackDialogStore } from "../feedbackDialogStore";
 import { openExternalLink } from "~/lib/linkChips";
@@ -708,41 +711,7 @@ interface PrStatusIndicator {
   url: string;
 }
 
-type ThreadPr = GitStatusResult["pr"];
-
-// Also accepts persisted `lastKnownPr` entries, whose draft/mergeability/diff fields are
-// optional because older rows predate them.
-function toThreadPr(
-  pr:
-    | NonNullable<ThreadPr>
-    | {
-        number: number;
-        title: string;
-        url: string;
-        baseBranch: string;
-        headBranch: string;
-        state: "open" | "closed" | "merged";
-        isDraft?: boolean | undefined;
-        mergeability?: "mergeable" | "conflicting" | "unknown" | undefined;
-        additions?: number | null | undefined;
-        deletions?: number | null | undefined;
-        changedFiles?: number | null | undefined;
-      },
-): ThreadPr {
-  return {
-    number: pr.number,
-    title: pr.title,
-    url: pr.url,
-    baseBranch: pr.baseBranch,
-    headBranch: pr.headBranch,
-    state: pr.state,
-    isDraft: pr.isDraft ?? false,
-    mergeability: pr.mergeability ?? "unknown",
-    additions: pr.additions ?? null,
-    deletions: pr.deletions ?? null,
-    changedFiles: pr.changedFiles ?? null,
-  };
-}
+type ThreadPr = ThreadPullRequest;
 
 function terminalStatusFromThreadState(input: {
   runningTerminalIds: string[];
@@ -877,8 +846,11 @@ function ProjectSortMenu({
   );
 }
 
-const SYNARA_CHANGELOG_URL = "https://trysynara.com/changelog";
 const SYNARA_DOCS_URL = "https://trysynara.com/docs";
+
+// Latest curated releases surfaced directly in the help menu. Static data, so
+// computed once at module scope rather than per render.
+const HELP_MENU_RELEASE_ENTRIES = sortEntriesByVersionDesc(WHATS_NEW_ENTRIES).slice(0, 3);
 
 // Footer help menu; swapped out for the desktop-update pill while an update is
 // available (see SidebarFooter).
@@ -890,46 +862,88 @@ function SidebarHelpMenu({
   onOpenFeedback: () => void;
 }) {
   const m = useMessages();
+  // `openCount` keys the dialog so each open remounts the accordion — its rows
+  // capture `defaultOpen` in mount state, so a stale mount would ignore a
+  // newly selected version.
+  const [releaseHistory, setReleaseHistory] = useState<{
+    readonly open: boolean;
+    readonly version: string | null;
+    readonly openCount: number;
+  }>({ open: false, version: null, openCount: 0 });
+
+  const openReleaseHistory = (version: string | null) => {
+    setReleaseHistory((prev) => ({ open: true, version, openCount: prev.openCount + 1 }));
+  };
+
   return (
-    <Menu>
-      <SidebarIconButton
-        render={<MenuTrigger />}
-        icon={CircleQuestionIcon}
-        label={m.sidebar.help.menu}
-        tooltip={m.sidebar.help.menu}
-      />
-      <ComposerPickerMenuPopup
-        align="end"
-        side="top"
-        className={SIDEBAR_CONTEXT_MENU_PANEL_CLASS_NAME}
-      >
-        <MenuGroup>
-          <MenuItem
-            className={SIDEBAR_CONTEXT_MENU_ITEM_CLASS_NAME}
-            onClick={() => openExternalLink(SYNARA_CHANGELOG_URL)}
-          >
-            <SidebarContextMenuIcon icon={GiftIcon} />
-            <span>{m.sidebar.help.whatsNew}</span>
-          </MenuItem>
-          <MenuItem className={SIDEBAR_CONTEXT_MENU_ITEM_CLASS_NAME} onClick={onOpenShortcuts}>
-            <SidebarContextMenuIcon icon={KeyboardIcon} />
-            <span>{m.sidebar.help.keyboardShortcuts}</span>
-          </MenuItem>
+    <>
+      <Menu>
+        <SidebarIconButton
+          render={<MenuTrigger />}
+          icon={CircleQuestionIcon}
+          label={m.sidebar.help.menu}
+          tooltip={m.sidebar.help.menu}
+        />
+        <ComposerPickerMenuPopup
+          align="end"
+          side="top"
+          className={cn(SIDEBAR_CONTEXT_MENU_PANEL_CLASS_NAME, "w-64 min-w-64")}
+        >
+          <MenuGroup>
+            <div className="px-2 py-1 sm:text-xs font-medium text-muted-foreground">
+              {m.sidebar.help.whatsNew}
+            </div>
+            {HELP_MENU_RELEASE_ENTRIES.map((entry) => (
+              <MenuItem
+                key={entry.version}
+                className={SIDEBAR_CONTEXT_MENU_ITEM_CLASS_NAME}
+                onClick={() => openReleaseHistory(entry.version)}
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {entry.features[0]?.title ?? m.sidebar.help.versionFallback(entry.version)}
+                </span>
+                <span className="shrink-0 text-[var(--color-text-foreground-secondary)] tabular-nums">
+                  {entry.date}
+                </span>
+              </MenuItem>
+            ))}
+            <MenuItem
+              className={SIDEBAR_CONTEXT_MENU_ITEM_CLASS_NAME}
+              onClick={() => openReleaseHistory(null)}
+            >
+              <SidebarContextMenuIcon icon={GiftIcon} />
+              <span>{m.sidebar.help.fullChangelog}</span>
+            </MenuItem>
+          </MenuGroup>
           <MenuSeparator />
-          <MenuItem className={SIDEBAR_CONTEXT_MENU_ITEM_CLASS_NAME} onClick={onOpenFeedback}>
-            <SidebarContextMenuIcon icon={ChatBubbleIcon} />
-            <span>{m.sidebar.help.sendFeedback}</span>
-          </MenuItem>
-          <MenuItem
-            className={SIDEBAR_CONTEXT_MENU_ITEM_CLASS_NAME}
-            onClick={() => openExternalLink(SYNARA_DOCS_URL)}
-          >
-            <SidebarContextMenuIcon icon={BookIcon} />
-            <span>{m.sidebar.help.docs}</span>
-          </MenuItem>
-        </MenuGroup>
-      </ComposerPickerMenuPopup>
-    </Menu>
+          <MenuGroup>
+            <MenuItem className={SIDEBAR_CONTEXT_MENU_ITEM_CLASS_NAME} onClick={onOpenShortcuts}>
+              <SidebarContextMenuIcon icon={KeyboardIcon} />
+              <span>{m.sidebar.help.keyboardShortcuts}</span>
+            </MenuItem>
+            <MenuItem className={SIDEBAR_CONTEXT_MENU_ITEM_CLASS_NAME} onClick={onOpenFeedback}>
+              <SidebarContextMenuIcon icon={ChatBubbleIcon} />
+              <span>{m.sidebar.help.sendFeedback}</span>
+            </MenuItem>
+            <MenuItem
+              className={SIDEBAR_CONTEXT_MENU_ITEM_CLASS_NAME}
+              onClick={() => openExternalLink(SYNARA_DOCS_URL)}
+            >
+              <SidebarContextMenuIcon icon={BookIcon} />
+              <span>{m.sidebar.help.docs}</span>
+            </MenuItem>
+          </MenuGroup>
+        </ComposerPickerMenuPopup>
+      </Menu>
+      <ReleaseHistoryDialog
+        key={releaseHistory.openCount}
+        open={releaseHistory.open}
+        onOpenChange={(open) => {
+          setReleaseHistory((prev) => ({ ...prev, open }));
+        }}
+        defaultExpandedVersion={releaseHistory.version}
+      />
+    </>
   );
 }
 
@@ -1254,12 +1268,7 @@ export function SidebarSurfacePicker({
           />
         }
       >
-        <span
-          className={cn(
-            "font-display min-w-0 truncate text-foreground",
-            activeView === "threads" ? "text-[17px]" : "text-[15px]",
-          )}
-        >
+        <span className="font-display min-w-0 truncate text-[17px] text-foreground">
           {activeCopy.title}
         </span>
         <DisclosureChevron open className="text-muted-foreground/70" />
@@ -1520,6 +1529,8 @@ export default function Sidebar() {
     select: (config) => config.cwd ?? null,
   });
   const serverCwd = serverCwdQuery.data ?? null;
+  const providerStatuses = useProviderStatusesForLocalConfig();
+  const serverSettingsQuery = useQuery(serverSettingsQueryOptions());
   // Declared next to `keybindings` (rather than further down) because the project-row render
   // helpers above read these labels. A const declared after the closure that captures it
   // widens its inferred mutable range and makes React Compiler drop the memoization of every
@@ -2928,7 +2939,11 @@ export default function Sidebar() {
       });
       const threadStatus = threadSummary ? resolveThreadStatusForSidebar(threadSummary) : null;
       const handoffTargets = canHandoff
-        ? resolveAvailableHandoffTargetProviders(thread.modelSelection.provider)
+        ? resolveAvailableHandoffTargetProviders({
+            sourceProvider: thread.modelSelection.provider,
+            providerSettings: serverSettingsQuery.data?.providers,
+            providerStatuses,
+          })
         : [];
       const handoffItems = handoffTargets.map((provider, index) => ({
         id: `handoff:${provider}`,
@@ -3121,7 +3136,9 @@ export default function Sidebar() {
       openRenameThreadDialog,
       pinnedThreadIdSet,
       projectCwdById,
+      providerStatuses,
       resolveThreadStatusForSidebar,
+      serverSettingsQuery.data?.providers,
       sidebarThreadSummaryById,
       toggleThreadPinned,
     ],
@@ -4144,100 +4161,10 @@ export default function Sidebar() {
     [sidebarTreeThreads, visibleSidebarThreadIdSet],
   );
   // PR badges only render on visible rows, so keep git/PR query setup off hidden project history.
-  const threadGitTargets = useMemo(
-    () =>
-      visibleSidebarThreads.map((thread) => ({
-        threadId: thread.id,
-        branch: thread.branch,
-        lastKnownPr: thread.lastKnownPr ?? null,
-        cwd: resolveThreadWorkspaceCwd({
-          projectCwd: projectCwdById.get(thread.projectId) ?? null,
-          envMode: thread.envMode,
-          worktreePath: thread.worktreePath,
-        }),
-      })),
-    [projectCwdById, visibleSidebarThreads],
-  );
-  const threadGitStatusCwds = useMemo(
-    () => [
-      ...new Set(
-        threadGitTargets
-          .filter((target) => target.branch !== null)
-          .map((target) => target.cwd)
-          .filter((cwd): cwd is string => cwd !== null),
-      ),
-    ],
-    [threadGitTargets],
-  );
-  const threadGitStatusQueries = useQueries({
-    queries: threadGitStatusCwds.map((cwd) => ({
-      ...gitStatusQueryOptions(cwd),
-      staleTime: 30_000,
-      refetchInterval: 60_000,
-    })),
+  const prByThreadId = useThreadPullRequests({
+    threads: visibleSidebarThreads,
+    projectCwdById,
   });
-  const threadStoredPrTargets = useMemo(
-    () =>
-      threadGitTargets.flatMap((target) =>
-        target.cwd !== null &&
-        target.lastKnownPr !== null &&
-        target.lastKnownPr.url.trim().length > 0
-          ? [{ ...target, cwd: target.cwd, lastKnownPr: target.lastKnownPr }]
-          : [],
-      ),
-    [threadGitTargets],
-  );
-  const threadStoredPrQueries = useQueries({
-    queries: threadStoredPrTargets.map((target) => ({
-      ...gitResolvePullRequestQueryOptions({
-        cwd: target.cwd,
-        reference: target.lastKnownPr.url,
-      }),
-      staleTime: 30_000,
-      refetchInterval: 60_000,
-    })),
-  });
-  const prByThreadId = useMemo(() => {
-    const statusByCwd = new Map<string, GitStatusResult>();
-    for (let index = 0; index < threadGitStatusCwds.length; index += 1) {
-      const cwd = threadGitStatusCwds[index];
-      if (!cwd) continue;
-      const status = threadGitStatusQueries[index]?.data;
-      if (status) {
-        statusByCwd.set(cwd, status);
-      }
-    }
-
-    const storedPrByThreadId = new Map<ThreadId, ThreadPr>();
-    for (let index = 0; index < threadStoredPrTargets.length; index += 1) {
-      const target = threadStoredPrTargets[index];
-      if (!target) {
-        continue;
-      }
-      const result = threadStoredPrQueries[index]?.data?.pullRequest ?? null;
-      if (result) {
-        storedPrByThreadId.set(target.threadId, toThreadPr(result));
-        continue;
-      }
-      storedPrByThreadId.set(target.threadId, toThreadPr(target.lastKnownPr));
-    }
-
-    const map = new Map<ThreadId, ThreadPr>();
-    for (const target of threadGitTargets) {
-      const status = target.cwd ? statusByCwd.get(target.cwd) : undefined;
-      const branchMatches =
-        target.branch !== null && status?.branch !== null && status?.branch === target.branch;
-      const livePr = branchMatches ? (status?.pr ?? null) : null;
-      map.set(target.threadId, livePr ?? storedPrByThreadId.get(target.threadId) ?? null);
-    }
-    return map;
-  }, [
-    threadGitStatusCwds,
-    threadGitStatusQueries,
-    threadGitTargets,
-    threadStoredPrQueries,
-    threadStoredPrTargets,
-  ]);
   const isManualProjectSorting = appSettings.sidebarProjectSortOrder === "manual";
   const threadJumpCommandByThreadId = useMemo(() => {
     const mapping = new Map<ThreadId, NonNullable<ReturnType<typeof threadJumpCommandForIndex>>>();

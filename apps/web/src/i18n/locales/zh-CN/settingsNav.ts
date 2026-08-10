@@ -45,8 +45,8 @@ export const settingsNav: SettingsNav = {
       description: "控制实时响应、后续追问、审查默认值和安全确认。",
     },
     shortcuts: {
-      label: "键盘快捷键",
-      description: "搜索并自定义快捷键，按生效范围分组。",
+      label: "键位绑定",
+      description: "为每一条 Synara 命令捕获、自定义并新增快捷键。",
     },
     usage: {
       label: "用量与限额",

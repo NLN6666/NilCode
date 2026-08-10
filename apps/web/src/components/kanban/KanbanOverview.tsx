@@ -8,16 +8,14 @@ import type { ProjectId } from "@synara/contracts";
 import { Button } from "~/components/ui/button";
 import { ChevronRightIcon, PlusIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
-import { KanbanCardView } from "./KanbanCardView";
+import { KanbanCardView, type KanbanCardPrLookup } from "./KanbanCardView";
 import {
-  flattenProjectBoardForOverview,
+  overviewVisibleKanbanCards,
   type KanbanBoard,
   type KanbanCard,
   type KanbanProjectBoard,
 } from "./kanban.logic";
 import { useMessages } from "~/i18n/context";
-
-const OVERVIEW_RENDER_CAP = 20;
 
 const OverviewProjectColumn = function OverviewProjectColumn({
   projectBoard,
@@ -25,6 +23,7 @@ const OverviewProjectColumn = function OverviewProjectColumn({
   onOpenCard,
   onCardContextMenu,
   onNewTask,
+  prByThreadId,
   nowMs,
 }: {
   projectBoard: KanbanProjectBoard;
@@ -32,13 +31,11 @@ const OverviewProjectColumn = function OverviewProjectColumn({
   onOpenCard: (card: KanbanCard) => void;
   onCardContextMenu?: ((card: KanbanCard, event: React.MouseEvent) => void) | undefined;
   onNewTask: (projectId: ProjectId) => void;
+  prByThreadId: KanbanCardPrLookup;
   nowMs?: number;
 }) {
   const copy = useMessages().workspace.kanban;
-  const cards = flattenProjectBoardForOverview(projectBoard);
-  const visibleCards =
-    cards.length > OVERVIEW_RENDER_CAP ? cards.slice(0, OVERVIEW_RENDER_CAP) : cards;
-  const hiddenCount = cards.length - visibleCards.length;
+  const { visibleCards, hiddenCount } = overviewVisibleKanbanCards(projectBoard);
 
   return (
     <section className="flex w-72 shrink-0 flex-col">
@@ -74,6 +71,7 @@ const OverviewProjectColumn = function OverviewProjectColumn({
             <KanbanCardView
               card={card}
               onOpen={onOpenCard}
+              prByThreadId={prByThreadId}
               {...(onCardContextMenu ? { onContextMenu: onCardContextMenu } : {})}
               {...(nowMs !== undefined ? { nowMs } : {})}
             />
@@ -101,6 +99,7 @@ export function KanbanOverview({
   onOpenCard,
   onCardContextMenu,
   onNewTask,
+  prByThreadId,
   nowMs,
 }: {
   board: KanbanBoard;
@@ -108,6 +107,7 @@ export function KanbanOverview({
   onOpenCard: (card: KanbanCard) => void;
   onCardContextMenu?: ((card: KanbanCard, event: React.MouseEvent) => void) | undefined;
   onNewTask: (projectId: ProjectId) => void;
+  prByThreadId: KanbanCardPrLookup;
   nowMs?: number;
 }) {
   const copy = useMessages().workspace.kanban;
@@ -136,6 +136,7 @@ export function KanbanOverview({
           onOpenCard={onOpenCard}
           onCardContextMenu={onCardContextMenu}
           onNewTask={onNewTask}
+          prByThreadId={prByThreadId}
           {...(nowMs !== undefined ? { nowMs } : {})}
         />
       ))}

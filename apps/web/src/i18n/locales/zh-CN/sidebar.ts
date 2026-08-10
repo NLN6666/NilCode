@@ -31,7 +31,9 @@ export const sidebar: Sidebar = {
   help: {
     menu: "帮助",
     whatsNew: "更新内容",
-    keyboardShortcuts: "键盘快捷键",
+    versionFallback: (version) => `版本 ${version}`,
+    fullChangelog: "完整更新日志",
+    keyboardShortcuts: "键位绑定",
     sendFeedback: "发送反馈",
     docs: "文档",
   },

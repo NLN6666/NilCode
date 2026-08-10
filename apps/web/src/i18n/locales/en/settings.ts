@@ -18,7 +18,7 @@ export const settings = {
   // and rows that live outside the settings panels.
   searchTitles: {
     fontSmoothing: "Font smoothing",
-    keyboardShortcuts: "Keyboard Shortcuts",
+    keyboardShortcuts: "Keybindings",
     managedWorktrees: "Managed worktrees",
     archivedThreads: "Archived threads",
     usageAndBilling: "Usage and billing",
@@ -174,6 +174,12 @@ export const settings = {
       resetLabel: "theme",
       options: { light: "Light", dark: "Dark", system: "System" },
     },
+    app: "App",
+    appIcon: {
+      title: "App icon",
+      description: "Choose the icon Synara uses in the dock or taskbar.",
+      resetLabel: "app icon",
+    },
     systemUiFont: {
       title: "Use system UI font",
       description:
@@ -251,6 +257,12 @@ export const settings = {
         "Set the default wrap state when the diff panel opens. The in-panel wrap toggle only affects the current diff session.",
       resetLabel: "diff line wrapping",
       ariaLabel: "Wrap diff lines by default",
+    },
+    pullRequestDiffColors: {
+      title: "Pull request diff colors",
+      description: "Show additions in green and deletions in red in pull request summaries.",
+      resetLabel: "pull request diff colors",
+      ariaLabel: "Show pull request diff colors",
     },
     safetyConfirmations: "Safety confirmations",
     deleteConfirmation: {
@@ -1030,7 +1042,7 @@ export const settings = {
     refresh: "Refresh",
     loading: "Loading provider usage…",
     footnote:
-      "Usage is read locally from each provider CLI's stored credentials and fetched directly from the provider. OAuth providers may refresh short-lived tokens through their official token endpoint; if a provider shows “Not signed in”, re-authenticate with its CLI.",
+      "Usage is read locally from each provider CLI's stored credentials and fetched directly from the provider. Short-lived tokens are refreshed through the provider's own CLI or official token endpoint; if a provider shows “Not signed in”, re-authenticate with its CLI.",
   },
   appSnapShortcut: {
     recordAriaLabel: "Record AppSnap shortcut",

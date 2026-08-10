@@ -15,6 +15,7 @@ export const chat: Chat = {
     undo: "撤销",
     workingFor: "已运行",
     thinking: "思考中",
+    loading: "加载中",
     emptyConversation: "发送一条消息开始对话。",
     cancel: "取消",
     send: "发送",
@@ -110,6 +111,7 @@ export const chat: Chat = {
     },
     kinds: {
       browser: "浏览器",
+      device: "iOS 模拟器",
       diff: "改动对比",
       explorer: "资源管理器",
       file: "文件",

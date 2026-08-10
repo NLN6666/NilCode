@@ -96,7 +96,7 @@ export const dialogs = {
   },
 
   shortcuts: {
-    title: "Keyboard shortcuts",
+    title: "Keybindings",
     description: "Reflects the bindings active in your current context.",
     searchPlaceholder: "Search shortcuts...",
     searchLabel: "Search shortcuts",

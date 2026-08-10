@@ -159,6 +159,12 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     keywords: "Choose how Synara looks across the app. dark light system color 主题 深色 浅色 外观",
   },
   {
+    id: "appearance:app-icon",
+    section: "appearance",
+    title: (m) => m.settings.appearance.appIcon.title,
+    keywords: "Choose the icon Synara uses in the dock or taskbar desktop application logo.",
+  },
+  {
     id: "appearance:system-ui-font",
     section: "appearance",
     title: (m) => m.settings.appearance.systemUiFont.title,
@@ -282,6 +288,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     keywords: "Set the default wrap state when the diff panel opens. word wrap 差异自动换行",
   },
   {
+    id: "behavior:pull-request-diff-colors",
+    section: "behavior",
+    title: (m) => m.settings.behavior.pullRequestDiffColors.title,
+    keywords:
+      "Show additions in green and deletions in red in pull request summaries. diff colors 拉取请求 差异 配色",
+  },
+  {
     id: "behavior:delete-confirmation",
     section: "behavior",
     title: (m) => m.settings.behavior.deleteConfirmation.title,
@@ -301,7 +314,7 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "Ask before closing a terminal tab and clearing its history. safety confirm 终端关闭确认",
   },
 
-  // ── Keyboard Shortcuts ────────────────────────────────────────────────────────
+  // ── Keybindings ───────────────────────────────────────────────────────────────
   {
     id: "shortcuts:keyboard-shortcuts",
     section: "shortcuts",

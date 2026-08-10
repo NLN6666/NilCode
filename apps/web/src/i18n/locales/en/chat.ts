@@ -20,6 +20,7 @@ export const chat = {
     /** Followed by the running elapsed clock, e.g. "Working for 1m 4s". */
     workingFor: "Working for",
     thinking: "Thinking",
+    loading: "Loading",
     emptyConversation: "Send a message to start the conversation.",
     cancel: "Cancel",
     send: "Send",
@@ -116,6 +117,7 @@ export const chat = {
     /** Dock tab + add-menu names, keyed by pane kind. `fallback` covers stale persisted kinds. */
     kinds: {
       browser: "Browser",
+      device: "iOS Simulator",
       diff: "Diff",
       explorer: "Explorer",
       file: "File",

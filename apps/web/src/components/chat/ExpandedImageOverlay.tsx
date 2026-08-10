@@ -3,8 +3,11 @@
 // Layer: Chat and composer UI component
 // Exports: ExpandedImageOverlay
 
+import { useLayoutEffect } from "react";
+
 import { Button } from "~/components/ui/button";
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "~/lib/icons";
+import { notifyNativeSurfaceOcclusionChange } from "~/lib/nativeSurfaceOcclusion";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { useMessages } from "~/i18n/context";
 
@@ -21,6 +24,17 @@ export function ExpandedImageOverlay({
 }: ExpandedImageOverlayProps) {
   const copy = useMessages().chat.image;
   const expandedImageItem = expandedImage ? expandedImage.images[expandedImage.index] : null;
+  const open = expandedImageItem !== null;
+
+  useLayoutEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    notifyNativeSurfaceOcclusionChange();
+    return notifyNativeSurfaceOcclusionChange;
+  }, [open]);
+
   if (!expandedImage || !expandedImageItem) {
     return null;
   }
