@@ -81,6 +81,7 @@ describe("decodeSubagentAgentStates alias normalization", () => {
           nickname: "Snake Nick",
           role: "reviewer",
           model: "requested-model",
+          modelIsRequestedHint: true,
           prompt: "task prompt",
           status: "completed",
           message: "message chosen",
@@ -89,6 +90,36 @@ describe("decodeSubagentAgentStates alias normalization", () => {
     },
   ])("decodes $label", ({ item, expected }) => {
     expect(decodeSubagentAgentStates(item)).toEqual(expected);
+  });
+
+  it("keeps actual models separate from requested model hints and carries execution metadata", () => {
+    expect(
+      decodeSubagentAgentStates({
+        agentStates: {
+          "child-1": {
+            model: "gpt-5.6-codex",
+            requestedModel: "gpt-5.5-codex",
+            reasoningEffort: "high",
+            background: true,
+          },
+          "child-2": {
+            requested_model: "gpt-5.5-codex",
+            reasoning_effort: "medium",
+          },
+        },
+      }),
+    ).toMatchObject({
+      "child-1": {
+        model: "gpt-5.6-codex",
+        effort: "high",
+        background: true,
+      },
+      "child-2": {
+        model: "gpt-5.5-codex",
+        effort: "medium",
+        modelIsRequestedHint: true,
+      },
+    });
   });
 });
 
@@ -322,6 +353,34 @@ describe("resolveSubagentIdentityHint", () => {
       agentId: "agent-1",
       nickname: "Harper",
       role: "reviewer",
+    });
+  });
+
+  it("keeps an actual model and execution metadata when later requested or sparse status hints arrive", () => {
+    const directory = buildSubagentIdentityDirectory(
+      extractSubagentIdentityHints({
+        receiverAgents: [
+          {
+            threadId: "child-provider-1",
+            model: "gpt-5.6-codex",
+            effort: "high",
+            background: true,
+          },
+        ],
+        agentStates: {
+          "child-provider-1": {
+            requested_model: "gpt-5.5-codex",
+            status: "completed",
+          },
+        },
+      }),
+    );
+
+    expect(directory.byProviderThreadId.get("child-provider-1")).toMatchObject({
+      model: "gpt-5.6-codex",
+      effort: "high",
+      background: true,
+      status: "completed",
     });
   });
 });

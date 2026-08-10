@@ -20,9 +20,12 @@ export interface ParsedSubagentAgentState {
   nickname?: string | undefined;
   role?: string | undefined;
   model?: string | undefined;
+  effort?: string | undefined;
+  background?: boolean | undefined;
   prompt?: string | undefined;
   status?: string | undefined;
   message?: string | undefined;
+  modelIsRequestedHint?: boolean | undefined;
 }
 
 export interface ParsedSubagentIdentityHint {
@@ -333,13 +336,12 @@ function buildSubagentAgentState(
       "agent_type",
     ]),
   );
-  const model = firstStringValue(object, [
-    "model",
-    "modelName",
-    "model_name",
-    "requestedModel",
-    "requested_model",
-  ]);
+  const directModel = firstStringValue(object, ["model", "modelName", "model_name"]);
+  const requestedModel = firstStringValue(object, ["requestedModel", "requested_model"]);
+  const model = directModel ?? requestedModel;
+  const effort = firstStringValue(object, ["effort", "reasoningEffort", "reasoning_effort"]);
+  const background =
+    typeof object?.background === "boolean" ? object.background : undefined;
   const prompt = firstStringValue(object, ["prompt", "task", "message"]);
   const status = firstStringValue(object, ["status", "state"]);
   const message = firstStringValue(object, ["summary", "message", "latestUpdate", "latest_update"]);
@@ -350,9 +352,12 @@ function buildSubagentAgentState(
     ...(nickname ? { nickname } : {}),
     ...(role ? { role } : {}),
     ...(model ? { model } : {}),
+    ...(effort ? { effort } : {}),
+    ...(background !== undefined ? { background } : {}),
     ...(prompt ? { prompt } : {}),
     ...(status ? { status } : {}),
     ...(message ? { message } : {}),
+    ...(model && !directModel ? { modelIsRequestedHint: true } : {}),
   };
 }
 
@@ -513,9 +518,12 @@ export function extractSubagentIdentityHints(
       nickname: state.nickname,
       role: state.role,
       model: state.model,
+      effort: state.effort,
+      background: state.background,
       prompt: state.prompt,
       status: state.status,
       message: state.message,
+      modelIsRequestedHint: state.modelIsRequestedHint,
     });
   }
 

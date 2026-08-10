@@ -1156,7 +1156,7 @@ function mergeDerivedWorkLogEntries(
   const requestKind = preservePreviousToolSemantics
     ? previous.requestKind
     : (next.requestKind ?? previous.requestKind);
-  const subagents = next.subagents ?? previous.subagents;
+  const subagents = mergeWorkLogSubagents(previous.subagents, next.subagents);
   const subagentAction = next.subagentAction ?? previous.subagentAction;
   const synaraThreadCreation = next.synaraThreadCreation ?? previous.synaraThreadCreation;
   const collapseKey = next.collapseKey ?? previous.collapseKey;
@@ -1200,6 +1200,30 @@ function mergeDerivedWorkLogEntries(
     ...(liveActivity ? { liveActivity } : {}),
     ...(toolDetails ? { toolDetails } : {}),
   };
+}
+
+function mergeWorkLogSubagents(
+  previous: ReadonlyArray<WorkLogSubagent> | undefined,
+  next: ReadonlyArray<WorkLogSubagent> | undefined,
+): ReadonlyArray<WorkLogSubagent> | undefined {
+  if (!previous) return next;
+  if (!next) return previous;
+
+  const merged = [...previous];
+  const indexByThreadId = new Map(
+    merged.map((subagent, index) => [subagent.providerThreadId ?? subagent.threadId, index]),
+  );
+  for (const subagent of next) {
+    const threadId = subagent.providerThreadId ?? subagent.threadId;
+    const existingIndex = indexByThreadId.get(threadId);
+    if (existingIndex === undefined) {
+      indexByThreadId.set(threadId, merged.length);
+      merged.push(subagent);
+      continue;
+    }
+    merged[existingIndex] = { ...merged[existingIndex], ...subagent };
+  }
+  return merged;
 }
 
 function mergeWorkLogLiveActivity(
@@ -1629,9 +1653,9 @@ function extractCollabSubagents(
     if (agent.agentId) receiverAgent.agentId = agent.agentId;
     if (agent.nickname) receiverAgent.nickname = agent.nickname;
     if (agent.role) receiverAgent.role = agent.role;
-    if (agent.model) receiverAgent.model = agent.model;
+    if (agent.model && agent.modelIsRequestedHint !== true) receiverAgent.model = agent.model;
     if (agent.effort) receiverAgent.effort = agent.effort;
-    if (agent.background) receiverAgent.background = agent.background;
+    if (agent.background !== undefined) receiverAgent.background = agent.background;
     if (agent.prompt) receiverAgent.prompt = agent.prompt;
     return receiverAgent;
   });
@@ -1651,7 +1675,9 @@ function extractCollabSubagents(
         ...(state.agentId ? { agentId: state.agentId } : {}),
         ...(state.nickname ? { nickname: state.nickname } : {}),
         ...(state.role ? { role: state.role } : {}),
-        ...(state.model ? { model: state.model } : {}),
+        ...(state.model && state.modelIsRequestedHint !== true ? { model: state.model } : {}),
+        ...(state.effort ? { effort: state.effort } : {}),
+        ...(state.background !== undefined ? { background: state.background } : {}),
         ...(state.prompt ? { prompt: state.prompt } : {}),
         ...(state.status ? { rawStatus: state.status } : {}),
         ...(state.message ? { latestUpdate: state.message } : {}),
@@ -1679,9 +1705,13 @@ function extractCollabSubagents(
         ...(fallbackIdentity.agentId ? { agentId: fallbackIdentity.agentId } : {}),
         ...(fallbackIdentity.nickname ? { nickname: fallbackIdentity.nickname } : {}),
         ...(fallbackIdentity.role ? { role: fallbackIdentity.role } : {}),
-        ...(fallbackIdentity.model ? { model: fallbackIdentity.model } : {}),
+        ...(fallbackIdentity.model && fallbackIdentity.modelIsRequestedHint !== true
+          ? { model: fallbackIdentity.model }
+          : {}),
         ...(fallbackIdentity.effort ? { effort: fallbackIdentity.effort } : {}),
-        ...(fallbackIdentity.background ? { background: fallbackIdentity.background } : {}),
+        ...(fallbackIdentity.background !== undefined
+          ? { background: fallbackIdentity.background }
+          : {}),
         ...(fallbackIdentity.prompt ? { prompt: fallbackIdentity.prompt } : {}),
         ...(fallbackIdentity.status ? { rawStatus: fallbackIdentity.status } : {}),
         ...(fallbackIdentity.message ? { latestUpdate: fallbackIdentity.message } : {}),
@@ -1717,14 +1747,10 @@ function extractCollabSubagents(
         ) ?? undefined,
       model:
         asTrimmedString(
-          item.model ??
-            item.modelName ??
-            item.model_name ??
-            item.requestedModel ??
-            item.requested_model,
+          item.model ?? item.modelName ?? item.model_name,
         ) ?? undefined,
-      effort: asTrimmedString(item.effort) ?? undefined,
-      background: item.background === true ? true : undefined,
+      effort: asTrimmedString(item.effort ?? item.reasoningEffort ?? item.reasoning_effort) ?? undefined,
+      background: typeof item.background === "boolean" ? item.background : undefined,
       prompt: asTrimmedString(item.prompt ?? item.task ?? item.message) ?? undefined,
     },
   ];

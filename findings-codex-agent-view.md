@@ -29,3 +29,7 @@
 ## 7. Codex manager 全文件基线存在无关 PATH 版本门控失败
 
 实施前运行 `bun run --cwd apps/server test -- src/codexAppServerManager.test.ts`：124 项中 121 通过、2 跳过，唯一失败是 `codex CLI version gate > re-probes when a PATH-resolved codex is replaced behind the same bare name`，其 promise 在当前机器解析到的 Codex 环境中未按测试预期拒绝。`collab child conversation routing` 组全部通过；本功能使用该 describe 的 `-t` 聚焦命令作为干净基线，不修改无关版本门控测试。
+
+## 8. Codex agent-state 元数据 shape 与请求模型兼容性
+
+已通过共享解码测试验证：实际模型使用 `model`、`modelName` 或 `model_name`，请求提示使用 `requestedModel` 或 `requested_model`；前者优先。执行信息使用 `effort`、`reasoningEffort`、`reasoning_effort` 与显式 boolean `background`。请求模型仍在通用 identity hint 中保留，用于后续实际模型缺失时的内部关联；UI work-log 投影会隐藏该未确认模型，避免把请求值显示为实际运行值。

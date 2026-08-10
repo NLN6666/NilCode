@@ -2987,6 +2987,96 @@ describe("deriveWorkLogEntries", () => {
     expect(omitRoutedSubagentWorkEntries(entries)).toEqual([]);
   });
 
+  it("hides requested-only models while retaining execution metadata and sparse status updates", () => {
+    const requestedOnlyEntries = deriveWorkLogEntries(
+      [
+        makeActivity({
+          id: "requested-only-agent",
+          kind: "tool.updated",
+          summary: "Spawn subagent",
+          payload: {
+            itemType: "collab_agent_tool_call",
+            data: {
+              item: {
+                receiverAgents: [
+                  {
+                    threadId: "child-requested",
+                    requestedModel: "gpt-5.5-codex",
+                    reasoningEffort: "high",
+                    background: true,
+                  },
+                ],
+              },
+            },
+          },
+        }),
+      ],
+      undefined,
+    );
+
+    expect(requestedOnlyEntries[0]?.subagents?.[0]).toMatchObject({
+      threadId: "child-requested",
+      effort: "high",
+      background: true,
+    });
+    expect(requestedOnlyEntries[0]?.subagents?.[0]?.model).toBeUndefined();
+
+    const mergedEntries = deriveWorkLogEntries(
+      [
+        makeActivity({
+          id: "actual-model-agent",
+          createdAt: "2026-08-10T00:00:01.000Z",
+          kind: "tool.started",
+          summary: "Spawn subagent",
+          payload: {
+            itemType: "collab_agent_tool_call",
+            data: {
+              item: {
+                id: "metadata-agent-call",
+                receiverAgents: [
+                  {
+                    threadId: "child-actual",
+                    model: "gpt-5.6-codex",
+                    reasoningEffort: "high",
+                    background: true,
+                  },
+                ],
+              },
+            },
+          },
+        }),
+        makeActivity({
+          id: "actual-model-status",
+          createdAt: "2026-08-10T00:00:02.000Z",
+          kind: "tool.completed",
+          summary: "Spawn subagent",
+          payload: {
+            itemType: "collab_agent_tool_call",
+            data: {
+              item: {
+                id: "metadata-agent-call",
+                agentStates: {
+                  "child-actual": {
+                    status: "completed",
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ],
+      undefined,
+    );
+
+    expect(mergedEntries[0]?.subagents?.[0]).toMatchObject({
+      threadId: "child-actual",
+      model: "gpt-5.6-codex",
+      effort: "high",
+      background: true,
+      rawStatus: "completed",
+    });
+  });
+
   it("keeps generic OpenCode task tool rows when no subagent route is available", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
