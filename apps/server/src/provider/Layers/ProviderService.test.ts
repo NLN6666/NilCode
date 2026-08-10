@@ -450,6 +450,7 @@ const restartRollbackRouting = makeProviderServiceLayer(undefined, {
   includeRestartRollbackDroid: true,
 });
 const piInteractionRouting = makeProviderServiceLayer(undefined, { includePi: true });
+const piCompaction = makeProviderServiceLayer({ runtimeIdleStopMs: 100 }, { includePi: true });
 it.effect("ProviderServiceLive keeps persisted resumable sessions on startup", () =>
   Effect.gen(function* () {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "synara-provider-service-"));
@@ -3407,6 +3408,40 @@ piInteractionRouting.layer("ProviderServiceLive Pi interaction generation", (it)
       piInteractionRouting.pi.startSession.mockClear();
       piInteractionRouting.pi.respondToUserInput.mockClear();
       piInteractionRouting.pi.stopSession.mockClear();
+    }),
+  );
+});
+
+piCompaction.layer("ProviderServiceLive Pi compaction", (it) => {
+  it.effect("persists synchronous Pi compaction and schedules idle cleanup", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const directory = yield* ProviderSessionDirectory;
+      const threadId = asThreadId("thread-pi-synchronous-compaction");
+
+      yield* provider.startSession(threadId, {
+        provider: "pi",
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "approval-required",
+      });
+      piCompaction.pi.stopSession.mockClear();
+
+      yield* provider.compactThread({ threadId });
+
+      const binding = Option.getOrUndefined(yield* directory.getBinding(threadId));
+      const runtimePayload = asRuntimePayloadRecord(binding?.runtimePayload);
+      assert.equal(binding?.status, "stopped");
+      assert.equal(runtimePayload.activeTurnId, null);
+      assert.equal(runtimePayload.lastRuntimeEvent, "provider.compactThread");
+
+      yield* waitUntil(
+        () => piCompaction.pi.stopSession.mock.calls.length > 0,
+        500,
+        20,
+        "Pi compact idle cleanup",
+      );
+      assert.deepEqual(piCompaction.pi.stopSession.mock.calls[0]?.[0], threadId);
     }),
   );
 });

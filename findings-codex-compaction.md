@@ -60,3 +60,31 @@ bun run --cwd apps/server test -- src/provider/Layers/ProviderService.test.ts
 ```
 
 Results: focused compact/idle suite passed (5 tests); full `ProviderService.test.ts` passed (82 tests).
+
+## Phase 5: Pi synchronous compaction regression
+
+### RED
+
+The Codex acknowledgement fix changed the compact path for every provider, but Pi's adapter contract completes `compactThread` synchronously. Added a Pi-specific regression that requires a successful manual compact to persist `status: "stopped"`, `activeTurnId: null`, and `lastRuntimeEvent: "provider.compactThread"`, then schedule idle cleanup.
+
+```sh
+bun run --cwd apps/server test -- src/provider/Layers/ProviderService.test.ts -t "persists synchronous Pi compaction and schedules idle cleanup"
+```
+
+Result: failed as expected before the production correction. The binding remained `"running"` instead of `"stopped"`, proving the Codex-only asynchronous lifecycle change regressed Pi's synchronous completion semantics.
+
+### GREEN
+
+`ProviderService.compactThread` now treats only the Codex adapter as asynchronous: Codex waits for its real `thread.state.changed(compacted)` lifecycle event. For Pi and other synchronous providers, successful adapter completion restores the previous stopped binding (`activeTurnId: null`, `lastRuntimeEvent: "provider.compactThread"`) and schedules idle cleanup on success.
+
+Verification:
+
+```sh
+bun run --cwd apps/server test -- src/provider/Layers/ProviderService.test.ts -t "persists synchronous Pi compaction and schedules idle cleanup|keeps an active turn bound after compact start acknowledgement|schedules idle cleanup only after an inactive compacted state event"
+# PASS: 3 tests
+
+bun run --cwd apps/server test -- src/provider/Layers/ProviderService.test.ts
+# PASS: 83 tests
+```
+
+The test runner emitted Node's existing experimental SQLite warning only. `bun fmt`, `bun lint`, and `bun typecheck` were not run as explicitly prohibited by the task instructions.

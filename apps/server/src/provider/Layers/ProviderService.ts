@@ -572,7 +572,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
     const runIdleSensitiveProviderWork = <A, E, R>(
       threadId: ThreadId,
       effect: Effect.Effect<A, E, R>,
-      options?: { readonly scheduleIdleStopOnSuccess?: boolean },
+      options?: { readonly scheduleIdleStopOnSuccess?: boolean | (() => boolean) },
     ): Effect.Effect<A, E | ProviderValidationError, R> =>
       Effect.suspend(() => {
         const waitForInterruptionFence = waitForCurrentInterruptionFence(threadId).pipe(
@@ -589,6 +589,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         );
         const existingIdleStop = runtimeIdleStopsInFlight.get(threadId);
         const displacedIdleStop = existingIdleStop !== undefined || runtimeIdleTimers.has(threadId);
+        const scheduleIdleStopOnSuccess = options?.scheduleIdleStopOnSuccess;
         const waitForExistingIdleStop =
           existingIdleStop !== undefined ? Effect.promise(() => existingIdleStop) : Effect.void;
         return waitForInterruptionFence.pipe(
@@ -598,7 +599,8 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           Effect.flatMap(() => effect),
           Effect.onExit((exit) =>
             Exit.isSuccess(exit)
-              ? options?.scheduleIdleStopOnSuccess === true
+              ? (scheduleIdleStopOnSuccess === true ||
+                  (typeof scheduleIdleStopOnSuccess === "function" && scheduleIdleStopOnSuccess()))
                 ? Effect.sync(() => scheduleRuntimeIdleStop(threadId))
                 : Effect.void
               : displacedIdleStop
@@ -2654,6 +2656,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           schema: ProviderCompactThreadInput,
           payload: rawInput,
         });
+        let completesSynchronously = false;
         yield* runIdleSensitiveProviderWork(
           input.threadId,
           Effect.gen(function* () {
@@ -2669,7 +2672,29 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
               );
             }
             yield* routed.adapter.compactThread(input.threadId);
+            completesSynchronously = routed.adapter.provider !== "codex";
+            if (!completesSynchronously) {
+              return;
+            }
+            const binding = Option.getOrUndefined(yield* directory.getBinding(input.threadId));
+            if (binding) {
+              yield* directory.upsert({
+                threadId: input.threadId,
+                provider: binding.provider,
+                ...(binding.adapterKey !== undefined ? { adapterKey: binding.adapterKey } : {}),
+                ...(binding.runtimeMode !== undefined ? { runtimeMode: binding.runtimeMode } : {}),
+                status: "stopped",
+                resumeCursor: binding.resumeCursor,
+                runtimePayload: {
+                  ...runtimePayloadRecord(binding.runtimePayload),
+                  activeTurnId: null,
+                  lastRuntimeEvent: "provider.compactThread",
+                  lastRuntimeEventAt: new Date().toISOString(),
+                },
+              });
+            }
           }),
+          { scheduleIdleStopOnSuccess: () => completesSynchronously },
         );
       });
 
