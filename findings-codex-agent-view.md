@@ -69,3 +69,7 @@ Section 10 的 BLOCKED 结论来自不完整的测试夹具，而不是生产路
 用户明确授权后执行 `bun fmt && bun lint && bun typecheck`。首轮 typecheck 发现本功能新增 manager 测试夹具将 `activeTurnId` 推断为必需 `string`，随后赋 `undefined` 触发 TS2322。将夹具字段显式标注为 `string | undefined` 后，包级 server typecheck 通过，独立代码审查结论为 APPROVED。
 
 再次完整执行重型门禁：`bun fmt` 通过；`bun lint` 为 0 errors、432 个既有 warnings；全部 7 个 workspace 的 `bun typecheck` 通过。格式化产生的功能外差异未纳入提交，根 `findings.md` 的既有未提交内容保持原样。
+
+## 15. 根完整测试的跨平台基线失败
+
+分支完成门禁执行 `bun run test`。Turbo 在 `@synara/scripts` 失败后返回非零：Canary 两个测试在 Windows 上把 POSIX 预期路径解析成 `D:\\...`。在终止前还观察到 1 个 shared 用户目录断言和 6 个 desktop 平台路径/file URL/macOS bundle 断言失败。这些文件均不在本功能 diff 中；聚焦功能套件与 fmt/lint/typecheck 仍保持上述通过结果。按完成分支流程，在完整套件未绿时不自动合并、推送或创建 PR。

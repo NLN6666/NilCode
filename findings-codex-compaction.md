@@ -125,3 +125,5 @@ The heavyweight `bun fmt`, `bun lint`, and `bun typecheck` gate remains pending 
 ## Phase 8: heavyweight workspace gate
 
 After explicit authorization, the final rerun of `bun fmt && bun lint && bun typecheck` completed successfully. Lint reported 0 errors and 432 pre-existing warnings; typecheck completed all 7 workspaces successfully. A first-pass TS2322 in the Codex manager test harness was fixed by explicitly typing the optional active turn ID and independently reviewed before the successful rerun.
+
+The subsequent root `bun run test` gate was blocked by unrelated Windows/POSIX path assumptions in scripts, shared, and desktop tests. No compaction or Codex-agent focused regression failed before Turbo stopped the run.
