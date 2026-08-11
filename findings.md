@@ -318,3 +318,15 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 **最合理的判断与证据边界：** 确定的是 Electron/Synara 桌面主进程消息循环失去响应；Provider 父任务状态偏差与重启后残留子任务是同期异常信号，可能让 UI 一直处于 working，但现有日志无法证明它阻塞了主进程。当前配置关闭了 provider event 与 WebSocket event 日志，WER 临时附件也已清理，且没有 hang dump/renderer long-task trace，因此还不能从日志定位到具体函数、IPC 或渲染路径。
 
 **排查错误：** 外部只读打开 `state.sqlite` 两次得到 `SQLITE_BUSY`；源码确认服务进程有意设置 `PRAGMA locking_mode = EXCLUSIVE` 并终身持锁，不能把这个预期锁误判为卡死原因。第一次 Windows 事件查询只按 1000/1001/1002 过滤，混入大量 G HUB 事件；后续改为精确 ProviderName 后才找到 Synara 的 1002/`AppHangB1`。两次 PowerShell `foreach ... | Format-List` 写法产生空管道解析错误，改为先收集 `$events`/`$rows` 后再格式化。
+
+---
+
+## 22. AppHang 取证必须脱离已挂起的 Electron 主事件循环
+
+**问题边界（2026-08-11）：** `AppHangB1` 只能证明 Synara 主窗口进程停止处理 Windows 消息；当前日志没有 hang dump，无法事后还原具体同步 I/O、native wait、V8 执行或 Chromium IPC 调用栈。同期 Provider reconciliation 发生在独立 server 子进程，只能算伴随状态异常，不能据此猜成 Electron 主线程根因。
+
+**现有模式：** desktop 已有 `RotatingFileSink` 日志轮转、backend 子进程监督与 `RendererCrashPolicy`，也监听 renderer `unresponsive` / `render-process-gone`；缺口是这些诊断都依赖 main process 回调继续运行。Microsoft 明确建议从独立进程调用 `MiniDumpWriteDump`，因此计划使用独立 Node watchdog 收心跳，再由外部 PowerShell P/Invoke 生成本地 dump，而不是让 main 自己打印 stack。
+
+**方案边界：** 默认 triage dump、本地保存、只保留最近 3 个、无上传、每个 incident 一次；完整内存必须显式 opt-in。watchdog 只取证，不自动杀进程或重启。计划记录于 `docs/plans/2026-08-11-desktop-hang-diagnostics.md`，代码实施需用户明确批准。
+
+**探索错误：** 第一次通过动态工具注册表列出全部 LCC 描述导致输出被截断，后续只提取目标工具 schema；一次 FastCtx batch 为读取多个 `main.ts` 区间重复传入相同路径，被 `Duplicate path in files` 拒绝，改为逐区间读取。并行 LCC region 输出也因总量过大截断，所有拟修改现有文件均再用 FastCtx 精确窗口亲读。
