@@ -64,6 +64,7 @@ import {
 } from "../../rightDockStore";
 import {
   resolveActivePane,
+  resolveBrowserVisibilityForDockOpenChange,
   findMissingSidechatPaneIds,
   type RightDockPane,
   type RightDockPaneKind,
@@ -346,6 +347,16 @@ export function SingleChatSurface(props: {
     [setSharedBrowserVisible, sharedBrowserProjectId],
   );
 
+  const syncSharedBrowserVisibilityForDockOpenChange = useCallback(
+    (open: boolean) => {
+      const browserVisible = resolveBrowserVisibilityForDockOpenChange(dockState, open);
+      if (browserVisible !== null) {
+        syncSharedBrowserVisibility(browserVisible);
+      }
+    },
+    [dockState, syncSharedBrowserVisibility],
+  );
+
   const closeDockPane = useCallback(
     (paneId: string) => {
       const pane = dockState.panes.find((candidate) => candidate.id === paneId);
@@ -395,9 +406,7 @@ export function SingleChatSurface(props: {
   };
   const handleToggleRightDock = () => {
     const nextOpen = !dockState.open;
-    if (activePane?.kind === "browser") {
-      syncSharedBrowserVisibility(nextOpen);
-    }
+    syncSharedBrowserVisibilityForDockOpenChange(nextOpen);
     setDockOpen(props.threadId, nextOpen);
   };
   const handleOpenBrowserUrl = () => {
@@ -1215,11 +1224,11 @@ export function SingleChatSurface(props: {
           onSelectPane={handleSelectDockPane}
           onClosePane={closeDockPane}
           onCollapse={() => {
-            if (activePane?.kind === "browser") syncSharedBrowserVisibility(false);
+            syncSharedBrowserVisibilityForDockOpenChange(false);
             setDockOpen(props.threadId, false);
           }}
           onOpenChange={(open) => {
-            if (activePane?.kind === "browser") syncSharedBrowserVisibility(open);
+            syncSharedBrowserVisibilityForDockOpenChange(open);
             setDockOpen(props.threadId, open);
           }}
           onAddPane={handleAddDockPane}

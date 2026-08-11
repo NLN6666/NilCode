@@ -350,3 +350,17 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - `writeWindowsHangDump` 原本只在 PowerShell 调用主体 catch，`finally` 内再次验证临时路径；注入 capture 删除 diagnostics root 时，cleanup 的 `lstat` 抛 `ENOENT`，使本应 fail-open 的 Promise reject。临时路径解析、捕获、验证和 cleanup 现在均落在 fail-open 边界中，cleanup no-throw，metadata 继续尽力写入。
 - Windows renderer 集成 fixture 需把 `--type=renderer` 放在 Node 的 `--` 之后；否则 Node 将其当作未知启动选项并立即退出，测试只会得到“target process no longer running”。修正后同完整性级别的真实 renderer-identity 进程成功生成 `MDMP` 文件头。
 - “按 renderer PID 保留最新状态”不等于“队列有界”：不同 PID 仍可让 `Map` 无界增长。补充第 33 个 PID 的测试先稳定复现失败，再将 pending renderer 状态限制为 32 项并按最近更新顺序淘汰最旧项；watchdog 独立 bundle 同时显式内联 `@synara/*`，避免 packaged helper 依赖不会随产物安装的 workspace devDependency。
+
+---
+
+## 25. 共享 Browser 状态把刚打开的右侧栏立即关回去（2026-08-11）
+
+**现象：** Windows 客户端顶部“切换右侧边栏”按钮存在且可被 accessibility tree 识别，但用户点击后右侧栏没有出现。真实客户端坐标复测同样没有可见变化。
+
+**根因：** `SingleChatSurface` 用 `resolveActivePane(dockState)` 决定右栏 open/close 时是否同步项目级 Browser visibility；该 helper 在 `dockState.open === false` 时返回 `null`，即使 `activePaneId` 仍指向 Browser。重新打开时只更新 thread dock 的 `open=true`，项目 visibility 仍为 `false`，随后 `reconcileSharedBrowser` effect 立即把刚打开的 Browser dock 关回去。
+
+**修复边界：** open/close visibility 同步必须读取“选中的 pane”而非“当前可见 pane”；Browser 标签同步目标 open 值，非 Browser 标签不改项目共享状态。计划记录于 `docs/plans/2026-08-11-right-sidebar-toggle.md`。
+
+**执行记录：** 一次 FastCtx batch 因同一 `SingleChatSurface.tsx` 被列出三个区间而返回 `Duplicate path in files`，随后按每个路径仅出现一次的规则拆分读取。TDD 首轮导入尚未存在的 helper 得到 3 个 `TypeError`；加入返回 `null` 的最小接口骨架后，测试稳定为“期望 true/false，实际 null”的 2 个行为失败，再实现真实派生逻辑。
+
+**打包记录：** Windows packaged startup smoke 已从隔离目录成功启动并取得 ready 证据；脚本因 Windows 文件占用保留了精确临时目录，随后通过 PowerShell 删除该目录的补充清理被执行策略拦截，未扩大删除范围，也不影响安装包或 smoke 结果。

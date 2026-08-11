@@ -74,6 +74,17 @@ export function createDefaultRightDockState(): RightDockThreadState {
   };
 }
 
+export function resolveBrowserVisibilityForDockOpenChange(
+  state: RightDockThreadState,
+  open: boolean,
+): boolean | null {
+  if (state.activePaneId === null) {
+    return null;
+  }
+  const selectedPane = state.panes.find((pane) => pane.id === state.activePaneId);
+  return selectedPane?.kind === "browser" ? open : null;
+}
+
 export function resolveProjectSharedBrowserDockState(input: {
   readonly threadState: RightDockThreadState;
   readonly projectBrowserVisible: boolean;

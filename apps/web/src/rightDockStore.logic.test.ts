@@ -9,6 +9,7 @@ import {
   findMissingSidechatPaneIds,
   isRightDockPaneKind,
   openPaneInState,
+  resolveBrowserVisibilityForDockOpenChange,
   resolveProjectSharedBrowserDockState,
   resolveVisibleDockSidechatThreadIds,
   sanitizeRightDockStateByThreadId,
@@ -18,6 +19,34 @@ import {
 } from "./rightDockStore.logic";
 
 describe("project-shared browser dock continuity", () => {
+  it("restores project browser visibility when reopening a hidden selected browser pane", () => {
+    const openBrowser = openPaneInState(createDefaultRightDockState(), {
+      paneId: "browser-a",
+      kind: "browser",
+    });
+    const hiddenBrowser = setDockOpenInState(openBrowser, false);
+
+    expect(resolveBrowserVisibilityForDockOpenChange(hiddenBrowser, true)).toBe(true);
+  });
+
+  it("hides the project browser when closing its selected dock pane", () => {
+    const openBrowser = openPaneInState(createDefaultRightDockState(), {
+      paneId: "browser-a",
+      kind: "browser",
+    });
+
+    expect(resolveBrowserVisibilityForDockOpenChange(openBrowser, false)).toBe(false);
+  });
+
+  it("leaves project browser visibility alone for non-browser dock panes", () => {
+    const openDiff = openPaneInState(createDefaultRightDockState(), {
+      paneId: "diff-a",
+      kind: "diff",
+    });
+
+    expect(resolveBrowserVisibilityForDockOpenChange(openDiff, false)).toBeNull();
+  });
+
   it("opens the same browser pane when a sibling thread has no dock state", () => {
     const previousThread = openPaneInState(createDefaultRightDockState(), {
       paneId: "browser-a",
