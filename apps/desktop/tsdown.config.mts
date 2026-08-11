@@ -37,4 +37,9 @@ export default defineConfig([
     ...shared,
     entry: ["src/browserAnnotations/guestPreload.ts"],
   },
+  {
+    ...shared,
+    entry: ["src/desktopHangWatchdogProcess.ts"],
+    noExternal: (id) => id.startsWith("@synara/"),
+  },
 ]);

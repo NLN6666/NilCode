@@ -129,6 +129,11 @@ import {
   summarizeBackendFailureOutput,
 } from "./backendSupervisionPolicy";
 import { captureBackendProcessOutput } from "./backendProcessOutput";
+import {
+  DesktopHangWatchdogController,
+  getRendererOsProcessId,
+  type HangDumpMode,
+} from "./desktopHangWatchdog";
 import { syncShellEnvironment } from "./syncShellEnvironment";
 import {
   RENDERER_MAX_AUTOMATIC_RELOADS,
@@ -276,7 +281,9 @@ const DESKTOP_LOG_FILE_NAME = "desktop-main.log";
 const BACKEND_LOG_FILE_NAME = "server-child.log";
 const LOG_FILE_MAX_BYTES = 10 * 1024 * 1024;
 const LOG_FILE_MAX_FILES = 10;
+const HANG_DIAGNOSTICS_DIR = Path.join(LOG_DIR, "hang-diagnostics");
 const APP_RUN_ID = Crypto.randomBytes(6).toString("hex");
+const APP_RUN_STARTED_AT_MS = Date.now();
 const DESKTOP_BACKEND_SHUTDOWN_TOKEN = Crypto.randomBytes(32).toString("hex");
 const DESKTOP_BROWSER_HOST_CAPABILITY = Crypto.randomBytes(32).toString("base64url");
 const DESKTOP_BROWSER_HOST_CAPABILITY_FD = 3;
@@ -353,6 +360,7 @@ let backendLogSink: RotatingFileSink | null = null;
 let restoreStdIoCapture: (() => void) | null = null;
 let unreadBackgroundNotificationCount = 0;
 let browserPerfInterval: ReturnType<typeof setInterval> | null = null;
+let desktopHangWatchdog: DesktopHangWatchdogController | null = null;
 const annotationGuestPreload = Path.join(__dirname, "guestPreload.js");
 const browserManager = new DesktopBrowserManager({
   annotationPreloadPath: annotationGuestPreload,
@@ -741,6 +749,41 @@ function initializePackagedLogging(): void {
 }
 
 initializePackagedLogging();
+
+function resolveHangDumpMode(): HangDumpMode {
+  return process.env.SYNARA_HANG_DUMP_MODE?.trim().toLowerCase() === "full" ? "full" : "triage";
+}
+
+function initializeDesktopHangWatchdog(): void {
+  if (process.platform !== "win32" || !app.isPackaged || desktopHangWatchdog) {
+    return;
+  }
+  try {
+    desktopHangWatchdog = new DesktopHangWatchdogController({
+      enabled: true,
+      execPath: process.execPath,
+      config: {
+        diagnosticsDir: HANG_DIAGNOSTICS_DIR,
+        mainPid: process.pid,
+        runId: APP_RUN_ID,
+        appVersion: app.getVersion(),
+        electronVersion: process.versions.electron ?? "unknown",
+        commit: resolveAboutCommitHash(),
+        mode: resolveHangDumpMode(),
+        runStartedAtMs: APP_RUN_STARTED_AT_MS,
+        executablePath: process.execPath,
+      },
+      log: writeDesktopLogHeader,
+    });
+    desktopHangWatchdog.start();
+  } catch (error) {
+    writeDesktopLogHeader(
+      "hang watchdog initialization failed: " + (error instanceof Error ? error.message : String(error)),
+    );
+  }
+}
+
+initializeDesktopHangWatchdog();
 
 function getDestructiveMenuIcon(): Electron.NativeImage | undefined {
   if (process.platform !== "darwin") return undefined;
@@ -3412,6 +3455,7 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
   const outputTailDetector = new BackendOutputTailDetector();
   backendListeningDetector = listeningDetector;
   backendProcess = child;
+  desktopHangWatchdog?.updateBackendPid(child.pid ?? null);
   let backendSessionClosed = false;
   const closeBackendSession = (details: string) => {
     if (backendSessionClosed) return;
@@ -3455,6 +3499,7 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
     }
     if (backendProcess === child) {
       backendProcess = null;
+      desktopHangWatchdog?.updateBackendPid(null);
     }
     closeBackendSession(`pid=${child.pid ?? "unknown"} error=${error.message}`);
     lastBackendFailureDetail = error.message;
@@ -3472,6 +3517,7 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
     }
     if (backendProcess === child) {
       backendProcess = null;
+      desktopHangWatchdog?.updateBackendPid(null);
     }
     void backendOutputCapture.drained.then(() => {
       closeBackendSession(
@@ -3500,6 +3546,7 @@ function takeBackendProcessForShutdown(): ChildProcess.ChildProcess | null {
 
   const child = backendProcess;
   backendProcess = null;
+  desktopHangWatchdog?.updateBackendPid(null);
   return child;
 }
 
@@ -3578,6 +3625,8 @@ async function shutdownDesktopRuntime(reason: string): Promise<void> {
   }
 
   isQuitting = true;
+  desktopHangWatchdog?.stop();
+  desktopHangWatchdog = null;
   writeDesktopLogHeader(`${reason} shutdown start`);
   const shutdown = runAfterDesktopShutdown(
     stopBackendAndWaitForExit(),
@@ -4078,6 +4127,7 @@ function createWindow(): BrowserWindow {
     },
   });
   browserManager.setWindow(window);
+  desktopHangWatchdog?.updateRendererPid(getRendererOsProcessId(window.webContents));
   attachDesktopZoomFactorSync(window);
   attachRendererCrashRecovery(window);
   attachDesktopPhysicalZoomShortcuts(window);
@@ -4147,6 +4197,7 @@ function createWindow(): BrowserWindow {
   });
   window.webContents.on("did-finish-load", () => {
     window.setTitle(APP_DISPLAY_NAME);
+    desktopHangWatchdog?.updateRendererPid(getRendererOsProcessId(window.webContents));
     emitUpdateState();
   });
   window.once("ready-to-show", () => {
@@ -4197,6 +4248,7 @@ function createWindow(): BrowserWindow {
   window.on("closed", () => {
     if (mainWindow === window) {
       mainWindow = null;
+      desktopHangWatchdog?.updateRendererPid(null);
     }
     browserManager.setWindow(null);
   });
@@ -4220,6 +4272,7 @@ function attachRendererCrashRecovery(window: BrowserWindow): void {
   };
 
   window.webContents.on("render-process-gone", (_event, details) => {
+    desktopHangWatchdog?.updateRendererPid(null);
     const description = `reason=${details.reason} exitCode=${details.exitCode}`;
     writeDesktopLogHeader(`renderer process gone ${description}`);
     safeConsoleError(`[desktop] renderer process gone (${description})`);
@@ -4258,9 +4311,13 @@ function attachRendererCrashRecovery(window: BrowserWindow): void {
   // reports as "the app died" distinguishable from an actual crash in the same log.
   window.webContents.on("unresponsive", () => {
     writeDesktopLogHeader("renderer unresponsive");
+    const rendererPid = getRendererOsProcessId(window.webContents);
+    desktopHangWatchdog?.updateRendererPid(rendererPid);
+    desktopHangWatchdog?.rendererUnresponsive(rendererPid);
   });
   window.webContents.on("responsive", () => {
     writeDesktopLogHeader("renderer responsive");
+    desktopHangWatchdog?.rendererResponsive(getRendererOsProcessId(window.webContents));
   });
 
   window.on("closed", clearReloadTimer);

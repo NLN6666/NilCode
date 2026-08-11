@@ -330,3 +330,23 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 **方案边界：** 默认 triage dump、本地保存、只保留最近 3 个、无上传、每个 incident 一次；完整内存必须显式 opt-in。watchdog 只取证，不自动杀进程或重启。计划记录于 `docs/plans/2026-08-11-desktop-hang-diagnostics.md`，代码实施需用户明确批准。
 
 **探索错误：** 第一次通过动态工具注册表列出全部 LCC 描述导致输出被截断，后续只提取目标工具 schema；一次 FastCtx batch 为读取多个 `main.ts` 区间重复传入相同路径，被 `Duplicate path in files` 拒绝，改为逐区间读取。并行 LCC region 输出也因总量过大截断，所有拟修改现有文件均再用 FastCtx 精确窗口亲读。
+
+---
+
+## 23. desktop hang diagnostics 审查修复记录（2026-08-11）
+
+- Electron 40 的 `webContents.getProcessId()` 是 Chromium internal PID，不是可供外部 PowerShell/DbgHelp 打开的 OS PID；renderer dump 接线必须使用 `getOSProcessId()`，并由测试固定 PID 语义，不能用源码字符串扫描充数。
+- watchdog child 的同步 `fork` throw、`error`、`exit`/`close` 若各自独立处理，会留下旧 heartbeat interval 或重复消耗重启预算；统一一次性 cleanup 后，才按 60 秒内最多 3 次重新启动。
+- IPC 的 `sendInFlight` 只能合并最新 heartbeat。此前它会静默丢弃 configure、renderer unresponsive/responsive 与 stop 等控制信号，使 responsive 无法 rearm incident；控制消息必须走有界优先队列，并在 send callback 后继续 drain。
+- 初版 watchdog entry 在 Vitest fork worker 中因存在 `process.send` 而意外启动 interval，导致 worker 回收超时；entry guard 还必须确认 `ELECTRON_RUN_AS_NODE=1`，仅允许真正 fork 的 watchdog 自动启动。
+- 初版测试只覆盖 policy 与最简单的 dump 成功路径，缺少 child error/exit、注入 timer 清理、callback/disconnect、runtime parent disconnect/target exit/dump rejection、PID identity mismatch、并发临时文件和 diagnostics root symlink 的回归覆盖。
+
+---
+
+## 24. desktop hang diagnostics 第二轮审查修复（2026-08-11）
+
+- Windows `Get-CimInstance Win32_Process` 返回的 `CreationDate` 已经是 `DateTime`；再交给 `ManagementDateTimeConverter.ToDateTime` 会走错误的字符串转换路径。PowerShell 改为 `([DateTime]$target.CreationDate).ToUniversalTime()`；同时关闭 progress stream，并把 stderr 保留为 4 KiB 尾部，确保末端的实际错误不会被开头 XML/progress 输出挤掉。
+- IPC control queue 不能按“队列里是否已经出现同类 PID”去重：in-flight 的 `unresponsive(pid) → responsive(pid) → unresponsive(pid)` 会把最后一条误判重复而丢失。现在 configure/stop 使用有界优先控制队列，renderer 状态按 PID latest-state coalescing；队列已有 32 个 renderer 控制项时，后续更新和 `stop` 仍不会因固定容量静默丢弃。
+- `writeWindowsHangDump` 原本只在 PowerShell 调用主体 catch，`finally` 内再次验证临时路径；注入 capture 删除 diagnostics root 时，cleanup 的 `lstat` 抛 `ENOENT`，使本应 fail-open 的 Promise reject。临时路径解析、捕获、验证和 cleanup 现在均落在 fail-open 边界中，cleanup no-throw，metadata 继续尽力写入。
+- Windows renderer 集成 fixture 需把 `--type=renderer` 放在 Node 的 `--` 之后；否则 Node 将其当作未知启动选项并立即退出，测试只会得到“target process no longer running”。修正后同完整性级别的真实 renderer-identity 进程成功生成 `MDMP` 文件头。
+- “按 renderer PID 保留最新状态”不等于“队列有界”：不同 PID 仍可让 `Map` 无界增长。补充第 33 个 PID 的测试先稳定复现失败，再将 pending renderer 状态限制为 32 项并按最近更新顺序淘汰最旧项；watchdog 独立 bundle 同时显式内联 `@synara/*`，避免 packaged helper 依赖不会随产物安装的 workspace devDependency。
