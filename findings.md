@@ -304,3 +304,17 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 **实施边界：** Actions 只在“项目级 Action 启动身份 + 声明端口监听”同时成立时用本地进程扫描补齐运行态；不能只凭端口或缺失的 Windows cwd 认领进程，否则会串到其他项目，同端口的多个 Action 也会同时误亮。终端活动真实存在时仍发 Ctrl-C 并保留日志，activity 漏报时才按已确认的 pid/port 停止进程。Browser 同时统一项目 surface 与按 projectId 持久化的 Browser dock 可见/激活状态，isolated 模式保持原有 thread 隔离。
 
 **测试命令坑：** `bun run test <file...>` 会把文件路径传给 Turbo 当成 task，报 `Missing tasks in project`；Web 聚焦测试必须使用 `bun run --cwd apps/web test -- <file...>`。
+
+---
+
+## 21. Synara 真实挂起：Windows `AppHangB1` 与 Provider 残留状态同时出现
+
+**已确认的故障（2026-08-11）：** Windows Application 日志在本地时间 13:18:03 记录 `Application Hang` 1002：`Synara.exe` 0.7.1.0（PID `0xcf58`）停止与 Windows 交互并被关闭；同一 ReportId `d89e5feb-718a-41ed-815c-d7733767e1ee` 的 WER 事件名是 `AppHangB1`。这证明用户感知的“卡死”是桌面主进程真实挂起，不只是任务 UI 长时间显示 working。
+
+**同一时间线：** 上一轮桌面实例 12:27 启动，13:14:33 server 记录 `provider.runtime_reconciliation.started`；13:18:03 Windows 关闭挂起的桌面进程，13:18:07 新实例启动，13:18:08 又发现并清理 1 个 restart-stuck 子代理任务。上一轮 `desktop-main.log` 没有 window close/shutdown，符合被 Windows/用户强制关闭；但 reconciliation 本身不能直接定性为挂起原因：实现只记录 started 与 failed，没有 completed 日志，而且 13:14 后 advisor 和内存采样仍继续运行。
+
+**排除项与当前状态：** 挂起前 server child 的 RSS 约 161 MB、heap 约 68 MB（1.7%），没有 OOM、transport error、writer overload、orchestration queue overload 或 reconciliation failed。新实例的主进程、renderer、GPU 与 server 均为 Responding，`/health` 约 4 ms 返回全部 readiness 为 true。前一日有两次独立的 GPU process crash（exit code 34），但本次时间点没有 GPU crash 事件，不能用历史 GPU 故障解释本次挂起。
+
+**最合理的判断与证据边界：** 确定的是 Electron/Synara 桌面主进程消息循环失去响应；Provider 父任务状态偏差与重启后残留子任务是同期异常信号，可能让 UI 一直处于 working，但现有日志无法证明它阻塞了主进程。当前配置关闭了 provider event 与 WebSocket event 日志，WER 临时附件也已清理，且没有 hang dump/renderer long-task trace，因此还不能从日志定位到具体函数、IPC 或渲染路径。
+
+**排查错误：** 外部只读打开 `state.sqlite` 两次得到 `SQLITE_BUSY`；源码确认服务进程有意设置 `PRAGMA locking_mode = EXCLUSIVE` 并终身持锁，不能把这个预期锁误判为卡死原因。第一次 Windows 事件查询只按 1000/1001/1002 过滤，混入大量 G HUB 事件；后续改为精确 ProviderName 后才找到 Synara 的 1002/`AppHangB1`。两次 PowerShell `foreach ... | Format-List` 写法产生空管道解析错误，改为先收集 `$events`/`$rows` 后再格式化。
