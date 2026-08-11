@@ -5,6 +5,7 @@ import {
   type GitPullRequestCheck,
   type GitPullRequestCheckStatus,
   type GitPullRequestComment,
+  type GitHubReferenceSearchItem,
   type PullRequestActor,
   type PullRequestCheck,
   type PullRequestComment,
@@ -25,6 +26,8 @@ import {
   PULL_REQUEST_SUMMARY_JSON_FIELDS,
   type GitHubRepositoryCloneUrls,
   type GitHubCliShape,
+  type GitHubIssueDetailData,
+  type GitHubReferenceSearchBatch,
   type GitHubPullRequestDetailData,
   type GitHubPullRequestListBatch,
   type GitHubPullRequestListItem,
@@ -235,6 +238,50 @@ const RawRepositoryMergeCapabilitiesSchema = Schema.Struct({
   squashMergeAllowed: Schema.Boolean,
   rebaseMergeAllowed: Schema.Boolean,
   deleteBranchOnMerge: Schema.Boolean,
+});
+
+const RawGitHubReferenceSearchItemSchema = Schema.Struct({
+  number: PositiveInt,
+  title: TrimmedNonEmptyString,
+  html_url: TrimmedNonEmptyString,
+  state: Schema.Literals(["open", "closed"]),
+  updated_at: TrimmedNonEmptyString,
+  pull_request: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        merged_at: Schema.optional(Schema.NullOr(Schema.String)),
+      }),
+    ),
+  ),
+});
+
+const RawGitHubReferenceSearchResponseSchema = Schema.Struct({
+  items: Schema.Array(Schema.Unknown),
+});
+
+const RawGitHubIssueDetailSchema = Schema.Struct({
+  number: PositiveInt,
+  title: TrimmedNonEmptyString,
+  body: Schema.optional(Schema.NullOr(Schema.String)),
+  html_url: TrimmedNonEmptyString,
+  state: Schema.Literals(["open", "closed"]),
+  user: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        login: TrimmedNonEmptyString,
+      }),
+    ),
+  ),
+  labels: Schema.optional(
+    Schema.NullOr(
+      Schema.Array(
+        Schema.Struct({
+          name: TrimmedNonEmptyString,
+        }),
+      ),
+    ),
+  ),
+  updated_at: TrimmedNonEmptyString,
 });
 
 const RawPullRequestListItemSchema = Schema.Struct({
@@ -647,6 +694,65 @@ export function decodeRepositoryPullRequestListJson(
   );
 }
 
+const decodeRawGitHubReferenceSearchItem = Schema.decodeUnknownSync(
+  RawGitHubReferenceSearchItemSchema,
+);
+
+function normalizeGitHubReferenceSearchItem(
+  raw: Schema.Schema.Type<typeof RawGitHubReferenceSearchItemSchema>,
+  repository: string,
+): GitHubReferenceSearchItem {
+  const kind = raw.pull_request ? "pull" : "issue";
+  const mergedAt = raw.pull_request?.merged_at?.trim();
+  return {
+    kind,
+    repository,
+    number: raw.number,
+    title: raw.title,
+    url: raw.html_url,
+    state: kind === "pull" && mergedAt ? "merged" : raw.state,
+    updatedAt: raw.updated_at,
+  };
+}
+
+export function decodeGitHubReferenceSearchJson(
+  raw: string,
+  repository: string,
+): Effect.Effect<GitHubReferenceSearchBatch, GitHubCliError> {
+  return decodeGitHubJson(
+    raw.trim(),
+    RawGitHubReferenceSearchResponseSchema,
+    "searchRepositoryReferences",
+    "GitHub CLI returned invalid GitHub reference search JSON.",
+  ).pipe(
+    Effect.map((response) => ({
+      rawCount: response.items.length,
+      entries: response.items.flatMap((entry) => {
+        try {
+          return [normalizeGitHubReferenceSearchItem(decodeRawGitHubReferenceSearchItem(entry), repository)];
+        } catch {
+          return [];
+        }
+      }),
+    })),
+  );
+}
+
+function normalizeGitHubIssueDetail(
+  raw: Schema.Schema.Type<typeof RawGitHubIssueDetailSchema>,
+): GitHubIssueDetailData {
+  return {
+    number: raw.number,
+    title: raw.title,
+    body: raw.body ?? "",
+    url: raw.html_url,
+    state: raw.state,
+    authorLogin: raw.user?.login ?? null,
+    labels: (raw.labels ?? []).map((label) => label.name),
+    updatedAt: raw.updated_at,
+  };
+}
+
 function normalizePullRequestReviewComments(
   raw: Schema.Schema.Type<typeof RawReviewThreadsResponseSchema>,
 ): GitPullRequestComment[] {
@@ -717,6 +823,8 @@ function decodeGitHubJson<S extends Schema.Top>(
     | "getPullRequestReviewComments"
     | "listRepositoryPullRequests"
     | "getPullRequestDetail"
+    | "searchRepositoryReferences"
+    | "getIssueDetail"
     | "getPullRequestListItem"
     | "listReviewRequestedPullRequestNumbers"
     | "getRepositoryMergeCapabilities",
@@ -1058,6 +1166,53 @@ const makeGitHubCli = Effect.sync(() => {
         Effect.flatMap((result) => decodeRepositoryPullRequestListJson(result.stdout)),
       );
     },
+    searchRepositoryReferences: (input) =>
+      validateRepository(input.repository, "searchRepositoryReferences").pipe(
+        Effect.flatMap((repository) => {
+          const query = input.query.trim();
+          const searchQuery = [`repo:${repository}`, "is:open", ...(query ? [query] : [])].join(" ");
+          return execute({
+            cwd: input.cwd,
+            args: [
+              "api",
+              "--hostname",
+              GITHUB_HOST,
+              "--method",
+              "GET",
+              "search/issues",
+              "-f",
+              `q=${searchQuery}`,
+              "-F",
+              `per_page=${input.limit ?? 20}`,
+            ],
+          }).pipe(
+            Effect.flatMap((result) => decodeGitHubReferenceSearchJson(result.stdout, repository)),
+          );
+        }),
+      ),
+    getIssueDetail: (input) =>
+      validateRepository(input.repository, "getIssueDetail").pipe(
+        Effect.flatMap((repository) =>
+          execute({
+            cwd: input.cwd,
+            args: [
+              "api",
+              "--hostname",
+              GITHUB_HOST,
+              `repos/${repository}/issues/${input.number}`,
+            ],
+          }),
+        ),
+        Effect.flatMap((result) =>
+          decodeGitHubJson(
+            result.stdout.trim(),
+            RawGitHubIssueDetailSchema,
+            "getIssueDetail",
+            "GitHub CLI returned invalid issue detail JSON.",
+          ),
+        ),
+        Effect.map(normalizeGitHubIssueDetail),
+      ),
     getPullRequestListItem: (input) =>
       validateRepository(input.repository, "getPullRequestListItem").pipe(
         Effect.flatMap((repository) =>

@@ -1,6 +1,7 @@
 import type {
   AgentMcpToolDescriptor,
   AgentMcpToolSourceError,
+  GitHubReferenceSearchItem,
   LaunchConfiguration,
   ProjectEntry,
   ProviderAgentDescriptor,
@@ -447,6 +448,7 @@ export interface ComposerCommandMenuInput {
   };
   /** `.nilcode/launch.json` entries, offered as `@Launch:<name>` rows. */
   launchConfigurations?: readonly LaunchConfiguration[];
+  githubReferences?: readonly GitHubReferenceSearchItem[];
 }
 
 /**
@@ -480,6 +482,7 @@ export function buildComposerCommandMenuItems(
     dynamicAgents,
     threadMentionSources,
     launchConfigurations = EMPTY_LAUNCH_CONFIGURATIONS,
+    githubReferences = [],
   } = input;
 
   if (!composerTrigger) return [];
@@ -672,6 +675,23 @@ export function buildComposerCommandMenuItems(
       tools: mcpTools,
       errors: mcpToolErrors,
     });
+  }
+
+  if (composerTrigger.kind === "github-reference") {
+    return githubReferences.map((reference) => ({
+      id: `github:${reference.repository}:${reference.kind}:${reference.number}`,
+      type: "github-reference" as const,
+      reference: {
+        kind: reference.kind,
+        repository: reference.repository,
+        number: reference.number,
+        title: reference.title,
+        url: reference.url,
+      },
+      state: reference.state,
+      label: `#${reference.number} ${reference.title}`,
+      description: reference.repository,
+    }));
   }
 
   if (composerTrigger.kind === "skill") {

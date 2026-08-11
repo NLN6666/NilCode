@@ -1,5 +1,6 @@
 import {
   type AgentMcpProvider,
+  type GitHubReference,
   type ProjectEntry,
   type ModelSlug,
   type ProviderNativeCommandDescriptor,
@@ -22,6 +23,7 @@ import {
   FastModeIcon,
   GitBranchIcon,
   GitForkIcon,
+  GitPullRequestIcon,
   InfoIcon,
   ListTodoIcon,
   McpToolIcon,
@@ -118,6 +120,10 @@ function commandMenuTrailingMeta(
     return null;
   }
 
+  if (item.type === "github-reference") {
+    return `${item.reference.kind === "pull" ? copy.pullRequest : copy.issue} · ${item.state}`;
+  }
+
   if (item.type === "local-root") {
     return copy.local;
   }
@@ -164,7 +170,8 @@ function commandMenuSecondaryText(item: ComposerCommandItem): string | null {
     item.type === "color-preview" ||
     item.type === "launch" ||
     item.type === "thread" ||
-    item.type === "mcp-tool"
+    item.type === "mcp-tool" ||
+    item.type === "github-reference"
   ) {
     return item.description;
   }
@@ -178,6 +185,14 @@ export type ComposerCommandItem =
       type: "path";
       path: string;
       pathKind: ProjectEntry["kind"];
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
+      type: "github-reference";
+      reference: GitHubReference;
+      state: "open" | "closed" | "merged";
       label: string;
       description: string;
     }
@@ -354,6 +369,10 @@ export function groupCommandItems(
     return groups;
   }
 
+  if (triggerKind === "github-reference") {
+    return [{ id: "github", label: labels.github, items }];
+  }
+
   if (triggerKind !== "slash-command" || !groupSlashCommandSections) {
     return [{ id: "default", label: null, items }];
   }
@@ -491,7 +510,9 @@ export function ComposerCommandMenu(props: {
                   ? commandMenuCopy.loading.skills
                   : props.triggerKind === "mcp-tool"
                     ? commandMenuCopy.loading.mcp
-                    : commandMenuCopy.loading.commands
+                    : props.triggerKind === "github-reference"
+                      ? commandMenuCopy.loading.github
+                      : commandMenuCopy.loading.commands
               : (props.emptyStateText ??
                 (props.triggerKind === "mention"
                   ? commandMenuCopy.empty.mention
@@ -499,7 +520,9 @@ export function ComposerCommandMenu(props: {
                     ? commandMenuCopy.empty.skill
                     : props.triggerKind === "mcp-tool"
                       ? commandMenuCopy.empty.mcp
-                      : commandMenuCopy.empty.command))}
+                      : props.triggerKind === "github-reference"
+                        ? commandMenuCopy.empty.github
+                        : commandMenuCopy.empty.command))}
           </p>
         )}
       </div>
@@ -600,6 +623,8 @@ function commandMenuItemGlyph(item: ComposerCommandItem, theme: "light" | "dark"
       return <SkillCubeIcon className={cls} />;
     case "mcp-tool":
       return <McpToolIcon className={cls} />;
+    case "github-reference":
+      return <GitPullRequestIcon className={cls} />;
     default:
       return null;
   }

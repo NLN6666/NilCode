@@ -148,6 +148,7 @@ import {
   ProviderSkillsCatalogInput,
 } from "./providerDiscovery";
 import { ProviderCompactThreadInput } from "./provider";
+import { GitHubReferenceDetailInput, GitHubReferencesSearchInput } from "./githubReferences";
 import {
   PullRequestActionInput,
   PullRequestCommentInput,
@@ -230,6 +231,10 @@ export const WS_METHODS = {
   pullRequestsAction: "pullRequests.action",
   pullRequestsComment: "pullRequests.comment",
   pullRequestsSetPinned: "pullRequests.setPinned",
+
+  // Composer GitHub reference methods
+  githubReferencesSearch: "githubReferences.search",
+  githubReferencesDetail: "githubReferences.detail",
 
   // Terminal methods
   terminalOpen: "terminal.open",
@@ -448,6 +453,10 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.pullRequestsAction, PullRequestActionInput),
   tagRequestBody(WS_METHODS.pullRequestsComment, PullRequestCommentInput),
   tagRequestBody(WS_METHODS.pullRequestsSetPinned, PullRequestSetPinnedInput),
+
+  // Composer GitHub references
+  tagRequestBody(WS_METHODS.githubReferencesSearch, GitHubReferencesSearchInput),
+  tagRequestBody(WS_METHODS.githubReferencesDetail, GitHubReferenceDetailInput),
 
   // Terminal methods
   tagRequestBody(WS_METHODS.terminalOpen, TerminalOpenInput),

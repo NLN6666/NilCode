@@ -638,6 +638,10 @@ export function createWsNativeApi(): NativeApi {
       comment: (input) => transport.request(WS_METHODS.pullRequestsComment, input),
       setPinned: (input) => transport.request(WS_METHODS.pullRequestsSetPinned, input),
     },
+    githubReferences: {
+      search: (input) => transport.request(WS_METHODS.githubReferencesSearch, input),
+      detail: (input) => transport.request(WS_METHODS.githubReferencesDetail, input),
+    },
     contextMenu: {
       show: async <T extends string>(
         items: readonly ContextMenuItem<T>[],

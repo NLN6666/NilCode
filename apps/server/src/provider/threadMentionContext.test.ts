@@ -86,6 +86,23 @@ describe("thread mention prompt context", () => {
     );
   });
 
+  it("does not inject subagent child transcripts from handcrafted thread references", async () => {
+    const childThread = {
+      ...thread([{ role: "assistant", text: "private child transcript" }]),
+      parentThreadId: "parent-thread",
+    } as OrchestrationThread;
+    const result = await Effect.runPromise(
+      resolveThreadMentionPromptProjection({
+        mentions: [reference],
+        snapshotQuery: {
+          getThreadDetailById: () => Effect.succeed(Option.some(childThread)),
+        },
+      }),
+    );
+
+    expect(result).toEqual({ contextBlocks: [], providerMentions: undefined });
+  });
+
   it("caps per-message, per-thread, and aggregate context while retaining the newest tail", async () => {
     const longThread = thread(
       Array.from({ length: 25 }, (_, index) => ({

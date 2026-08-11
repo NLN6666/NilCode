@@ -10,6 +10,7 @@ import type { Effect } from "effect";
 import type {
   GitPullRequestCheck,
   GitPullRequestComment,
+  GitHubReferenceSearchItem,
   PullRequestActor,
   PullRequestCheck,
   PullRequestComment,
@@ -90,6 +91,23 @@ export interface GitHubPullRequestListBatch {
   readonly rawCount: number;
 }
 
+/** Internal search result retaining GitHub's raw item count before malformed entries are dropped. */
+export interface GitHubReferenceSearchBatch {
+  readonly entries: ReadonlyArray<GitHubReferenceSearchItem>;
+  readonly rawCount: number;
+}
+
+export interface GitHubIssueDetailData {
+  readonly number: number;
+  readonly title: string;
+  readonly body: string;
+  readonly url: string;
+  readonly state: "open" | "closed";
+  readonly authorLogin: string | null;
+  readonly labels: ReadonlyArray<string>;
+  readonly updatedAt: string;
+}
+
 export interface GitHubPullRequestDetailData {
   readonly number: number;
   readonly title: string;
@@ -151,6 +169,19 @@ export interface GitHubCliShape {
     readonly viewer: string;
     readonly limit?: number;
   }) => Effect.Effect<GitHubPullRequestListBatch, GitHubCliError>;
+
+  readonly searchRepositoryReferences: (input: {
+    readonly cwd: string;
+    readonly repository: string;
+    readonly query: string;
+    readonly limit?: number;
+  }) => Effect.Effect<GitHubReferenceSearchBatch, GitHubCliError>;
+
+  readonly getIssueDetail: (input: {
+    readonly cwd: string;
+    readonly repository: string;
+    readonly number: number;
+  }) => Effect.Effect<GitHubIssueDetailData, GitHubCliError>;
 
   /**
    * Fetch one pull request in the list-item shape (`gh pr view --json <list fields>`).

@@ -59,6 +59,7 @@ import { ProviderRuntimeEventRepositoryLive } from "./persistence/Layers/Provide
 import { ThreadDiagnosticsQueryLive } from "./diagnostics/Layers/ThreadDiagnosticsQuery";
 import { ManagedAttachmentCleanupLive } from "./managedAttachmentCleanup";
 import { PullRequestServiceLive } from "./pullRequests/Layers/PullRequestService";
+import { GitHubReferenceServiceLive } from "./githubReferences/Layers/GitHubReferenceService";
 import { ProviderHealthLive } from "./provider/Layers/ProviderHealth";
 import { makeServerProviderLayer } from "./provider/runtimeLayer";
 
@@ -233,6 +234,10 @@ export function makeServerRuntimeServicesLayer(
     Layer.provideMerge(ProjectPullRequestPinsLive),
     Layer.provideMerge(OrchestrationLayerLive),
   );
+  const githubReferenceServiceLayer = GitHubReferenceServiceLive.pipe(
+    Layer.provideMerge(GitLayerLive),
+    Layer.provideMerge(OrchestrationLayerLive),
+  );
 
   return Layer.mergeAll(
     agentGatewayCredentialsLayer,
@@ -253,6 +258,7 @@ export function makeServerRuntimeServicesLayer(
     providerHealthLayer,
     ProjectPullRequestPinsLive,
     pullRequestServiceLayer,
+    githubReferenceServiceLayer,
     orchestrationReactorLayer,
     providerCommandReactorLayer,
     threadGitMetadataReactorLayer,

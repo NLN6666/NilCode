@@ -68,6 +68,7 @@ export const composer: Messages["composer"] = {
       builtIn: "内置",
       provider: "服务商",
       skills: "技能",
+      github: "拉取请求与议题",
     },
 
     commands: {
@@ -105,6 +106,8 @@ export const composer: Messages["composer"] = {
       mcpServer: "MCP 服务器",
       mcpTool: "MCP 工具",
       model: "模型",
+      pullRequest: "拉取请求",
+      issue: "议题",
     },
 
     loading: {
@@ -112,6 +115,7 @@ export const composer: Messages["composer"] = {
       skills: "正在加载技能…",
       mcp: "正在连接 MCP 服务器…",
       commands: "正在加载命令…",
+      github: "正在搜索 GitHub…",
     },
 
     empty: {
@@ -119,6 +123,7 @@ export const composer: Messages["composer"] = {
       skill: "没有匹配的技能。",
       mcp: "该智能体没有配置任何 MCP 工具。",
       command: "没有匹配的命令。",
+      github: "没有匹配的拉取请求或议题。",
     },
   },
 

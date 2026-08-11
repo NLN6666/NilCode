@@ -17,11 +17,13 @@ import type {
 import { GitHubCliError } from "../Errors.ts";
 import {
   decodePullRequestListJson,
+  decodeGitHubReferenceSearchJson,
   decodeRepositoryPullRequestListJson,
   PULL_REQUEST_LIST_JSON_FIELDS,
 } from "../Layers/GitHubCli.ts";
 import {
   type GitHubCliShape,
+  type GitHubIssueDetailData,
   type GitHubPullRequestDetailData,
   type GitHubPullRequestListItem,
   type GitHubPullRequestSummary,
@@ -53,6 +55,8 @@ export interface FakeGhScenario {
   createPullRequestError?: GitHubCliError;
   viewerLogin?: string;
   repositoryPullRequestListJson?: string;
+  githubReferenceSearchJson?: string;
+  issueDetails?: GitHubIssueDetailData[];
   pullRequestDetail?: GitHubPullRequestDetailData;
   pullRequestListItems?: GitHubPullRequestListItem[];
   reviewRequestedPullRequestNumbers?: number[];
@@ -293,6 +297,31 @@ export function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
         return scenario.failWith
           ? Effect.fail(scenario.failWith)
           : decodeRepositoryPullRequestListJson(scenario.repositoryPullRequestListJson ?? "[]");
+      },
+      searchRepositoryReferences: (input) => {
+        ghCalls.push(
+          `api search/issues --repo ${input.repository} --query ${input.query} --limit ${input.limit ?? 20}`,
+        );
+        return scenario.failWith
+          ? Effect.fail(scenario.failWith)
+          : decodeGitHubReferenceSearchJson(
+              scenario.githubReferenceSearchJson ?? '{"items":[]}',
+              input.repository,
+            );
+      },
+      getIssueDetail: (input) => {
+        ghCalls.push(`api repos/${input.repository}/issues/${input.number}`);
+        const detail = scenario.issueDetails?.find((entry) => entry.number === input.number);
+        return detail
+          ? Effect.succeed(detail)
+          : Effect.fail(
+              scenario.failWith ??
+                new GitHubCliError({
+                  operation: "getIssueDetail",
+                  detail: "Issue not found.",
+                  reason: "other",
+                }),
+            );
       },
       getPullRequestDetail: (input) => {
         ghCalls.push(`pr view ${input.number} --repo ${input.repository}`);

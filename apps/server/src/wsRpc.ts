@@ -78,6 +78,7 @@ import { GitCore } from "./git/Services/GitCore";
 import { GitHubCli } from "./git/Services/GitHubCli";
 import { GitManager } from "./git/Services/GitManager";
 import { GitHubCliError } from "./git/Errors";
+import { GitHubReferenceService } from "./githubReferences/Services/GitHubReferenceService";
 import { GitStatusBroadcaster } from "./git/Services/GitStatusBroadcaster";
 import { TextGeneration } from "./git/Services/TextGeneration";
 import {
@@ -338,6 +339,7 @@ const makeWsRpcHandlersLayer = () =>
       const agentMcpToolCatalog = yield* AgentMcpToolCatalogService;
       const git = yield* GitCore;
       const github = yield* GitHubCli;
+      const githubReferences = yield* GitHubReferenceService;
       const gitManager = yield* GitManager;
       const gitStatusBroadcaster = yield* GitStatusBroadcaster;
       const keybindings = yield* Keybindings;
@@ -1433,6 +1435,8 @@ const makeWsRpcHandlersLayer = () =>
           pullRequestsEffect(pullRequests.comment(input), "Could not post the comment"),
         [WS_METHODS.pullRequestsSetPinned]: (input) =>
           rpcEffect(pullRequests.setPinned(input), "Failed to update pull request pin"),
+        [WS_METHODS.githubReferencesSearch]: (input) => githubReferences.search(input),
+        [WS_METHODS.githubReferencesDetail]: (input) => githubReferences.detail(input),
         [WS_METHODS.gitListBranches]: (input) =>
           rpcEffect(git.listBranches(input), "Failed to list branches"),
         [WS_METHODS.gitCreateWorktree]: (input) =>

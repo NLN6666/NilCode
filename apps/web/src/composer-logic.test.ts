@@ -256,6 +256,25 @@ describe("detectComposerTrigger", () => {
 
     expect(trigger).toBeNull();
   });
+
+  it("detects a GitHub reference trigger after whitespace", () => {
+    expect(detectComposerTrigger("fix #12", 7)).toEqual({
+      kind: "github-reference",
+      query: "12",
+      rangeStart: 4,
+      rangeEnd: 7,
+    });
+    expect(detectComposerTrigger("see #composer", 13)).toMatchObject({
+      kind: "github-reference",
+      query: "composer",
+    });
+  });
+
+  it("does not treat URL fragments or Markdown headings as GitHub reference triggers", () => {
+    const url = "https://example.com/#12";
+    expect(detectComposerTrigger(url, url.length)).toBeNull();
+    expect(detectComposerTrigger("# heading", 9)).toBeNull();
+  });
 });
 
 describe("replaceTextRange", () => {

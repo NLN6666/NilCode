@@ -15,6 +15,7 @@ import {
 } from "./browserElementContext";
 import { extractTrailingPastedTexts, type ParsedPastedTextEntry } from "./composerPastedText";
 import { stripAvailableMcpToolsBlock } from "./mcpToolReferences";
+import { stripTrailingGitHubReferenceContext } from "./githubComposerReferences";
 
 export interface TerminalContextSelection {
   terminalId: string;
@@ -358,10 +359,11 @@ export function deriveDisplayedUserMessageState(
   // composer has already serialized its own blocks — so it comes off first. It carries no parsed
   // state: the `&` chips in the body already say which tools were referenced.
   const promptWithoutMcpTools = stripAvailableMcpToolsBlock(prompt);
+  const promptWithoutGitHubReferences = stripTrailingGitHubReferenceContext(promptWithoutMcpTools);
   const extractedBrowserAnnotations =
     options.messageId === undefined
-      ? { promptText: promptWithoutMcpTools, annotations: [] }
-      : extractTrailingBrowserAnnotations(promptWithoutMcpTools, options.messageId);
+      ? { promptText: promptWithoutGitHubReferences, annotations: [] }
+      : extractTrailingBrowserAnnotations(promptWithoutGitHubReferences, options.messageId);
   const extractedPastedTexts = extractTrailingPastedTexts(extractedBrowserAnnotations.promptText);
   const extractedBrowserElements = extractTrailingBrowserElements(extractedPastedTexts.promptText);
   const extractedFileComments = extractTrailingFileComments(extractedBrowserElements.promptText);
@@ -369,16 +371,17 @@ export function deriveDisplayedUserMessageState(
   const extractedAssistantSelections = extractTrailingAssistantSelections(
     extractedContexts.promptText,
   );
+  const visiblePromptText = extractedAssistantSelections.promptText;
   const hidePrompt =
     options.hideImageOnlyBootstrapPrompt === true &&
-    extractedAssistantSelections.promptText.trim() === IMAGE_ONLY_BOOTSTRAP_PROMPT;
+    visiblePromptText.trim() === IMAGE_ONLY_BOOTSTRAP_PROMPT;
   return {
     // Keep the internal bootstrap prompt hidden while still giving image-only
     // user messages a visible bubble in the transcript.
     visibleText: hidePrompt
       ? IMAGE_ONLY_VISIBLE_PLACEHOLDER
-      : extractedAssistantSelections.promptText,
-    copyText: hidePrompt ? "" : extractedAssistantSelections.promptText,
+      : visiblePromptText,
+    copyText: hidePrompt ? "" : visiblePromptText,
     contextCount: extractedContexts.contextCount,
     previewTitle: extractedContexts.previewTitle,
     contexts: extractedContexts.contexts,

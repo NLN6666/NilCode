@@ -97,6 +97,12 @@ import type {
   GitHubProjectProvisionResult,
 } from "./githubProjectProvisioning";
 import type {
+  GitHubReferenceDetail,
+  GitHubReferenceDetailInput,
+  GitHubReferencesSearchInput,
+  GitHubReferencesSearchResult,
+} from "./githubReferences";
+import type {
   PullRequestActionInput,
   PullRequestActionResult,
   PullRequestCommentInput,
@@ -805,6 +811,10 @@ export interface NativeApi {
     action: (input: PullRequestActionInput) => Promise<PullRequestActionResult>;
     comment: (input: PullRequestCommentInput) => Promise<PullRequestActionResult>;
     setPinned: (input: PullRequestSetPinnedInput) => Promise<PullRequestSetPinnedResult>;
+  };
+  githubReferences: {
+    search: (input: GitHubReferencesSearchInput) => Promise<GitHubReferencesSearchResult>;
+    detail: (input: GitHubReferenceDetailInput) => Promise<GitHubReferenceDetail>;
   };
   contextMenu: {
     show: <T extends string>(

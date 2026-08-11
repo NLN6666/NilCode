@@ -94,6 +94,29 @@ describe("createThreadShellsSelector", () => {
 });
 
 describe("createComposerThreadMentionSourcesSelector", () => {
+  it("excludes subagent child threads while keeping top-level chats", () => {
+    const selectSources = createComposerThreadMentionSourcesSelector();
+    const childSummary = {
+      ...summaryA,
+      id: threadIdB,
+      title: "Explorer child",
+      parentThreadId: threadIdA,
+    } as SidebarThreadSummary;
+    const state = makeState({
+      threadIds: [threadIdA, threadIdB],
+      sidebarThreadSummaryById: {
+        [threadIdA]: summaryA,
+        [threadIdB]: childSummary,
+      },
+    });
+
+    const before = selectSources(state);
+    const after = selectSources(state);
+
+    expect(before.map((source) => source.id)).toEqual([threadIdA]);
+    expect(after).toBe(before);
+  });
+
   it("does not rescan summaries when only streaming detail changes", () => {
     const selectSources = createComposerThreadMentionSourcesSelector();
     const threadIds = [threadIdA];

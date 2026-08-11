@@ -32,6 +32,7 @@ export * from "./stats";
 export * from "./settings";
 export * from "./advisor";
 export * from "./git";
+export * from "./githubReferences";
 export * from "./githubProjectProvisioning";
 export * from "./pullRequests";
 export * from "./orchestration";

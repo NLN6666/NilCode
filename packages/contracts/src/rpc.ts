@@ -127,6 +127,13 @@ import {
   GitUnstageFilesResult,
 } from "./git";
 import {
+  GitHubReferenceDetail,
+  GitHubReferenceDetailInput,
+  GitHubReferencesSearchInput,
+  GitHubReferencesSearchResult,
+  GitHubReferencesUnavailableError,
+} from "./githubReferences";
+import {
   PullRequestActionInput,
   PullRequestCommentInput,
   PullRequestActionResult,
@@ -779,6 +786,20 @@ export const WsPullRequestsSetPinnedRpc = Rpc.make(WS_METHODS.pullRequestsSetPin
   error: WsRpcError,
 });
 
+const GitHubReferencesRpcError = Schema.Union([GitHubReferencesUnavailableError, WsRpcError]);
+
+export const WsGitHubReferencesSearchRpc = Rpc.make(WS_METHODS.githubReferencesSearch, {
+  payload: GitHubReferencesSearchInput,
+  success: GitHubReferencesSearchResult,
+  error: GitHubReferencesRpcError,
+});
+
+export const WsGitHubReferencesDetailRpc = Rpc.make(WS_METHODS.githubReferencesDetail, {
+  payload: GitHubReferenceDetailInput,
+  success: GitHubReferenceDetail,
+  error: GitHubReferencesRpcError,
+});
+
 export const WsGitListBranchesRpc = Rpc.make(WS_METHODS.gitListBranches, {
   payload: GitListBranchesInput,
   success: GitListBranchesResult,
@@ -1343,6 +1364,8 @@ export const WsFeatureRpcGroup = RpcGroup.make(
   WsPullRequestsActionRpc,
   WsPullRequestsCommentRpc,
   WsPullRequestsSetPinnedRpc,
+  WsGitHubReferencesSearchRpc,
+  WsGitHubReferencesDetailRpc,
   WsGitListBranchesRpc,
   WsGitCreateWorktreeRpc,
   WsGitCreateDetachedWorktreeRpc,

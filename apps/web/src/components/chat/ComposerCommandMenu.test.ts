@@ -209,4 +209,27 @@ describe("groupCommandItems", () => {
       },
     ]);
   });
+
+  it("groups GitHub PR and issue reference suggestions together", () => {
+    const items: ComposerCommandItem[] = [
+      {
+        id: "github:acme/app:pull:12",
+        type: "github-reference",
+        reference: {
+          kind: "pull",
+          repository: "acme/app",
+          number: 12,
+          title: "Ship composer references",
+          url: "https://github.com/acme/app/pull/12",
+        },
+        state: "open",
+        label: "#12 Ship composer references",
+        description: "acme/app",
+      },
+    ];
+
+    expect(groupCommandItems(items, "github-reference", true, GROUP_LABELS)).toEqual([
+      { id: "github", label: "Pull requests and issues", items },
+    ]);
+  });
 });

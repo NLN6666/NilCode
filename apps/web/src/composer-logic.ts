@@ -12,7 +12,8 @@ export type ComposerTriggerKind =
   | "slash-command"
   | "slash-model"
   | "skill"
-  | "mcp-tool";
+  | "mcp-tool"
+  | "github-reference";
 
 export interface ComposerTrigger {
   kind: ComposerTriggerKind;
@@ -396,6 +397,15 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
   if (token.startsWith(MCP_TOOL_REFERENCE_PREFIX)) {
     return {
       kind: "mcp-tool",
+      query: token.slice(1),
+      rangeStart: tokenStart,
+      rangeEnd: cursor,
+    };
+  }
+
+  if (/^#[^#\s]*$/.test(token)) {
+    return {
+      kind: "github-reference",
       query: token.slice(1),
       rangeStart: tokenStart,
       rangeEnd: cursor,

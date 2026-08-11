@@ -158,17 +158,20 @@ export function resolveThreadMentionPromptProjection(input: {
         )
       : Effect.succeed(null);
     return thread.pipe(
-      Effect.map((resolvedThread) =>
-        formatThreadMentionContextBlock({
+      Effect.map((resolvedThread) => {
+        if (resolvedThread?.parentThreadId) {
+          return "";
+        }
+        return formatThreadMentionContextBlock({
           reference,
           thread: resolvedThread,
           maxChars: perThreadMaxChars,
-        }),
-      ),
+        });
+      }),
     );
   }).pipe(
     Effect.map((contextBlocks) => ({
-      contextBlocks,
+      contextBlocks: contextBlocks.filter((block) => block.length > 0),
       providerMentions: providerMentions.length > 0 ? providerMentions : undefined,
     })),
   );

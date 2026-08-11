@@ -79,6 +79,7 @@ export const composer = {
       builtIn: "Built-in",
       provider: "Provider",
       skills: "Skills",
+      github: "Pull requests and issues",
     },
 
     /**
@@ -89,6 +90,8 @@ export const composer = {
       clear: "Clear",
       compact: "Compact Context",
       model: "Model",
+      pullRequest: "Pull request",
+      issue: "Issue",
       fast: "Fast Mode",
       plan: "Plan Mode",
       default: "Default Mode",
@@ -139,6 +142,7 @@ export const composer = {
       skills: "Loading skills...",
       mcp: "Connecting to MCP servers...",
       commands: "Loading commands...",
+      github: "Searching GitHub...",
     },
 
     empty: {
@@ -146,6 +150,7 @@ export const composer = {
       skill: "No matching skill.",
       mcp: "No MCP tools are configured for this agent.",
       command: "No matching command.",
+      github: "No matching pull request or issue.",
     },
   },
 

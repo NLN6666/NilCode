@@ -773,6 +773,126 @@ layer("GitHubCliLive", (it) => {
     }),
   );
 
+  it.effect("searches open repository pull requests and issues together", () =>
+    Effect.gen(function* () {
+      mockedRunProcess.mockResolvedValueOnce({
+        stdout: JSON.stringify({
+          total_count: 3,
+          incomplete_results: false,
+          items: [
+            {
+              number: 21,
+              title: "Ship hash references",
+              html_url: "https://github.com/acme/app/pull/21",
+              state: "open",
+              updated_at: "2026-08-11T01:00:00Z",
+              pull_request: { merged_at: null },
+            },
+            {
+              number: 34,
+              title: "Composer loses focus",
+              html_url: "https://github.com/acme/app/issues/34",
+              state: "closed",
+              updated_at: "2026-08-10T01:00:00Z",
+            },
+            { number: "broken" },
+          ],
+        }),
+        stderr: "",
+        code: 0,
+        signal: null,
+        timedOut: false,
+      });
+
+      const gh = yield* GitHubCli;
+      const result = yield* gh.searchRepositoryReferences({
+        cwd: "/repo",
+        repository: "acme/app",
+        query: "composer",
+        limit: 20,
+      });
+
+      assert.equal(result.rawCount, 3);
+      assert.deepStrictEqual(result.entries, [
+        {
+          kind: "pull",
+          repository: "acme/app",
+          number: 21,
+          title: "Ship hash references",
+          url: "https://github.com/acme/app/pull/21",
+          state: "open",
+          updatedAt: "2026-08-11T01:00:00Z",
+        },
+        {
+          kind: "issue",
+          repository: "acme/app",
+          number: 34,
+          title: "Composer loses focus",
+          url: "https://github.com/acme/app/issues/34",
+          state: "closed",
+          updatedAt: "2026-08-10T01:00:00Z",
+        },
+      ]);
+      expect(mockedRunProcess.mock.calls[0]?.[1]).toEqual([
+        "api",
+        "--hostname",
+        "github.com",
+        "--method",
+        "GET",
+        "search/issues",
+        "-f",
+        "q=repo:acme/app is:open composer",
+        "-F",
+        "per_page=20",
+      ]);
+    }),
+  );
+
+  it.effect("loads repository issue details through the GitHub API", () =>
+    Effect.gen(function* () {
+      mockedRunProcess.mockResolvedValueOnce({
+        stdout: JSON.stringify({
+          number: 34,
+          title: "Composer loses focus",
+          body: "Steps to reproduce",
+          html_url: "https://github.com/acme/app/issues/34",
+          state: "closed",
+          user: { login: "octocat" },
+          labels: [{ name: "bug" }, { name: "composer" }],
+          updated_at: "2026-08-10T01:00:00Z",
+        }),
+        stderr: "",
+        code: 0,
+        signal: null,
+        timedOut: false,
+      });
+
+      const gh = yield* GitHubCli;
+      const result = yield* gh.getIssueDetail({
+        cwd: "/repo",
+        repository: "acme/app",
+        number: 34,
+      });
+
+      assert.deepStrictEqual(result, {
+        number: 34,
+        title: "Composer loses focus",
+        body: "Steps to reproduce",
+        url: "https://github.com/acme/app/issues/34",
+        state: "closed",
+        authorLogin: "octocat",
+        labels: ["bug", "composer"],
+        updatedAt: "2026-08-10T01:00:00Z",
+      });
+      expect(mockedRunProcess.mock.calls[0]?.[1]).toEqual([
+        "api",
+        "--hostname",
+        "github.com",
+        "repos/acme/app/issues/34",
+      ]);
+    }),
+  );
+
   it.effect("filters authored repository lists before applying the limit", () =>
     Effect.gen(function* () {
       mockedRunProcess.mockResolvedValueOnce({

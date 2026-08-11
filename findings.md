@@ -364,3 +364,18 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 **执行记录：** 一次 FastCtx batch 因同一 `SingleChatSurface.tsx` 被列出三个区间而返回 `Duplicate path in files`，随后按每个路径仅出现一次的规则拆分读取。TDD 首轮导入尚未存在的 helper 得到 3 个 `TypeError`；加入返回 `null` 的最小接口骨架后，测试稳定为“期望 true/false，实际 null”的 2 个行为失败，再实现真实派生逻辑。
 
 **打包记录：** Windows packaged startup smoke 已从隔离目录成功启动并取得 ready 证据；脚本因 Windows 文件占用保留了精确临时目录，随后通过 PowerShell 删除该目录的补充清理被执行策略拦截，未扩大删除范围，也不影响安装包或 smoke 结果。
+
+---
+
+## 26. GitHub `#` 引用与 `@` 对话过滤（2026-08-11）
+
+- 用户确认的边界：`@` 对话候选不能包含子代理对话，只保留正常顶层对话；`#` 使用当前项目 GitHub 仓库的 PR/Issue 混合候选菜单，并在发送时附加结构化上下文。
+- 现有 `createComposerThreadMentionSourcesSelector` 会把全部 sidebar summary 投影成候选，且 `ComposerThreadMentionSource` 丢弃 `parentThreadId`，因此子代理会进入 `@` 菜单。修复应在 summary 仍带层级事实的 selector 源头过滤，并在服务端线程上下文解析处做防绕过校验。
+- 现有 GitHub 后端只覆盖 Pull Request；没有 Issue schema/service。实现采用统一 GitHub reference 域，复用 repository resolution、GitHub CLI 错误归一和 WebSocket RPC 模式。
+- LCC hybrid 搜索因本机 LM Studio `127.0.0.1:1234/v1` 无法连接而失败；按仓库规则降级到 LCC FTS，随后通过精确 symbol/read_region 和 FastCtx 抽查即将修改的代码。
+- 第一次文档补丁因 `findings.md` 末行的精确空格不匹配被 `apply_patch` 原子拒绝；`git status --short` 证明没有部分写入，随后按文件拆分补丁并使用精确上下文重试。
+- Task 2 首次 FastCtx batch 把 `packages/contracts/src/ws.ts` 放入三个区间，工具以 `Duplicate path in files` 拒绝；随后改用 LCC `read_region` 分区读取，未执行任何写入。
+- TDD 红灯均符合预期：GitHub CLI 新方法最初报 `yield* ... is not iterable`，项目服务/前端 helper 最初报缺失模块，`#12` trigger 最初返回 `null`；最小实现后对应定向测试全部转绿。
+- ChatView 首次组合补丁因定位 `effectiveComposerTriggerKind` 的上下文不精确被 `apply_patch` 原子拒绝；随后拆成 import、query、menu、selection、send 五个小补丁，避免任何部分写入不确定性。
+- 独立审查发现 GitHub 外部正文中的字面量 `</github_reference_context>` 可提前闭合隐藏上下文。新增恶意 title/body/label 回归用例先复现 3 个闭合标签，再对 JSON 中 `<`、`>`、`&`、U+2028/U+2029 做 Unicode 转义；修复后仅保留协议自身的一个闭合标签。
+- 最终证据：contracts 9/9、server 39/39、web 聚焦套件 115/115；审查修复后的 GitHub/terminal 31/31；`git diff --check` 通过；`bun run --cwd apps/web build` 成功（8910 modules，约 1m59s）。按项目约束未运行 `bun fmt`、`bun lint`、`bun typecheck`，因为用户本轮没有显式授权这些 heavyweight checks。

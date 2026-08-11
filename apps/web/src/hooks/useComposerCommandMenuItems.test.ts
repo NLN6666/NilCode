@@ -309,3 +309,46 @@ describe("buildComposerCommandMenuItems mention agents", () => {
     expect(items[0]?.type).toBe("agent");
   });
 });
+
+describe("buildComposerCommandMenuItems GitHub references", () => {
+  it("maps mixed server results to selectable reference rows", () => {
+    const items = buildComposerCommandMenuItems({
+      composerCopy: en.composer,
+      composerTrigger: { kind: "github-reference", query: "12" } as never,
+      provider: "codex",
+      providerPlugins: [],
+      providerNativeCommands: [],
+      providerSkills: [],
+      workspaceEntries: [],
+      searchableModelOptions: [],
+      supportsFastSlashCommand: false,
+      canOfferCompactCommand: false,
+      canOfferReviewCommand: false,
+      canOfferForkCommand: false,
+      canOfferSideCommand: false,
+      canOfferExportCommand: false,
+      dynamicAgents: [],
+      githubReferences: [
+        {
+          kind: "issue",
+          repository: "acme/app",
+          number: 12,
+          title: "Composer issue",
+          url: "https://github.com/acme/app/issues/12",
+          state: "open",
+          updatedAt: "2026-08-11T00:00:00Z",
+        },
+      ],
+    });
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: "github:acme/app:issue:12",
+        type: "github-reference",
+        label: "#12 Composer issue",
+        description: "acme/app",
+        state: "open",
+      }),
+    ]);
+  });
+});

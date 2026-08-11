@@ -104,6 +104,11 @@ import {
   persistProjectLaunchConfig,
   projectLaunchConfigQueryOptions,
 } from "~/lib/launchConfigReactQuery";
+import { githubReferenceSearchQueryOptions } from "~/lib/githubReferenceQueryOptions";
+import {
+  formatGitHubReferenceToken,
+  resolvePromptGitHubReferenceContext,
+} from "~/lib/githubComposerReferences";
 import { useProjectScriptPreview } from "~/hooks/useProjectScriptPreview";
 import { appendPromptToDraft, buildDetectServicesPrompt } from "~/lib/detectServicesPrompt";
 
@@ -1080,6 +1085,7 @@ function formatPastedTextTitleSeed(pastedTexts: ReadonlyArray<PastedTextDraft>):
 }
 
 const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120;
+const COMPOSER_GITHUB_QUERY_DEBOUNCE_MS = 180;
 const VOICE_RECORDER_ACTION_ARM_DELAY_MS = 250;
 
 function warnVoiceGuard(event: string, details?: Record<string, unknown>) {
@@ -3678,6 +3684,8 @@ export default function ChatView({
       : null;
   const composerTriggerKind = composerTrigger?.kind ?? null;
   const mentionTriggerQuery = composerTrigger?.kind === "mention" ? composerTrigger.query : "";
+  const githubReferenceTriggerQuery =
+    composerTrigger?.kind === "github-reference" ? composerTrigger.query : "";
   const isMentionTrigger = composerTriggerKind === "mention";
   const platform = typeof navigator === "undefined" ? "" : navigator.platform;
   const branchesQuery = useQuery(gitBranchesQueryOptions(gitBranchSourceCwd));
@@ -3712,6 +3720,11 @@ export default function ChatView({
   const [debouncedPathQuery, composerPathQueryDebouncer] = useDebouncedValue(
     mentionTriggerQuery,
     { wait: COMPOSER_PATH_QUERY_DEBOUNCE_MS },
+    (debouncerState) => ({ isPending: debouncerState.isPending }),
+  );
+  const [debouncedGitHubReferenceQuery, composerGitHubQueryDebouncer] = useDebouncedValue(
+    githubReferenceTriggerQuery,
+    { wait: COMPOSER_GITHUB_QUERY_DEBOUNCE_MS },
     (debouncerState) => ({ isPending: debouncerState.isPending }),
   );
   const effectiveMentionQuery = mentionTriggerQuery.length > 0 ? debouncedPathQuery : "";
@@ -3823,6 +3836,16 @@ export default function ChatView({
     return composerTrigger;
   }, [composerTrigger, providerNativeCommandNames, selectedProvider]);
   const effectiveComposerTriggerKind = effectiveComposerTrigger?.kind ?? null;
+  const githubReferencesQuery = useQuery(
+    githubReferenceSearchQueryOptions({
+      projectId: activeProject?.id ?? null,
+      query:
+        githubReferenceTriggerQuery.length > 0
+          ? debouncedGitHubReferenceQuery
+          : githubReferenceTriggerQuery,
+      enabled: effectiveComposerTriggerKind === "github-reference",
+    }),
+  );
   const supportsTextNativeReviewCommand = useMemo(
     () => providerSupportsTextNativeReviewCommand(selectedProvider, providerNativeCommands),
     [providerNativeCommands, selectedProvider],
@@ -3918,6 +3941,7 @@ export default function ChatView({
       currentThreadId: threadId,
     },
     ...(existingLaunchConfigurations ? { launchConfigurations: existingLaunchConfigurations } : {}),
+    githubReferences: githubReferencesQuery.data?.entries ?? [],
   });
   const composerMenuItems = useMemo(() => {
     if (composerCommandPicker === "fork-target") {
@@ -8623,6 +8647,11 @@ export default function ChatView({
     const messageCreatedAt = new Date().toISOString();
     const outgoingTextSeed =
       messageTextForSend || (composerImagesSnapshot.length > 0 ? IMAGE_ONLY_BOOTSTRAP_PROMPT : "");
+    const githubReferenceContextPromise = resolvePromptGitHubReferenceContext({
+      api,
+      projectId: targetProjectIdForSend,
+      prompt: outgoingTextSeed,
+    });
     const outgoingMessageText = formatOutgoingComposerPrompt({
       provider: selectedProviderForSend,
       model: selectedModelForSend,
@@ -9000,6 +9029,17 @@ export default function ChatView({
       }
 
       const stagedTurnAttachments = await turnAttachmentsPromise;
+      const outgoingProviderTextSeed = await githubReferenceContextPromise;
+      const outgoingProviderMessageText =
+        outgoingProviderTextSeed === outgoingTextSeed
+          ? outgoingMessageText
+          : formatOutgoingComposerPrompt({
+              provider: selectedProviderForSend,
+              model: selectedModelForSend,
+              effort: selectedPromptEffortForSend,
+              text: outgoingProviderTextSeed,
+              mcpTools: agentMcpToolsRef.current,
+            });
       // Keep setup resolvable while attachment uploads are still preparing the
       // turn. Once they settle, consume the last possible choice before the
       // card advances to the non-resolvable "Starting session" step.
@@ -9029,7 +9069,7 @@ export default function ChatView({
           message: {
             messageId: messageIdForSend,
             role: "user",
-            text: outgoingMessageText,
+            text: outgoingProviderMessageText,
             attachments: turnAttachments,
             ...(mentionedSkillsForSend.length > 0 ? { skills: mentionedSkillsForSend } : {}),
             ...(mentionedPluginMentionsForSend.length > 0
@@ -10849,6 +10889,14 @@ export default function ChatView({
       }
       const { snapshot, trigger } = resolveActiveComposerTrigger();
       if (!trigger) return;
+      if (item.type === "github-reference") {
+        applyComposerTriggerReplacement({
+          snapshot,
+          trigger,
+          base: `${formatGitHubReferenceToken(item.reference)} `,
+        });
+        return;
+      }
       if (item.type === "path") {
         applyComposerTriggerReplacement({
           snapshot,
@@ -11012,7 +11060,11 @@ export default function ChatView({
         providerComposerCapabilitiesQuery.isFetching ||
         providerSkillsQuery.isLoading ||
         providerSkillsQuery.isFetching)) ||
-    (isMcpToolTrigger && agentMcpTools.isLoading);
+    (isMcpToolTrigger && agentMcpTools.isLoading) ||
+    (composerTriggerKind === "github-reference" &&
+      (composerGitHubQueryDebouncer.state.isPending ||
+        githubReferencesQuery.isLoading ||
+        githubReferencesQuery.isFetching));
 
   const onPromptChange = useCallback(
     (
