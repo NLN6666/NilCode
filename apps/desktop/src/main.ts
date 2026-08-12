@@ -215,6 +215,7 @@ import {
   resolveDesktopAppDataBase,
   resolveDesktopUserDataPath,
 } from "./desktopUserDataProfile";
+import { applyDesktopGraphicsPolicy } from "./desktopGraphicsPolicy";
 import { isBrokenPipeError } from "./desktopProcessErrors";
 import { createDesktopStaticProtocolResolver } from "./desktopStaticProtocol";
 import {
@@ -4444,6 +4445,10 @@ function configureMediaPermissions(): void {
     });
   }
 }
+
+// The Windows GPU process can leave Chromium's browser main thread waiting
+// indefinitely for flush verification. This Electron API must run before ready.
+applyDesktopGraphicsPolicy(app);
 
 // Override Electron's userData path before the `ready` event so that
 // Chromium session data uses a filesystem-friendly directory name.

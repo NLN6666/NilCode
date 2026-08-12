@@ -379,3 +379,13 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - ChatView 首次组合补丁因定位 `effectiveComposerTriggerKind` 的上下文不精确被 `apply_patch` 原子拒绝；随后拆成 import、query、menu、selection、send 五个小补丁，避免任何部分写入不确定性。
 - 独立审查发现 GitHub 外部正文中的字面量 `</github_reference_context>` 可提前闭合隐藏上下文。新增恶意 title/body/label 回归用例先复现 3 个闭合标签，再对 JSON 中 `<`、`>`、`&`、U+2028/U+2029 做 Unicode 转义；修复后仅保留协议自身的一个闭合标签。
 - 最终证据：contracts 9/9、server 39/39、web 聚焦套件 115/115；审查修复后的 GitHub/terminal 31/31；`git diff --check` 通过；`bun run --cwd apps/web build` 成功（8910 modules，约 1m59s）。按项目约束未运行 `bun fmt`、`bun lint`、`bun typecheck`，因为用户本轮没有显式授权这些 heavyweight checks。
+
+---
+
+## 27. Windows Electron GPU channel 导致主线程 AppHang（2026-08-12）
+
+- 独立 watchdog 在卡死时成功捕获 dump；匹配 Electron 40.10.6 符号后，`CrBrowserMain` 主线程停在 `gpu::GpuChannelHost::VerifyFlush` / `EstablishSharedMemoryForFlushVerification` 的 Mojo 同步等待链，Windows 同期记录 `AppHangB1`。
+- 服务端日志在桌面无响应后仍继续产生活动，排除了 backend 整体停止；用户使用相同安装包加 `--disable-gpu` 启动后确认不再卡死，形成直接 A/B 证据。
+- 修复边界：Windows 在 Electron `ready` 前调用 `app.disableHardwareAcceleration()`；macOS/Linux 保持现有图形加速行为。代价是 Windows 不再使用 GPU 合成，但优先消除已复现的主线程永久等待。
+- TDD 红灯符合预期：首次运行 `desktopGraphicsPolicy.test.ts` 因实现模块尚不存在而失败，随后再加入平台策略和启动接线。
+- 最终验证：图形策略 3/3 测试通过，desktop `tsdown` 构建成功；生成的 `dist-electron/main.js` 中禁用调用位于 `app.whenReady()` 之前。按项目约束未运行 `bun fmt`、`bun lint`、`bun typecheck`，因为用户本轮没有显式授权这些 heavyweight checks。
