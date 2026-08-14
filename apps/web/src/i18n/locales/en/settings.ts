@@ -758,6 +758,10 @@ export const settings = {
         description:
           "Use Opencode's experimental OpenAI response WebSocket transport for managed local servers.",
       },
+      ompBinaryPath: {
+        label: "Oh My Pi binary path",
+        placeholder: "Oh My Pi binary path",
+      },
       piBinaryPath: { label: "Pi binary path", placeholder: "Pi binary path" },
       piAgentDir: {
         label: "Pi agent directory",

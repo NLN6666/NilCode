@@ -27,4 +27,10 @@ describe("ProviderIcon", () => {
     expect(markup).toContain("dark:text-foreground/90");
     expect(markup).toContain("/central-icons-reversed/opencode.svg");
   });
+
+  it("uses Pi-family branding for Oh My Pi", () => {
+    const markup = renderToStaticMarkup(<ProviderIcon provider="omp" />);
+    expect(PROVIDER_ICON_COMPONENT_BY_PROVIDER.omp).toBeDefined();
+    expect(markup).toContain("svg");
+  });
 });

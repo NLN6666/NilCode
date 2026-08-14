@@ -763,6 +763,42 @@ describe("getComposerProviderState", () => {
     });
   });
 
+  it("keeps Oh My Pi ACP-native thinking values on the thinkingLevel field", () => {
+    const runtimeModel: ProviderModelDescriptor = {
+      slug: "anthropic/claude-sonnet-4-5",
+      name: "Claude Sonnet 4.5",
+      optionDescriptors: [
+        {
+          id: "thinkingLevel",
+          label: "Thinking",
+          type: "select",
+          options: [
+            { id: "adaptive", label: "Adaptive" },
+            { id: "high", label: "High" },
+          ],
+          currentValue: "adaptive",
+        },
+      ],
+      supportedReasoningEfforts: [
+        { value: "adaptive", label: "Adaptive" },
+        { value: "high", label: "High" },
+      ],
+      defaultReasoningEffort: "adaptive",
+    };
+    const state = getComposerProviderState({
+      provider: "omp",
+      model: runtimeModel.slug,
+      runtimeModel,
+      prompt: "",
+      modelOptions: { omp: { thinkingLevel: "adaptive" } },
+    });
+
+    expect(state).toEqual({
+      provider: "omp",
+      promptEffort: "adaptive",
+      modelOptionsForDispatch: { thinkingLevel: "adaptive" },
+    });
+  });
   it("does not render a traits picker for OpenCode models without exposed controls", () => {
     const threadId = ThreadId.makeUnsafe("thread-opencode-traits-hidden");
 

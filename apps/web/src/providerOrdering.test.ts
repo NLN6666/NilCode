@@ -37,10 +37,12 @@ describe("providerOrdering", () => {
     }
   });
 
-  it("keeps Pi as a valid provider for persisted order and visibility settings", () => {
+  it("keeps both Pi providers valid and adjacent in the shared order", () => {
     expect(isProviderKind("pi")).toBe(true);
+    expect(isProviderKind("omp")).toBe(true);
     expect(normalizeProviderOrder(["pi", "codex"])[0]).toBe("pi");
     expect(normalizeHiddenProviders(["bogus", "pi", "pi"])).toEqual(["pi"]);
+    expect(Math.abs(DEFAULT_PROVIDER_ORDER.indexOf("omp") - DEFAULT_PROVIDER_ORDER.indexOf("pi"))).toBe(1);
   });
 });
 

@@ -276,6 +276,7 @@ describe("resolveAppModelSelection", () => {
           droid: [],
           kilo: [],
           opencode: [],
+          omp: [],
           pi: [],
         },
         "galapagos-alpha",
@@ -296,6 +297,7 @@ describe("resolveAppModelSelection", () => {
           droid: [],
           kilo: [],
           opencode: [],
+          omp: [],
           pi: [],
         },
         "",
@@ -316,6 +318,7 @@ describe("resolveAppModelSelection", () => {
           droid: [],
           kilo: [],
           opencode: [],
+          omp: [],
           pi: [],
         },
         "GPT-5.3 Codex",
@@ -336,6 +339,7 @@ describe("resolveAppModelSelection", () => {
           droid: [],
           kilo: [],
           opencode: [],
+          omp: [],
           pi: [],
         },
         "sonnet",
@@ -356,6 +360,7 @@ describe("resolveAppModelSelection", () => {
           droid: [],
           kilo: [],
           opencode: [],
+          omp: [],
           pi: [],
         },
         "custom/selected-model",
@@ -472,6 +477,7 @@ describe("normalizeStoredAppSettings", () => {
         droidBinaryPath: "droid",
         kiloBinaryPath: "kilo",
         openCodeBinaryPath: "opencode",
+        ompBinaryPath: "omp",
         piBinaryPath: "pi",
       }),
     );
@@ -486,6 +492,7 @@ describe("normalizeStoredAppSettings", () => {
       droidBinaryPath: "",
       kiloBinaryPath: "",
       openCodeBinaryPath: "",
+      ompBinaryPath: "",
       piBinaryPath: "",
     });
     expect(getCustomBinaryPathForProvider(normalized, "opencode")).toBe("");
@@ -517,6 +524,7 @@ describe("getProviderStartOptions", () => {
         openCodeBinaryPath: "",
         openCodeExperimentalWebSockets: false,
         openCodeServerUrl: "",
+        ompBinaryPath: "/usr/local/bin/omp-custom",
         piAgentDir: "",
         piBinaryPath: "",
       }),
@@ -537,6 +545,9 @@ describe("getProviderStartOptions", () => {
       grok: {
         binaryPath: "/usr/local/bin/grok",
       },
+      omp: {
+        binaryPath: "/usr/local/bin/omp-custom",
+      },
     });
   });
 
@@ -556,6 +567,7 @@ describe("getProviderStartOptions", () => {
         openCodeBinaryPath: "",
         openCodeExperimentalWebSockets: false,
         openCodeServerUrl: "",
+        ompBinaryPath: "",
         piAgentDir: "",
         piBinaryPath: "",
       }),
@@ -578,6 +590,7 @@ describe("getProviderStartOptions", () => {
         openCodeBinaryPath: "opencode",
         openCodeExperimentalWebSockets: false,
         openCodeServerUrl: "",
+        ompBinaryPath: "omp",
         piAgentDir: "",
         piBinaryPath: "pi",
       }),
@@ -595,6 +608,7 @@ describe("provider-indexed custom model settings", () => {
     customDroidModels: ["claude-opus-4-8-custom"],
     customKiloModels: ["kilo/kilo-auto/free"],
     customOpenCodeModels: ["openrouter/gpt-oss-120b"],
+    customOmpModels: ["anthropic/custom-omp"],
     customPiModels: ["anthropic/custom-pi"],
   } as const;
 
@@ -608,6 +622,7 @@ describe("provider-indexed custom model settings", () => {
       "droid",
       "kilo",
       "opencode",
+      "omp",
       "pi",
     ]);
   });
@@ -615,6 +630,9 @@ describe("provider-indexed custom model settings", () => {
   it("keeps Droid persistence compatible without advertising unsupported custom slugs", () => {
     expect(CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS.map((config) => config.provider)).not.toContain(
       "droid",
+    );
+    expect(CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS.map((config) => config.provider)).not.toContain(
+      "omp",
     );
   });
 
@@ -626,6 +644,7 @@ describe("provider-indexed custom model settings", () => {
     expect(getCustomModelsForProvider(settings, "droid")).toEqual(["claude-opus-4-8-custom"]);
     expect(getCustomModelsForProvider(settings, "kilo")).toEqual(["kilo/kilo-auto/free"]);
     expect(getCustomModelsForProvider(settings, "opencode")).toEqual(["openrouter/gpt-oss-120b"]);
+    expect(getCustomModelsForProvider(settings, "omp")).toEqual(["anthropic/custom-omp"]);
     expect(getCustomModelsForProvider(settings, "pi")).toEqual(["anthropic/custom-pi"]);
   });
 
@@ -639,6 +658,7 @@ describe("provider-indexed custom model settings", () => {
       customDroidModels: ["droid/default-model"],
       customKiloModels: ["kilo/default-auto"],
       customOpenCodeModels: ["openai/gpt-5"],
+      customOmpModels: ["anthropic/default-omp"],
       customPiModels: ["anthropic/default-pi"],
     } as const;
 
@@ -654,6 +674,7 @@ describe("provider-indexed custom model settings", () => {
     expect(getDefaultCustomModelsForProvider(defaults, "droid")).toEqual(["droid/default-model"]);
     expect(getDefaultCustomModelsForProvider(defaults, "kilo")).toEqual(["kilo/default-auto"]);
     expect(getDefaultCustomModelsForProvider(defaults, "opencode")).toEqual(["openai/gpt-5"]);
+    expect(getDefaultCustomModelsForProvider(defaults, "omp")).toEqual(["anthropic/default-omp"]);
     expect(getDefaultCustomModelsForProvider(defaults, "pi")).toEqual(["anthropic/default-pi"]);
   });
 
@@ -711,6 +732,12 @@ describe("provider-indexed custom model settings", () => {
     });
   });
 
+  it("patches custom models for Oh My Pi", () => {
+    expect(patchCustomModels("omp", ["anthropic/custom-omp"])).toEqual({
+      customOmpModels: ["anthropic/custom-omp"],
+    });
+  });
+
   it("builds a complete provider-indexed custom model record", () => {
     expect(getCustomModelsByProvider(settings)).toEqual({
       codex: ["custom/codex-model"],
@@ -721,6 +748,7 @@ describe("provider-indexed custom model settings", () => {
       droid: ["claude-opus-4-8-custom"],
       kilo: ["kilo/kilo-auto/free"],
       opencode: ["openrouter/gpt-oss-120b"],
+      omp: ["anthropic/custom-omp"],
       pi: ["anthropic/custom-pi"],
     });
   });

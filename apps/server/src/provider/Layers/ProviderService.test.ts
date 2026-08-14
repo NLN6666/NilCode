@@ -370,6 +370,7 @@ function makeProviderServiceLayer(
   options?: Parameters<typeof makeProviderServiceLive>[0],
   providers?: {
     readonly includeRestartRollbackDroid?: boolean;
+    readonly includeOmp?: boolean;
     readonly includePi?: boolean;
   },
 ) {
@@ -377,6 +378,7 @@ function makeProviderServiceLayer(
   const claude = makeFakeCodexAdapter("claudeAgent");
   const antigravity = makeFakeCodexAdapter("antigravity");
   const droid = makeFakeCodexAdapter("droid", { conversationRollback: "restart-session" });
+  const omp = makeFakeCodexAdapter("omp");
   const pi = makeFakeCodexAdapter("pi");
   const registry: typeof ProviderAdapterRegistry.Service = {
     getByProvider: (provider) =>
@@ -388,6 +390,8 @@ function makeProviderServiceLayer(
             ? Effect.succeed(antigravity.adapter)
             : provider === "droid" && providers?.includeRestartRollbackDroid === true
               ? Effect.succeed(droid.adapter)
+              : provider === "omp" && providers?.includeOmp === true
+                ? Effect.succeed(omp.adapter)
               : provider === "pi" && providers?.includePi === true
                 ? Effect.succeed(pi.adapter)
                 : Effect.fail(new ProviderUnsupportedError({ provider })),
@@ -397,6 +401,7 @@ function makeProviderServiceLayer(
         "claudeAgent",
         "antigravity",
         ...(providers?.includeRestartRollbackDroid === true ? (["droid"] as const) : []),
+        ...(providers?.includeOmp === true ? (["omp"] as const) : []),
         ...(providers?.includePi === true ? (["pi"] as const) : []),
       ] as const),
   };
@@ -423,6 +428,7 @@ function makeProviderServiceLayer(
     claude,
     antigravity,
     droid,
+    omp,
     pi,
     layer,
     rawLayer,
@@ -450,6 +456,32 @@ const restartRollbackRouting = makeProviderServiceLayer(undefined, {
   includeRestartRollbackDroid: true,
 });
 const piInteractionRouting = makeProviderServiceLayer(undefined, { includePi: true });
+const ompRouting = makeProviderServiceLayer(undefined, { includeOmp: true });
+
+ompRouting.layer("ProviderServiceLive Oh My Pi routing", (it) => {
+  it.effect("routes an Oh My Pi session start to the OMP adapter", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const session = yield* provider.startSession(asThreadId("thread-omp-routing"), {
+        provider: "omp",
+        threadId: asThreadId("thread-omp-routing"),
+        cwd: "/tmp/project-omp",
+        modelSelection: {
+          provider: "omp",
+          model: "anthropic/claude-sonnet-4-5",
+          options: { thinkingLevel: "high" },
+        },
+        runtimeMode: "approval-required",
+      });
+
+      assert.equal(session.provider, "omp");
+      assert.equal(ompRouting.omp.startSession.mock.calls.length, 1);
+      yield* provider.stopSession({ threadId: asThreadId("thread-omp-routing") });
+      ompRouting.omp.startSession.mockClear();
+      ompRouting.omp.stopSession.mockClear();
+    }),
+  );
+});
 it.effect("ProviderServiceLive keeps persisted resumable sessions on startup", () =>
   Effect.gen(function* () {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "synara-provider-service-"));

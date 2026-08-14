@@ -47,6 +47,23 @@ describe("Claude model selections", () => {
   });
 });
 
+describe("Oh My Pi model selections", () => {
+  it("preserves ACP-native thinking values without using Pi's fixed enum", () => {
+    const options = buildNextProviderOptions("omp", undefined, { thinkingLevel: "adaptive" });
+    expect(buildModelSelection("omp", "anthropic/claude-sonnet-4-5", options)).toEqual({
+      provider: "omp",
+      model: "anthropic/claude-sonnet-4-5",
+      options: { thinkingLevel: "adaptive" },
+    });
+    expect(
+      formatProviderModelOptionName({
+        provider: "omp",
+        slug: "anthropic/claude-sonnet-4-5",
+      }),
+    ).toBe("Claude Sonnet 4.5");
+  });
+});
+
 describe("formatProviderModelOptionName", () => {
   it("humanizes unknown OpenCode runtime model slugs using the model identifier", () => {
     expect(
@@ -163,6 +180,16 @@ describe("mergeDynamicModelOptions", () => {
         dynamicModels: [{ slug: "gpt-5.6-sol", name: "GPT-5.6 Sol" }],
       }),
     ).toEqual([{ slug: "gpt-5.6-sol", name: "GPT-5.6 Sol" }]);
+  });
+
+  it("treats the live Oh My Pi ACP catalog as authoritative", () => {
+    expect(
+      mergeDynamicModelOptions({
+        provider: "omp",
+        staticOptions: [{ slug: "made-up/model", name: "Made up", isCustom: true }],
+        dynamicModels: [{ slug: "anthropic/claude-sonnet-4-5", name: "Claude Sonnet 4.5" }],
+      }),
+    ).toEqual([{ slug: "anthropic/claude-sonnet-4-5", name: "Claude Sonnet 4.5" }]);
   });
 
   it("deduplicates Cursor transport variants by their base model", () => {

@@ -27,6 +27,7 @@ export type ProviderModelPrefetchSettings = Pick<
   | "droidBinaryPath"
   | "kiloBinaryPath"
   | "openCodeBinaryPath"
+  | "ompBinaryPath"
   | "piBinaryPath"
   | "piAgentDir"
 >;
@@ -108,6 +109,12 @@ export function providerModelsPrefetchQueryOptions(input: {
       return providerModelsQueryOptions({
         provider: "opencode",
         binaryPath: settings.openCodeBinaryPath || null,
+        cwd,
+      });
+    case "omp":
+      return providerModelsQueryOptions({
+        provider: "omp",
+        binaryPath: settings.ompBinaryPath || null,
         cwd,
       });
     case "pi":

@@ -712,6 +712,10 @@ export const settings: Settings = {
         label: "OpenAI 响应 WebSocket",
         description: "对受管本地服务器使用 Opencode 实验性的 OpenAI 响应 WebSocket 传输。",
       },
+      ompBinaryPath: {
+        label: "Oh My Pi 可执行文件路径",
+        placeholder: "Oh My Pi 可执行文件路径",
+      },
       piBinaryPath: { label: "Pi 可执行文件路径", placeholder: "Pi 可执行文件路径" },
       piAgentDir: {
         label: "Pi 代理目录",

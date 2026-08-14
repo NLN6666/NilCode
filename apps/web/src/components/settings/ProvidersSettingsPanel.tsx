@@ -81,6 +81,7 @@ type ProviderInstallTextKey =
   | "kiloServerUrl"
   | "openCodeBinaryPath"
   | "openCodeServerUrl"
+  | "ompBinaryPath"
   | "piBinaryPath"
   | "piAgentDir";
 type ProviderInstallPasswordKey = "kiloServerPassword" | "openCodeServerPassword";
@@ -324,6 +325,20 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
         kind: "boolean",
         settingsKey: "openCodeExperimentalWebSockets",
         copy: (c) => c.fields.openCodeExperimentalWebSockets,
+      },
+    ],
+  },
+  {
+    provider: "omp",
+    docs: [
+      { labelKey: "install", href: "https://github.com/can1357/oh-my-pi" },
+      { labelKey: "config", href: "https://github.com/can1357/oh-my-pi" },
+    ],
+    fields: [
+      {
+        kind: "text",
+        settingsKey: "ompBinaryPath",
+        copy: (c) => ({ ...c.fields.ompBinaryPath, description: binaryHint(c, "omp") }),
       },
     ],
   },

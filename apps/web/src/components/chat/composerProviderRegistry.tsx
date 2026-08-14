@@ -20,6 +20,7 @@ import {
   normalizeAntigravityModelOptions,
   normalizeClaudeModelOptions,
   normalizeOpenCodeModelOptions,
+  normalizeOhMyPiModelOptions,
   normalizePiModelOptions,
   resolveLabeledOptionValue,
   trimOrNull,
@@ -237,6 +238,12 @@ function getProviderStateFromCapabilities(
       normalizedOptions = normalizePiModelOptions(providerOptions);
       break;
     }
+    case "omp": {
+      const providerOptions = modelOptions?.omp;
+      rawEffort = trimOrNull(providerOptions?.thinkingLevel);
+      normalizedOptions = normalizeOhMyPiModelOptions(providerOptions);
+      break;
+    }
   }
 
   const draftEffort = trimOrNull(rawEffort);
@@ -313,6 +320,11 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
     getState: (input) => getProviderStateFromCapabilities(input),
     renderTraitsMenuContent: (input) => renderTraitsMenuContentForProvider("opencode", input),
     renderTraitsPicker: (input) => renderTraitsPickerForProvider("opencode", input),
+  },
+  omp: {
+    getState: (input) => getProviderStateFromCapabilities(input),
+    renderTraitsMenuContent: (input) => renderTraitsMenuContentForProvider("omp", input),
+    renderTraitsPicker: (input) => renderTraitsPickerForProvider("omp", input),
   },
   pi: {
     getState: (input) => getProviderStateFromCapabilities(input),

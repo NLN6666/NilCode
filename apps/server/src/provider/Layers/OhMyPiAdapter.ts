@@ -153,6 +153,7 @@ export interface OhMyPiAdapterLiveOptions {
     input: OhMyPiAcpRuntimeInput,
   ) => Effect.Effect<AcpSessionRuntimeShape, import("../acp/AcpErrors.ts").AcpError, Scope.Scope>;
   readonly discoveryCacheMs?: number;
+  readonly discoveryTimeoutMs?: number;
 }
 
 function parseResumeCursor(raw: unknown): { sessionId: string } | undefined {
@@ -209,6 +210,13 @@ function cacheSet<T>(cache: Map<string, T>, key: string, value: T): void {
 function discoveryCacheKey(binaryPath: string | undefined, cwd: string): string {
   const resolved = resolveOhMyPiCliBinaryPath(binaryPath);
   return `${resolved}\u0000${executableIdentity(resolved) ?? "identity-unavailable"}\u0000${cwd}`;
+}
+
+function effectiveDiscoveryBinaryPath(
+  inputBinaryPath: string | undefined,
+  settingsBinaryPath: string | undefined,
+): string | undefined {
+  return inputBinaryPath?.trim() || settingsBinaryPath?.trim() || undefined;
 }
 
 export function makeOhMyPiAdapter(
@@ -1103,7 +1111,7 @@ export function makeOhMyPiAdapter(
                 cause,
               ),
         ),
-        Effect.timeoutOption(OMP_DISCOVERY_TIMEOUT_MS),
+        Effect.timeoutOption(options?.discoveryTimeoutMs ?? OMP_DISCOVERY_TIMEOUT_MS),
         Effect.flatMap(
           Option.match({
             onNone: () =>
@@ -1152,7 +1160,10 @@ export function makeOhMyPiAdapter(
               issue: "cwd is required and no server cwd fallback is available.",
             });
           }
-          const key = discoveryCacheKey(input.binaryPath, cwd);
+          const key = discoveryCacheKey(
+            effectiveDiscoveryBinaryPath(input.binaryPath, settings.binaryPath),
+            cwd,
+          );
           const cached = modelCache.get(key);
           if (input.forceReload !== true && cached && cached.expiresAt > Date.now()) {
             return { ...cached.result, cached: true };
@@ -1177,7 +1188,10 @@ export function makeOhMyPiAdapter(
               issue: "cwd is required and no server cwd fallback is available.",
             });
           }
-          const key = discoveryCacheKey(input.binaryPath, cwd);
+          const key = discoveryCacheKey(
+            effectiveDiscoveryBinaryPath(input.binaryPath, settings.binaryPath),
+            cwd,
+          );
           const cached = commandCache.get(key);
           if (input.forceReload !== true && cached && cached.expiresAt > Date.now()) {
             return { ...cached.result, cached: true };

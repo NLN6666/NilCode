@@ -241,3 +241,14 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - W4 permission/elicitation 测试曾因在 PubSub publish 后才建立一次性订阅而等待 90 秒超时。按本文件既有 Effect fork 记录，改为在 session/turn 前启动 scoped 持续 consumer，并将调试超时缩短到 10 秒；最终 8 项 Adapter focused tests 通过，覆盖 new/resume/load、prompt/cancel、permission、elicitation、未知 extension、process exit、stop/stopAll、2048 burst 以及 discovery cache/cleanup。
 - 唯一一次独立审查中，Web/contracts 核验无 finding；server 核验发现标准 ACP `terminal/create` 直接合并 `process.env` 与 agent 参数，会把 `SYNARA_AUTH_TOKEN` 等控制面权限泄漏给 terminal descendants。回归测试先复现 `secret: "must-not-leak"` 红灯，再让 terminal 环境统一经过 `buildProviderChildEnvironment({ provider: "acp" })` 清洗，保留普通 agent 请求变量而剥离 `SYNARA_*`/native launcher capabilities；修复后 3 项 client-capability 测试通过。
 - 审查修复后的 fresh focused verification：contracts 50/50、shared 108/108、server OMP ACP/client-capability/adapter/registry/discovery/service 153/153、OMP health 9/9、Web settings/provider/composer/catalog 174/174。`git diff --check` 无 whitespace error（Git 仅提示 Windows checkout 的 LF→CRLF warning）。按本轮明确约束未运行 `bun fmt`、`bun lint`、`bun typecheck`，也未把隔离 Synara UI 的 12 项真实手工场景伪称为已执行。
+
+---
+
+## 31. OMP Phase 1 W5/W6 集成（2026-08-14）
+
+- 独立 W5 核验发现 Adapter discovery cache key 只读取请求级 `binaryPath`，会忽略 Adapter settings 的 configured binary。现已统一按请求 override → Adapter settings → `omp` 生成 resolved executable identity，并新增配置级 binary 文件大小变化、短 TTL、force reload、timeout 和启动失败 cleanup 测试；models/commands 仍共用一把 lock 和一次 disposable ACP session。
+- W6 将 `OhMyPiAdapter` 注入默认 registry 与 server runtime layer，并沿用与其他 gateway-capable provider 相同的 Agent Gateway credentials layer；ProviderDiscovery 与 ProviderService 各有 OMP routing focused test。
+- Web persisted settings、custom model recovery map、runtime `omp-acp` catalog、composer registry/traits、icon、Provider card、PluginLibrary capability map、binary-path confirmation、prefetch 和 browser fixture 均新增显式 `omp` entry。OMP runtime catalog 是 authoritative；无 discovery 结果时保留当前/已存 custom slug 作为可恢复路径，但不提供会制造无效 ACP model 值的 custom-model editor。
+- 首次运行扩展后的 `appSettings.test.ts` 有 2 个 expected-map 失败：旧断言缺少新增 `omp` provider/config；补齐 exhaustive expected values。ProviderService OMP routing 测试首次遗漏必需 `threadId`，修正后第二次误断言 `providerName` 而实际 `ProviderSession` 字段为 `provider`；均只修正测试输入/断言，不涉及运行时代码绕过。
+- W5/W6 focused 验证通过：server Adapter/registry/discovery/service 共 108 项，Web settings/icon/composer/catalog/model/options/order/prefetch 共 174 项。计划指定的完整 server wiring 命令为 202 通过、28 失败；OMP 的 8 个 health 场景全部通过，失败来自本机已安装 Codex/Claude/OpenCode/Pi/Antigravity 改变旧 mock 的裸命令假设，以及 2 个既有 executable-bit/PATH 环境断言。
+- 计划指定的 ACP suite 为 63 通过、1 失败；单独重跑仍失败的是既有 `AcpSdkConformance` teardown 断言（预期 `{ code: 0, signal: null }`，Windows/Bun 实际 `{ code: null, signal: "SIGTERM" }`）。该测试、`AcpSessionRuntime` 与 `AcpJsonRpcConnection` 相对基线 `3e6ad7d16` 均无差异，且测试不导入 OMP 新增的标准 client handlers，因此未修改既有 conformance 断言来隐藏环境差异。
