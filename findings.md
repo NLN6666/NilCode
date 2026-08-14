@@ -201,3 +201,11 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 3. **枚举漏了 Windows 惯用法。** `harnessPolicy.ts:25` 点名了 `&`、`nohup`、`start /b`、run-in-background flag，**唯独没有 PowerShell 的 `Start-Process`** —— 而这正是 Windows 上 Agent 的首选写法。
 
 **次生缺口（本次不触发，但会咬别的 provider）：** `takeSynaraHarnessPolicyForSession`（`harnessPolicy.ts:96`）只判断 `harnessPolicyDelivered` 布尔值，**不比对 `SYNARA_HARNESS_POLICY_VERSION`**。claudeAgent 走 `systemPrompt.append`（`ClaudeAdapter.ts:5257`）每次会话都带，不受影响；codex / cursor / grok / droid / pi / opencode / antigravity 走一次性投递，策略版本升级后，同一 server 进程里已开着的会话永远收不到新规则。
+---
+
+## 28. OMP ACP Provider 调研（2026-08-14）
+
+- 当前 OMP `main` 为 `17.3.3` / `ad318c7`。旧 RPC 文档中“host defaults 会复位 `memory.*` / `advisor.*`”不能直接用于当前设计：OMP `16.1.12` 已修复 RPC/ACP 覆盖显式 global/project/`--config` 配置的问题。
+- OMP ACP `initialize` 只广告标准 session/MCP/prompt 能力，session config options 只提供 mode/model/thinking；ACP agent 与 event mapper 没有 Advisor、Auto-Learn、Memory 的专属 method/update，Launch 只会作为普通 tool activity。行为可运行不等于产品级可观察。
+- Synara 已有自己的 Advisor 与从 OMP 移植增强的 daemon/`@Launch`。OMP provider 若同时启用两套 Advisor 或两套进程 registry，会产生重复 steer、状态分叉与所有权不明；正式设计必须加入互斥仲裁。
+- 调研过程没有可用的 LCC MCP，按仓库规则降级到 FastCtx 并抽查当前文件。后台探子按 research skill 被要求生成调研文件，但只返回了线索而未落盘；主代理复核一手资料后创建 `docs/research/2026-08-14-oh-my-pi-acp-provider.md`。
