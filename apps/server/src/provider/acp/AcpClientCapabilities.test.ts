@@ -58,4 +58,35 @@ describe("standard ACP client capabilities", () => {
 
     await Effect.runPromise(Scope.close(scope, Exit.void));
   });
+
+  it("strips Synara control-plane authority from ACP terminal descendants", async () => {
+    const scope = await Effect.runPromise(Scope.make("sequential"));
+    const handlers = await Effect.runPromise(makeStandardAcpClientHandlers(scope));
+    try {
+      const created = await Effect.runPromise(
+        handlers.createTerminal({
+          sessionId: "s",
+          command: process.execPath,
+          args: [
+            "-e",
+            "process.stdout.write(JSON.stringify({ allowed: process.env.OMP_PHASE1_CHILD_VALUE, secret: process.env.SYNARA_AUTH_TOKEN }))",
+          ],
+          env: [
+            { name: "OMP_PHASE1_CHILD_VALUE", value: "allowed" },
+            { name: "SYNARA_AUTH_TOKEN", value: "must-not-leak" },
+          ],
+        }),
+      );
+
+      await Effect.runPromise(
+        handlers.terminalWaitForExit({ sessionId: "s", terminalId: created.terminalId }),
+      );
+      const output = await Effect.runPromise(
+        handlers.terminalOutput({ sessionId: "s", terminalId: created.terminalId }),
+      );
+      expect(JSON.parse(output.output)).toEqual({ allowed: "allowed" });
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void));
+    }
+  });
 });
