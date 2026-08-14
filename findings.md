@@ -252,3 +252,12 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 首次运行扩展后的 `appSettings.test.ts` 有 2 个 expected-map 失败：旧断言缺少新增 `omp` provider/config；补齐 exhaustive expected values。ProviderService OMP routing 测试首次遗漏必需 `threadId`，修正后第二次误断言 `providerName` 而实际 `ProviderSession` 字段为 `provider`；均只修正测试输入/断言，不涉及运行时代码绕过。
 - W5/W6 focused 验证通过：server Adapter/registry/discovery/service 共 108 项，Web settings/icon/composer/catalog/model/options/order/prefetch 共 174 项。计划指定的完整 server wiring 命令为 202 通过、28 失败；OMP 的 8 个 health 场景全部通过，失败来自本机已安装 Codex/Claude/OpenCode/Pi/Antigravity 改变旧 mock 的裸命令假设，以及 2 个既有 executable-bit/PATH 环境断言。
 - 计划指定的 ACP suite 为 63 通过、1 失败；单独重跑仍失败的是既有 `AcpSdkConformance` teardown 断言（预期 `{ code: 0, signal: null }`，Windows/Bun 实际 `{ code: null, signal: "SIGTERM" }`）。该测试、`AcpSessionRuntime` 与 `AcpJsonRpcConnection` 相对基线 `3e6ad7d16` 均无差异，且测试不导入 OMP 新增的标准 client handlers，因此未修改既有 conformance 断言来隐藏环境差异。
+---
+
+## 32. OMP Phase 2 启动与配置契约实测（2026-08-14）
+
+- 派发基线门禁通过：`dev` / `4aab0ef6c23ebdf56b02f58e0f01769521691a41`，工作树干净，Phase 1 五个提交与派发事实一致；当前仍无 LCC MCP，按规则使用 FastCtx。
+- 本机 `omp/17.3.2` 的帮助声明 `--config` 可重复。临时 overlay 实测 `omp acp --config <path>` 与 `omp --config <path> acp` 均可启动；不存在路径明确报 `Config overlay not found`。采用 canonical `["acp", "--config", path]`，不依赖 shell quoting。
+- 直接以 `omp config get ... --config` 探测失败：`config` 子命令只接受自己的 `--json`，拒绝 global `--config`。随后改用官方源码公开的 `Settings.loadReadOnly({ configFiles })` 做只读有效配置核验，没有写全局配置。
+- 第一次 `bun -e` 尝试把环境变量用于静态 `import ... from process.env`，解析器报错；改为绝对 `file:///` dynamic import 后成功。两个 overlay 的顺序实测证明后者 deep-merge 覆盖同路径、保留未覆盖 sibling。
+- 官方 schema 确认 `launch.enabled` 默认 true、`advisor.enabled` 默认 false、`memory.backend` 为 `off|local|hindsight|mnemopi` 且默认 off、`autolearn.enabled/autoContinue` 默认 false、`modelRoles` 为字符串 record。Advisor 源码明确 enabled 但缺失可解析 advisor role 时 inactive，因此 Phase 2 不猜当前模型 fallback，只投影可恢复 degraded warning。
