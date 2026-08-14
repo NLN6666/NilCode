@@ -273,6 +273,47 @@ export function makeOhMyPiAdapter(
         : Effect.fail(new ProviderAdapterSessionNotFoundError({ provider: PROVIDER, threadId }));
     };
 
+    const waitForQueuedEvents = (ctx: OhMyPiSessionContext) =>
+      Effect.gen(function* () {
+        const target = yield* ctx.acp.sessionUpdatesEnqueuedCount;
+        const result = yield* Effect.tryPromise({
+          try: (signal) =>
+            waitForOmpTurnSettle({
+              targetEnqueued: target,
+              getSnapshot: () => ({
+                processed: ctx.sessionUpdatesProcessed,
+                activityVersion: ctx.sessionActivityVersion,
+                aborted: ctx.pendingTurnInterrupted || ctx.stopped,
+                processExited: ctx.processExited,
+              }),
+              quietWindowMs: options?.settleQuietWindowMs ?? OMP_TURN_DRAIN_QUIET_WINDOW_MS,
+              maxWaitMs: options?.settleMaxWaitMs ?? OMP_TURN_DRAIN_MAX_WAIT_MS,
+              pollMs: options?.settlePollMs ?? OMP_TURN_DRAIN_POLL_MS,
+              signal,
+            }),
+          catch: (cause) => cause,
+        }).pipe(Effect.orDie);
+        if (result.outcome === "timed-out") {
+          yield* publish(ctx.lifecycleGeneration, {
+            type: "runtime.warning",
+            ...(yield* makeEventStamp()),
+            provider: PROVIDER,
+            threadId: ctx.threadId,
+            ...(ctx.activeTurnId ? { turnId: ctx.activeTurnId } : {}),
+            payload: {
+              message:
+                "Oh My Pi ACP did not become quiet before the bounded turn-settle timeout; Synara continued without claiming Auto-Learn capture completed.",
+              detail: {
+                waitedMs: result.waitedMs,
+                queueDrained: result.queueDrained,
+                typedDrainAvailable: false,
+              },
+            },
+          });
+        }
+        return result;
+      });
+
     const stopSessionInternal = (
       ctx: OhMyPiSessionContext,
       stopOptions?: {
@@ -284,6 +325,7 @@ export function makeOhMyPiAdapter(
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
           if (!ctx.stopped) {
+            if (stopOptions?.fromProcessWatcher !== true) yield* waitForQueuedEvents(ctx);
             ctx.stopped = true;
             sessions.delete(ctx.threadId);
             yield* settleAcpPendingApprovalsAsCancelled(ctx.pendingApprovals);
@@ -422,47 +464,6 @@ export function makeOhMyPiAdapter(
           }),
         ),
       );
-
-    const waitForQueuedEvents = (ctx: OhMyPiSessionContext) =>
-      Effect.gen(function* () {
-        const target = yield* ctx.acp.sessionUpdatesEnqueuedCount;
-        const result = yield* Effect.tryPromise({
-          try: (signal) =>
-            waitForOmpTurnSettle({
-              targetEnqueued: target,
-              getSnapshot: () => ({
-                processed: ctx.sessionUpdatesProcessed,
-                activityVersion: ctx.sessionActivityVersion,
-                aborted: ctx.pendingTurnInterrupted || ctx.stopped,
-                processExited: ctx.processExited,
-              }),
-              quietWindowMs: options?.settleQuietWindowMs ?? OMP_TURN_DRAIN_QUIET_WINDOW_MS,
-              maxWaitMs: options?.settleMaxWaitMs ?? OMP_TURN_DRAIN_MAX_WAIT_MS,
-              pollMs: options?.settlePollMs ?? OMP_TURN_DRAIN_POLL_MS,
-              signal,
-            }),
-          catch: (cause) => cause,
-        }).pipe(Effect.orDie);
-        if (result.outcome === "timed-out") {
-          yield* publish(ctx.lifecycleGeneration, {
-            type: "runtime.warning",
-            ...(yield* makeEventStamp()),
-            provider: PROVIDER,
-            threadId: ctx.threadId,
-            ...(ctx.activeTurnId ? { turnId: ctx.activeTurnId } : {}),
-            payload: {
-              message:
-                "Oh My Pi ACP did not become quiet before the bounded turn-settle timeout; Synara continued without claiming Auto-Learn capture completed.",
-              detail: {
-                waitedMs: result.waitedMs,
-                queueDrained: result.queueDrained,
-                typedDrainAvailable: false,
-              },
-            },
-          });
-        }
-        return result;
-      });
 
     const startSession: OhMyPiAdapterShape["startSession"] = (input) =>
       withThreadLock(

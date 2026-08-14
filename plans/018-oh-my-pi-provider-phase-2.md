@@ -1,6 +1,6 @@
 # Plan 018 — Oh My Pi Provider Phase 2（宿主能力仲裁）
 
-- 状态：IN PROGRESS
+- 状态：IMPLEMENTED — INDEPENDENT REVIEW PENDING；typed lifecycle guarantee 命中 STOP 边界
 - 创建：2026-08-14
 - 基线：`dev` / `4aab0ef6c23ebdf56b02f58e0f01769521691a41`
 - 前置提交：`3e95adc30`、`e51d0f109`、`e2af468fc`、`e23e6b981`、`4aab0ef6c`
@@ -160,3 +160,12 @@ OMP 官方实现明确：Advisor enabled 但 `modelRoles.advisor` 无法解析�
 3. `feat(server): arbitrate Oh My Pi host capabilities`
 4. `feat(web): show Oh My Pi native capability policy`
 5. 审查修复若有真实代码变化，单独 scoped commit；否则不制造空提交。
+
+## 11. 实施与真实验证记录
+
+- `OmpControlPlane`、OMP-only status contract、overlay spawn、ProviderHealth 投影、Advisor/Launch server arbitration、bounded quiet settle 与 Web policy disclosure 已落地。
+- 真实 `omp/17.3.2` 通过官方 `Settings.loadReadOnly` 读取固定 overlay：Launch/Advisor/Auto-Learn/autoContinue 均为 true，Memory 为用户显式 local，Advisor role 来自 global config。全局 config 验证前后 SHA-256、size、mtime 不变。
+- 标准 ACP runtime 完成 initialize/auth/session-new；stable protocolVersion=1、auth=agent、default/plan、mode/model/thinking 均可用。5 次只读 tool-call 回合以 `end_turn` 返回，session scope 正常关闭。
+- prompt lifecycle 实测中，ACP `session/prompt` response 后约 2ms 才收到 canonical `AssistantItemCompleted`；5 秒 late window 没有 Advisor/Auto-Learn typed event。OMP log 可见 `agent_end`，Advisor sidecar 在 session close 时为 aborted；Auto-Learn 使用 detached private capture runner，stock ACP 没有 capture-start/complete/drain schema，也没有可靠持久化完成信号。
+- 因而命中 STOP：Phase 2 保留 configured-policy 与 bounded queued/quiet/process-aware fallback，但不保证或宣称 Advisor delivery/Auto-Learn capture 在关闭前完成。可靠 typed completion/drain 必须留给 Phase 3 或 OMP upstream 版本化扩展。
+- 隔离 Synara home `D:\Codes\NilCode\.synara-omp-phase2-verify`、server 58182、web 10554、`SYNARA_AUTH_TOKEN` unset，先 dry-run 后启动；`/health` ready、Web 200。停止后两端口 listener=0、OMP ACP root=0，隔离目录已按固定绝对路径清理。
