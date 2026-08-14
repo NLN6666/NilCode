@@ -46,6 +46,10 @@ describe("providerStartOptionsFromServerSettings", () => {
           binaryPath: "",
           serverUrl: "",
         },
+        omp: {
+          ...DEFAULT_SERVER_SETTINGS.providers.omp,
+          binaryPath: "",
+        },
         pi: {
           ...DEFAULT_SERVER_SETTINGS.providers.pi,
           binaryPath: "",
@@ -72,6 +76,7 @@ describe("providerStartOptionsFromServerSettings", () => {
     expect(providerOptions.droid).toEqual({});
     expect(providerOptions.kilo).toEqual({});
     expect(providerOptions.opencode).toEqual({ experimentalWebSockets: false });
+    expect(providerOptions.omp).toEqual({});
     expect(providerOptions.pi).toEqual({});
   });
 
@@ -91,6 +96,10 @@ describe("providerStartOptionsFromServerSettings", () => {
           serverUrl: "http://127.0.0.1:4096",
           experimentalWebSockets: true,
         },
+        omp: {
+          ...DEFAULT_SERVER_SETTINGS.providers.omp,
+          binaryPath: "C:\\Tools\\OMP\\omp.exe",
+        },
       },
     };
 
@@ -105,5 +114,6 @@ describe("providerStartOptionsFromServerSettings", () => {
       serverUrl: "http://127.0.0.1:4096",
       experimentalWebSockets: true,
     });
+    expect(providerOptions.omp).toEqual({ binaryPath: "C:\\Tools\\OMP\\omp.exe" });
   });
 });

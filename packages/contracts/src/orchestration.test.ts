@@ -190,6 +190,28 @@ it.effect("preserves Pi model selections when decoding model selections", () =>
   }),
 );
 
+it.effect("preserves Oh My Pi runtime model selections and start options", () =>
+  Effect.gen(function* () {
+    const selection = yield* decodeModelSelection({
+      provider: "omp",
+      model: "openai-codex/gpt-5.6-sol",
+      options: { thinkingLevel: "max" },
+    });
+    const startOptions = yield* decodeProviderStartOptions({
+      omp: { binaryPath: "C:\\Tools\\OMP\\omp.exe" },
+    });
+
+    assert.deepStrictEqual(selection, {
+      provider: "omp",
+      model: "openai-codex/gpt-5.6-sol",
+      options: { thinkingLevel: "max" },
+    });
+    assert.deepStrictEqual(startOptions, {
+      omp: { binaryPath: "C:\\Tools\\OMP\\omp.exe" },
+    });
+  }),
+);
+
 it.effect("preserves Antigravity effort options separately from the model", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeModelSelection({

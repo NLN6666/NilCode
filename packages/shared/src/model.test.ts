@@ -7,6 +7,7 @@ import {
   DEFAULT_MODEL_BY_PROVIDER,
   MODEL_OPTIONS,
   MODEL_OPTIONS_BY_PROVIDER,
+  PROVIDER_DISPLAY_NAMES,
   CODEX_REASONING_EFFORT_OPTIONS,
   GROK_REASONING_EFFORT_OPTIONS,
 } from "@synara/contracts";
@@ -126,6 +127,14 @@ describe("resolveModelSlug", () => {
     expect(getDefaultModel()).toBe(DEFAULT_MODEL);
     expect(getModelOptions()).toEqual(MODEL_OPTIONS);
     expect(getModelOptions("claudeAgent")).toEqual(MODEL_OPTIONS_BY_PROVIDER.claudeAgent);
+  });
+});
+
+describe("Oh My Pi model metadata", () => {
+  it("uses runtime discovery without a fabricated static model or default", () => {
+    expect(MODEL_OPTIONS_BY_PROVIDER.omp).toEqual([]);
+    expect("omp" in DEFAULT_MODEL_BY_PROVIDER).toBe(false);
+    expect(PROVIDER_DISPLAY_NAMES.omp).toBe("Oh My Pi");
   });
 });
 

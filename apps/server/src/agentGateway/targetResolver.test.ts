@@ -53,6 +53,52 @@ function makeVariantDescriptor(slug: string): ProviderModelDescriptor {
 }
 
 describe("agent gateway target resolver", () => {
+  it.effect("uses Oh My Pi runtime discovery without inventing a default model", () =>
+    Effect.gen(function* () {
+      const ompDiscovery = {
+        listModels: () =>
+          Effect.succeed({
+            source: "omp-acp",
+            models: [
+              {
+                slug: "fixture/model-a",
+                name: "Fixture Model A",
+                optionDescriptors: [
+                  {
+                    id: "thinkingLevel",
+                    label: "Thinking",
+                    type: "select" as const,
+                    options: [
+                      { id: "high", label: "High" },
+                      { id: "max", label: "Max" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }),
+      } as unknown as ProviderDiscoveryServiceShape;
+      const catalog = {
+        provider: "omp" as const,
+        defaultModel: null,
+        enabled: true,
+        available: true,
+        models: (yield* ompDiscovery.listModels({ provider: "omp" })).models,
+      };
+      const guidance = agentGatewayTargetOptionGuidance(catalog);
+
+      assert.deepEqual(guidance.exampleTarget, {
+        provider: "omp",
+        model: "fixture/model-a",
+        options: { thinkingLevel: "high" },
+      });
+      assert.deepEqual(
+        yield* resolveAgentGatewayTarget({ target: guidance.exampleTarget!, discovery: ompDiscovery }),
+        guidance.exampleTarget,
+      );
+    }),
+  );
+
   it.effect("builds examples from the exact model restrictions and preserves option types", () =>
     Effect.gen(function* () {
       const codexCatalog = {

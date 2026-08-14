@@ -88,6 +88,13 @@ export const PROVIDER_DESCRIPTORS = [
     usage: null,
   },
   {
+    kind: "omp",
+    displayName: PROVIDER_DISPLAY_NAMES.omp,
+    available: true,
+    supportsNativeTurnSteering: false,
+    usage: null,
+  },
+  {
     kind: "pi",
     displayName: PROVIDER_DISPLAY_NAMES.pi,
     available: true,

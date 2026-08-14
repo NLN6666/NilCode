@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { ProviderListModelsResult } from "./providerDiscovery";
+import { ProviderListModelsInput, ProviderListModelsResult } from "./providerDiscovery";
 
 const decodeProviderListModelsResult = Schema.decodeUnknownSync(ProviderListModelsResult);
 
@@ -27,5 +27,17 @@ describe("ProviderListModelsResult", () => {
     expect(result.models[0]?.resolvedModel).toBe("gpt-5.6-luna-2026-07-01");
     expect(result.models[1]?.description).toBeUndefined();
     expect(result.models[1]?.resolvedModel).toBeUndefined();
+  });
+});
+
+describe("ProviderListModelsInput", () => {
+  it("accepts Oh My Pi runtime discovery", () => {
+    expect(
+      Schema.decodeUnknownSync(ProviderListModelsInput)({
+        provider: "omp",
+        binaryPath: "omp",
+        cwd: "C:\\workspace",
+      }),
+    ).toEqual({ provider: "omp", binaryPath: "omp", cwd: "C:\\workspace" });
   });
 });

@@ -27,6 +27,7 @@ describe("ServerSettingsService", () => {
 
     expect(settings.providers.codex.binaryPath).toBe("codex");
     expect(settings.providers.grok.binaryPath).toBe("grok");
+    expect(settings.providers.omp).toEqual({ enabled: true, binaryPath: "omp", customModels: [] });
     expect(settings.defaultThreadEnvMode).toBe("local");
     expect(settings.enableProviderUpdateChecks).toBe(true);
   });

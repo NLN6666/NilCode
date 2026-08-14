@@ -80,6 +80,12 @@ export const PiServerProviderSettings = Schema.Struct({
 });
 export type PiServerProviderSettings = typeof PiServerProviderSettings.Type;
 
+export const OmpServerProviderSettings = Schema.Struct({
+  ...ProviderSettingsBase,
+  binaryPath: StringSetting.pipe(Schema.withDecodingDefault(() => "omp")),
+});
+export type OmpServerProviderSettings = typeof OmpServerProviderSettings.Type;
+
 const DisabledSkillNames = Schema.Array(Schema.String.check(Schema.isMaxLength(256))).pipe(
   Schema.withDecodingDefault(() => []),
 );
@@ -131,6 +137,7 @@ export const ServerSettings = Schema.Struct({
     droid: DroidServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     kilo: KiloServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     opencode: OpenCodeServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+    omp: OmpServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     pi: PiServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   }).pipe(Schema.withDecodingDefault(() => ({}))),
   skills: SkillsServerSettings.pipe(Schema.withDecodingDefault(() => ({}))),
@@ -206,6 +213,7 @@ export const ServerSettingsPatch = Schema.Struct({
           experimentalWebSockets: Schema.optionalKey(Schema.Boolean),
         }),
       ),
+      omp: Schema.optionalKey(Schema.Struct(ProviderSettingsBasePatch)),
       pi: Schema.optionalKey(
         Schema.Struct({
           ...ProviderSettingsBasePatch,
