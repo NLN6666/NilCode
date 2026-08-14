@@ -33,6 +33,7 @@ import { useMessages } from "../../i18n/context";
 import type { Messages } from "../../i18n/locales/en";
 import { CentralIcon } from "~/lib/central-icons";
 import { DownloadIcon, ExternalLinkIcon, Loader2Icon } from "~/lib/icons";
+import { projectOmpProviderPolicy, type OmpPolicyFeatureId } from "~/lib/ompProviderPolicy";
 import {
   serverConfigQueryOptions,
   serverQueryKeys,
@@ -646,6 +647,69 @@ function ProviderInstallFieldControl(props: {
   );
 }
 
+function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus | undefined }) {
+  const m = useMessages();
+  const projection = projectOmpProviderPolicy(props.status);
+  if (!projection) return null;
+  const copy = m.settings.providers.tools.ompPolicy;
+  const featureLabels: Record<OmpPolicyFeatureId, string> = {
+    launch: copy.launch,
+    advisor: copy.advisor,
+    memory: copy.memory,
+    autoLearn: copy.autoLearn,
+  };
+
+  return (
+    <div className={cn(SETTINGS_OUTLINED_SURFACE_CLASS_NAME, "space-y-3 p-3 text-xs")}>
+      <div className="font-medium text-foreground">{copy.title}</div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {projection.features.map((feature) => {
+          const value =
+            feature.id === "advisor" && projection.advisorState === "degraded"
+              ? copy.degraded
+              : feature.id === "memory"
+                ? projection.memoryBackend
+                : feature.id === "autoLearn"
+                  ? copy.autoLearnDetail
+                  : copy.enabled;
+          return (
+            <div key={feature.id} className="flex items-start justify-between gap-3">
+              <span className="text-muted-foreground">{featureLabels[feature.id]}</span>
+              <span className="text-right text-foreground">
+                {value} · {copy.owner}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="space-y-1 text-muted-foreground">
+        <div>{copy.sharedHome}</div>
+        <div>
+          {copy.memoryEffective}: <span className="text-foreground">{projection.memoryBackend}</span>{" "}
+          · {projection.memorySource === "user-config" ? copy.memoryUser : copy.memoryFallback}
+        </div>
+        {projection.advisorModelRole ? (
+          <div>
+            {copy.advisorRole}: <code className="text-foreground">{projection.advisorModelRole}</code>
+          </div>
+        ) : null}
+        <div>{copy.autoLearnCost}</div>
+        <div>
+          {copy.overlay}: <code className="break-all text-foreground">{projection.overlayPath}</code>
+        </div>
+      </div>
+      {projection.advisorWarning ? (
+        <div className="rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-2 text-amber-950 dark:text-amber-100">
+          {projection.advisorWarning}
+        </div>
+      ) : null}
+      {projection.typedObservabilityPending ? (
+        <div className="text-muted-foreground">{copy.typedBoundary}</div>
+      ) : null}
+    </div>
+  );
+}
+
 function ProviderToolRow(props: {
   config: ProviderInstallSettings;
   open: boolean;
@@ -776,6 +840,9 @@ function ProviderToolRow(props: {
                   updateSettings={props.updateSettings}
                 />
               ))}
+              {props.config.provider === "omp" ? (
+                <OmpProviderPolicyDetails status={props.providerStatus} />
+              ) : null}
             </div>
           </div>
         </CollapsiblePanel>
