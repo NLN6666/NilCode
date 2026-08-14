@@ -69,7 +69,7 @@ const EMPTY_PROVIDER_AGENTS: ReadonlyArray<ProviderAgentDescriptor> = [];
 export function useProviderModelCatalog(input: {
   selectedProvider: ProviderKind;
   /**
-   * Enables discovery for the on-demand providers (cursor/grok/droid/kilo/opencode/pi)
+   * Enables discovery for the on-demand providers (cursor/grok/droid/kilo/opencode/omp/pi)
    * even when they are not selected — pass the picker's open state so their lists
    * are warm by the time the user browses them.
    */
@@ -130,6 +130,7 @@ export function useProviderModelCatalog(input: {
   const droidModelDiscoveryEnabled = shouldDiscoverProvider("droid", false);
   const kiloModelDiscoveryEnabled = shouldDiscoverProvider("kilo");
   const openCodeModelDiscoveryEnabled = shouldDiscoverProvider("opencode");
+  const ompModelDiscoveryEnabled = shouldDiscoverProvider("omp");
   const piModelDiscoveryEnabled = shouldDiscoverProvider("pi");
 
   const claudeDynamicModelsQuery = useQuery(
@@ -203,6 +204,14 @@ export function useProviderModelCatalog(input: {
       enabled: piModelDiscoveryEnabled,
     }),
   );
+  const ompDynamicModelsQuery = useQuery(
+    providerModelsQueryOptions({
+      provider: "omp",
+      binaryPath: settings.ompBinaryPath || null,
+      cwd: discoveryCwd,
+      enabled: ompModelDiscoveryEnabled,
+    }),
+  );
 
   // Agent/mode discovery (kilo/opencode "Mode"/"Agent" picker, claude/codex subagents).
   // cwd matters here: project-level `.claude/agents` / `.codex/agents` definitions
@@ -239,7 +248,7 @@ export function useProviderModelCatalog(input: {
   );
 
   // Only the providers the server maps onto the cloud catalog are queried;
-  // router-style runtimes (cursor/droid/kilo/opencode/pi) get their roster from
+  // router-style runtimes (cursor/droid/kilo/opencode/omp/pi) get their roster from
   // their own CLI, which knows what it can actually start a session with.
   const codexCloudModelsQuery = useQuery(providerCloudModelsQueryOptions("codex"));
   const claudeCloudModelsQuery = useQuery(providerCloudModelsQueryOptions("claudeAgent"));
@@ -281,6 +290,13 @@ export function useProviderModelCatalog(input: {
     openCodeModelDiscoveryEnabled &&
     !hasResolvedOpenCodeModelDiscovery &&
     isInitialModelDiscoveryPending(openCodeDynamicModelsQuery);
+  const hasResolvedOmpModelDiscovery =
+    ompDynamicModelsQuery.data?.source === "omp-acp" &&
+    (ompDynamicModelsQuery.data.models.length ?? 0) > 0;
+  const ompModelDiscoveryPending =
+    ompModelDiscoveryEnabled &&
+    !hasResolvedOmpModelDiscovery &&
+    isInitialModelDiscoveryPending(ompDynamicModelsQuery);
   const hasResolvedPiModelDiscovery =
     piDynamicModelsQuery.data?.source?.startsWith("pi.sdk") === true &&
     (piDynamicModelsQuery.data.models.length ?? 0) > 0;
@@ -322,6 +338,7 @@ export function useProviderModelCatalog(input: {
         customModelsByProvider.opencode,
         modelHintByProvider?.opencode,
       ),
+      omp: getAppModelOptions("omp", customModelsByProvider.omp, modelHintByProvider?.omp),
       pi: getAppModelOptions("pi", customModelsByProvider.pi, modelHintByProvider?.pi),
     };
     const result: Record<
@@ -340,6 +357,7 @@ export function useProviderModelCatalog(input: {
       droid: droidDynamicModelsQuery.data,
       kilo: kiloDynamicModelsQuery.data,
       opencode: openCodeDynamicModelsQuery.data,
+      omp: ompDynamicModelsQuery.data,
       pi: piDynamicModelsQuery.data,
     };
     // The cloud catalog is folded into the static baseline first, so a model it
@@ -361,6 +379,7 @@ export function useProviderModelCatalog(input: {
       "droid",
       "kilo",
       "opencode",
+      "omp",
       "pi",
     ] as const) {
       const cloudModels = cloudSources[provider];
@@ -402,6 +421,7 @@ export function useProviderModelCatalog(input: {
     kiloDynamicModelsQuery.data,
     modelHintByProvider,
     openCodeDynamicModelsQuery.data,
+    ompDynamicModelsQuery.data,
     piDynamicModelsQuery.data,
   ]);
 
@@ -412,6 +432,7 @@ export function useProviderModelCatalog(input: {
       droid: droidModelDiscoveryPending,
       kilo: kiloModelDiscoveryPending,
       opencode: openCodeModelDiscoveryPending,
+      omp: ompModelDiscoveryPending,
       pi: piModelDiscoveryPending,
     }),
     [
@@ -420,6 +441,7 @@ export function useProviderModelCatalog(input: {
       droidModelDiscoveryPending,
       kiloModelDiscoveryPending,
       openCodeModelDiscoveryPending,
+      ompModelDiscoveryPending,
       piModelDiscoveryPending,
     ],
   );
@@ -447,6 +469,7 @@ export function useProviderModelCatalog(input: {
       droid: droidDynamicModelsQuery.data?.models ?? [],
       kilo: kiloDynamicModelsQuery.data?.models ?? [],
       opencode: openCodeDynamicModelsQuery.data?.models ?? [],
+      omp: ompDynamicModelsQuery.data?.models ?? [],
       pi: piDynamicModelsQuery.data?.models ?? [],
     }),
     [
@@ -461,6 +484,7 @@ export function useProviderModelCatalog(input: {
       grokDynamicModelsQuery.data?.models,
       kiloDynamicModelsQuery.data?.models,
       openCodeDynamicModelsQuery.data?.models,
+      ompDynamicModelsQuery.data?.models,
       piDynamicModelsQuery.data?.models,
     ],
   );
@@ -539,7 +563,9 @@ export function useProviderModelCatalog(input: {
                   ? kiloDynamicModelsQuery
                   : selectedProvider === "opencode"
                     ? openCodeDynamicModelsQuery
-                    : piDynamicModelsQuery;
+                    : selectedProvider === "omp"
+                      ? ompDynamicModelsQuery
+                      : piDynamicModelsQuery;
   const selectedProviderModelsLoading =
     selectedProviderRuntimeModelDiscoveryPending ||
     (loadingModelProviders[selectedProvider] === undefined &&

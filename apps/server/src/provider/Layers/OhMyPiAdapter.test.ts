@@ -2,6 +2,9 @@ import { NodeServices } from "@effect/platform-node";
 import type * as Acp from "@agentclientprotocol/sdk";
 import type { ProviderRuntimeEvent } from "@synara/contracts";
 import { Deferred, Effect, Layer, PubSub, Scope, Stream } from "effect";
+import { appendFileSync, chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { ServerConfig } from "../../config.ts";
@@ -37,6 +40,7 @@ interface FakeRuntimeState {
   eventBurst?: number;
   setupMethod?: "new" | "load" | "resume";
   failStart?: boolean;
+  neverStart?: boolean;
 }
 
 function makeFakeRuntimeFactory(state: FakeRuntimeState) {
@@ -87,7 +91,9 @@ function makeFakeRuntimeFactory(state: FakeRuntimeState) {
         handleExtRequest: () => Effect.void,
         handleExtNotification: () => Effect.void,
         start: () =>
-          state.failStart
+          state.neverStart
+            ? Effect.never
+            : state.failStart
             ? Effect.fail(
                 new AcpErrors.AcpRequestError({
                   code: -32000,
@@ -186,8 +192,15 @@ function makeState(): FakeRuntimeState {
   };
 }
 
-function testLayer(state: FakeRuntimeState) {
-  return makeOhMyPiAdapterLive({}, { makeRuntime: makeFakeRuntimeFactory(state) }).pipe(
+function testLayer(
+  state: FakeRuntimeState,
+  settings: Parameters<typeof makeOhMyPiAdapterLive>[0] = {},
+  options: Omit<NonNullable<Parameters<typeof makeOhMyPiAdapterLive>[1]>, "makeRuntime"> = {},
+) {
+  return makeOhMyPiAdapterLive(settings, {
+    ...options,
+    makeRuntime: makeFakeRuntimeFactory(state),
+  }).pipe(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "omp-adapter-test-" })),
     Layer.provideMerge(NodeServices.layer),
   );
@@ -491,6 +504,76 @@ describe("OhMyPiAdapter", () => {
         expect(state.inputs).toHaveLength(2);
         expect(state.closed).toBe(2);
       }).pipe(Effect.scoped, Effect.provide(testLayer(state))),
+    );
+  });
+
+  it("invalidates discovery when the configured binary identity changes", async () => {
+    const state = makeState();
+    const directory = mkdtempSync(join(tmpdir(), "synara-omp-cache-"));
+    const binaryPath = join(directory, process.platform === "win32" ? "omp.cmd" : "omp");
+    writeFileSync(binaryPath, process.platform === "win32" ? "@echo off\r\n" : "#!/bin/sh\n");
+    chmodSync(binaryPath, 0o755);
+    try {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const adapter = yield* OhMyPiAdapter;
+          yield* adapter.listModels!({ provider: "omp", cwd: process.cwd() });
+          appendFileSync(binaryPath, process.platform === "win32" ? "rem changed\r\n" : "# changed\n");
+          yield* adapter.listCommands!({ provider: "omp", cwd: process.cwd() });
+          expect(state.inputs).toHaveLength(2);
+          expect(state.closed).toBe(2);
+        }).pipe(Effect.scoped, Effect.provide(testLayer(state, { binaryPath }))),
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("times out discovery and closes the disposable runtime", async () => {
+    const state = makeState();
+    state.neverStart = true;
+    await expect(
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const adapter = yield* OhMyPiAdapter;
+          yield* adapter.listModels!({ provider: "omp", cwd: process.cwd() });
+        }).pipe(
+          Effect.scoped,
+          Effect.provide(testLayer(state, {}, { discoveryTimeoutMs: 10 })),
+        ),
+      ),
+    ).rejects.toMatchObject({ _tag: "ProviderAdapterRequestError" });
+    expect(state.closed).toBe(1);
+  });
+
+  it("closes the disposable runtime when ACP discovery startup fails", async () => {
+    const state = makeState();
+    state.failStart = true;
+    await expect(
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const adapter = yield* OhMyPiAdapter;
+          yield* adapter.listModels!({ provider: "omp", cwd: process.cwd() });
+        }).pipe(Effect.scoped, Effect.provide(testLayer(state))),
+      ),
+    ).rejects.toMatchObject({ _tag: "ProviderAdapterRequestError" });
+    expect(state.closed).toBe(1);
+  });
+
+  it("expires the short discovery cache and cleans up each runtime", async () => {
+    const state = makeState();
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const adapter = yield* OhMyPiAdapter;
+        yield* adapter.listModels!({ provider: "omp", cwd: process.cwd() });
+        yield* Effect.sleep(5);
+        yield* adapter.listCommands!({ provider: "omp", cwd: process.cwd() });
+        expect(state.inputs).toHaveLength(2);
+        expect(state.closed).toBe(2);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(testLayer(state, {}, { discoveryCacheMs: 1 })),
+      ),
     );
   });
 });

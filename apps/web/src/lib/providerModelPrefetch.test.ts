@@ -32,6 +32,7 @@ function makeSettings(
     droidBinaryPath: "",
     kiloBinaryPath: "",
     openCodeBinaryPath: "",
+    ompBinaryPath: "",
     piBinaryPath: "",
     piAgentDir: "",
     ...overrides,
@@ -109,6 +110,7 @@ describe("providerModelsPrefetchQueryOptions", () => {
       cursorApiEndpoint: "https://api.example",
       antigravityBinaryPath: "/bin/antigravity",
       openCodeBinaryPath: "/bin/opencode",
+      ompBinaryPath: "/bin/omp",
       piBinaryPath: "/bin/pi",
       piAgentDir: "/tmp/pi-agent",
     });
@@ -128,6 +130,15 @@ describe("providerModelsPrefetchQueryOptions", () => {
     });
     expect(openCodeOptions.queryKey).toEqual(
       providerDiscoveryQueryKeys.models("opencode", "/bin/opencode", null, null, "/tmp/project"),
+    );
+
+    const ompOptions = providerModelsPrefetchQueryOptions({
+      provider: "omp",
+      settings,
+      cwd: "/tmp/project",
+    });
+    expect(ompOptions.queryKey).toEqual(
+      providerDiscoveryQueryKeys.models("omp", "/bin/omp", null, null, "/tmp/project"),
     );
 
     const piOptions = providerModelsPrefetchQueryOptions({

@@ -113,7 +113,7 @@ export function composerEffortOptionId(
   if (provider === "kilo" || provider === "opencode") {
     return "variant";
   }
-  if (provider === "pi") {
+  if (provider === "omp" || provider === "pi") {
     return "thinkingLevel";
   }
   return provider === "claudeAgent" ? "effort" : "reasoningEffort";

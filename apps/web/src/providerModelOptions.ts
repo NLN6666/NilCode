@@ -22,6 +22,8 @@ import {
   type ModelSelection,
   type OpenCodeModelOptions,
   type OpenCodeModelSelection,
+  type OhMyPiModelOptions,
+  type OhMyPiModelSelection,
   type PiModelOptions,
   type PiModelSelection,
   type ProviderKind,
@@ -82,7 +84,12 @@ export function formatProviderModelOptionName(input: {
     return trimmedSlug;
   }
 
-  if (input.provider === "kilo" || input.provider === "opencode" || input.provider === "pi") {
+  if (
+    input.provider === "kilo" ||
+    input.provider === "opencode" ||
+    input.provider === "omp" ||
+    input.provider === "pi"
+  ) {
     const modelIdentifier = trimmedSlug.includes("/")
       ? trimmedSlug.slice(trimmedSlug.lastIndexOf("/") + 1)
       : trimmedSlug;
@@ -170,7 +177,7 @@ export function mergeDynamicModelOptions(input: {
   // Droid validates model values against its live ACP select options, so an
   // arbitrary custom slug is guaranteed to fail at session configuration.
   const customOnlyModels =
-    input.provider === "droid"
+    input.provider === "droid" || input.provider === "omp"
       ? []
       : input.staticOptions.filter(
           (model) =>
@@ -186,7 +193,8 @@ export function mergeDynamicModelOptions(input: {
       input.provider === "kilo" ||
       input.provider === "opencode" ||
       input.provider === "cursor" ||
-      input.provider === "droid") &&
+      input.provider === "droid" ||
+      input.provider === "omp") &&
     normalizedDynamicOptions.length > 0
       ? []
       : staticBuiltInModels.filter((model) => !dynamicNormalizedSlugs.has(model.slug));
@@ -328,6 +336,12 @@ export function buildNextProviderOptions(
       ...patch,
     } as OpenCodeModelOptions;
   }
+  if (provider === "omp") {
+    return {
+      ...(modelOptions as OhMyPiModelOptions | undefined),
+      ...patch,
+    } as OhMyPiModelOptions;
+  }
   return {
     ...(modelOptions as PiModelOptions | undefined),
     ...patch,
@@ -383,6 +397,11 @@ export function buildModelSelection(
   model: string,
   options?: OpenCodeModelOptions | null | undefined,
 ): KiloModelSelection;
+export function buildModelSelection(
+  provider: "omp",
+  model: string,
+  options?: OhMyPiModelOptions | null | undefined,
+): OhMyPiModelSelection;
 export function buildModelSelection(
   provider: "pi",
   model: string,
@@ -462,6 +481,14 @@ export function buildModelSelection(
             provider,
             model,
             options: options as OpenCodeModelOptions,
+          }
+        : { provider, model };
+    case "omp":
+      return options
+        ? {
+            provider,
+            model,
+            options: options as OhMyPiModelOptions,
           }
         : { provider, model };
     case "pi":
