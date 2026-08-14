@@ -171,4 +171,32 @@ describe("ProviderRuntimeEvent", () => {
     expect(parsed.payload.usage.usedTokens).toBe(31251);
     expect(parsed.payload.usage.usedPercent).toBe(15.6255);
   });
+
+  it("decodes a typed OMP Advisor note with its ACP extension provenance", () => {
+    const parsed = decodeRuntimeEvent({
+      type: "omp.advisor.note",
+      eventId: "event-omp-advisor-1",
+      provider: "omp",
+      createdAt: "2026-08-14T00:00:00.000Z",
+      threadId: "thread-omp-1",
+      turnId: "turn-omp-1",
+      payload: {
+        advisorId: "security",
+        severity: "blocker",
+        delivery: "steer",
+        content: "Do not expose the token.",
+        turn: 4,
+        source: "omp",
+      },
+      raw: {
+        source: "acp.omp.extension",
+        method: "_omp/advisor/note",
+        payload: { schemaVersion: 1, sequence: 7 },
+      },
+    });
+    expect(parsed.type).toBe("omp.advisor.note");
+    if (parsed.type !== "omp.advisor.note") throw new Error("expected omp.advisor.note");
+    expect(parsed.payload.source).toBe("omp");
+    expect(parsed.payload.severity).toBe("blocker");
+  });
 });

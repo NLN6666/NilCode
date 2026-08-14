@@ -10,6 +10,7 @@
  */
 import * as OS from "node:os";
 import type {
+  OmpProviderRuntimeStatus,
   ProviderKind,
   ServerSettings,
   ServerProviderAuthStatus,
@@ -93,7 +94,9 @@ import {
 } from "../providerStatusCache";
 import { makeProviderMaintenanceCommandCoordinator } from "../providerMaintenanceCommandCoordinator";
 import {
+  getOmpRuntimeStatus,
   inspectOmpControlPlane,
+  subscribeOmpRuntimeStatus,
   type OmpControlPlanePlan,
 } from "../omp/OmpControlPlane.ts";
 import {
@@ -2301,6 +2304,21 @@ export function projectProviderStatusesForSettings(
   return orderProviderStatuses(projected);
 }
 
+export function projectVolatileOmpRuntimeStatus(
+  status: ServerProviderStatus,
+  runtime: OmpProviderRuntimeStatus | undefined,
+): ServerProviderStatus {
+  if (status.provider !== OMP_PROVIDER || !status.ompPolicy) {
+    return status;
+  }
+
+  const { runtime: _staleRuntime, ...policy } = status.ompPolicy;
+  return {
+    ...status,
+    ompPolicy: runtime ? { ...policy, runtime } : policy,
+  };
+}
+
 // ── Layer ───────────────────────────────────────────────────────────
 
 export function makeProviderHealthLive(options?: { readonly providerUpdateTimeoutMs?: number }) {
@@ -2459,14 +2477,18 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
       const applyVolatileProviderState = Effect.fn("applyVolatileProviderState")(function* (
         status: ServerProviderStatus,
       ) {
+        const statusWithOmpRuntime = projectVolatileOmpRuntimeStatus(
+          status,
+          getOmpRuntimeStatus(),
+        );
         const updateStates = yield* Ref.get(updateStatesRef);
-        const updateState = updateStates.get(status.provider);
+        const updateState = updateStates.get(statusWithOmpRuntime.provider);
         if (!updateState) {
-          const { updateState: _updateState, ...statusWithoutUpdateState } = status;
+          const { updateState: _updateState, ...statusWithoutUpdateState } = statusWithOmpRuntime;
           return statusWithoutUpdateState;
         }
         return {
-          ...status,
+          ...statusWithOmpRuntime,
           updateState,
         };
       });
@@ -2722,6 +2744,14 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
       yield* serverSettings.streamChanges.pipe(
         Stream.runForEach(() => publishProjectedStatuses().pipe(Effect.asVoid)),
         Effect.forkIn(refreshScope),
+      );
+      yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          subscribeOmpRuntimeStatus(() => {
+            Effect.runFork(publishProjectedStatuses().pipe(Effect.asVoid));
+          }),
+        ),
+        (unsubscribe) => Effect.sync(unsubscribe),
       );
 
       const refresh: Effect.Effect<ProviderStatuses> = ensureRefreshFiber.pipe(

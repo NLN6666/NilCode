@@ -41,6 +41,7 @@ import {
   PACKAGE_MANAGED_PROVIDER_UPDATES,
   providerStatusesEqual,
   ProviderHealthLive,
+  projectVolatileOmpRuntimeStatus,
   projectProviderStatusesForSettings,
   readCodexConfigModelProvider,
   stabilizeProviderStatusesAgainstTransientTimeouts,
@@ -850,6 +851,35 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         ),
         false,
       );
+    });
+  });
+
+  describe("projectVolatileOmpRuntimeStatus", () => {
+    it("overlays live typed state and removes stale runtime state when the last OMP session closes", () => {
+      const policy = buildOmpControlPlanePlan({
+        overlayPath: "C:/Users/test/.omp/synara/acp-provider.yml",
+        env: {},
+      }).policy;
+      const base = {
+        provider: "omp",
+        status: "ready",
+        available: true,
+        authStatus: "unknown",
+        checkedAt: "2026-08-14T00:00:00.000Z",
+        message: "ready",
+        ompPolicy: policy,
+      } satisfies ServerProviderStatus;
+      const runtime = {
+        mode: "typed",
+        sessionCount: 1,
+        ompVersion: "17.3.3",
+        updatedAt: "2026-08-14T00:00:01.000Z",
+      } as const;
+
+      const live = projectVolatileOmpRuntimeStatus(base, runtime);
+      assert.deepStrictEqual(live.ompPolicy?.runtime, runtime);
+      const closed = projectVolatileOmpRuntimeStatus(live, undefined);
+      assert.strictEqual(closed.ompPolicy?.runtime, undefined);
     });
   });
 

@@ -5,7 +5,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   buildOmpControlPlanePlan,
+  clearOmpRuntimeStatus,
+  getOmpRuntimeStatus,
   prepareOmpControlPlane,
+  subscribeOmpRuntimeStatus,
+  updateOmpRuntimeStatus,
   waitForOmpTurnSettle,
 } from "./OmpControlPlane";
 
@@ -16,6 +20,55 @@ afterEach(async () => {
 });
 
 describe("OmpControlPlane overlay policy", () => {
+  it("coalesces live runtime change notifications for provider-status projection", async () => {
+    let changes = 0;
+    const unsubscribe = subscribeOmpRuntimeStatus(() => void (changes += 1));
+    updateOmpRuntimeStatus("thread-live", { mode: "typed", sessionCount: 1 });
+    updateOmpRuntimeStatus("thread-live", { mode: "typed", sessionCount: 1, ompVersion: "17.3.3" });
+    await Promise.resolve();
+    expect(changes).toBe(1);
+    clearOmpRuntimeStatus("thread-live");
+    await Promise.resolve();
+    expect(changes).toBe(2);
+    unsubscribe();
+  });
+
+  it("projects the newest typed state and merges only OMP-owned services", () => {
+    updateOmpRuntimeStatus("thread-configured", {
+      mode: "configured-only",
+      sessionCount: 1,
+      degradedReason: "stock OMP",
+    });
+    updateOmpRuntimeStatus("thread-typed", {
+      mode: "typed",
+      sessionCount: 1,
+      ompVersion: "17.3.3",
+      updatedAt: "2026-08-14T00:00:00.000Z",
+      launch: {
+        authority: "omp",
+        services: [{
+          serviceId: "service-1",
+          name: "fixture",
+          state: "ready",
+          restartCount: 0,
+          outputBytes: 12,
+          owner: "omp-session-1",
+          persist: false,
+          detached: false,
+        }],
+      },
+    });
+    expect(getOmpRuntimeStatus()).toMatchObject({
+      mode: "typed",
+      sessionCount: 2,
+      ompVersion: "17.3.3",
+      launch: { authority: "omp", services: [{ serviceId: "service-1" }] },
+    });
+    clearOmpRuntimeStatus("thread-configured");
+    clearOmpRuntimeStatus("thread-typed");
+    expect(getOmpRuntimeStatus()).toBeUndefined();
+  });
+
   it("generates deterministic minimal YAML without copying secrets", () => {
     const input = {
       overlayPath: "C:/Users/test/.omp/synara/acp-provider.yml",

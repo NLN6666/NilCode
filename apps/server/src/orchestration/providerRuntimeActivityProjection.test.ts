@@ -56,6 +56,39 @@ function expectSchemaValidActivities(event: ProviderRuntimeEvent): void {
 }
 
 describe("projected activities satisfy the orchestration command schema", () => {
+  it("projects typed OMP advisor notes onto the existing advisor surface", () => {
+    const [activity] = projectProviderRuntimeActivities(
+      runtimeEvent({
+        provider: "ohMyPi",
+        type: "omp.advisor.note",
+        eventId: "omp-advisor-note-7",
+        turnId: TURN_ID,
+        payload: {
+          advisorId: "security",
+          severity: "blocker",
+          delivery: "steer",
+          content: "Do not expose the token.",
+          turn: 7,
+          source: "omp",
+        },
+      }),
+    );
+
+    expect(activity).toMatchObject({
+      tone: "error",
+      kind: "advisor.advice",
+      summary: "Do not expose the token.",
+      payload: {
+        severity: "blocker",
+        channel: "steer",
+        source: "omp",
+        advisorId: "security",
+        turn: 7,
+      },
+    });
+    expect(() => decodeActivityAppendCommand(activity!)).not.toThrow();
+  });
+
   it("omits an absent approval request id instead of emitting an explicit undefined", () => {
     expectSchemaValidActivities(
       runtimeEvent({

@@ -94,8 +94,27 @@ import {
 import { parsePermissionRequest } from "../acp/AcpRuntimeModel.ts";
 import type { AcpSessionRuntimeShape } from "../acp/AcpSessionRuntime.ts";
 import {
+  acceptOmpExtensionEnvelope,
+  createConfiguredOnlyOmpExtensionState,
+  drainOmpTurnExtensions,
+  isKnownOmpExtensionNotification,
+  negotiateOmpExtensions,
+  OMP_EXTENSION_EVENTS,
+  OMP_EXTENSION_METHODS,
+  projectOmpEnvelopeData,
+  projectOmpExtensionRuntimeStatus,
+  projectOmpLaunchDescribe,
+  projectOmpLaunchLogs,
+  projectOmpRuntimeService,
+  registerOmpExtensionNotifications,
+  requestOmpExtension,
+  type OmpExtensionClientState,
+} from "../omp/OmpExtensionProtocol.ts";
+import {
+  clearOmpRuntimeStatus,
   prepareOmpControlPlane,
   type PreparedOmpControlPlane,
+  updateOmpRuntimeStatus,
   waitForOmpTurnSettle,
 } from "../omp/OmpControlPlane.ts";
 import { OhMyPiAdapter, type OhMyPiAdapterShape } from "../Services/OhMyPiAdapter.ts";
@@ -140,6 +159,8 @@ interface OhMyPiSessionContext extends SynaraHarnessPolicyDeliveryState {
   latestSessionCostUsd: number | undefined;
   sessionUpdatesProcessed: number;
   sessionActivityVersion: number;
+  providerSessionId: string | undefined;
+  ompExtensionState: OmpExtensionClientState;
   processExited: boolean;
   turnStarting: boolean;
   pendingTurnInterrupted: boolean;
@@ -173,8 +194,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function newerOmpExtensionState(
+  current: OmpExtensionClientState,
+  candidate: OmpExtensionClientState,
+): OmpExtensionClientState {
+  return candidate.lastSequence >= current.lastSequence ? candidate : current;
+}
+
+function parseOmpAdvisorNote(data: Record<string, unknown> | undefined):
+  | {
+      readonly advisorId: string;
+      readonly severity: "nit" | "concern" | "blocker";
+      readonly delivery: "aside" | "steer" | "preserve";
+      readonly content: string;
+      readonly turn: number;
+    }
+  | undefined {
+  if (!data) return undefined;
+  if (
+    typeof data.advisorId !== "string" ||
+    !["nit", "concern", "blocker"].includes(String(data.severity)) ||
+    !["aside", "steer", "preserve"].includes(String(data.delivery)) ||
+    typeof data.content !== "string" ||
+    !Number.isSafeInteger(data.turn) ||
+    Number(data.turn) < 0
+  ) {
+    return undefined;
+  }
+  return {
+    advisorId: data.advisorId,
+    severity: data.severity as "nit" | "concern" | "blocker",
+    delivery: data.delivery as "aside" | "steer" | "preserve",
+    content: data.content,
+    turn: Number(data.turn),
+  };
+}
+
 function standardAcpInboundMethod(method: string): boolean {
   return (
+    isKnownOmpExtensionNotification(method) ||
     method === "session/update" ||
     method === "session/request_permission" ||
     method === "session/elicitation" ||
@@ -182,6 +240,13 @@ function standardAcpInboundMethod(method: string): boolean {
     method.startsWith("terminal/") ||
     method.startsWith("mcp/")
   );
+}
+
+export function unknownOmpExtensionNotificationMethod(payload: unknown): string | undefined {
+  if (!isRecord(payload) || "result" in payload || "error" in payload) return undefined;
+  const method = typeof payload.method === "string" ? payload.method : undefined;
+  if (!method || standardAcpInboundMethod(method)) return undefined;
+  return method;
 }
 
 function resolveSessionCwd(inputCwd: string | undefined, config: ServerConfigShape): string | undefined {
@@ -273,7 +338,7 @@ export function makeOhMyPiAdapter(
         : Effect.fail(new ProviderAdapterSessionNotFoundError({ provider: PROVIDER, threadId }));
     };
 
-    const waitForQueuedEvents = (ctx: OhMyPiSessionContext) =>
+    const waitForPhase2Settle = (ctx: OhMyPiSessionContext, typedDrainAvailable: boolean) =>
       Effect.gen(function* () {
         const target = yield* ctx.acp.sessionUpdatesEnqueuedCount;
         const result = yield* Effect.tryPromise({
@@ -306,12 +371,32 @@ export function makeOhMyPiAdapter(
               detail: {
                 waitedMs: result.waitedMs,
                 queueDrained: result.queueDrained,
-                typedDrainAvailable: false,
+                typedDrainAvailable,
               },
             },
           });
         }
         return result;
+      });
+
+    const waitForQueuedEvents = (ctx: OhMyPiSessionContext, cancelAutolearn = false) =>
+      Effect.gen(function* () {
+        if (ctx.providerSessionId && ctx.ompExtensionState.mode === "typed") {
+          const drained = yield* drainOmpTurnExtensions(ctx.acp, ctx.ompExtensionState, {
+            sessionId: ctx.providerSessionId,
+            timeoutMs: options?.settleMaxWaitMs ?? OMP_TURN_DRAIN_MAX_WAIT_MS,
+            cancelAutolearn,
+          });
+          ctx.ompExtensionState = newerOmpExtensionState(ctx.ompExtensionState, drained.state);
+          updateOmpRuntimeStatus(
+            ctx.threadId,
+            projectOmpExtensionRuntimeStatus(ctx.ompExtensionState, 1),
+          );
+          if (drained.typed && drained.settled) {
+            return { outcome: "settled" as const, waitedMs: 0, queueDrained: true };
+          }
+        }
+        return yield* waitForPhase2Settle(ctx, ctx.ompExtensionState.mode === "typed");
       });
 
     const stopSessionInternal = (
@@ -325,9 +410,10 @@ export function makeOhMyPiAdapter(
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
           if (!ctx.stopped) {
-            if (stopOptions?.fromProcessWatcher !== true) yield* waitForQueuedEvents(ctx);
+            if (stopOptions?.fromProcessWatcher !== true) yield* waitForQueuedEvents(ctx, true);
             ctx.stopped = true;
             sessions.delete(ctx.threadId);
+            clearOmpRuntimeStatus(ctx.threadId);
             yield* settleAcpPendingApprovalsAsCancelled(ctx.pendingApprovals);
             yield* settleAcpPendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
             if (ctx.notificationFiber) yield* Fiber.interrupt(ctx.notificationFiber);
@@ -528,19 +614,25 @@ export function makeOhMyPiAdapter(
                   if (event.direction !== "incoming" || event.stage !== "decoded") return;
                   const payload = event.payload;
                   if (!isRecord(payload)) return;
+                  if ("result" in payload || "error" in payload) return;
                   const method = typeof payload.method === "string" ? payload.method : undefined;
                   if (!method) return;
-                  if (!standardAcpInboundMethod(method)) {
+                  const unknownExtensionMethod = unknownOmpExtensionNotificationMethod(payload);
+                  if (unknownExtensionMethod) {
                     yield* publish(input.lifecycleGeneration, {
                       type: "runtime.warning",
                       ...(yield* makeEventStamp()),
                       provider: PROVIDER,
                       threadId: input.threadId,
                       payload: {
-                        message: `Oh My Pi sent an unknown ACP extension notification: ${method}.`,
-                        detail: { method },
+                        message: `Oh My Pi sent an unknown ACP extension notification: ${unknownExtensionMethod}.`,
+                        detail: { method: unknownExtensionMethod },
                       },
-                      raw: { source: "acp.omp.extension", method, payload },
+                      raw: {
+                        source: "acp.omp.extension",
+                        method: unknownExtensionMethod,
+                        payload,
+                      },
                     });
                     return;
                   }
@@ -607,6 +699,10 @@ export function makeOhMyPiAdapter(
             latestSessionCostUsd: undefined,
             sessionUpdatesProcessed: 0,
             sessionActivityVersion: 0,
+            providerSessionId: undefined,
+            ompExtensionState: createConfiguredOnlyOmpExtensionState(
+              "OMP typed ACP extensions have not been negotiated yet.",
+            ),
             processExited: false,
             turnStarting: false,
             pendingTurnInterrupted: false,
@@ -702,6 +798,33 @@ export function makeOhMyPiAdapter(
             }),
           );
           yield* registerStandardAcpClientHandlers(acp, sessionScope);
+          yield* registerOmpExtensionNotifications(acp, (method, envelope) =>
+            Effect.gen(function* () {
+              const accepted = acceptOmpExtensionEnvelope(ctx.ompExtensionState, envelope);
+              if (!accepted.accepted) return;
+              ctx.ompExtensionState = projectOmpEnvelopeData(
+                ctx.ompExtensionState,
+                method,
+                envelope,
+              );
+              updateOmpRuntimeStatus(
+                ctx.threadId,
+                projectOmpExtensionRuntimeStatus(ctx.ompExtensionState, 1),
+              );
+              if (method !== OMP_EXTENSION_EVENTS.advisorNote) return;
+              const note = parseOmpAdvisorNote(envelope.data);
+              if (!note) return;
+              yield* publish(ctx.lifecycleGeneration, {
+                type: "omp.advisor.note",
+                ...(yield* makeEventStamp()),
+                provider: PROVIDER,
+                threadId: ctx.threadId,
+                ...(ctx.activeTurnId ? { turnId: ctx.activeTurnId } : {}),
+                payload: { ...note, source: "omp" },
+                raw: { source: "acp.omp.extension", method, payload: envelope },
+              });
+            }),
+          );
 
           // Both consumers exist before initialize/session setup begins, so early updates and exit
           // cannot race the adapter's subscriptions.
@@ -750,6 +873,20 @@ export function makeOhMyPiAdapter(
             });
           }
 
+          ctx.providerSessionId = started.sessionId;
+          const negotiatedExtensionState = yield* negotiateOmpExtensions(acp, {
+            sessionId: started.sessionId,
+            timeoutMs: Math.min(5_000, OMP_REQUEST_TIMEOUT_MS),
+          });
+          ctx.ompExtensionState = newerOmpExtensionState(
+            ctx.ompExtensionState,
+            negotiatedExtensionState,
+          );
+          updateOmpRuntimeStatus(
+            ctx.threadId,
+            projectOmpExtensionRuntimeStatus(ctx.ompExtensionState, 1),
+          );
+
           const resumeCursor = { schemaVersion: OMP_RESUME_VERSION, sessionId: started.sessionId };
           ctx.session = {
             ...ctx.session,
@@ -759,6 +896,20 @@ export function makeOhMyPiAdapter(
           };
           sessions.set(input.threadId, ctx);
           transferred = true;
+
+          if (ctx.ompExtensionState.mode === "configured-only") {
+            yield* publish(input.lifecycleGeneration, {
+              type: "runtime.warning",
+              ...(yield* makeEventStamp()),
+              provider: PROVIDER,
+              threadId: input.threadId,
+              payload: {
+                message:
+                  "Oh My Pi typed ACP extensions are unavailable; Synara is using the Phase 2 configured-policy-only fallback.",
+                detail: { reason: ctx.ompExtensionState.degradedReason },
+              },
+            });
+          }
 
           yield* applyOhMyPiAcpSessionConfiguration({
             runtime: acp,
@@ -1074,6 +1225,123 @@ export function makeOhMyPiAdapter(
         });
       });
 
+    const requireLaunchOwner = (owner: string, method: string) => {
+      const ctx = Array.from(sessions.values()).find(
+        (candidate) =>
+          !candidate.stopped &&
+          candidate.providerSessionId === owner &&
+          candidate.ompExtensionState.mode === "typed",
+      );
+      return ctx
+        ? Effect.succeed(ctx)
+        : Effect.fail(
+            new ProviderAdapterRequestError({
+              provider: PROVIDER,
+              method,
+              detail: "The owning typed OMP session is no longer active.",
+            }),
+          );
+    };
+
+    const requestLaunchExtension = (
+      owner: string,
+      method: string,
+      params: Record<string, unknown>,
+    ) =>
+      Effect.gen(function* () {
+        const ctx = yield* requireLaunchOwner(owner, method);
+        const response = yield* requestOmpExtension(ctx.acp, {
+          method,
+          sessionId: owner,
+          timeoutMs: OMP_REQUEST_TIMEOUT_MS,
+          params,
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ProviderAdapterRequestError({
+                provider: PROVIDER,
+                method,
+                detail: cause.message,
+              }),
+          ),
+        );
+        ctx.ompExtensionState = projectOmpEnvelopeData(
+          ctx.ompExtensionState,
+          method,
+          response,
+        );
+        updateOmpRuntimeStatus(
+          ctx.threadId,
+          projectOmpExtensionRuntimeStatus(ctx.ompExtensionState, 1),
+        );
+        return { ctx, response };
+      });
+
+    const describeLaunchService: OhMyPiAdapterShape["describeLaunchService"] = (input) =>
+      Effect.gen(function* () {
+        const { response } = yield* requestLaunchExtension(
+          input.owner,
+          OMP_EXTENSION_METHODS.launchDescribe,
+          { name: input.name },
+        );
+        const description = projectOmpLaunchDescribe(response.data);
+        if (description) return description;
+        return yield* new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: OMP_EXTENSION_METHODS.launchDescribe,
+          detail: "OMP returned a malformed typed Launch description.",
+        });
+      });
+
+    const readLaunchLogs: OhMyPiAdapterShape["readLaunchLogs"] = (input) =>
+      Effect.gen(function* () {
+        const { response } = yield* requestLaunchExtension(
+          input.owner,
+          OMP_EXTENSION_METHODS.launchLogs,
+          { name: input.name, lines: input.lines, cursor: input.cursor },
+        );
+        const logs = projectOmpLaunchLogs(response.data);
+        if (logs) return logs;
+        return yield* new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: OMP_EXTENSION_METHODS.launchLogs,
+          detail: "OMP returned a malformed typed Launch logs response.",
+        });
+      });
+
+    const runLaunchControl = (
+      owner: string,
+      name: string,
+      method: string,
+      params: Record<string, unknown>,
+    ) =>
+      Effect.gen(function* () {
+        const { response } = yield* requestLaunchExtension(owner, method, {
+          name,
+          ...params,
+        });
+        const service = projectOmpRuntimeService(response.data?.service);
+        if (!service) {
+          return yield* new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method,
+            detail: "OMP returned a malformed typed Launch control response.",
+          });
+        }
+        return service;
+      });
+
+    const sendLaunchText: OhMyPiAdapterShape["sendLaunchText"] = (input) =>
+      runLaunchControl(input.owner, input.name, OMP_EXTENSION_METHODS.launchSend, {
+        data: input.text,
+      });
+    const stopLaunchService: OhMyPiAdapterShape["stopLaunchService"] = (input) =>
+      runLaunchControl(input.owner, input.name, OMP_EXTENSION_METHODS.launchStop, {
+        timeoutMs: input.timeoutSeconds * 1_000,
+      });
+    const restartLaunchService: OhMyPiAdapterShape["restartLaunchService"] = (input) =>
+      runLaunchControl(input.owner, input.name, OMP_EXTENSION_METHODS.launchRestart, {});
+
     const stopSession: OhMyPiAdapterShape["stopSession"] = (threadId) =>
       withThreadLock(
         threadId,
@@ -1263,6 +1531,11 @@ export function makeOhMyPiAdapter(
       respondToUserInput,
       readThread,
       rollbackThread,
+      describeLaunchService,
+      readLaunchLogs,
+      sendLaunchText,
+      stopLaunchService,
+      restartLaunchService,
       stopSession,
       listSessions,
       hasSession,
