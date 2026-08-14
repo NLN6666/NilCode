@@ -80,6 +80,12 @@ export const PiServerProviderSettings = Schema.Struct({
 });
 export type PiServerProviderSettings = typeof PiServerProviderSettings.Type;
 
+export const OmpServerProviderSettings = Schema.Struct({
+  ...ProviderSettingsBase,
+  binaryPath: StringSetting.pipe(Schema.withDecodingDefault(() => "omp")),
+});
+export type OmpServerProviderSettings = typeof OmpServerProviderSettings.Type;
+
 const DisabledSkillNamesPatch = Schema.Array(Schema.String.check(Schema.isMaxLength(256)));
 const DisabledSkillNames = DisabledSkillNamesPatch.pipe(Schema.withDecodingDefault(() => []));
 
@@ -101,6 +107,7 @@ export const DisabledSkillsByProvider = Schema.Struct({
   droid: DisabledSkillNames,
   kilo: DisabledSkillNames,
   opencode: DisabledSkillNames,
+  omp: DisabledSkillNames,
   pi: DisabledSkillNames,
 });
 export type DisabledSkillsByProvider = typeof DisabledSkillsByProvider.Type;
@@ -150,6 +157,7 @@ export const ServerSettings = Schema.Struct({
     droid: DroidServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     kilo: KiloServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     opencode: OpenCodeServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+    omp: OmpServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     pi: PiServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   }).pipe(Schema.withDecodingDefault(() => ({}))),
   skills: SkillsServerSettings.pipe(Schema.withDecodingDefault(() => ({}))),
@@ -225,6 +233,7 @@ export const ServerSettingsPatch = Schema.Struct({
           experimentalWebSockets: Schema.optionalKey(Schema.Boolean),
         }),
       ),
+      omp: Schema.optionalKey(Schema.Struct(ProviderSettingsBasePatch)),
       pi: Schema.optionalKey(
         Schema.Struct({
           ...ProviderSettingsBasePatch,
@@ -248,6 +257,7 @@ export const ServerSettingsPatch = Schema.Struct({
           droid: Schema.optionalKey(DisabledSkillNamesPatch),
           kilo: Schema.optionalKey(DisabledSkillNamesPatch),
           opencode: Schema.optionalKey(DisabledSkillNamesPatch),
+          omp: Schema.optionalKey(DisabledSkillNamesPatch),
           pi: Schema.optionalKey(DisabledSkillNamesPatch),
         }),
       ),

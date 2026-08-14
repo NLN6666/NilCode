@@ -54,6 +54,7 @@ export const PROVIDER_SKILL_ORIGINS = {
   droid: ["factory", "agents", "claude", "codex"],
   kilo: ["kilo", "agents", "claude"],
   opencode: ["opencode", "claude", "agents"],
+  omp: [],
   pi: ["pi", "agents"],
 } as const satisfies Record<ProviderKind, readonly SkillHomeOrigin[]>;
 

@@ -31,6 +31,8 @@ describe("ServerSettingsService", () => {
 
     expect(settings.providers.codex.binaryPath).toBe("codex");
     expect(settings.providers.grok.binaryPath).toBe("grok");
+    expect(settings.providers.omp).toEqual({ enabled: true, binaryPath: "omp", customModels: [] });
+    expect(settings.skills.disabled.omp).toEqual([]);
     expect(settings.defaultThreadEnvMode).toBe("local");
     expect(settings.enableProviderUpdateChecks).toBe(true);
   });
@@ -142,7 +144,8 @@ describe("migrateLegacyDisabledSkills", () => {
 
     expect(migrated.skills.disabled.codex).toEqual(["muted"]);
     expect(migrated.skills.disabled.claudeAgent).toEqual(["muted"]);
-    expect(Object.keys(migrated.skills.disabled)).toHaveLength(9);
+    expect(migrated.skills.disabled.omp).toEqual(["muted"]);
+    expect(Object.keys(migrated.skills.disabled)).toHaveLength(10);
   });
 
   it("leaves an already per-provider map untouched", () => {
@@ -172,6 +175,12 @@ describe("migrateLegacyDisabledSkills", () => {
     if (decoded._tag === "Success") {
       expect(decoded.value.enableProviderUpdateChecks).toBe(false);
       expect(decoded.value.skills.disabled.grok).toEqual(["muted"]);
+      expect(decoded.value.providers.omp).toEqual({
+        enabled: true,
+        binaryPath: "omp",
+        customModels: [],
+      });
+      expect(decoded.value.skills.disabled.omp).toEqual(["muted"]);
     }
   });
 });
