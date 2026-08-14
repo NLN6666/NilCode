@@ -1,0 +1,46 @@
+import { Schema } from "effect";
+import { describe, expect, it } from "vitest";
+
+import { OmpProviderPolicyStatus, ServerProviderStatus } from "./server";
+
+describe("OMP provider policy status", () => {
+  it("round-trips configured ownership without claiming typed feature state", () => {
+    const policy = Schema.decodeUnknownSync(OmpProviderPolicyStatus)({
+      owner: "omp-native",
+      overlayPath: "C:/Users/test/.omp/synara/acp-provider.yml",
+      sharedHome: true,
+      launch: { configured: true, observability: "acp-tool-activity-only" },
+      advisor: {
+        configured: true,
+        state: "degraded",
+        warning: "Configure modelRoles.advisor before starting an OMP session.",
+        observability: "transcript-only",
+      },
+      memory: {
+        backend: "local",
+        source: "synara-fallback",
+        observability: "ordinary-tools-only",
+      },
+      autoLearn: {
+        configured: true,
+        autoContinue: true,
+        experimental: true,
+        observability: "bounded-settle-only",
+      },
+      typedObservability: "phase-3-required",
+    });
+
+    const status = Schema.decodeUnknownSync(ServerProviderStatus)({
+      provider: "omp",
+      status: "warning",
+      available: true,
+      authStatus: "unknown",
+      checkedAt: "2026-08-14T00:00:00.000Z",
+      ompPolicy: policy,
+    });
+
+    expect(status.ompPolicy).toEqual(policy);
+    expect(status.ompPolicy).not.toHaveProperty("launch.running");
+    expect(status.ompPolicy).not.toHaveProperty("autoLearn.captureComplete");
+  });
+});

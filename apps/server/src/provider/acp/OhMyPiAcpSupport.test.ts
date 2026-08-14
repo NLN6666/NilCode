@@ -25,12 +25,22 @@ const fixtureModes = OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse
   .modes as unknown as Acp.SessionModeState;
 
 describe("buildOhMyPiAcpSpawnInput", () => {
-  it("builds only the stock omp acp command in the target cwd", () => {
-    const spawn = buildOhMyPiAcpSpawnInput({ binaryPath: "/usr/local/bin/omp" }, "/tmp/project");
+  it("passes the Synara overlay as a distinct argv even when Windows paths contain spaces", () => {
+    const spawn = buildOhMyPiAcpSpawnInput(
+      {
+        binaryPath: "C:/Program Files/Oh My Pi/omp.exe",
+        overlayPath: "C:/Users/Test User/.omp/synara/acp-provider.yml",
+      },
+      "C:/Work Trees/project",
+    );
 
-    expect(spawn.command).toBe("/usr/local/bin/omp");
-    expect(spawn.args).toEqual(["acp"]);
-    expect(spawn.cwd).toBe("/tmp/project");
+    expect(spawn.command).toBe("C:/Program Files/Oh My Pi/omp.exe");
+    expect(spawn.args).toEqual([
+      "acp",
+      "--config",
+      "C:/Users/Test User/.omp/synara/acp-provider.yml",
+    ]);
+    expect(spawn.cwd).toBe("C:/Work Trees/project");
     expect(spawn.env).toBeDefined();
     expect(spawn.env?.PI_CODING_AGENT_DIR).toBeUndefined();
     expect(spawn.env?.SYNARA_AUTH_TOKEN).toBeUndefined();

@@ -170,6 +170,11 @@ export const make = Effect.gen(function* () {
       const thread = yield* snapshotQuery
         .getThreadDetailById(input.threadId)
         .pipe(Effect.catchCause(() => Effect.succeed(Option.none())));
+      // OMP owns Advisor for OMP sessions. This server-side guard prevents a
+      // second reviewer from spending tokens or steering the same thread.
+      if (Option.isSome(thread) && thread.value.modelSelection.provider === "omp") {
+        return input.state;
+      }
       if (
         !resolveAdvisorEnabled({
           globalEnabled: settings.advisor.enabled,

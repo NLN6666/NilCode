@@ -33,18 +33,10 @@ import {
 } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
-import { buildAcpSynaraMcpServers } from "../../agentGateway/mcpInjection.ts";
 import {
   type SynaraHarnessPolicyDeliveryState,
   takeSynaraHarnessPolicyTextPartForProviderSession,
 } from "../../agentGateway/harnessPolicy.ts";
-import { AgentGatewayCredentials } from "../../agentGateway/Services/AgentGatewayCredentials.ts";
-import {
-  acquireAgentGatewaySessionLease,
-  cancelAgentGatewayTurn,
-  startAgentGatewaySessionLeaseExitWatcher,
-  type AgentGatewaySessionLease,
-} from "../../agentGateway/sessionLease.ts";
 import { ServerConfig, type ServerConfigShape } from "../../config.ts";
 import { executableIdentity } from "../../executableLookup.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
@@ -101,6 +93,11 @@ import {
 } from "../acp/OhMyPiAcpSupport.ts";
 import { parsePermissionRequest } from "../acp/AcpRuntimeModel.ts";
 import type { AcpSessionRuntimeShape } from "../acp/AcpSessionRuntime.ts";
+import {
+  prepareOmpControlPlane,
+  type PreparedOmpControlPlane,
+  waitForOmpTurnSettle,
+} from "../omp/OmpControlPlane.ts";
 import { OhMyPiAdapter, type OhMyPiAdapterShape } from "../Services/OhMyPiAdapter.ts";
 import { PROVIDER_ADAPTER_RUNTIME_EVENT_BUFFER_CAPACITY } from "../Services/ProviderAdapter.ts";
 
@@ -110,8 +107,9 @@ const OMP_REQUEST_TIMEOUT_MS = 30_000;
 const OMP_DISCOVERY_TIMEOUT_MS = 30_000;
 const OMP_DISCOVERY_CACHE_MS = 30_000;
 const OMP_DISCOVERY_CACHE_MAX_ENTRIES = 16;
-const OMP_TURN_DRAIN_MAX_WAIT_MS = 1_000;
+const OMP_TURN_DRAIN_MAX_WAIT_MS = 1_500;
 const OMP_TURN_DRAIN_POLL_MS = 25;
+const OMP_TURN_DRAIN_QUIET_WINDOW_MS = 200;
 
 interface PendingApproval {
   readonly decision: Deferred.Deferred<ProviderApprovalDecision>;
@@ -124,7 +122,6 @@ interface PendingUserInput {
 interface OhMyPiSessionContext extends SynaraHarnessPolicyDeliveryState {
   readonly threadId: ThreadId;
   readonly lifecycleGeneration?: string;
-  readonly gatewaySessionLease?: AgentGatewaySessionLease;
   session: ProviderSession;
   readonly scope: Scope.Closeable;
   readonly acp: AcpSessionRuntimeShape;
@@ -142,6 +139,8 @@ interface OhMyPiSessionContext extends SynaraHarnessPolicyDeliveryState {
   lastPlanFingerprint: string | undefined;
   latestSessionCostUsd: number | undefined;
   sessionUpdatesProcessed: number;
+  sessionActivityVersion: number;
+  processExited: boolean;
   turnStarting: boolean;
   pendingTurnInterrupted: boolean;
   stopped: boolean;
@@ -154,6 +153,10 @@ export interface OhMyPiAdapterLiveOptions {
   ) => Effect.Effect<AcpSessionRuntimeShape, import("../acp/AcpErrors.ts").AcpError, Scope.Scope>;
   readonly discoveryCacheMs?: number;
   readonly discoveryTimeoutMs?: number;
+  readonly prepareControlPlane?: () => Effect.Effect<PreparedOmpControlPlane, Error>;
+  readonly settleQuietWindowMs?: number;
+  readonly settleMaxWaitMs?: number;
+  readonly settlePollMs?: number;
 }
 
 function parseResumeCursor(raw: unknown): { sessionId: string } | undefined {
@@ -227,10 +230,17 @@ export function makeOhMyPiAdapter(
     const fileSystem = yield* FileSystem.FileSystem;
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const serverConfig = yield* Effect.service(ServerConfig);
-    const agentGatewayCredentials = Option.getOrUndefined(
-      yield* Effect.serviceOption(AgentGatewayCredentials),
-    );
     const runtimeFactory = options?.makeRuntime ?? makeOhMyPiAcpRuntime;
+    const prepareControlPlane =
+      options?.prepareControlPlane ??
+      (() =>
+        Effect.tryPromise({
+          try: () => prepareOmpControlPlane(),
+          catch: (cause) =>
+            cause instanceof Error
+              ? cause
+              : new Error(`Failed to prepare Oh My Pi control plane: ${String(cause)}`),
+        }));
     const sessions = new Map<ThreadId, OhMyPiSessionContext>();
     const withThreadLock = yield* makeAcpThreadLock();
     const discoveryLock = yield* Semaphore.make(1);
@@ -276,8 +286,6 @@ export function makeOhMyPiAdapter(
           if (!ctx.stopped) {
             ctx.stopped = true;
             sessions.delete(ctx.threadId);
-            yield* cancelAgentGatewayTurn(ctx.gatewaySessionLease, ctx.activeTurnId);
-            ctx.gatewaySessionLease?.release();
             yield* settleAcpPendingApprovalsAsCancelled(ctx.pendingApprovals);
             yield* settleAcpPendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
             if (ctx.notificationFiber) yield* Fiber.interrupt(ctx.notificationFiber);
@@ -305,6 +313,7 @@ export function makeOhMyPiAdapter(
 
     const emitParsedEvent = (ctx: OhMyPiSessionContext, event: ReturnType<AcpSessionRuntimeShape["getEvents"]> extends Stream.Stream<infer A, never> ? A : never) =>
       Effect.gen(function* () {
+        ctx.sessionActivityVersion += 1;
         const turnId = ctx.activeTurnId;
         switch (event._tag) {
           case "ModeChanged":
@@ -417,13 +426,42 @@ export function makeOhMyPiAdapter(
     const waitForQueuedEvents = (ctx: OhMyPiSessionContext) =>
       Effect.gen(function* () {
         const target = yield* ctx.acp.sessionUpdatesEnqueuedCount;
-        const startedAt = Date.now();
-        while (
-          ctx.sessionUpdatesProcessed < target &&
-          Date.now() - startedAt < OMP_TURN_DRAIN_MAX_WAIT_MS
-        ) {
-          yield* Effect.sleep(OMP_TURN_DRAIN_POLL_MS);
+        const result = yield* Effect.tryPromise({
+          try: (signal) =>
+            waitForOmpTurnSettle({
+              targetEnqueued: target,
+              getSnapshot: () => ({
+                processed: ctx.sessionUpdatesProcessed,
+                activityVersion: ctx.sessionActivityVersion,
+                aborted: ctx.pendingTurnInterrupted || ctx.stopped,
+                processExited: ctx.processExited,
+              }),
+              quietWindowMs: options?.settleQuietWindowMs ?? OMP_TURN_DRAIN_QUIET_WINDOW_MS,
+              maxWaitMs: options?.settleMaxWaitMs ?? OMP_TURN_DRAIN_MAX_WAIT_MS,
+              pollMs: options?.settlePollMs ?? OMP_TURN_DRAIN_POLL_MS,
+              signal,
+            }),
+          catch: (cause) => cause,
+        }).pipe(Effect.orDie);
+        if (result.outcome === "timed-out") {
+          yield* publish(ctx.lifecycleGeneration, {
+            type: "runtime.warning",
+            ...(yield* makeEventStamp()),
+            provider: PROVIDER,
+            threadId: ctx.threadId,
+            ...(ctx.activeTurnId ? { turnId: ctx.activeTurnId } : {}),
+            payload: {
+              message:
+                "Oh My Pi ACP did not become quiet before the bounded turn-settle timeout; Synara continued without claiming Auto-Learn capture completed.",
+              detail: {
+                waitedMs: result.waitedMs,
+                queueDrained: result.queueDrained,
+                typedDrainAvailable: false,
+              },
+            },
+          });
         }
+        return result;
       });
 
     const startSession: OhMyPiAdapterShape["startSession"] = (input) =>
@@ -450,7 +488,18 @@ export function makeOhMyPiAdapter(
 
           const selection =
             input.modelSelection?.provider === PROVIDER ? input.modelSelection : undefined;
+          const controlPlane = yield* prepareControlPlane().pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderAdapterRequestError({
+                  provider: PROVIDER,
+                  method: "session/start",
+                  detail: `Failed to prepare the Oh My Pi process overlay: ${cause.message}`,
+                }),
+            ),
+          );
           const providerSettings: OhMyPiAcpRuntimeSettings = {
+            overlayPath: controlPlane.overlayPath,
             ...(settings.binaryPath ? { binaryPath: settings.binaryPath } : {}),
             ...(input.providerOptions?.omp?.binaryPath
               ? { binaryPath: input.providerOptions.omp.binaryPath }
@@ -459,18 +508,8 @@ export function makeOhMyPiAdapter(
           const resumeSessionId = parseResumeCursor(input.resumeCursor)?.sessionId;
           const sessionScope = yield* Scope.make("sequential");
           let transferred = false;
-          const gatewaySessionLease = acquireAgentGatewaySessionLease(
-            agentGatewayCredentials,
-            input.threadId,
-            PROVIDER,
-          );
           yield* Effect.addFinalizer(() =>
             transferred ? Effect.void : Scope.close(sessionScope, Exit.void),
-          );
-          yield* Effect.addFinalizer(() =>
-            transferred || !gatewaySessionLease
-              ? Effect.void
-              : Effect.sync(gatewaySessionLease.release),
           );
 
           const pendingApprovals = new Map<ApprovalRequestId, PendingApproval>();
@@ -529,16 +568,6 @@ export function makeOhMyPiAdapter(
                   }
                 }),
             },
-            ...(agentGatewayCredentials
-              ? {
-                  buildMcpServers: (initializeResult: Acp.InitializeResponse) =>
-                    buildAcpSynaraMcpServers({
-                      connection: gatewaySessionLease!.connection,
-                      initializeResult,
-                      stdioProxy: agentGatewayCredentials.stdioProxy,
-                    }),
-                }
-              : {}),
           }).pipe(
             Effect.provideService(Scope.Scope, sessionScope),
             Effect.mapError((cause) =>
@@ -550,7 +579,6 @@ export function makeOhMyPiAdapter(
           let ctx: OhMyPiSessionContext = {
             threadId: input.threadId,
             ...(input.lifecycleGeneration ? { lifecycleGeneration: input.lifecycleGeneration } : {}),
-            ...(gatewaySessionLease ? { gatewaySessionLease } : {}),
             session: {
               provider: PROVIDER,
               status: "connecting",
@@ -577,6 +605,8 @@ export function makeOhMyPiAdapter(
             lastPlanFingerprint: undefined,
             latestSessionCostUsd: undefined,
             sessionUpdatesProcessed: 0,
+            sessionActivityVersion: 0,
+            processExited: false,
             turnStarting: false,
             pendingTurnInterrupted: false,
             stopped: false,
@@ -680,18 +710,22 @@ export function makeOhMyPiAdapter(
           ctx.processExitFiber = yield* acp.awaitExit.pipe(
             Effect.andThen(
               Effect.suspend(() =>
-                stopSessionInternal(ctx, {
-                  exitKind: "error",
-                  reason: "Oh My Pi ACP process exited.",
-                  fromProcessWatcher: true,
-                }),
+                Effect.sync(() => {
+                  ctx.processExited = true;
+                }).pipe(
+                  Effect.andThen(
+                    stopSessionInternal(ctx, {
+                      exitKind: "error",
+                      reason: "Oh My Pi ACP process exited.",
+                      fromProcessWatcher: true,
+                    }),
+                  ),
+                ),
               ),
             ),
             Effect.ignore,
             Effect.forkDetach,
           );
-          yield* startAgentGatewaySessionLeaseExitWatcher(gatewaySessionLease, acp.awaitExit);
-
           const started = yield* acp.start().pipe(
             Effect.timeoutOption(OMP_REQUEST_TIMEOUT_MS),
             Effect.flatMap(
@@ -837,7 +871,7 @@ export function makeOhMyPiAdapter(
           }
           const harnessPolicy = takeSynaraHarnessPolicyTextPartForProviderSession(ctx, {
             provider: PROVIDER,
-            scopedGatewayConnectionAvailable: agentGatewayCredentials !== undefined,
+            scopedGatewayConnectionAvailable: false,
           });
           if (harnessPolicy) prompt.unshift(harnessPolicy);
           if (ctx.stopped) {
@@ -976,7 +1010,6 @@ export function makeOhMyPiAdapter(
         if (!ctx.turnStarting && !ctx.activeTurnId) return;
         if (ctx.pendingTurnInterrupted) return;
         ctx.pendingTurnInterrupted = true;
-        yield* cancelAgentGatewayTurn(ctx.gatewaySessionLease, ctx.activeTurnId);
         yield* settleAcpPendingApprovalsAsCancelled(ctx.pendingApprovals);
         yield* settleAcpPendingUserInputsAsEmptyAnswers(ctx.pendingUserInputs);
         yield* ctx.acp.cancel.pipe(Effect.ignore);
@@ -1088,6 +1121,7 @@ export function makeOhMyPiAdapter(
         }
         const runtime = yield* runtimeFactory({
           ohMyPiSettings: {
+            overlayPath: (yield* prepareControlPlane()).overlayPath,
             ...(settings.binaryPath ? { binaryPath: settings.binaryPath } : {}),
             ...(input.binaryPath ? { binaryPath: input.binaryPath } : {}),
           },

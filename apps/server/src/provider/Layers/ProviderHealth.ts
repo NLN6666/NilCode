@@ -92,6 +92,10 @@ import {
 } from "../providerStatusCache";
 import { makeProviderMaintenanceCommandCoordinator } from "../providerMaintenanceCommandCoordinator";
 import {
+  inspectOmpControlPlane,
+  type OmpControlPlanePlan,
+} from "../omp/OmpControlPlane.ts";
+import {
   enrichProviderStatusWithVersionAdvisory,
   compareSemverVersions,
   makeProviderMaintenanceCapabilities,
@@ -1667,6 +1671,7 @@ export interface OhMyPiHealthCheckOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly platform?: NodeJS.Platform;
   readonly timeoutMs?: number;
+  readonly inspectControlPlane?: () => Promise<OmpControlPlanePlan>;
 }
 
 function trimOptionalCommandQuotes(command: string): string {
@@ -1788,7 +1793,24 @@ export const makeCheckOhMyPiProviderStatus = (
       ohMyPiVerdictCache.set(executable, { identity, verdict });
     }
     return { ...verdict, checkedAt } satisfies ServerProviderStatus;
-  });
+  }).pipe(
+    Effect.flatMap((status) =>
+      Effect.tryPromise({
+        try: () =>
+          options.inspectControlPlane?.() ??
+          inspectOmpControlPlane(options.env ? { env: options.env } : undefined),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.map(
+          (plan) => ({ ...status, ompPolicy: plan.policy }) satisfies ServerProviderStatus,
+        ),
+        // Provider availability remains a binary/runtime fact. A transient
+        // read error here must not hide OMP; session start will fail clearly
+        // if the mandatory overlay cannot be prepared.
+        Effect.catch(() => Effect.succeed(status)),
+      ),
+    ),
+  );
 
 export const checkOhMyPiProviderStatus = makeCheckOhMyPiProviderStatus();
 
@@ -2123,6 +2145,7 @@ export function providerStatusesEqual(
       (status.autoRuntimeModeBinaryPath ?? null) === (next.autoRuntimeModeBinaryPath ?? null) &&
       (status.version ?? null) === (next.version ?? null) &&
       (status.message ?? null) === (next.message ?? null) &&
+      JSON.stringify(status.ompPolicy ?? null) === JSON.stringify(next.ompPolicy ?? null) &&
       JSON.stringify(comparableProviderVersionAdvisory(status.versionAdvisory)) ===
         JSON.stringify(comparableProviderVersionAdvisory(next.versionAdvisory)) &&
       JSON.stringify(status.updateState ?? null) === JSON.stringify(next.updateState ?? null)

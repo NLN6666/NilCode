@@ -8,6 +8,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { ServerConfig } from "../../config.ts";
+import {
+  AgentGatewayCredentials,
+  type AgentGatewayCredentialsShape,
+} from "../../agentGateway/Services/AgentGatewayCredentials.ts";
 import * as AcpErrors from "../acp/AcpErrors.ts";
 import type {
   AcpParsedSessionEvent,
@@ -38,6 +42,7 @@ interface FakeRuntimeState {
   signalProcessExit?: () => void;
   emitUnknownExtension?: boolean;
   eventBurst?: number;
+  undeliveredEvents?: number;
   setupMethod?: "new" | "load" | "resume";
   failStart?: boolean;
   neverStart?: boolean;
@@ -155,6 +160,7 @@ function makeFakeRuntimeFactory(state: FakeRuntimeState) {
               _tag: "AssistantItemCompleted",
               itemId: "assistant-1",
             });
+            state.enqueued += state.undeliveredEvents ?? 0;
             return { stopReason: "end_turn" as const };
           }),
         cancel: Effect.sync(() => {
@@ -199,7 +205,40 @@ function testLayer(
 ) {
   return makeOhMyPiAdapterLive(settings, {
     ...options,
+    settleQuietWindowMs: options.settleQuietWindowMs ?? 1,
+    settleMaxWaitMs: options.settleMaxWaitMs ?? 50,
+    settlePollMs: options.settlePollMs ?? 1,
     makeRuntime: makeFakeRuntimeFactory(state),
+    prepareControlPlane: () =>
+      Effect.succeed({
+        overlayPath: "C:/Users/test/.omp/synara/acp-provider.yml",
+        overlayContent: "launch:\n  enabled: true\n",
+        overlayWritten: false,
+        policy: {
+          owner: "omp-native",
+          overlayPath: "C:/Users/test/.omp/synara/acp-provider.yml",
+          sharedHome: true,
+          launch: { configured: true, observability: "acp-tool-activity-only" },
+          advisor: {
+            configured: true,
+            state: "degraded",
+            warning: "Configure modelRoles.advisor.",
+            observability: "transcript-only",
+          },
+          memory: {
+            backend: "local",
+            source: "synara-fallback",
+            observability: "ordinary-tools-only",
+          },
+          autoLearn: {
+            configured: true,
+            autoContinue: true,
+            experimental: true,
+            observability: "bounded-settle-only",
+          },
+          typedObservability: "phase-3-required",
+        },
+      }),
   }).pipe(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "omp-adapter-test-" })),
     Layer.provideMerge(NodeServices.layer),
@@ -207,6 +246,46 @@ function testLayer(
 }
 
 describe("OhMyPiAdapter", () => {
+  it("does not lease or inject the Synara daemon gateway for OMP-owned Launch", async () => {
+    const state = makeState();
+    let issued = 0;
+    let revoked = 0;
+    const credentials = {
+      connectionForThread: () => {
+        issued += 1;
+        return { url: "http://127.0.0.1:3773/mcp", bearerToken: "must-not-reach-omp" };
+      },
+      revokeSessionToken: () => {
+        revoked += 1;
+      },
+      stdioProxy: { command: "node", args: ["proxy.mjs"] },
+    } as unknown as AgentGatewayCredentialsShape;
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const adapter = yield* OhMyPiAdapter;
+        yield* adapter.startSession({
+          threadId: "thread-omp-native-launch",
+          provider: "omp",
+          cwd: process.cwd(),
+          runtimeMode: "approval-required",
+        });
+        expect(state.inputs[0]?.buildMcpServers).toBeUndefined();
+        yield* adapter.stopAll();
+      }).pipe(
+        Effect.provide(
+          testLayer(state).pipe(
+            Layer.provideMerge(Layer.succeed(AgentGatewayCredentials, credentials)),
+          ),
+        ),
+        Effect.scoped,
+      ),
+    );
+
+    expect(issued).toBe(0);
+    expect(revoked).toBe(0);
+  });
+
   it("registers handlers before start, runs a turn, and proves scoped cleanup", async () => {
     const state = makeState();
     await Effect.runPromise(
@@ -425,6 +504,47 @@ describe("OhMyPiAdapter", () => {
         ).toBe(true);
         yield* adapter.stopSession("thread-omp-extension");
       }).pipe(Effect.scoped, Effect.provide(testLayer(state))),
+    );
+  });
+
+  it("continues after a bounded Auto-Learn settle timeout with a truthful warning", async () => {
+    const state = makeState();
+    state.undeliveredEvents = 1;
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const adapter = yield* OhMyPiAdapter;
+        const eventLog: ProviderRuntimeEvent[] = [];
+        yield* Effect.forkScoped(
+          Stream.runForEach(adapter.streamEvents, (event) =>
+            Effect.sync(() => {
+              eventLog.push(event);
+            }),
+          ),
+        );
+        yield* Effect.yieldNow;
+        yield* adapter.startSession({
+          threadId: "thread-omp-settle-timeout",
+          provider: "omp",
+          cwd: process.cwd(),
+          runtimeMode: "approval-required",
+        });
+        yield* adapter.sendTurn({ threadId: "thread-omp-settle-timeout", input: "learn" });
+        while (!(yield* adapter.readThread("thread-omp-settle-timeout")).turns.length) {
+          yield* Effect.sleep(5);
+        }
+
+        expect(
+          eventLog.some(
+            (event) =>
+              event.type === "runtime.warning" &&
+              event.payload.message.includes("without claiming Auto-Learn capture completed"),
+          ),
+        ).toBe(true);
+        yield* adapter.stopSession("thread-omp-settle-timeout");
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(testLayer(state, {}, { settleMaxWaitMs: 10, settlePollMs: 1 })),
+      ),
     );
   });
 
