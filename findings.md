@@ -389,3 +389,12 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 修复边界：Windows 在 Electron `ready` 前调用 `app.disableHardwareAcceleration()`；macOS/Linux 保持现有图形加速行为。代价是 Windows 不再使用 GPU 合成，但优先消除已复现的主线程永久等待。
 - TDD 红灯符合预期：首次运行 `desktopGraphicsPolicy.test.ts` 因实现模块尚不存在而失败，随后再加入平台策略和启动接线。
 - 最终验证：图形策略 3/3 测试通过，desktop `tsdown` 构建成功；生成的 `dist-electron/main.js` 中禁用调用位于 `app.whenReady()` 之前。按项目约束未运行 `bun fmt`、`bun lint`、`bun typecheck`，因为用户本轮没有显式授权这些 heavyweight checks。
+
+---
+
+## 28. OMP ACP Provider 调研（2026-08-14）
+
+- 当前 OMP `main` 为 `17.3.3` / `ad318c7`。旧 RPC 文档中“host defaults 会复位 `memory.*` / `advisor.*`”不能直接用于当前设计：OMP `16.1.12` 已修复 RPC/ACP 覆盖显式 global/project/`--config` 配置的问题。
+- OMP ACP `initialize` 只广告标准 session/MCP/prompt 能力，session config options 只提供 mode/model/thinking；ACP agent 与 event mapper 没有 Advisor、Auto-Learn、Memory 的专属 method/update，Launch 只会作为普通 tool activity。行为可运行不等于产品级可观察。
+- Synara 已有自己的 Advisor 与从 OMP 移植增强的 daemon/`@Launch`。OMP provider 若同时启用两套 Advisor 或两套进程 registry，会产生重复 steer、状态分叉与所有权不明；正式设计必须加入互斥仲裁。
+- 调研过程没有可用的 LCC MCP，按仓库规则降级到 FastCtx 并抽查当前文件。后台探子按 research skill 被要求生成调研文件，但只返回了线索而未落盘；主代理复核一手资料后创建 `docs/research/2026-08-14-oh-my-pi-acp-provider.md`。
