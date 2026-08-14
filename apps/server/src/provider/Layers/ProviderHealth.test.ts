@@ -24,6 +24,7 @@ import {
   checkCursorProviderStatus,
   checkGrokProviderStatus,
   checkOpenCodeProviderStatus,
+  checkOhMyPiProviderStatus,
   checkPiProviderStatus,
   hasCustomModelProvider,
   makeDisabledProviderStatus,
@@ -33,6 +34,7 @@ import {
   makeCheckGrokProviderStatus,
   makeCheckKiloProviderStatus,
   makeCheckOpenCodeProviderStatus,
+  makeCheckOhMyPiProviderStatus,
   makeProviderHealthLive,
   parseAuthStatusFromOutput,
   parseClaudeAuthStatusFromOutput,
@@ -155,6 +157,7 @@ const allProvidersDisabledSettings = {
     droid: { enabled: false },
     kilo: { enabled: false },
     opencode: { enabled: false },
+    omp: { enabled: false },
     pi: { enabled: false },
   },
 } as const;
@@ -170,6 +173,7 @@ const allProvidersDisabledServerSettings = {
     droid: { ...DEFAULT_SERVER_SETTINGS.providers.droid, enabled: false },
     kilo: { ...DEFAULT_SERVER_SETTINGS.providers.kilo, enabled: false },
     opencode: { ...DEFAULT_SERVER_SETTINGS.providers.opencode, enabled: false },
+    omp: { ...DEFAULT_SERVER_SETTINGS.providers.omp, enabled: false },
     pi: { ...DEFAULT_SERVER_SETTINGS.providers.pi, enabled: false },
   },
 } satisfies typeof DEFAULT_SERVER_SETTINGS;
@@ -418,7 +422,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
       );
       const codex = statuses.find((status) => status.provider === "codex");
 
-      assert.strictEqual(statuses.length, 9);
+      assert.strictEqual(statuses.length, 10);
       assert.strictEqual(codex?.available, false);
       assert.strictEqual(codex?.message, "Provider is disabled in Synara settings.");
     });
@@ -553,7 +557,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         const providerHealth = yield* ProviderHealth;
         const statuses = yield* providerHealth.refresh;
 
-        assert.strictEqual(statuses.length, 9);
+        assert.strictEqual(statuses.length, 10);
         for (const status of statuses) {
           assert.strictEqual(status.available, false);
           assert.strictEqual(status.message, "Provider is disabled in Synara settings.");
@@ -1955,6 +1959,224 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           "Pi SDK is bundled, but the Pi CLI (`pi`) is not on PATH, so Synara could not verify the installed CLI version.",
         );
       }).pipe(Effect.provide(failingSpawnerLayer("spawn pi ENOENT"))),
+    );
+  });
+
+  describe("checkOhMyPiProviderStatus", () => {
+    const withTempOhMyPiBinary = (input?: {
+      readonly directoryName?: string;
+      readonly fileName?: string;
+      readonly content?: string;
+    }) =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fileSystem.makeTempDirectoryScoped({ prefix: "provider-health-omp-" });
+        const directory = path.join(root, input?.directoryName ?? "bin");
+        yield* fileSystem.makeDirectory(directory, { recursive: true });
+        const binaryPath = path.join(directory, input?.fileName ?? "omp.CMD");
+        yield* fileSystem.writeFileString(binaryPath, input?.content ?? "@echo off\r\n");
+        return { binaryPath, directory } as const;
+      });
+
+    const windowsCommandIncludes = (args: ReadonlyArray<string>, expected: string): boolean =>
+      (args.at(-1) ?? "").toLowerCase().includes(expected.toLowerCase());
+
+    it.effect("resolves a compatible .CMD from Path and only probes --version", () =>
+      Effect.gen(function* () {
+        const { binaryPath, directory } = yield* withTempOhMyPiBinary();
+        let spawnCount = 0;
+        const status = yield* makeCheckOhMyPiProviderStatus(undefined, {
+          platform: "win32",
+          env: { Path: `\"${directory}\"`, PATHEXT: ".EXE;.CMD" },
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args, command) => {
+              spawnCount += 1;
+              assert.strictEqual(command.toLowerCase(), "c:\\windows\\system32\\cmd.exe");
+              assert.strictEqual(windowsCommandIncludes(args, binaryPath), true);
+              assert.strictEqual(windowsCommandIncludes(args, '"--version"'), true);
+              assert.strictEqual(args.some((arg) => arg === "acp"), false);
+              return { stdout: "omp/17.3.3\n", stderr: "", code: 0 };
+            }),
+          ),
+        );
+
+        assert.strictEqual(spawnCount, 1);
+        assert.strictEqual(status.provider, "omp");
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.authStatus, "unknown");
+        assert.strictEqual(status.version, "17.3.3");
+      }),
+    );
+
+    it.effect("resolves quoted Program Files PATH entries with lowercase path key", () =>
+      Effect.gen(function* () {
+        const { binaryPath, directory } = yield* withTempOhMyPiBinary({
+          directoryName: "Program Files\\Oh My Pi",
+          fileName: "omp.cmd",
+        });
+        const status = yield* makeCheckOhMyPiProviderStatus(undefined, {
+          platform: "win32",
+          env: { path: `\"${directory}\"`, PATHEXT: ".CMD" },
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              assert.strictEqual(windowsCommandIncludes(args, binaryPath), true);
+              return { stdout: "omp/17.3.3\n", stderr: "", code: 0 };
+            }),
+          ),
+        );
+
+        assert.strictEqual(status.available, true);
+      }),
+    );
+
+    it.effect("uses a configured absolute binary path containing spaces", () =>
+      Effect.gen(function* () {
+        const { binaryPath } = yield* withTempOhMyPiBinary({
+          directoryName: "Program Files\\Oh My Pi",
+          fileName: "omp.cmd",
+        });
+        const status = yield* makeCheckOhMyPiProviderStatus(binaryPath, {
+          platform: "win32",
+          env: { PATH: "", PATHEXT: ".CMD" },
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              assert.strictEqual(windowsCommandIncludes(args, binaryPath), true);
+              return { stdout: "omp/17.3.3\n", stderr: "", code: 0 };
+            }),
+          ),
+        );
+
+        assert.strictEqual(status.available, true);
+      }),
+    );
+
+    it.effect("returns unavailable without spawning when omp cannot be resolved", () =>
+      Effect.gen(function* () {
+        let spawnCount = 0;
+        const status = yield* makeCheckOhMyPiProviderStatus(undefined, {
+          platform: "win32",
+          env: { PATH: "", PATHEXT: ".CMD" },
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer(() => {
+              spawnCount += 1;
+              return { stdout: "omp/17.3.3\n", stderr: "", code: 0 };
+            }),
+          ),
+        );
+
+        assert.strictEqual(spawnCount, 0);
+        assert.strictEqual(status.status, "error");
+        assert.strictEqual(status.available, false);
+        assert.match(status.message ?? "", /not installed or not on PATH/i);
+      }),
+    );
+
+    it.effect("rejects an OMP version below 16.1.12", () =>
+      Effect.gen(function* () {
+        const { binaryPath } = yield* withTempOhMyPiBinary();
+        const status = yield* makeCheckOhMyPiProviderStatus(binaryPath, {
+          platform: "win32",
+          env: { PATH: "", PATHEXT: ".CMD" },
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer(() => ({ stdout: "omp/16.1.11\n", stderr: "", code: 0 })),
+          ),
+        );
+
+        assert.strictEqual(status.status, "error");
+        assert.strictEqual(status.available, false);
+        assert.strictEqual(status.version, "16.1.11");
+        assert.match(status.message ?? "", /16\.1\.12 or newer/i);
+      }),
+    );
+
+    it.effect("returns unavailable when the bounded version probe times out", () =>
+      Effect.gen(function* () {
+        const { binaryPath } = yield* withTempOhMyPiBinary();
+        const status = yield* TestClock.withLive(
+          makeCheckOhMyPiProviderStatus(binaryPath, {
+            platform: "win32",
+            env: { PATH: "", PATHEXT: ".CMD" },
+            timeoutMs: 10,
+          }).pipe(
+            Effect.provide(
+              hangingSpawnerLayer({
+                onKill: () => {},
+                shouldHang: () => true,
+              }),
+            ),
+          ),
+        );
+
+        assert.strictEqual(status.status, "error");
+        assert.strictEqual(status.available, false);
+        assert.match(status.message ?? "", /timed out/i);
+      }),
+    );
+
+    it.effect("returns unavailable when the version probe exits nonzero", () =>
+      Effect.gen(function* () {
+        const { binaryPath } = yield* withTempOhMyPiBinary();
+        const status = yield* makeCheckOhMyPiProviderStatus(binaryPath, {
+          platform: "win32",
+          env: { PATH: "", PATHEXT: ".CMD" },
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer(() => ({ stdout: "", stderr: "version failed\n", code: 2 })),
+          ),
+        );
+
+        assert.strictEqual(status.status, "error");
+        assert.strictEqual(status.available, false);
+        assert.match(status.message ?? "", /version failed/i);
+      }),
+    );
+
+    it.effect("invalidates the cached verdict when the binary identity changes", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const { binaryPath } = yield* withTempOhMyPiBinary({ content: "@echo off\r\nrem old\r\n" });
+        let spawnCount = 0;
+        const layer = mockSpawnerLayer(() => {
+          spawnCount += 1;
+          return spawnCount === 1
+            ? { stdout: "omp/16.1.11\n", stderr: "", code: 0 }
+            : { stdout: "omp/17.3.3\n", stderr: "", code: 0 };
+        });
+        const options = {
+          platform: "win32" as const,
+          env: { PATH: "", PATHEXT: ".CMD" },
+        };
+
+        const first = yield* makeCheckOhMyPiProviderStatus(binaryPath, options).pipe(
+          Effect.provide(layer),
+        );
+        const cached = yield* makeCheckOhMyPiProviderStatus(binaryPath, options).pipe(
+          Effect.provide(layer),
+        );
+        yield* fileSystem.writeFileString(binaryPath, "@echo off\r\nrem upgraded binary\r\n");
+        const upgraded = yield* makeCheckOhMyPiProviderStatus(binaryPath, options).pipe(
+          Effect.provide(layer),
+        );
+
+        assert.strictEqual(first.available, false);
+        assert.strictEqual(cached.available, false);
+        assert.strictEqual(upgraded.available, true);
+        assert.strictEqual(spawnCount, 2);
+      }),
+    );
+
+    it.effect("keeps the default check callable", () =>
+      Effect.gen(function* () {
+        const status = yield* checkOhMyPiProviderStatus;
+        assert.strictEqual(status.provider, "omp");
+      }).pipe(Effect.provide(failingSpawnerLayer("spawn omp ENOENT"))),
     );
   });
 

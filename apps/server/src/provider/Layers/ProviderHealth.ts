@@ -103,6 +103,7 @@ import {
 import { isClaudeAutoModeCliVersionSupported } from "../claudeCliVersion.ts";
 import { collectUint8StreamText } from "../../stream/collectUint8StreamText";
 import { buildCodexProcessEnv } from "../../codexProcessEnv.ts";
+import { executableIdentity, resolveExecutable } from "../../executableLookup.ts";
 
 export { parseClaudeAuthStatusFromOutput } from "../claudeAuthStatus";
 export type { CommandResult } from "../providerCliOutput";
@@ -132,10 +133,12 @@ const GROK_PROVIDER = "grok" as const;
 const DROID_PROVIDER = "droid" as const;
 const KILO_PROVIDER = "kilo" as const;
 const OPENCODE_PROVIDER = "opencode" as const;
+const OMP_PROVIDER = "omp" as const;
 const PI_PROVIDER = "pi" as const;
 type ProviderStatuses = ReadonlyArray<ServerProviderStatus>;
 const DISABLED_PROVIDER_STATUS_MESSAGE = "Provider is disabled in Synara settings.";
 const MINIMUM_ANTIGRAVITY_CLI_VERSION = "1.0.12";
+export const MINIMUM_OH_MY_PI_CLI_VERSION = "16.1.12";
 
 const PROVIDERS = [
   CODEX_PROVIDER,
@@ -146,11 +149,12 @@ const PROVIDERS = [
   DROID_PROVIDER,
   KILO_PROVIDER,
   OPENCODE_PROVIDER,
+  OMP_PROVIDER,
   PI_PROVIDER,
 ] as const satisfies ReadonlyArray<ProviderKind>;
 
 const providerChildKind = (provider: ProviderKind): ProviderChildKind =>
-  provider === CLAUDE_AGENT_PROVIDER ? "claude" : provider;
+  provider === CLAUDE_AGENT_PROVIDER ? "claude" : provider === OMP_PROVIDER ? "acp" : provider;
 
 const providerCommandEnv = (provider: ProviderKind): NodeJS.ProcessEnv =>
   buildProviderChildEnvironment({ provider: providerChildKind(provider) });
@@ -852,6 +856,19 @@ function cursorModelsOutputHasNoModels(output: string): boolean {
 
 const runPiCommand = (args: ReadonlyArray<string>, executable = "pi") =>
   runProviderCommand(executable, args, providerCommandEnv(PI_PROVIDER)).pipe(
+    Effect.flatMap((result) =>
+      isWindowsShellCommandMissingResult({ code: result.code, stderr: result.stderr })
+        ? Effect.fail(new Error(`spawn ${executable} ENOENT`))
+        : Effect.succeed(result),
+    ),
+  );
+
+const runOhMyPiCommand = (
+  args: ReadonlyArray<string>,
+  executable: string,
+  env: NodeJS.ProcessEnv,
+) =>
+  runProviderCommand(executable, args, buildProviderChildEnvironment({ provider: "acp", baseEnv: env })).pipe(
     Effect.flatMap((result) =>
       isWindowsShellCommandMissingResult({ code: result.code, stderr: result.stderr })
         ? Effect.fail(new Error(`spawn ${executable} ENOENT`))
@@ -1637,6 +1654,144 @@ export const checkPiProviderStatus = (
     } satisfies ServerProviderStatus;
   });
 
+// ── Oh My Pi health check ──────────────────────────────────────────
+
+type OhMyPiCachedVerdict = Omit<ServerProviderStatus, "checkedAt">;
+
+const ohMyPiVerdictCache = new Map<
+  string,
+  { readonly identity: string; readonly verdict: OhMyPiCachedVerdict }
+>();
+
+export interface OhMyPiHealthCheckOptions {
+  readonly env?: NodeJS.ProcessEnv;
+  readonly platform?: NodeJS.Platform;
+  readonly timeoutMs?: number;
+}
+
+function trimOptionalCommandQuotes(command: string): string {
+  const trimmed = command.trim();
+  return trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')
+    ? trimmed.slice(1, -1)
+    : trimmed;
+}
+
+export const makeCheckOhMyPiProviderStatus = (
+  binaryPath?: string,
+  options: OhMyPiHealthCheckOptions = {},
+): Effect.Effect<ServerProviderStatus, never, ChildProcessSpawner.ChildProcessSpawner> =>
+  Effect.gen(function* () {
+    const checkedAt = new Date().toISOString();
+    const configuredCommand = trimOptionalCommandQuotes(nonEmptyTrimmed(binaryPath) ?? "omp");
+    const env = options.env ?? process.env;
+    const platform = options.platform ?? process.platform;
+    const executable = resolveExecutable(configuredCommand, { env, platform });
+
+    if (!executable) {
+      return {
+        provider: OMP_PROVIDER,
+        status: "error",
+        available: false,
+        authStatus: "unknown",
+        checkedAt,
+        message:
+          configuredCommand === "omp"
+            ? "Oh My Pi CLI (`omp`) is not installed or not on PATH. Install Oh My Pi or configure its binary path."
+            : `Oh My Pi CLI was not found at the configured binary path: ${configuredCommand}.`,
+      } satisfies ServerProviderStatus;
+    }
+
+    const identity = executableIdentity(executable);
+    const cached = identity ? ohMyPiVerdictCache.get(executable) : undefined;
+    if (cached?.identity === identity) {
+      return { ...cached.verdict, checkedAt } satisfies ServerProviderStatus;
+    }
+
+    const versionProbe = yield* probeProviderCliVersion(
+      runOhMyPiCommand(["--version"], executable, env),
+      options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    );
+
+    if (versionProbe.outcome === "missing" || versionProbe.outcome === "failure") {
+      const error = versionProbe.cause;
+      return {
+        provider: OMP_PROVIDER,
+        status: "error",
+        available: false,
+        authStatus: "unknown",
+        checkedAt,
+        message:
+          versionProbe.outcome === "missing"
+            ? "Oh My Pi CLI (`omp`) is not installed or not on PATH. Install Oh My Pi or configure its binary path."
+            : `Failed to execute Oh My Pi CLI health check: ${error instanceof Error ? error.message : String(error)}.`,
+      } satisfies ServerProviderStatus;
+    }
+
+    if (versionProbe.outcome === "timeout") {
+      return {
+        provider: OMP_PROVIDER,
+        status: "error",
+        available: false,
+        authStatus: "unknown",
+        checkedAt,
+        message: `Oh My Pi CLI is installed but failed to run. ${PROVIDER_COMMAND_TIMEOUT_DETAIL}`,
+      } satisfies ServerProviderStatus;
+    }
+
+    if (versionProbe.outcome === "nonzero") {
+      const detail = detailFromResult(versionProbe.result);
+      return {
+        provider: OMP_PROVIDER,
+        status: "error",
+        available: false,
+        authStatus: "unknown",
+        checkedAt,
+        message: detail
+          ? `Oh My Pi CLI is installed but failed to run. ${detail}`
+          : "Oh My Pi CLI is installed but failed to run.",
+      } satisfies ServerProviderStatus;
+    }
+
+    const parsedVersion = parseGenericCliVersion(
+      `${versionProbe.result.stdout}\n${versionProbe.result.stderr}`,
+    );
+    const verdict: OhMyPiCachedVerdict =
+      parsedVersion === null
+        ? {
+            provider: OMP_PROVIDER,
+            status: "error",
+            available: false,
+            authStatus: "unknown",
+            message:
+              "Oh My Pi CLI returned an unrecognized version. Synara requires version 16.1.12 or newer.",
+          }
+        : compareSemverVersions(parsedVersion, MINIMUM_OH_MY_PI_CLI_VERSION) < 0
+          ? {
+              provider: OMP_PROVIDER,
+              status: "error",
+              available: false,
+              authStatus: "unknown",
+              version: parsedVersion,
+              message: `Oh My Pi CLI ${parsedVersion} is too old for Synara. Upgrade to ${MINIMUM_OH_MY_PI_CLI_VERSION} or newer.`,
+            }
+          : {
+              provider: OMP_PROVIDER,
+              status: "ready",
+              available: true,
+              authStatus: "unknown",
+              version: parsedVersion,
+              message:
+                "Oh My Pi CLI is installed. Synara will use the existing local Oh My Pi configuration when a session starts.",
+            };
+
+    if (identity) {
+      ohMyPiVerdictCache.set(executable, { identity, verdict });
+    }
+    return { ...verdict, checkedAt } satisfies ServerProviderStatus;
+  });
+
+export const checkOhMyPiProviderStatus = makeCheckOhMyPiProviderStatus();
+
 // ── Antigravity CLI health check ──────────────────────────────────
 
 export const checkAntigravityProviderStatus = (
@@ -2227,6 +2382,8 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
             return settings.providers.kilo.binaryPath;
           case "opencode":
             return settings.providers.opencode.binaryPath;
+          case "omp":
+            return settings.providers.omp.binaryPath;
           case "pi":
             return settings.providers.pi.binaryPath;
         }
@@ -2433,6 +2590,11 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
                   settings,
                   OPENCODE_PROVIDER,
                   makeCheckOpenCodeProviderStatus(settings.providers.opencode.binaryPath),
+                ),
+                checkProviderWhenEnabled(
+                  settings,
+                  OMP_PROVIDER,
+                  makeCheckOhMyPiProviderStatus(settings.providers.omp.binaryPath),
                 ),
                 checkProviderWhenEnabled(
                   settings,
