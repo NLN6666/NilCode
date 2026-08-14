@@ -1,6 +1,6 @@
 # Plan 018 — Oh My Pi Provider Phase 2（宿主能力仲裁）
 
-- 状态：IMPLEMENTED — INDEPENDENT REVIEW PENDING；typed lifecycle guarantee 命中 STOP 边界
+- 状态：IMPLEMENTED — FOCUSED VERIFIED；typed lifecycle guarantee 命中 STOP 边界
 - 创建：2026-08-14
 - 基线：`dev` / `4aab0ef6c23ebdf56b02f58e0f01769521691a41`
 - 前置提交：`3e95adc30`、`e51d0f109`、`e2af468fc`、`e23e6b981`、`4aab0ef6c`
@@ -169,3 +169,5 @@ OMP 官方实现明确：Advisor enabled 但 `modelRoles.advisor` 无法解析�
 - prompt lifecycle 实测中，ACP `session/prompt` response 后约 2ms 才收到 canonical `AssistantItemCompleted`；5 秒 late window 没有 Advisor/Auto-Learn typed event。OMP log 可见 `agent_end`，Advisor sidecar 在 session close 时为 aborted；Auto-Learn 使用 detached private capture runner，stock ACP 没有 capture-start/complete/drain schema，也没有可靠持久化完成信号。
 - 因而命中 STOP：Phase 2 保留 configured-policy 与 bounded queued/quiet/process-aware fallback，但不保证或宣称 Advisor delivery/Auto-Learn capture 在关闭前完成。可靠 typed completion/drain 必须留给 Phase 3 或 OMP upstream 版本化扩展。
 - 隔离 Synara home `D:\Codes\NilCode\.synara-omp-phase2-verify`、server 58182、web 10554、`SYNARA_AUTH_TOKEN` unset，先 dry-run 后启动；`/health` ready、Web 200。停止后两端口 listener=0、OMP ACP root=0，隔离目录已按固定绝对路径清理。
+- 唯一一次 independent review 覆盖 `4aab0ef6c..c6bb6b2a8`，结果为 `NO FINDINGS`；因此合并修复不适用，没有制造空修复或开启第二轮审查。
+- 审查后 fresh verification：contracts 1/1、server focused 67/67、OMP ProviderHealth 9/9（93 skipped）、Web OMP projection 2/2；contracts/server/Web build 均成功，`git diff --check` 作为最终提交后门禁执行。`bun fmt`、`bun lint`、`bun typecheck` 明确 `NOT RUN`。
