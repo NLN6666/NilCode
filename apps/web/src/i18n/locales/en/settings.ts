@@ -691,8 +691,17 @@ export const settings = {
         advisorRole: "Advisor model role",
         autoLearnDetail: "Auto-continue enabled · experimental",
         autoLearnCost: "Auto-Learn can use extra tokens and write learned data to disk.",
+        typedLive: "Typed OMP runtime",
+        typedFallback: "Configured-policy-only fallback",
+        runtimeVersion: "OMP version",
+        runtimeSessions: "Active typed sessions",
+        advisorLive: "Advisor runtime",
+        advisorRisk: "Advisor tool risk",
+        autoLearnLive: "Auto-Learn runtime",
+        memoryLive: "Memory runtime",
+        launchLive: "OMP Launch authority",
         typedBoundary:
-          "Stock ACP has no typed status or completion controls for these features. Synara shows configured policy and bounded settle only; typed observability remains Phase 3 work.",
+          "No compatible typed OMP session is active. Synara keeps the Phase 2 configured-policy-only view and bounded settle fallback.",
       },
     },
     update: {

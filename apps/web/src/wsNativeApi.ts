@@ -518,6 +518,13 @@ export function createWsNativeApi(): NativeApi {
       restart: (input) => transport.request(WS_METHODS.daemonRestart, input),
       onEvent: daemonEventListeners.subscribe,
     },
+    ompLaunch: {
+      describe: (input) => transport.request(WS_METHODS.ompLaunchDescribe, input),
+      readLogs: (input) => transport.request(WS_METHODS.ompLaunchReadLogs, input),
+      sendText: (input) => transport.request(WS_METHODS.ompLaunchSendText, input),
+      stop: (input) => transport.request(WS_METHODS.ompLaunchStop, input),
+      restart: (input) => transport.request(WS_METHODS.ompLaunchRestart, input),
+    },
     projects: {
       discoverScripts: (input) => transport.request(WS_METHODS.projectsDiscoverScripts, input),
       readLaunchConfig: (input) => transport.request(WS_METHODS.projectsReadLaunchConfig, input),

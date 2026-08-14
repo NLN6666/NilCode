@@ -4,7 +4,7 @@
  *
  * @module OmpControlPlane
  */
-import type { OmpProviderPolicyStatus } from "@synara/contracts";
+import type { OmpProviderPolicyStatus, OmpProviderRuntimeStatus } from "@synara/contracts";
 import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { access, mkdir, open, readFile, rename, rm } from "node:fs/promises";
@@ -12,6 +12,57 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 type OmpEffectiveMemoryBackend = OmpProviderPolicyStatus["memory"]["backend"];
+
+const ompRuntimeByThread = new Map<string, OmpProviderRuntimeStatus>();
+const ompRuntimeListeners = new Set<() => void>();
+let ompRuntimeNotificationQueued = false;
+
+function notifyOmpRuntimeStatusChanged(): void {
+  if (ompRuntimeNotificationQueued) return;
+  ompRuntimeNotificationQueued = true;
+  queueMicrotask(() => {
+    ompRuntimeNotificationQueued = false;
+    for (const listener of ompRuntimeListeners) listener();
+  });
+}
+
+export function subscribeOmpRuntimeStatus(listener: () => void): () => void {
+  ompRuntimeListeners.add(listener);
+  return () => ompRuntimeListeners.delete(listener);
+}
+
+export function updateOmpRuntimeStatus(threadId: string, status: OmpProviderRuntimeStatus): void {
+  ompRuntimeByThread.set(threadId, status);
+  notifyOmpRuntimeStatusChanged();
+}
+
+export function clearOmpRuntimeStatus(threadId: string): void {
+  if (ompRuntimeByThread.delete(threadId)) notifyOmpRuntimeStatusChanged();
+}
+
+export function getOmpRuntimeStatus(): OmpProviderRuntimeStatus | undefined {
+  const values = [...ompRuntimeByThread.values()];
+  if (values.length === 0) return undefined;
+  const selected =
+    values
+      .filter((status) => status.mode === "typed")
+      .sort((left, right) => (right.updatedAt ?? "").localeCompare(left.updatedAt ?? ""))[0] ??
+    values[values.length - 1];
+  if (!selected) return undefined;
+  const services = values.flatMap((status) => status.launch?.services ?? []);
+  return {
+    ...selected,
+    sessionCount: values.length,
+    ...(services.length > 0
+      ? {
+          launch: {
+            authority: "omp",
+            services: [...new Map(services.map((service) => [service.serviceId, service])).values()],
+          },
+        }
+      : {}),
+  };
+}
 
 export interface OmpControlPlanePlan {
   readonly overlayPath: string;
@@ -215,11 +266,13 @@ export async function inspectOmpControlPlane(input: {
 } = {}): Promise<OmpControlPlanePlan> {
   const paths = resolveOmpControlPlanePaths(input.homeDir);
   const globalConfigText = await readFirstExisting(paths.globalConfigPaths);
-  return buildOmpControlPlanePlan({
+  const plan = buildOmpControlPlanePlan({
     overlayPath: paths.overlayPath,
     globalConfigText,
     env: input.env,
   });
+  const runtime = getOmpRuntimeStatus();
+  return runtime ? { ...plan, policy: { ...plan.policy, runtime } } : plan;
 }
 
 async function writeOverlayAtomically(path: string, content: string): Promise<boolean> {

@@ -647,6 +647,16 @@ function ProviderInstallFieldControl(props: {
   );
 }
 
+function formatOmpRuntimeDetail(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return undefined;
+  }
+}
+
 function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus | undefined }) {
   const m = useMessages();
   const projection = projectOmpProviderPolicy(props.status);
@@ -658,6 +668,7 @@ function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus
     memory: copy.memory,
     autoLearn: copy.autoLearn,
   };
+  const runtime = projection.runtime;
 
   return (
     <div className={cn(SETTINGS_OUTLINED_SURFACE_CLASS_NAME, "space-y-3 p-3 text-xs")}>
@@ -701,6 +712,58 @@ function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus
       {projection.advisorWarning ? (
         <div className="rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-2 text-amber-950 dark:text-amber-100">
           {projection.advisorWarning}
+        </div>
+      ) : null}
+      {runtime?.mode === "typed" ? (
+        <div className="space-y-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2.5 py-2 text-muted-foreground">
+          <div className="font-medium text-foreground">{copy.typedLive}</div>
+          <div>
+            {copy.runtimeVersion}: <span className="text-foreground">{runtime.ompVersion ?? "—"}</span>
+            {" · "}
+            {copy.runtimeSessions}: <span className="text-foreground">{runtime.sessionCount}</span>
+          </div>
+          {runtime.advisor ? (
+            <div>
+              {copy.advisorLive}: <span className="text-foreground">{runtime.advisor.active ? "active" : "idle"}</span>
+              {" · "}
+              {copy.advisorRisk}: <span className="text-foreground">{runtime.advisor.toolRisk}</span>
+              {runtime.advisor.inFlight ? " · in flight" : ""}
+              {runtime.advisor.drain
+                ? ` · drain ${runtime.advisor.drain.settled ? "settled" : "degraded"}${runtime.advisor.drain.error ? `: ${runtime.advisor.drain.error}` : ""}`
+                : ""}
+            </div>
+          ) : null}
+          {runtime.autolearn ? (
+            <div>
+              {copy.autoLearnLive}: <span className="text-foreground">{runtime.autolearn.state}</span>
+              {` · generation ${runtime.autolearn.captureGeneration}`}
+              {runtime.autolearn.pending ? " · pending" : ""}
+              {runtime.autolearn.drain
+                ? ` · drain ${runtime.autolearn.drain.settled ? "settled" : "degraded"}${runtime.autolearn.drain.cancelled ? " (cancelled)" : ""}${runtime.autolearn.drain.error ? `: ${runtime.autolearn.drain.error}` : ""}`
+                : ""}
+              {runtime.autolearn.lastFailure ? ` · ${runtime.autolearn.lastFailure}` : ""}
+            </div>
+          ) : null}
+          {runtime.memory ? (
+            <div>
+              {copy.memoryLive}: <span className="text-foreground">{runtime.memory.backend}</span>
+              {runtime.memory.scope ? ` · ${runtime.memory.scope}` : ""}
+              {formatOmpRuntimeDetail(runtime.memory.queue)
+                ? ` · queue ${formatOmpRuntimeDetail(runtime.memory.queue)}`
+                : ""}
+              {runtime.memory.error ? ` · ${runtime.memory.error}` : ""}
+            </div>
+          ) : null}
+          {runtime.launch ? (
+            <div>
+              {copy.launchLive}: <span className="text-foreground">OMP</span>
+              {` · ${runtime.launch.services.length} service(s)`}
+            </div>
+          ) : null}
+        </div>
+      ) : runtime?.degradedReason ? (
+        <div className="rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-2 text-amber-950 dark:text-amber-100">
+          {copy.typedFallback}: {runtime.degradedReason}
         </div>
       ) : null}
       {projection.typedObservabilityPending ? (

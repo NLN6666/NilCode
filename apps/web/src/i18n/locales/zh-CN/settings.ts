@@ -647,8 +647,17 @@ export const settings: Settings = {
         advisorRole: "Advisor 模型角色",
         autoLearnDetail: "已启用自动续轮 · 实验性",
         autoLearnCost: "Auto-Learn 可能消耗额外 token，并把学习数据写入磁盘。",
+        typedLive: "OMP 类型化运行状态",
+        typedFallback: "仅配置策略回退",
+        runtimeVersion: "OMP 版本",
+        runtimeSessions: "活跃类型化会话",
+        advisorLive: "Advisor 运行状态",
+        advisorRisk: "Advisor 工具风险",
+        autoLearnLive: "Auto-Learn 运行状态",
+        memoryLive: "Memory 运行状态",
+        launchLive: "OMP Launch 权威",
         typedBoundary:
-          "Stock ACP 不提供这些功能的类型化状态或完成控制。Synara 只展示配置策略和有界 settle；类型化可观测性留待 Phase 3。",
+          "当前没有兼容的 OMP 类型化会话。Synara 保留 Phase 2 仅配置策略视图和有界 settle 回退。",
       },
     },
     update: {

@@ -22,8 +22,15 @@ import type {
 } from "../acp/AcpSessionRuntime.ts";
 import { OH_MY_PI_ACP_17_3_3_FIXTURE } from "../acp/fixtures/ohMyPiAcp17_3_3.ts";
 import type { OhMyPiAcpRuntimeInput } from "../acp/OhMyPiAcpSupport.ts";
+import {
+  OMP_EXTENSION_EVENTS,
+  OMP_EXTENSION_METHODS,
+} from "../omp/OmpExtensionProtocol.ts";
 import { OhMyPiAdapter } from "../Services/OhMyPiAdapter.ts";
-import { makeOhMyPiAdapterLive } from "./OhMyPiAdapter.ts";
+import {
+  makeOhMyPiAdapterLive,
+  unknownOmpExtensionNotificationMethod,
+} from "./OhMyPiAdapter.ts";
 
 type PermissionHandler = Parameters<AcpSessionRuntimeShape["handleRequestPermission"]>[0];
 type ElicitationHandler = Parameters<AcpSessionRuntimeShape["handleElicitation"]>[0];
@@ -46,7 +53,31 @@ interface FakeRuntimeState {
   setupMethod?: "new" | "load" | "resume";
   failStart?: boolean;
   neverStart?: boolean;
+  typedExtensions?: boolean;
+  extensionSequence: number;
+  readonly extensionRequests: string[];
+  emitExtension?: (method: string, data: Record<string, unknown>) => Promise<void>;
 }
+
+describe("unknownOmpExtensionNotificationMethod", () => {
+  it("ignores request responses and known typed events while diagnosing real unknown notifications", () => {
+    expect(
+      unknownOmpExtensionNotificationMethod({
+        method: OMP_EXTENSION_METHODS.capabilities,
+        result: { schemaVersion: 1 },
+      }),
+    ).toBeUndefined();
+    expect(
+      unknownOmpExtensionNotificationMethod({
+        method: OMP_EXTENSION_EVENTS.advisorNote,
+        params: { schemaVersion: 1 },
+      }),
+    ).toBeUndefined();
+    expect(
+      unknownOmpExtensionNotificationMethod({ method: "_omp/fixture_notice", params: {} }),
+    ).toBe("_omp/fixture_notice");
+  });
+});
 
 function makeFakeRuntimeFactory(state: FakeRuntimeState) {
   return (input: OhMyPiAcpRuntimeInput) =>
@@ -58,6 +89,24 @@ function makeFakeRuntimeFactory(state: FakeRuntimeState) {
         Effect.runFork(Deferred.succeed(exit, undefined));
       };
       const events = yield* PubSub.unbounded<AcpParsedSessionEvent>();
+      const extensionNotifications = new Map<
+        string,
+        (payload: unknown) => Effect.Effect<void, unknown>
+      >();
+      const extensionEnvelope = (data: Record<string, unknown>) => ({
+        schemaVersion: 1,
+        ompVersion: "17.3.3-phase3-test",
+        sessionId: input.resumeSessionId ?? "omp-session-new",
+        generation: "omp-generation-test",
+        sequence: ++state.extensionSequence,
+        timestamp: new Date().toISOString(),
+        data,
+      });
+      state.emitExtension = async (method, data) => {
+        const handler = extensionNotifications.get(method);
+        if (!handler) throw new Error(`Missing extension handler for ${method}`);
+        await Effect.runPromise(handler(extensionEnvelope(data)));
+      };
       let configOptions = [
         ...(OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse
           .configOptions as unknown as ReadonlyArray<Acp.SessionConfigOption>),
@@ -94,7 +143,10 @@ function makeFakeRuntimeFactory(state: FakeRuntimeState) {
         handleSessionUpdate: () => Effect.void,
         handleElicitationComplete: () => Effect.void,
         handleExtRequest: () => Effect.void,
-        handleExtNotification: () => Effect.void,
+        handleExtNotification: (method, _schema, handler) =>
+          Effect.sync(() => {
+            extensionNotifications.set(method, handler as (payload: unknown) => Effect.Effect<void, unknown>);
+          }),
         start: () =>
           state.neverStart
             ? Effect.never
@@ -179,7 +231,63 @@ function makeFakeRuntimeFactory(state: FakeRuntimeState) {
         },
         setModel: () => Effect.void,
         forkSession: () => Effect.die("unsupported"),
-        request: () => Effect.die("unexpected request"),
+        request: (method) => {
+          state.extensionRequests.push(method);
+          if (!state.typedExtensions) {
+            return Effect.fail(
+              new AcpErrors.AcpRequestError({ code: -32601, errorMessage: "Method not found" }),
+            );
+          }
+          const service = {
+            serviceId: "omp-service-1",
+            name: "fixture-service",
+            state: "ready",
+            restartCount: 0,
+            outputBytes: 12,
+            owner: input.resumeSessionId ?? "omp-session-new",
+            persist: false,
+            detached: false,
+          };
+          const data =
+            method === OMP_EXTENSION_METHODS.capabilities
+              ? {
+                  protocol: "omp-acp-extensions",
+                  supportedSchemaVersions: [1],
+                  selectedSchemaVersion: 1,
+                  features: {
+                    advisor: { available: true, enabled: true, observable: true, controllable: true, recoverable: true, methods: [], events: [] },
+                    autolearn: { available: true, enabled: true, observable: true, controllable: true, recoverable: true, methods: [], events: [] },
+                    memory: { available: true, enabled: true, observable: true, controllable: true, recoverable: true, methods: [], events: [] },
+                    launch: { available: true, enabled: true, observable: true, controllable: true, recoverable: true, methods: [], events: [] },
+                  },
+                }
+              : method === OMP_EXTENSION_METHODS.advisorStatus
+                ? { enabled: true, active: true, grantedTools: ["bash"], toolRisk: "write-or-exec", inFlight: false }
+                : method === OMP_EXTENSION_METHODS.autolearnStatus
+                  ? { enabled: true, autoContinue: true, state: "idle", captureGeneration: 1, pending: false }
+                  : method === OMP_EXTENSION_METHODS.memoryStatus
+                    ? { backend: "local", active: true, writable: true, searchable: true, scope: "isolated-test" }
+                    : method === OMP_EXTENSION_METHODS.launchList
+                      ? { authority: "omp", services: [service] }
+                      : method === OMP_EXTENSION_METHODS.launchDescribe
+                        ? {
+                            authority: "omp",
+                            service,
+                            command: "bun server.ts",
+                            cwd: "C:/isolated/project",
+                            restart: "no",
+                          }
+                      : method === OMP_EXTENSION_METHODS.launchLogs
+                        ? { authority: "omp", text: "ready", cursor: 12, state: "ready", timedOut: false }
+                        : method === OMP_EXTENSION_METHODS.launchSend ||
+                            method === OMP_EXTENSION_METHODS.launchStop ||
+                            method === OMP_EXTENSION_METHODS.launchRestart
+                          ? { authority: "omp", service }
+                      : method === OMP_EXTENSION_METHODS.advisorDrain || method === OMP_EXTENSION_METHODS.autolearnDrain
+                        ? { settled: true }
+                        : {};
+          return Effect.succeed(extensionEnvelope(data));
+        },
         notify: () => Effect.void,
       };
       return runtime;
@@ -195,6 +303,8 @@ function makeState(): FakeRuntimeState {
     enqueued: 0,
     cancels: 0,
     closed: 0,
+    extensionSequence: 0,
+    extensionRequests: [],
   };
 }
 
@@ -466,6 +576,128 @@ describe("OhMyPiAdapter", () => {
           yield* Effect.sleep(5);
         }
         expect(state.closed).toBe(1);
+      }).pipe(Effect.scoped, Effect.provide(testLayer(state))),
+    );
+  });
+
+  it("negotiates typed OMP state, projects Advisor notes, and uses typed drains", async () => {
+    const state = makeState();
+    state.typedExtensions = true;
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const adapter = yield* OhMyPiAdapter;
+        const eventLog: ProviderRuntimeEvent[] = [];
+        yield* Effect.forkScoped(
+          Stream.runForEach(adapter.streamEvents, (event) =>
+            Effect.sync(() => {
+              eventLog.push(event);
+            }),
+          ),
+        );
+        yield* Effect.yieldNow;
+        yield* adapter.startSession({
+          threadId: "thread-omp-typed",
+          provider: "omp",
+          cwd: process.cwd(),
+          runtimeMode: "approval-required",
+        });
+        expect(state.extensionRequests.slice(0, 5)).toEqual([
+          OMP_EXTENSION_METHODS.capabilities,
+          OMP_EXTENSION_METHODS.advisorStatus,
+          OMP_EXTENSION_METHODS.autolearnStatus,
+          OMP_EXTENSION_METHODS.memoryStatus,
+          OMP_EXTENSION_METHODS.launchList,
+        ]);
+        expect(
+          yield* adapter.describeLaunchService({
+            owner: "omp-session-new",
+            name: "fixture-service",
+          }),
+        ).toMatchObject({ command: "bun server.ts", cwd: "C:/isolated/project", restart: "no" });
+        expect(
+          yield* adapter.readLaunchLogs({
+            owner: "omp-session-new",
+            name: "fixture-service",
+            lines: 100,
+            cursor: 0,
+          }),
+        ).toMatchObject({ content: "ready", nextCursor: 12, state: "ready" });
+        expect(
+          yield* adapter.sendLaunchText({
+            owner: "omp-session-new",
+            name: "fixture-service",
+            text: "status\n",
+          }),
+        ).toMatchObject({ serviceId: "omp-service-1", owner: "omp-session-new" });
+        expect(
+          yield* adapter.restartLaunchService({
+            owner: "omp-session-new",
+            name: "fixture-service",
+          }),
+        ).toMatchObject({ state: "ready" });
+        expect(
+          yield* adapter.stopLaunchService({
+            owner: "omp-session-new",
+            name: "fixture-service",
+            timeoutSeconds: 5,
+          }),
+        ).toMatchObject({ name: "fixture-service" });
+
+        yield* Effect.promise(() =>
+          state.emitExtension!(OMP_EXTENSION_EVENTS.advisorNote, {
+            advisorId: "security",
+            severity: "blocker",
+            delivery: "steer",
+            content: "Do not expose the token.",
+            turn: 1,
+          }),
+        );
+        while (!eventLog.some((event) => event.type === "omp.advisor.note")) {
+          yield* Effect.sleep(1);
+        }
+        expect(eventLog.find((event) => event.type === "omp.advisor.note")?.payload).toMatchObject({
+          advisorId: "security",
+          severity: "blocker",
+          delivery: "steer",
+          source: "omp",
+        });
+
+        yield* adapter.sendTurn({ threadId: "thread-omp-typed", input: "continue" });
+        while (!(yield* adapter.readThread("thread-omp-typed")).turns.length) {
+          yield* Effect.sleep(1);
+        }
+        expect(state.extensionRequests).toContain(OMP_EXTENSION_METHODS.advisorDrain);
+        expect(state.extensionRequests).toContain(OMP_EXTENSION_METHODS.autolearnDrain);
+        expect(
+          eventLog.some(
+            (event) =>
+              event.type === "runtime.warning" &&
+              event.payload.message.includes("configured-policy-only"),
+          ),
+        ).toBe(false);
+        yield* adapter.stopSession("thread-omp-typed");
+      }).pipe(Effect.scoped, Effect.provide(testLayer(state))),
+    );
+  });
+
+  it("keeps a stock OMP ACP session usable when typed negotiation is unsupported", async () => {
+    const state = makeState();
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const adapter = yield* OhMyPiAdapter;
+        yield* adapter.startSession({
+          threadId: "thread-omp-stock-fallback",
+          provider: "omp",
+          cwd: process.cwd(),
+          runtimeMode: "approval-required",
+        });
+        expect(state.extensionRequests).toEqual([OMP_EXTENSION_METHODS.capabilities]);
+        yield* adapter.sendTurn({ threadId: "thread-omp-stock-fallback", input: "continue" });
+        while (!(yield* adapter.readThread("thread-omp-stock-fallback")).turns.length) {
+          yield* Effect.sleep(1);
+        }
+        expect(yield* adapter.hasSession("thread-omp-stock-fallback")).toBe(true);
+        yield* adapter.stopSession("thread-omp-stock-fallback");
       }).pipe(Effect.scoped, Effect.provide(testLayer(state))),
     );
   });

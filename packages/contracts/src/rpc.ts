@@ -173,6 +173,14 @@ import {
 import {
   ServerConfig,
   ServerConfigStreamEvent,
+  OmpLaunchDescribeInput,
+  OmpLaunchDescribeResult,
+  OmpLaunchReadLogsInput,
+  OmpLaunchReadLogsResult,
+  OmpLaunchRestartInput,
+  OmpLaunchSendInput,
+  OmpLaunchStopInput,
+  OmpRuntimeService,
   ServerDiagnosticsResult,
   ServerGenerateAutomationIntentInput,
   ServerGenerateAutomationIntentResult,
@@ -755,6 +763,36 @@ export const WsDaemonRestartRpc = Rpc.make(WS_METHODS.daemonRestart, {
   error: WsRpcError,
 });
 
+export const WsOmpLaunchReadLogsRpc = Rpc.make(WS_METHODS.ompLaunchReadLogs, {
+  payload: OmpLaunchReadLogsInput,
+  success: OmpLaunchReadLogsResult,
+  error: WsRpcError,
+});
+
+export const WsOmpLaunchDescribeRpc = Rpc.make(WS_METHODS.ompLaunchDescribe, {
+  payload: OmpLaunchDescribeInput,
+  success: OmpLaunchDescribeResult,
+  error: WsRpcError,
+});
+
+export const WsOmpLaunchSendTextRpc = Rpc.make(WS_METHODS.ompLaunchSendText, {
+  payload: OmpLaunchSendInput,
+  success: OmpRuntimeService,
+  error: WsRpcError,
+});
+
+export const WsOmpLaunchStopRpc = Rpc.make(WS_METHODS.ompLaunchStop, {
+  payload: OmpLaunchStopInput,
+  success: OmpRuntimeService,
+  error: WsRpcError,
+});
+
+export const WsOmpLaunchRestartRpc = Rpc.make(WS_METHODS.ompLaunchRestart, {
+  payload: OmpLaunchRestartInput,
+  success: OmpRuntimeService,
+  error: WsRpcError,
+});
+
 export const WsSubscribeDaemonEventsRpc = Rpc.make(WS_METHODS.subscribeDaemonEvents, {
   payload: Schema.Struct({}),
   success: DaemonEvent,
@@ -1185,6 +1223,11 @@ export const WsFeatureRpcGroup = RpcGroup.make(
   WsDaemonSendTextRpc,
   WsDaemonStopRpc,
   WsDaemonRestartRpc,
+  WsOmpLaunchDescribeRpc,
+  WsOmpLaunchReadLogsRpc,
+  WsOmpLaunchSendTextRpc,
+  WsOmpLaunchStopRpc,
+  WsOmpLaunchRestartRpc,
   WsSubscribeDaemonEventsRpc,
   WsServerGetConfigRpc,
   WsServerGetEnvironmentRpc,

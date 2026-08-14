@@ -1,6 +1,6 @@
 # Plan 019 — Oh My Pi Provider Phase 3（typed extensions）
 
-- 状态：IN PROGRESS
+- 状态：DONE WITH DOCUMENTED LIMITS
 - 创建：2026-08-14
 - NilCode 基线：`dev` / `59a5a48d2075770cc605a60a465735a0fb6b88f8`
 - 前置：Phase 1 / Phase 2 已完成；stock OMP 17.3.2 缺少四项 typed status/control/drain
@@ -116,21 +116,21 @@ NilCode 只用 `bun run test` 的 focused 命令。`bun fmt`、`bun lint`、`bun
 
 | 项目 | 状态 | 证据 |
 | --- | --- | --- |
-| W0 官方 current/release/binary | PENDING | — |
-| OMP checkout/base/remote | PENDING | — |
-| 协议 v1 schemas + negotiation | PENDING | — |
-| Advisor typed + projection | PENDING | — |
-| Auto-Learn typed + projection | PENDING | — |
-| Memory typed + projection | PENDING | — |
-| Launch typed + projection | PENDING | — |
-| stock fallback/version drift | PENDING | — |
-| fake/fixture focused tests | PENDING | — |
-| patched OMP focused tests/build | PENDING | — |
-| isolated real dual-end validation | PENDING | — |
-| root/descendant cleanup | PENDING | — |
-| one independent review | PENDING | — |
-| one consolidated fix | PENDING | — |
-| fresh verification + diff check | PENDING | — |
+| W0 官方 current/release/binary | DONE | current `ad318c7` / release 17.3.3；stock 17.3.2 无 typed API |
+| OMP checkout/base/remote | DONE | `D:/Codes/oh-my-pi-phase3` / official remote / `ad318c7` |
+| 协议 v1 schemas + negotiation | DONE | 同一 ACP connection；strict v1 + additive fields；unknown major fail closed |
+| Advisor typed + projection | DONE | real blocker note seq=2；drain seq=4；Synara Advisor source=OMP |
+| Auto-Learn typed + projection | DONE | real started/completed + typed drain/status |
+| Memory typed + projection | DONE | status/stats/diagnose + isolated enqueue/clear challenge |
+| Launch typed + projection | DONE | isolated full lifecycle + bounded logs；Services authority=OMP |
+| stock fallback/version drift | DONE | 17.3.2 method-not-found -> Phase 2 configured-only |
+| fake/fixture focused tests | DONE | OMP/NilCode protocol, control-plane, contracts, Web projection suites |
+| patched OMP focused tests/build | DONE WITH LIMIT | TS build + official cached 17.3.3 native addon；formal native build metadata stalled |
+| isolated real dual-end validation | DONE | raw ACP probes + isolated Synara browser/server projection |
+| root/descendant cleanup | DONE | temp removed；58919/8891 listeners=0；patched OMP processes=0 |
+| one independent review | DONE | 双仓只读 review；1 个 queue-full/drain truthful P1 |
+| one consolidated fix | DONE | per-generation dropped backpressure + red→green regression |
+| fresh verification + diff check | DONE | OMP 33/33 + types/build；NilCode 58+1+11+3 + 3 builds；两仓 diff check |
 | heavyweight gates | NOT RUN (UNAUTHORIZED) | `bun fmt` / `bun lint` / `bun typecheck` |
 
 ## 9. 提交与发布边界

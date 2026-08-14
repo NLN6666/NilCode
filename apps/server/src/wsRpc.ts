@@ -100,6 +100,7 @@ import { recoverUnregisteredGitHubCheckout } from "./project/githubProjectRegist
 import { ProviderAdapterRegistry } from "./provider/Services/ProviderAdapterRegistry";
 import { ProviderHealth } from "./provider/Services/ProviderHealth";
 import { ProviderService } from "./provider/Services/ProviderService";
+import type { OhMyPiAdapterShape } from "./provider/Services/OhMyPiAdapter";
 import { listProviderUsage } from "./providerUsage";
 import { getProviderUsageSnapshot } from "./providerUsageSnapshot";
 import { ProfileStatsQuery } from "./profileStats";
@@ -1558,6 +1559,51 @@ const makeWsRpcHandlersLayer = () =>
           rpcEffect(stopDaemon(daemonBroker, input), "Failed to stop the background service"),
         [WS_METHODS.daemonRestart]: (input) =>
           rpcEffect(restartDaemon(daemonBroker, input), "Failed to restart the background service"),
+        [WS_METHODS.ompLaunchDescribe]: (input) =>
+          rpcEffect(
+            providerAdapterRegistry.getByProvider("omp").pipe(
+              Effect.flatMap((adapter) =>
+                (adapter as OhMyPiAdapterShape).describeLaunchService(input),
+              ),
+            ),
+            "Failed to describe the OMP Launch service",
+          ),
+        [WS_METHODS.ompLaunchReadLogs]: (input) =>
+          rpcEffect(
+            providerAdapterRegistry.getByProvider("omp").pipe(
+              Effect.flatMap((adapter) =>
+                (adapter as OhMyPiAdapterShape).readLaunchLogs(input),
+              ),
+            ),
+            "Failed to read OMP Launch logs",
+          ),
+        [WS_METHODS.ompLaunchSendText]: (input) =>
+          rpcEffect(
+            providerAdapterRegistry.getByProvider("omp").pipe(
+              Effect.flatMap((adapter) =>
+                (adapter as OhMyPiAdapterShape).sendLaunchText(input),
+              ),
+            ),
+            "Failed to send input to the OMP Launch service",
+          ),
+        [WS_METHODS.ompLaunchStop]: (input) =>
+          rpcEffect(
+            providerAdapterRegistry.getByProvider("omp").pipe(
+              Effect.flatMap((adapter) =>
+                (adapter as OhMyPiAdapterShape).stopLaunchService(input),
+              ),
+            ),
+            "Failed to stop the OMP Launch service",
+          ),
+        [WS_METHODS.ompLaunchRestart]: (input) =>
+          rpcEffect(
+            providerAdapterRegistry.getByProvider("omp").pipe(
+              Effect.flatMap((adapter) =>
+                (adapter as OhMyPiAdapterShape).restartLaunchService(input),
+              ),
+            ),
+            "Failed to restart the OMP Launch service",
+          ),
         [WS_METHODS.subscribeDaemonEvents]: (_, { clientId }) =>
           streamAdmission.guard(
             clientId,

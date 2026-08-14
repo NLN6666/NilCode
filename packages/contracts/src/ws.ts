@@ -100,6 +100,11 @@ import {
   ServerGenerateAutomationIntentInput,
   ServerGenerateThreadRecapInput,
   ServerLifecycleStreamEvent,
+  OmpLaunchDescribeInput,
+  OmpLaunchReadLogsInput,
+  OmpLaunchRestartInput,
+  OmpLaunchSendInput,
+  OmpLaunchStopInput,
   ServerProviderUpdateInput,
   ServerUpdateSettingsInput,
   ServerGetProviderUsageSnapshotInput,
@@ -221,6 +226,11 @@ export const WS_METHODS = {
   daemonStop: "daemon.stop",
   daemonRestart: "daemon.restart",
   subscribeDaemonEvents: "daemon.subscribeEvents",
+  ompLaunchDescribe: "omp.launch.describe",
+  ompLaunchReadLogs: "omp.launch.readLogs",
+  ompLaunchSendText: "omp.launch.sendText",
+  ompLaunchStop: "omp.launch.stop",
+  ompLaunchRestart: "omp.launch.restart",
 
   // Server meta
   serverGetConfig: "server.getConfig",
@@ -415,6 +425,11 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.daemonSendText, DaemonSendTextInput),
   tagRequestBody(WS_METHODS.daemonStop, DaemonStopInput),
   tagRequestBody(WS_METHODS.daemonRestart, DaemonRestartInput),
+  tagRequestBody(WS_METHODS.ompLaunchDescribe, OmpLaunchDescribeInput),
+  tagRequestBody(WS_METHODS.ompLaunchReadLogs, OmpLaunchReadLogsInput),
+  tagRequestBody(WS_METHODS.ompLaunchSendText, OmpLaunchSendInput),
+  tagRequestBody(WS_METHODS.ompLaunchStop, OmpLaunchStopInput),
+  tagRequestBody(WS_METHODS.ompLaunchRestart, OmpLaunchRestartInput),
   tagRequestBody(WS_METHODS.subscribeDaemonEvents, Schema.Struct({})),
 
   // Server meta

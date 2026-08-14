@@ -2,7 +2,7 @@ import type { ServerProviderStatus } from "@synara/contracts";
 
 export type OmpPolicyFeatureId = "launch" | "advisor" | "memory" | "autoLearn";
 
-/** UI-only projection of configured OMP policy. It intentionally has no live/run fields. */
+/** UI-only projection of configured policy plus truthful typed runtime state when negotiated. */
 export function projectOmpProviderPolicy(status: ServerProviderStatus | undefined) {
   if (status?.provider !== "omp" || !status.ompPolicy) return undefined;
   const policy = status.ompPolicy;
@@ -26,6 +26,8 @@ export function projectOmpProviderPolicy(status: ServerProviderStatus | undefine
     advisorWarning: policy.advisor.warning,
     autoContinue: policy.autoLearn.autoContinue,
     autoLearnExperimental: policy.autoLearn.experimental,
-    typedObservabilityPending: policy.typedObservability === "phase-3-required",
+    runtime: policy.runtime,
+    typedObservabilityPending:
+      policy.typedObservability === "phase-3-required" && policy.runtime?.mode !== "typed",
   };
 }

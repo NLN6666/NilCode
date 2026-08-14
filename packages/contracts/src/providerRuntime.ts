@@ -28,6 +28,7 @@ const RuntimeEventRawSource = Schema.Literals([
   "antigravity.cli.event",
   "acp.jsonrpc",
   "acp.cursor.extension",
+  "acp.omp.extension",
   "kilo.sdk.event",
   "opencode.sdk.event",
   "pi.sdk.event",
@@ -201,6 +202,7 @@ const ProviderRuntimeEventType = Schema.Literals([
   "config.warning",
   "deprecation.notice",
   "files.persisted",
+  "omp.advisor.note",
   "runtime.warning",
   "runtime.error",
 ]);
@@ -253,6 +255,7 @@ const ModelReroutedType = Schema.Literal("model.rerouted");
 const ConfigWarningType = Schema.Literal("config.warning");
 const DeprecationNoticeType = Schema.Literal("deprecation.notice");
 const FilesPersistedType = Schema.Literal("files.persisted");
+const OmpAdvisorNoteType = Schema.Literal("omp.advisor.note");
 const RuntimeWarningType = Schema.Literal("runtime.warning");
 const RuntimeErrorType = Schema.Literal("runtime.error");
 
@@ -727,6 +730,16 @@ const FilesPersistedPayload = Schema.Struct({
 });
 export type FilesPersistedPayload = typeof FilesPersistedPayload.Type;
 
+const OmpAdvisorNotePayload = Schema.Struct({
+  advisorId: TrimmedNonEmptyStringSchema,
+  severity: Schema.Literals(["nit", "concern", "blocker"]),
+  delivery: Schema.Literals(["aside", "steer", "preserve"]),
+  content: TrimmedNonEmptyStringSchema,
+  turn: NonNegativeInt,
+  source: Schema.Literal("omp"),
+});
+export type OmpAdvisorNotePayload = typeof OmpAdvisorNotePayload.Type;
+
 const RuntimeWarningPayload = Schema.Struct({
   message: TrimmedNonEmptyStringSchema,
   detail: Schema.optional(Schema.Unknown),
@@ -1086,6 +1099,13 @@ const ProviderRuntimeFilesPersistedEvent = Schema.Struct({
 });
 export type ProviderRuntimeFilesPersistedEvent = typeof ProviderRuntimeFilesPersistedEvent.Type;
 
+const ProviderRuntimeOmpAdvisorNoteEvent = Schema.Struct({
+  ...ProviderRuntimeEventBase.fields,
+  type: OmpAdvisorNoteType,
+  payload: OmpAdvisorNotePayload,
+});
+export type ProviderRuntimeOmpAdvisorNoteEvent = typeof ProviderRuntimeOmpAdvisorNoteEvent.Type;
+
 const ProviderRuntimeWarningEvent = Schema.Struct({
   ...ProviderRuntimeEventBase.fields,
   type: RuntimeWarningType,
@@ -1148,6 +1168,7 @@ export const ProviderRuntimeEventV2 = Schema.Union([
   ProviderRuntimeConfigWarningEvent,
   ProviderRuntimeDeprecationNoticeEvent,
   ProviderRuntimeFilesPersistedEvent,
+  ProviderRuntimeOmpAdvisorNoteEvent,
   ProviderRuntimeWarningEvent,
   ProviderRuntimeErrorEvent,
 ]);
