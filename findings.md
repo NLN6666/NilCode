@@ -261,3 +261,6 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 直接以 `omp config get ... --config` 探测失败：`config` 子命令只接受自己的 `--json`，拒绝 global `--config`。随后改用官方源码公开的 `Settings.loadReadOnly({ configFiles })` 做只读有效配置核验，没有写全局配置。
 - 第一次 `bun -e` 尝试把环境变量用于静态 `import ... from process.env`，解析器报错；改为绝对 `file:///` dynamic import 后成功。两个 overlay 的顺序实测证明后者 deep-merge 覆盖同路径、保留未覆盖 sibling。
 - 官方 schema 确认 `launch.enabled` 默认 true、`advisor.enabled` 默认 false、`memory.backend` 为 `off|local|hindsight|mnemopi` 且默认 off、`autolearn.enabled/autoContinue` 默认 false、`modelRoles` 为字符串 record。Advisor 源码明确 enabled 但缺失可解析 advisor role 时 inactive，因此 Phase 2 不猜当前模型 fallback，只投影可恢复 degraded warning。
+- `OmpControlPlane` 最初尝试从 Bun 导入 YAML 解析器，Vitest 的 Node 运行时无法加载 `bun` 模块；改为只读取 `memory`、`hindsight`、`modelRoles` 的窄解析器，未知字段和 secret 从不进入 overlay，相关 deterministic/atomic/no-secret 测试通过。
+- TDD 红灯按预期捕获了四条旧行为：缺少 control-plane 模块/原子落盘、spawn 仍只有 `["acp"]`、OMP Adapter 仍租用并注入 Synara Gateway、Advisor reactor 仍会评估 OMP thread；对应实现后 focused 测试转绿。bounded settle 的红灯还确认旧实现没有 quiet/timeout/abort/process-exit 结果。
+- Web 新增 OMP policy 投影测试通过；同批执行的全 catalog 结构测试发现既有中英文 `composer.commandMenu` 漂移（英文 `commands.issue/pullRequest`，中文 `meta.issue/pullRequest`），与本轮 OMP keys 无关，因此未越界修复。随后 Web production build 成功。

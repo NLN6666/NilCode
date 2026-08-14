@@ -674,6 +674,26 @@ export const settings = {
       noSafeCommand:
         "A newer version is available, but Synara could not identify a safe one-click update command for this installation.",
       passwordConfigured: "Configured — enter a replacement or leave blank",
+      ompPolicy: {
+        title: "OMP-native session policy",
+        owner: "OMP owned",
+        enabled: "Enabled",
+        degraded: "Degraded",
+        launch: "Launch",
+        advisor: "Advisor",
+        memory: "Memory",
+        autoLearn: "Auto-Learn",
+        sharedHome: "Uses the shared ~/.omp home; Synara does not set PI_CODING_AGENT_DIR.",
+        overlay: "Synara process overlay",
+        memoryEffective: "Effective backend",
+        memoryUser: "user configuration",
+        memoryFallback: "Synara local fallback",
+        advisorRole: "Advisor model role",
+        autoLearnDetail: "Auto-continue enabled · experimental",
+        autoLearnCost: "Auto-Learn can use extra tokens and write learned data to disk.",
+        typedBoundary:
+          "Stock ACP has no typed status or completion controls for these features. Synara shows configured policy and bounded settle only; typed observability remains Phase 3 work.",
+      },
     },
     update: {
       action: "Update",
