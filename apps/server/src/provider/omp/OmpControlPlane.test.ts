@@ -135,6 +135,30 @@ describe("OmpControlPlane overlay policy", () => {
       expect(plan.policy.advisor).not.toHaveProperty("modelRole");
     }
   });
+
+  it("ends a relevant mapping at the next top-level scalar setting", () => {
+    const plan = buildOmpControlPlanePlan({
+      overlayPath: "C:/overlay.yml",
+      globalConfigText: [
+        "providers:",
+        "  webSearchOrder:",
+        "    - builtin",
+        "modelRoles:",
+        "  default: openai/gpt-5.6-sol",
+        "  advisor: anthropic/claude-fable-5:medium",
+        "theme: dark",
+        "memory:",
+        "  backend: local",
+      ].join("\n"),
+      env: {},
+    });
+
+    expect(plan.policy.advisor).toMatchObject({
+      state: "configured",
+      modelRole: "anthropic/claude-fable-5:medium",
+    });
+    expect(plan.policy.memory).toMatchObject({ backend: "local", source: "user-config" });
+  });
 });
 
 describe("OmpControlPlane bounded turn settle", () => {

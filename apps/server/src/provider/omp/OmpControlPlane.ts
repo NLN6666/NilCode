@@ -69,10 +69,13 @@ function parseRelevantYaml(content: string): Record<string, unknown> | undefined
   let group: string | undefined;
   for (const line of content.split(/\r?\n/u)) {
     if (!line.trim() || line.trimStart().startsWith("#")) continue;
-    const topLevel = /^([A-Za-z][A-Za-z0-9_-]*):\s*(?:#.*)?$/u.exec(line);
+    const topLevel = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*?)\s*$/u.exec(line);
     if (topLevel) {
-      group = topLevel[1];
-      result[group] ??= {};
+      const hasNestedMapping = topLevel[2] === "" || topLevel[2]?.startsWith("#");
+      const relevantGroup =
+        topLevel[1] === "memory" || topLevel[1] === "hindsight" || topLevel[1] === "modelRoles";
+      group = hasNestedMapping && relevantGroup ? topLevel[1] : undefined;
+      if (group) result[group] ??= {};
       continue;
     }
     const nested = /^\s{2,}([A-Za-z][A-Za-z0-9_-]*):\s*(.*?)\s*$/u.exec(line);
