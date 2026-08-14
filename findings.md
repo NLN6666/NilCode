@@ -272,3 +272,14 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 隔离 Synara 使用固定 home、server 58182、web 10554、port offset 4821、`SYNARA_AUTH_TOKEN` unset；先 dry-run，后 `/health` ready 与 Web 200。终止后 listener=0、OMP ACP root=0，隔离目录已清理。没有运行 Launch probe，因此没有额外受管子进程需要清理。
 - 唯一一次 independent review 覆盖基线到 `c6bb6b2a8`，返回 `NO FINDINGS`；按“一次审查、一次合并修复”约束不虚构 finding，修复步骤不适用，也未发起第二轮审查。
 - 审查后的 fresh focused verification 精确结果：contracts `src/server.test.ts` 1/1；server 五个本轮文件 67/67（更正上文“其余五个 142 项”的误记，142 是 ProviderHealth 全文件在 26 个既有失败下的通过数）；OMP ProviderHealth filter 9/9、93 skipped；Web OMP projection 2/2；contracts/server/Web build 均成功。heavyweight `bun fmt`、`bun lint`、`bun typecheck` 未获授权，保持 NOT RUN。
+
+---
+
+## 33. OMP Phase 3 W0 与 typed extension 边界（2026-08-14）
+
+- 派发基线门禁通过：`dev` / `59a5a48d2075770cc605a60a465735a0fb6b88f8`，开始时工作树干净。当前无可调用 LCC MCP，按 AGENTS.md 降级使用 FastCtx。
+- 本机只有 Bun 全局安装包而无 `can1357/oh-my-pi` Git checkout。真实 binary 为 `C:/Users/kingt/.bun/bin/omp`，`omp/17.3.2`，15,872 bytes，mtime `2026-07-04 15:00:30.556384300 +0800`，SHA-256 `59b379b53354da72d2c5262119fe70c44b4e473826ebbaa94d47a2d58a359b1a`。
+- 官方 current main 页面顶部为 `ad318c7572abaeebd5cf8a7a16d350ff1d32a738`，latest release 为 `v17.3.3`（published `2026-08-14T04:06:32Z`）；本机 17.3.2 落后一版。已安装源码与官方 current source 均未发现 `_omp/capabilities` 或 Advisor/Auto-Learn/Memory/Launch typed ACP methods/events。
+- 官方 ACP extension UI 只能在同一 connection 上使用标准 elicitation round-trip；`ctx.ui.notify` 在 ACP context 只记录 debug，status/widget/title/custom UI 等为 no-op。没有真实 agent-side arbitrary ACP extension method/event registration API，因此 Phase 3 不采用 packaged extension；必须在独立官方 checkout 中修改 upstream ACP agent，并保留 Synara stock fallback。
+- Plan 019 已创建，固定协议 v1、两仓边界、STOP、降级、TDD seam、真实双端矩阵与验收台账。TDD seam 由派发任务明确锁定，无需额外追问；实施顺序为 ACP wire/runtime、server-owned state/projection、Web projection 的垂直 red→green slices。
+- 首次两次追加本节的 `apply_patch` 均因手工上下文未精确包含原句中的“精确结果”而验证失败；重新读取末尾后以精确上下文重试，失败未造成文件内容修改。
