@@ -441,3 +441,13 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 计划指定的 ACP suite 为 63 通过、1 失败；单独重跑仍失败的是既有 `AcpSdkConformance` teardown 断言（预期 `{ code: 0, signal: null }`，Windows/Bun 实际 `{ code: null, signal: "SIGTERM" }`）。该测试、`AcpSessionRuntime` 与 `AcpJsonRpcConnection` 相对基线 `3e6ad7d16` 均无差异，且测试不导入 OMP 新增的标准 client handlers，因此未修改既有 conformance 断言来隐藏环境差异。
 - 唯一一次独立审查中，Web/contracts 核验无 finding；server 核验发现标准 ACP `terminal/create` 直接合并 `process.env` 与 agent 参数，会把 `SYNARA_AUTH_TOKEN` 等控制面权限泄漏给 terminal descendants。回归测试先复现 `secret: "must-not-leak"` 红灯，再让 terminal 环境统一经过 `buildProviderChildEnvironment({ provider: "acp" })` 清洗，保留普通 agent 请求变量而剥离 `SYNARA_*`/native launcher capabilities；修复后 3 项 client-capability 测试通过。
 - 审查修复后的 fresh focused verification：contracts 50/50、shared 108/108、server OMP ACP/client-capability/adapter/registry/discovery/service 153/153、OMP health 9/9、Web settings/provider/composer/catalog 174/174。`git diff --check` 无 whitespace error（Git 仅提示 Windows checkout 的 LF→CRLF warning）。按本轮明确约束未运行 `bun fmt`、`bun lint`、`bun typecheck`，也未把隔离 Synara UI 的 12 项真实手工场景伪称为已执行。
+
+---
+
+## 32. OMP Phase 2 启动与配置契约实测（2026-08-14）
+
+- 派发基线门禁通过：`dev` / `4aab0ef6c23ebdf56b02f58e0f01769521691a41`，工作树干净，Phase 1 五个提交与派发事实一致；当前仍无 LCC MCP，按规则使用 FastCtx。
+- 本机 `omp/17.3.2` 的帮助声明 `--config` 可重复。临时 overlay 实测 `omp acp --config <path>` 与 `omp --config <path> acp` 均可启动；不存在路径明确报 `Config overlay not found`。采用 canonical `["acp", "--config", path]`，不依赖 shell quoting。
+- 直接以 `omp config get ... --config` 探测失败：`config` 子命令只接受自己的 `--json`，拒绝 global `--config`。随后改用官方源码公开的 `Settings.loadReadOnly({ configFiles })` 做只读有效配置核验，没有写全局配置。
+- 第一次 `bun -e` 尝试把环境变量用于静态 `import ... from process.env`，解析器报错；改为绝对 `file:///` dynamic import 后成功。两个 overlay 的顺序实测证明后者 deep-merge 覆盖同路径、保留未覆盖 sibling。
+- 官方 schema 确认 `launch.enabled` 默认 true、`advisor.enabled` 默认 false、`memory.backend` 为 `off|local|hindsight|mnemopi` 且默认 off、`autolearn.enabled/autoContinue` 默认 false、`modelRoles` 为字符串 record。Advisor 源码明确 enabled 但缺失可解析 advisor role 时 inactive，因此 Phase 2 不猜当前模型 fallback，只投影可恢复 degraded warning。
