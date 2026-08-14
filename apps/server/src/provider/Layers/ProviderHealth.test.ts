@@ -46,6 +46,7 @@ import {
   stabilizeProviderStatusesAgainstTransientTimeouts,
 } from "./ProviderHealth";
 import { resolvePackageManagedProviderMaintenance } from "../providerMaintenance";
+import { buildOmpControlPlanePlan } from "../omp/OmpControlPlane";
 
 // ── Test helpers ────────────────────────────────────────────────────
 
@@ -1989,6 +1990,12 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         const status = yield* makeCheckOhMyPiProviderStatus(undefined, {
           platform: "win32",
           env: { Path: `\"${directory}\"`, PATHEXT: ".EXE;.CMD" },
+          inspectControlPlane: async () =>
+            buildOmpControlPlanePlan({
+              overlayPath: "C:/Users/test/.omp/synara/acp-provider.yml",
+              globalConfigText: "memory:\n  backend: off\n",
+              env: {},
+            }),
         }).pipe(
           Effect.provide(
             mockSpawnerLayer((args, command) => {
@@ -2008,6 +2015,11 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(status.available, true);
         assert.strictEqual(status.authStatus, "unknown");
         assert.strictEqual(status.version, "17.3.3");
+        assert.deepStrictEqual(status.ompPolicy?.memory, {
+          backend: "local",
+          source: "synara-fallback",
+          observability: "ordinary-tools-only",
+        });
       }),
     );
 

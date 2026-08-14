@@ -40,6 +40,7 @@ export const OH_MY_PI_ACP_CLIENT_CAPABILITIES = {
 
 export interface OhMyPiAcpRuntimeSettings {
   readonly binaryPath?: string;
+  readonly overlayPath?: string;
 }
 
 export interface OhMyPiAcpRuntimeInput extends Omit<
@@ -64,11 +65,17 @@ export function buildOhMyPiAcpSpawnInput(
   settings: OhMyPiAcpRuntimeSettings | null | undefined,
   cwd: string,
 ): AcpSpawnInput {
+  const overlayPath = settings?.overlayPath?.trim();
+  if (!overlayPath) {
+    throw new Error("Oh My Pi ACP requires the Synara process overlay before spawn.");
+  }
+  const env = buildProviderChildEnvironment({ provider: "acp" });
+  delete env.PI_CODING_AGENT_DIR;
   return {
     command: resolveOhMyPiCliBinaryPath(settings?.binaryPath),
-    args: ["acp"],
+    args: ["acp", "--config", overlayPath],
     cwd,
-    env: buildProviderChildEnvironment({ provider: "acp" }),
+    env,
   };
 }
 

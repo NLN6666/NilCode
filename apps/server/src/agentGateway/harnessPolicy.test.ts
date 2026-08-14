@@ -141,6 +141,18 @@ describe("Synara harness policy", () => {
     }
   });
 
+  it("keeps Oh My Pi identity-only because Launch is OMP-owned", () => {
+    const text =
+      takeSynaraHarnessPolicyForProviderSession(
+        {},
+        { provider: "omp", scopedGatewayConnectionAvailable: true },
+      ) ?? "";
+
+    assert.include(text, SYNARA_HARNESS_POLICY_MARKER);
+    assert.include(text, "Synara MCP control is unavailable");
+    assert.notInclude(text, "Use the synara_* tools");
+  });
+
   it("teaches the device tools well enough for a plain prompt to work", () => {
     const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
 

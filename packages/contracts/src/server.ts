@@ -46,6 +46,40 @@ export const ServerProviderAuthStatus = Schema.Literals([
 ]);
 export type ServerProviderAuthStatus = typeof ServerProviderAuthStatus.Type;
 
+/**
+ * OMP-only host policy projection. These fields describe Synara's configured
+ * ownership and observable boundary, not live OMP feature capability/state.
+ */
+export const OmpProviderPolicyStatus = Schema.Struct({
+  owner: Schema.Literal("omp-native"),
+  overlayPath: TrimmedNonEmptyString,
+  sharedHome: Schema.Literal(true),
+  launch: Schema.Struct({
+    configured: Schema.Literal(true),
+    observability: Schema.Literal("acp-tool-activity-only"),
+  }),
+  advisor: Schema.Struct({
+    configured: Schema.Literal(true),
+    state: Schema.Literals(["configured", "degraded"]),
+    modelRole: Schema.optional(TrimmedNonEmptyString),
+    warning: Schema.optional(TrimmedNonEmptyString),
+    observability: Schema.Literal("transcript-only"),
+  }),
+  memory: Schema.Struct({
+    backend: Schema.Literals(["local", "hindsight", "mnemopi"]),
+    source: Schema.Literals(["user-config", "synara-fallback"]),
+    observability: Schema.Literal("ordinary-tools-only"),
+  }),
+  autoLearn: Schema.Struct({
+    configured: Schema.Literal(true),
+    autoContinue: Schema.Literal(true),
+    experimental: Schema.Literal(true),
+    observability: Schema.Literal("bounded-settle-only"),
+  }),
+  typedObservability: Schema.Literal("phase-3-required"),
+});
+export type OmpProviderPolicyStatus = typeof OmpProviderPolicyStatus.Type;
+
 export const ServerProviderStatus = Schema.Struct({
   provider: ProviderKind,
   status: ServerProviderStatusState,
@@ -59,6 +93,7 @@ export const ServerProviderStatus = Schema.Struct({
   version: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   checkedAt: IsoDateTime,
   message: Schema.optional(TrimmedNonEmptyString),
+  ompPolicy: Schema.optionalKey(OmpProviderPolicyStatus),
   versionAdvisory: Schema.optionalKey(
     Schema.Struct({
       status: Schema.Literals(["unknown", "current", "behind_latest"]),
