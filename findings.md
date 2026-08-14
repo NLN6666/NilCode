@@ -219,3 +219,23 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 实现前门禁是用真实 OMP `17.3.3` 固定 initialize/auth/session config/command/turn fixtures；若 stable ACP v1、`omp acp` 或 headless auth 不成立，停止 Adapter 实现而不是加入字符串/版本猜测。
 - 当前闭集传播面比 Adapter 本身更广：contracts/settings/shared metadata、ProviderHealth、registry/runtime layer、Agent Gateway target map、Web persisted schema/model maps/icon/settings/fixtures 都必须显式加入 `omp`。
 - 本轮仍无可用 LCC MCP，按规则使用 FastCtx；一次 batch read 因同一大文件重复列入请求而被拒绝，改为按不重叠行窗口读取，没有影响仓库内容或调研结论。
+
+---
+
+## 30. OMP Phase 1 实施（2026-08-14）
+
+- 基线为 `dev` / `3e6ad7d16`，开始时工作树干净。W0 解析到 `C:\\Users\\kingt\\.bun\\bin\\omp.exe`，`omp --version` 为 `17.3.2`，文件大小 `15872` bytes，mtime `2026-07-04 15:00:30.556384300 +0800`，SHA-256 `59b379b53354da72d2c5262119fe70c44b4e473826ebbaa94d47a2d58a359b1a`；版本满足最低 `16.1.12`，但不是计划的 `17.3.3` fixture 基线。
+- 当前环境仍无 LCC MCP，按 AGENTS.md 降级使用 FastCtx。W0 探测复用 `AcpSessionRuntime` 与官方 ACP SDK，使用临时 cwd、`omp acp`、共享现有 OMP home，未设置 `PI_CODING_AGENT_DIR`，未改写 OMP 全局配置。
+- W0 探针第一次执行在启动 OMP 前失败：当前 Effect build 没有 `Effect.fork`，`Pipeable.js` 报 `args[0] is not a function`；改为仓库现用的 `Effect.forkScoped` 后重试。
+- W0 结果抽取时发现环境没有 `jq`（`bash: jq: command not found`），改用只读 `bun -e` 解析探针日志；未修改仓库数据。
+- 为满足开发 fixture 的 `17.3.3` 锁定基线，使用 `bunx --package @oh-my-pi/pi-coding-agent@17.3.3 omp --version` 在临时 bunx 目录解析出独立 `omp.exe`；没有升级或覆盖全局 `17.3.2`。随后直接以该临时 binary 的 `["acp"]` 参数完成真实 initialize → authenticate(`agent`) → session/new → prompt(`end_turn`) → cancel(`cancelled`) → session/close(`{}`)，并由 runtime scope 证明进程退出。
+- OMP 17.3.3 协商 `protocolVersion=1`；`agentInfo` 为 `oh-my-pi` / `Oh My Pi` / `17.3.3`；仅广告可由 Synara 完成的 `agent` 本地认证；capabilities 包含 load、session list/fork/resume/close、MCP http/sse、prompt embeddedContext/image。session/new 返回字符串 session id、`default`/`plan` modes，以及 select config options `mode`、`model`、`thinking`（category `thought_level`）。600ms 内收到结构化 commands inventory。未命中任何 W0 STOP 条件，`AcpSessionRuntime` 无需通用修复。
+- 已写入脱敏 deterministic fixture `apps/server/src/provider/acp/fixtures/ohMyPiAcp17_3_3.ts`：只保留协议 schema 字段与虚构 model/session/message/command 值，不含 prompt、usage/cost、token、用户绝对路径、凭据、真实模型目录或用户 skills。
+- W1 contracts/shared/server 的 focused tests 分别通过 50、108、20 项，并形成 scoped commit `3e95adc30`（`feat(contracts): add Oh My Pi provider identity`）。
+- W2 首次 FastCtx batch 因同一路径 `ProviderHealth.ts` 被列入多个行区间而原子拒绝，随后改为单路径连续读取；另一次把 `providerMaintenance.ts` 误写在 `src` 根下，工具提示真实路径后改读 `src/provider/providerMaintenance.ts`，均未修改文件。
+- W2 TDD 首轮按整个 `ProviderHealth.test.ts` 执行，OMP 新测试如预期因 `makeCheckOhMyPiProviderStatus` 尚不存在而失败；同时暴露本机已安装的 Codex/Claude/OpenCode/Pi/Antigravity `.cmd/.exe` 会让若干既有 mock 对裸 command/args 的假设失败。该环境噪声不属于 OMP 变更，后续使用测试名过滤执行 OMP 与 disabled-provider focused slices。
+- W2 健康探测只解析统一 `resolveExecutable` 的实际路径并执行一次有界 `--version`；兼容/过旧 verdict 以 `size:mtime` binary identity 缓存，文件替换后重探测。探测使用 ACP 多模型 credential policy，但不启动 `omp acp`、不设置 `PI_CODING_AGENT_DIR`、不读写 `~/.omp`，也没有注册 OMP updater。
+- W3 TDD 首轮因 `OhMyPiAcpSupport.ts` 尚未创建而按预期红灯；实现后 fixture 驱动的 spawn/auth/config/model discovery 12 项测试通过。两次 FastCtx batch read 因把同一路径列成多个区间而被原子拒绝，均改为单路径窗口读取；没有产生文件修改。
+- W3/W4 新增通用标准 ACP filesystem/terminal client handlers；读写只接受绝对路径，terminal output 有 1 MiB 默认、16 MiB 硬上限和 UTF-8 边界保留，session scope finalizer 使用现有 process-tree teardown 证明退出。对应 2 项 focused tests 通过。
+- W4 交互测试第一次误用当前 Effect build 不存在的 `Effect.fork`，复现 `args[0] is not a function`；修正后测试又发现重复 cancel 会在首个 prompt interruption 清理完成前重复发送，Adapter 增加 turn-local idempotence 标记。
+- W4 permission/elicitation 测试曾因在 PubSub publish 后才建立一次性订阅而等待 90 秒超时。按本文件既有 Effect fork 记录，改为在 session/turn 前启动 scoped 持续 consumer，并将调试超时缩短到 10 秒；最终 8 项 Adapter focused tests 通过，覆盖 new/resume/load、prompt/cancel、permission、elicitation、未知 extension、process exit、stop/stopAll、2048 burst 以及 discovery cache/cleanup。
