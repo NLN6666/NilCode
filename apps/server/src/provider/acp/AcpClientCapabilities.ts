@@ -9,6 +9,7 @@ import nodePath from "node:path";
 import type * as Acp from "@agentclientprotocol/sdk";
 import { Effect, Scope } from "effect";
 
+import { buildProviderChildEnvironment } from "../../providerChildEnvironment.ts";
 import { teardownChildProcessTree } from "../supervisedProcessTeardown.ts";
 import * as AcpErrors from "./AcpErrors.ts";
 import type { AcpSessionRuntimeShape } from "./AcpSessionRuntime.ts";
@@ -140,10 +141,13 @@ export const makeStandardAcpClientHandlers = Effect.fnUntraced(function* (
           try: () =>
             spawn(params.command, params.args ?? [], {
               ...(params.cwd ? { cwd: params.cwd } : {}),
-              env: {
-                ...process.env,
-                ...Object.fromEntries((params.env ?? []).map(({ name, value }) => [name, value])),
-              },
+              env: buildProviderChildEnvironment({
+                provider: "acp",
+                baseEnv: {
+                  ...process.env,
+                  ...Object.fromEntries((params.env ?? []).map(({ name, value }) => [name, value])),
+                },
+              }),
               detached: process.platform !== "win32",
               shell: false,
               stdio: "pipe",
