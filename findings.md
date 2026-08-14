@@ -209,3 +209,13 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - OMP ACP `initialize` 只广告标准 session/MCP/prompt 能力，session config options 只提供 mode/model/thinking；ACP agent 与 event mapper 没有 Advisor、Auto-Learn、Memory 的专属 method/update，Launch 只会作为普通 tool activity。行为可运行不等于产品级可观察。
 - Synara 已有自己的 Advisor 与从 OMP 移植增强的 daemon/`@Launch`。OMP provider 若同时启用两套 Advisor 或两套进程 registry，会产生重复 steer、状态分叉与所有权不明；正式设计必须加入互斥仲裁。
 - 调研过程没有可用的 LCC MCP，按仓库规则降级到 FastCtx 并抽查当前文件。后台探子按 research skill 被要求生成调研文件，但只返回了线索而未落盘；主代理复核一手资料后创建 `docs/research/2026-08-14-oh-my-pi-acp-provider.md`。
+
+---
+
+## 29. OMP Phase 1 计划细化（2026-08-14）
+
+- 产品决策锁定：OMP-native ownership；共享 `~/.omp`；compatible `omp` 被 Synara 探测后自动可用；Synara-launched OMP 的四项高级功能最终全部开启。
+- Phase 1 收敛为标准 ACP Provider，不提前做高级 overlay、双 Advisor/Launch 仲裁或 `_omp/*` UI。内部 id 采用 `omp`，避免与现有 `pi` 混淆。
+- 实现前门禁是用真实 OMP `17.3.3` 固定 initialize/auth/session config/command/turn fixtures；若 stable ACP v1、`omp acp` 或 headless auth 不成立，停止 Adapter 实现而不是加入字符串/版本猜测。
+- 当前闭集传播面比 Adapter 本身更广：contracts/settings/shared metadata、ProviderHealth、registry/runtime layer、Agent Gateway target map、Web persisted schema/model maps/icon/settings/fixtures 都必须显式加入 `omp`。
+- 本轮仍无可用 LCC MCP，按规则使用 FastCtx；一次 batch read 因同一大文件重复列入请求而被拒绝，改为按不重叠行窗口读取，没有影响仓库内容或调研结论。
