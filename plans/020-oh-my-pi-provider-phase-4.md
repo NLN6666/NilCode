@@ -138,12 +138,12 @@
 | --- | --- | --- |
 | W0 auth/remotes/releases | DONE | `NLN6666`; official OMP `v17.3.4`; scoped bases above |
 | #496 reference decision | DONE | 独立发布；仅参考通用 ACP lifecycle/config wiring |
-| Plan 020 scoped commit | IN PROGRESS | 本文件 |
-| OMP rebase/cherry-pick | PENDING | latest `origin/main` worktree |
+| Plan 020 scoped commit | DONE | `978012821` |
+| OMP rebase/cherry-pick | DONE | `origin/main@ffd53ff92a` → `bc07667437` |
 | OMP focused/types/build | PENDING | fresh gate |
 | formal native gate | PENDING | local Windows build or official CI terminal evidence |
 | OMP Draft PR + CI | PENDING | no merge |
-| NilCode 15-commit closure | PENDING | `origin/dev` base |
+| NilCode 15-commit closure | DONE WITH ADAPTATION | 15 scoped commits; excluded provider-isolation/VCS/device/service-panel prerequisites |
 | NilCode focused/build | PENDING | heavyweight checks remain unauthorized |
 | NilCode Draft PR + CI | PENDING | links OMP PR and discloses #496 overlap |
 | one review / one fix | PENDING | no second review |

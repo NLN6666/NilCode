@@ -296,3 +296,14 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 隔离 Synara 使用 home `.../synara-omp-phase3-019fffde/synara-home`、server 58919、web 8891、offset 3158、`SYNARA_AUTH_TOKEN` unset，先 dry-run。活动 OMP 会话的设置页真实显示 OMP 17.3.3、1 typed session、Advisor active + `write-or-exec`、Auto-Learn generation、Memory backend/queue、Launch authority=OMP；会话停止后安全回到 Phase 2 configured-only。页面旧 thread composer 会显示 Codex 默认值并导致一次 provider mismatch；新 thread 明确选择 OMP/Fable 后成功建立真实 OMP session，该现象记录为既有 hydration/UI 边界，未在本轮扩 scope。
 - 唯一一次独立双仓审查发现 1 个 P1：全局 typed notification queue 达 256 后丢弃事件，但旧 drain 只看 pending queue，可能伪报 settled=true。唯一合并修复先以 257 个同步事件得到预期红灯，再将 per-generation dropped/发送失败计数加入 runtime；Advisor drain 在任一 typed event 丢失后返回 `settled=false` 与 `notificationBackpressure: { dropped, recoverable: false }`，session rotation 清零。该回归测试转绿，未启动第二轮审查。
 - 清理时首次 PowerShell `Remove-Item` 被执行策略拒绝，未删除任何内容；随后在单一 Bash 中对固定 temp path 做 `realpath` exact-match guard 后删除。最终 `TempExists=false`，58919/8891 listener=0，匹配隔离目录或 patched `dist/omp.exe` 的进程=0。
+
+---
+
+## 34. OMP Phase 4 发布基线与最小闭包移植（2026-08-15）
+
+- 实时门禁确认 OMP 官方 `main` / release 已前进到 `ffd53ff92a` / `v17.3.4`，但 `f7fd74b63b` 不是二者祖先；当前全局 `omp --version` 也已是 `17.3.4`。本轮没有升级、覆盖或改写全局 OMP 安装/config/profile。
+- Synara PR #496 与本地 Phase 1 provider wiring 高度重叠。用户明确授权独立发布到 `NLN6666/NilCode`，不等待 #496；实现只参考其通用 ACP lifecycle、`agent` auth、model → thinking 顺序和 advertised-mode gate。现有 `OhMyPiAcpSupport` 已具备这些语义，未复制第二套 Adapter、skills 私有目录扫描或 catalog-as-runtime-truth。
+- publication worktree 分别从 `origin/dev@c4c79f32` 与 OMP `origin/main@ffd53ff92a` 创建；原始 NilCode `dev@58e538361` 与 OMP `main@f7fd74b63b` 未切换、未提交、未 push。OMP `f7fd74b63b` 在最新 main 上无冲突 cherry-pick 为 `bc07667437`。
+- 第一次执行 `gh repo fork can1357/oh-my-pi --clone=false --remote=false` 时，当前 `gh 2.95.0` 拒绝“带 repository 参数时使用 `--remote`”；没有创建/修改远端。改用受支持的 `--clone=false` 后成功创建 `NLN6666/oh-my-pi` fork，并添加本地 `fork` remote。
+- NilCode `origin/dev` 虽是 Phase 1–3 祖先，但 Phase 1 开始前还有 186 个非 OMP 提交。首个 cherry-pick 在 `findings.md` 暴露该事实，后续冲突又定位到 provider-isolated skills、VCS runtime event、device harness、Services pane root subscription 等非 OMP 前置；本轮没有把这些提交或本地 ahead 302 整体带入。
+- 最小适配保留 `origin/dev` 的 flat skills settings、pane-scoped daemon feed 与既有 provider-runtime event schema，只加入 OMP settings/identity、routing、typed `omp.advisor.note` 和 OMP Launch UI；丢弃 `skillOrigins.ts` provider-isolation、Pi max fixture、device guidance、`vcs.state.changed` 与 unrelated service-panel refactor。Phase 1–3 的 15 个 OMP commits 全部完成 scoped cherry-pick，冲突均按单 hunk 保留两侧真实意图。
