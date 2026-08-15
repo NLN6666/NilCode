@@ -140,11 +140,11 @@
 | #496 reference decision | DONE | 独立发布；仅参考通用 ACP lifecycle/config wiring |
 | Plan 020 scoped commit | DONE | `978012821` |
 | OMP rebase/cherry-pick | DONE | `origin/main@ffd53ff92a` → `bc07667437` |
-| OMP focused/types/build | PENDING | fresh gate |
-| formal native gate | PENDING | local Windows build or official CI terminal evidence |
+| OMP focused/types/build | PARTIAL | `check:ts` PASS；focused 33/33；workspace build 尚在收束 |
+| formal native gate | LOCAL BLOCKED | pinned nightly install stalled；必须由官方 CI native gate terminal evidence 关闭 |
 | OMP Draft PR + CI | PENDING | no merge |
 | NilCode 15-commit closure | DONE WITH ADAPTATION | 15 scoped commits; excluded provider-isolation/VCS/device/service-panel prerequisites |
-| NilCode focused/build | PENDING | heavyweight checks remain unauthorized |
+| NilCode focused/build | DONE | server 54/54；contracts 68/68；Web 38/38 + health 9/9；三项 production build；heavyweight NOT RUN |
 | NilCode Draft PR + CI | PENDING | links OMP PR and discloses #496 overlap |
 | one review / one fix | PENDING | no second review |
 | artifact provenance | PENDING | version/files/native/hash/source |
