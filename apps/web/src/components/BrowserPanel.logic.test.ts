@@ -12,6 +12,7 @@ import {
   createBrowserRendererLossHandler,
   browserAnnotationActionErrorKey,
   isBrowserAnnotationEventInScope,
+  isBrowserElementPickInScope,
   normalizeBrowserAddressInput,
   resolveBrowserChromeStatus,
   resolveBrowserAddressSync,
@@ -140,6 +141,37 @@ describe("browser annotation projection", () => {
         threadId: THREAD_A,
         tabId: "tab-a",
         documentToken: "document-b",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("browser element pick scope", () => {
+  const event = { threadId: THREAD_A, selection: { tabId: "tab-a" } };
+
+  it("accepts only picks from the active tab on the current browser surface", () => {
+    expect(
+      isBrowserElementPickInScope(event, {
+        browserSurfaceId: THREAD_A,
+        activeTabId: "tab-a",
+      }),
+    ).toBe(true);
+    expect(
+      isBrowserElementPickInScope(event, {
+        browserSurfaceId: ThreadId.makeUnsafe("thread-b"),
+        activeTabId: "tab-a",
+      }),
+    ).toBe(false);
+    expect(
+      isBrowserElementPickInScope(event, {
+        browserSurfaceId: THREAD_A,
+        activeTabId: "tab-b",
+      }),
+    ).toBe(false);
+    expect(
+      isBrowserElementPickInScope(event, {
+        browserSurfaceId: THREAD_A,
+        activeTabId: null,
       }),
     ).toBe(false);
   });

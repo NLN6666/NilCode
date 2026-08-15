@@ -423,10 +423,9 @@ describe("BrowserElementPicker pick completion", () => {
   });
 
   // Regression guard for the completion-phase half of the generation race: an in-flight
-  // completePick on tab A must not tear down a session the user has since started on tab B.
-  // Reverting the generation checks in endSession/completePick makes this fail — tab A's
-  // teardown deletes session B and unsubscribes its listener, leaving tab B armed.
-  it("does not tear down a newer session started while a pick is completing", async () => {
+  // completePick on tab A must neither tear down a session the user has since started on tab B
+  // nor publish tab A's now-superseded selection into the composer.
+  it("does not emit a superseded selection or tear down the newer session", async () => {
     const fake = createHost({ gateOn: "DOM.resolveNode" });
     const picker = new BrowserElementPicker(fake.host);
 
@@ -449,9 +448,9 @@ describe("BrowserElementPicker pick completion", () => {
     expect(fake.listeners[1]?.unsubscribed).toBe(false);
     // Tab B is still armed: nothing disarmed the mode the user just entered.
     expect(fake.inspectModeCallsFor("tab-2")).toEqual(["searchForNode"]);
-    // Tab A's pick still lands in the draft — the user did click that element.
-    expect(fake.picked).toHaveLength(1);
-    expect(fake.picked[0]?.selection.tabId).toBe(TAB_ID);
+    // The newer pick expresses the user's current intent. Publishing tab A here can put the
+    // previously clicked element in chat after the user has already moved on to tab B.
+    expect(fake.picked).toEqual([]);
     expect(fake.cancelled).toEqual([]);
   });
 

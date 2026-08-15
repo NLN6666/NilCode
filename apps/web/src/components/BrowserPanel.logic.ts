@@ -267,6 +267,21 @@ export function isBrowserAnnotationEventInScope(
   return true;
 }
 
+export function isBrowserElementPickInScope(
+  event: {
+    readonly threadId: ThreadId;
+    readonly selection: { readonly tabId: string };
+  },
+  input: {
+    readonly browserSurfaceId: ThreadId;
+    readonly activeTabId: string | null;
+  },
+): boolean {
+  return (
+    event.threadId === input.browserSurfaceId && event.selection.tabId === input.activeTabId
+  );
+}
+
 const SAFE_RESOLVED_BROWSER_ANNOTATION_COLOR =
   /^(?:(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\([+\-0-9.eE,%\s/]+\)|color\(srgb(?:-linear)?[+\-0-9.eE,%\s/]+\))$/u;
 

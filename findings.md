@@ -486,3 +486,12 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 隔离 Synara 使用 home `.../synara-omp-phase3-019fffde/synara-home`、server 58919、web 8891、offset 3158、`SYNARA_AUTH_TOKEN` unset，先 dry-run。活动 OMP 会话的设置页真实显示 OMP 17.3.3、1 typed session、Advisor active + `write-or-exec`、Auto-Learn generation、Memory backend/queue、Launch authority=OMP；会话停止后安全回到 Phase 2 configured-only。页面旧 thread composer 会显示 Codex 默认值并导致一次 provider mismatch；新 thread 明确选择 OMP/Fable 后成功建立真实 OMP session，该现象记录为既有 hydration/UI 边界，未在本轮扩 scope。
 - 唯一一次独立双仓审查发现 1 个 P1：全局 typed notification queue 达 256 后丢弃事件，但旧 drain 只看 pending queue，可能伪报 settled=true。唯一合并修复先以 257 个同步事件得到预期红灯，再将 per-generation dropped/发送失败计数加入 runtime；Advisor drain 在任一 typed event 丢失后返回 `settled=false` 与 `notificationBackpressure: { dropped, recoverable: false }`，session rotation 清零。该回归测试转绿，未启动第二轮审查。
 - 清理时首次 PowerShell `Remove-Item` 被执行策略拒绝，未删除任何内容；随后在单一 Bash 中对固定 temp path 做 `realpath` exact-match guard 后删除。最终 `TempExists=false`，58919/8891 listener=0，匹配隔离目录或 patched `dist/omp.exe` 的进程=0。
+
+## 2026-08-15 页面元素选择发送旧元素
+
+- 症状：页面元素选择器中点击 `赠品及客户材料发料维护 (3.9 tree_feeWI)`，对话却收到前一个元素 `物料申领维护 (3.8 frm_wlap)`。
+- 复现：`bun run --cwd apps/desktop test -- src/browserElementPicker.test.ts` 在新增回归断言下稳定失败；旧 tab A 的 `button.btn` selection 会在 tab B 会话开始后仍写入 `fake.picked`。
+- 根因：`completePick` 的清理按 generation 隔离，但 `emitPicked` 被刻意设计成无条件发布；旧提取/截图晚于新会话完成时，会把前一个元素送进 composer。Web 接收层同时缺少 active-tab 校验。
+- 修复：只有当前 generation 成功结束会话时才发布 selection；Web 接收层只接受当前 browser surface 的 active tab 事件。
+- 验证：desktop 聚焦测试 20/20、Web scope 逻辑测试 31/31；独立只读审查 `NO FINDINGS`；`git diff --check` 仅有仓库既有 LF→CRLF 提示，无 whitespace error。
+- 工具/运行错误：首次聚焦测试按预期红灯（1 failed / 19 passed），用于证明回归测试能捕获本 bug。

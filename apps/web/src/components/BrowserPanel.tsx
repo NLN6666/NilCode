@@ -68,6 +68,7 @@ import {
   buildBrowserAddressSuggestions,
   createBrowserPanelHideScheduler,
   createBrowserRendererLossHandler,
+  isBrowserElementPickInScope,
   normalizeBrowserAddressInput,
   resolveBrowserChromeStatus,
   resolveBrowserAddressSync,
@@ -1638,7 +1639,12 @@ export function BrowserPanel({
       return;
     }
     return api.browser.onElementPicked((event) => {
-      if (event.threadId !== browserSurfaceId) {
+      if (
+        !isBrowserElementPickInScope(event, {
+          browserSurfaceId,
+          activeTabId: activeTab?.id ?? null,
+        })
+      ) {
         return;
       }
       applyInteractionMode("browse");
@@ -1679,6 +1685,7 @@ export function BrowserPanel({
   }, [
     addComposerDraftBrowserElement,
     addComposerDraftImage,
+    activeTab?.id,
     api,
     applyInteractionMode,
     attachmentLimitMessage,

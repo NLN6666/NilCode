@@ -468,10 +468,9 @@ export class BrowserElementPicker {
    *
    * `generation` identifies the session that observed the hit. Every teardown below passes
    * it through, because this method spans several CDP round trips and the user can start a
-   * pick on another tab in that window. Note that `emitPicked` is deliberately NOT gated on
-   * it: the user really did click that element, the thread is the same, so the result belongs
-   * in the composer draft regardless of which session currently owns the slot. Only cleanup
-   * is generation-scoped.
+   * pick on another tab in that window. Publication is generation-scoped too: once a newer
+   * session owns the slot, its selection expresses the user's current intent and this older
+   * result must not arrive later and pollute the composer draft.
    */
   private async completePick(
     target: BrowserTabInput,
@@ -537,9 +536,9 @@ export class BrowserElementPicker {
       }
 
       const screenshot = await this.captureElementScreenshot(target, selection);
-      this.endSession(target.threadId, generation);
-      // Unconditional on purpose — see the note on this method.
-      this.host.emitPicked({ threadId: target.threadId, selection, screenshot });
+      if (this.endSession(target.threadId, generation)) {
+        this.host.emitPicked({ threadId: target.threadId, selection, screenshot });
+      }
     } catch (error) {
       const wasCurrent = this.endSession(target.threadId, generation);
       await this.clearInspectMode(target);
