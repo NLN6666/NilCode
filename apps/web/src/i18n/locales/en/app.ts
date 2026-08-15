@@ -85,6 +85,8 @@ export const app = {
     temporaryOff: "Make this a temporary chat (deleted when you leave)",
     planModeActive: "Plan mode — click to return to normal build mode",
     plan: "Plan",
+    debugModeActive: "Debug mode — click to return to normal build mode",
+    debug: "Debug",
     stopGeneration: "Stop generation",
     stopGenerationHint: "Stop the current response. On Mac, press Ctrl+C to interrupt.",
     implementationActions: "Implementation actions",

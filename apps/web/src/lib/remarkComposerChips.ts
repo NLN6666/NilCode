@@ -32,6 +32,7 @@ export type ComposerChipSegment = Extract<
   | { type: "agent-mention" }
   | { type: "link" }
   | { type: "mcp-tool" }
+  | { type: "slash-command" }
 >;
 
 const CHIP_SEGMENT_TYPES = new Set<ComposerChipSegment["type"]>([
@@ -40,6 +41,7 @@ const CHIP_SEGMENT_TYPES = new Set<ComposerChipSegment["type"]>([
   "agent-mention",
   "link",
   "mcp-tool",
+  "slash-command",
 ]);
 
 interface MdastNode {
@@ -128,7 +130,7 @@ export function createComposerChipsRemarkPlugin(
         continue;
       }
       // Only text segments can appear alongside chips here: the display split
-      // never emits terminal-context nodes and skips slash-command chips.
+      // never emits terminal-context nodes.
       if (segment.type === "text" && segment.text.length > 0) {
         replacements.push({ type: "text", value: segment.text });
       }

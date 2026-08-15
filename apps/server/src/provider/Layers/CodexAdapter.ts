@@ -83,6 +83,13 @@ import {
   PROVIDER_RUNTIME_INGRESS_EVENT_MAX_BYTES,
   providerRuntimeEventBytes,
 } from "../providerRuntimeEventIngress.ts";
+import {
+  makeUnmappedProviderEventGate,
+  sanitizeUnmappedProviderData,
+  sanitizeUnmappedProviderDetail,
+  sanitizeUnmappedProviderEvent,
+  sanitizeUnmappedProviderNativeType,
+} from "../unmappedProviderEvents.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
 const PROVIDER = "codex" as const;
@@ -880,6 +887,38 @@ function mapItemLifecycle(
   };
 }
 
+function mapUnmappedCodexEvent(
+  event: ProviderEvent,
+  canonicalThreadId: ThreadId,
+): ProviderRuntimeEvent {
+  const payload = asObject(event.payload);
+  const msg = codexEventMessage(payload);
+  const nativeType = sanitizeUnmappedProviderNativeType(event.method);
+  const detail = sanitizeUnmappedProviderDetail(
+    asTrimmedString(payload?.message) ??
+      asTrimmedString(msg?.summary) ??
+      asTrimmedString(payload?.reason) ??
+      asTrimmedString(payload?.summary) ??
+      asTrimmedString(msg?.status) ??
+      asTrimmedString(payload?.detail) ??
+      asTrimmedString(payload?.status),
+  );
+  return {
+    ...runtimeEventBase(event, canonicalThreadId),
+    raw: {
+      source: eventRawSource(event),
+      method: nativeType,
+      payload: { synaraSanitized: true },
+    },
+    type: "event.unmapped",
+    payload: {
+      nativeType,
+      ...(detail ? { detail } : {}),
+      ...(event.payload !== undefined ? { data: sanitizeUnmappedProviderData(event.payload) } : {}),
+    },
+  };
+}
+
 function mapToRuntimeEvents(
   event: ProviderEvent,
   canonicalThreadId: ThreadId,
@@ -1673,7 +1712,11 @@ function mapToRuntimeEvents(
     ];
   }
 
-  return [];
+  // No explicit mapping matched: keep the event visible instead of dropping
+  // it. The raw native method becomes the row title and the raw payload the
+  // preview, so a provider protocol addition degrades to a readable row rather
+  // than silence.
+  return [mapUnmappedCodexEvent(event, canonicalThreadId)];
 }
 
 const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
@@ -1722,6 +1765,8 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
     const runtimeEventQueue = yield* Queue.bounded<ProviderRuntimeEvent>(
       PROVIDER_ADAPTER_RUNTIME_EVENT_BUFFER_CAPACITY,
     );
+    const shouldSurfaceUnmappedEvent = makeUnmappedProviderEventGate();
+
     // Idle-progress backstop for codex turns. Same semantics as
     // AcpTurnIdleWatchdog (any inbound activity resets it, a pending human
     // decision pauses it), driven by one shared ticker because codex activity
@@ -2230,12 +2275,23 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
           },
         );
         const listener = (event: ProviderEvent) => {
-          const runtimeEvents = assignDerivedProviderRuntimeEventIds(
+          const mappedRuntimeEvents = assignDerivedProviderRuntimeEventIds(
             mapToRuntimeEvents(event, event.threadId),
-          ).map(compactProviderRuntimeEventForIngress);
+          );
+          const hasUnmappedEvent = mappedRuntimeEvents.some(
+            (runtimeEvent) => runtimeEvent.type === "event.unmapped",
+          );
+          const runtimeEvents = mappedRuntimeEvents
+            .filter(
+              (runtimeEvent) =>
+                runtimeEvent.type !== "event.unmapped" || shouldSurfaceUnmappedEvent(event),
+            )
+            .map(compactProviderRuntimeEventForIngress);
           trackTurnWatchdogActivity(event.threadId, runtimeEvents);
           const result = ingress.offer({
-            nativeEvent: compactCodexNativeEventForIngress(event),
+            nativeEvent: compactCodexNativeEventForIngress(
+              hasUnmappedEvent ? sanitizeUnmappedProviderEvent(event) : event,
+            ),
             runtimeEvents,
           });
           if (result === "terminal-overflow") {

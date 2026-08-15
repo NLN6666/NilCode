@@ -40,6 +40,7 @@ export const git = {
     busy: "Git action in progress.",
     noStatus: "Git status is unavailable.",
     unavailable: "This action is currently unavailable.",
+    selectFilesToCommit: "Select at least one file to commit.",
     cleanWorktree: "Worktree is clean. Make changes before committing.",
     commitUnavailable: "Commit is currently unavailable.",
     detachedPush: "Detached HEAD: checkout a branch before pushing.",
@@ -137,6 +138,27 @@ export const git = {
     refreshing: "Refreshing git status...",
     noFiles: "none",
     fileCount: (selected: number, total: number) => `(${selected} of ${total})`,
+    /** Eyebrow trailing note next to the commit dialog's branch heading. */
+    defaultBranchEyebrow: "Default branch",
+    messageAriaLabel: "Commit message",
+    messageFieldPlaceholder: "Message (leave empty to generate)",
+    noLocalChanges: "No local changes",
+    allFilesCount: (total: number) => `${total} ${total === 1 ? "file" : "files"}`,
+    partialFilesCount: (selected: number, total: number) => `${selected} of ${total} files`,
+  },
+
+  /** Create PR dialog: branch summary, title/description fields, and commit toggle. */
+  createPrDialog: {
+    eyebrow: (isNewBranch: boolean, baseBranchName: string) =>
+      `${isNewBranch ? "New branch" : "Branch"} → ${baseBranchName}`,
+    autoNamedFeatureBranch: "Auto-named feature branch",
+    titleAriaLabel: "Pull request title",
+    titlePlaceholder: "Title (leave empty to generate)",
+    descriptionAriaLabel: "Pull request description",
+    descriptionPlaceholder: "Description (leave empty to generate)",
+    commitAndPushLocalChanges: "Commit and push local changes",
+    createDraftPr: "Create draft PR",
+    openPrInBrowser: "Open PR in browser",
   },
 
   createBranchDialog: {
@@ -277,3 +299,4 @@ export const git = {
     selectFile: "Select a file to view its diff.",
   },
 };
+

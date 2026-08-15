@@ -402,7 +402,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
       variant="ghost"
       {...props}
     >
-      <CentralIcon name="sidebar-hidden-left-wide" />
+      <CentralIcon name="sidebar-simple-left-wide" />
       <span className="sr-only">{triggerCopy.toggleSidebar}</span>
     </Button>
   );

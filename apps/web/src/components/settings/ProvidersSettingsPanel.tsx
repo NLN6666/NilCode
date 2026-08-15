@@ -29,12 +29,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type MouseEvent, type ReactNode, useCallback, useMemo, useState } from "react";
 
 import type { AppSettings, AppSettingsBinding } from "~/appSettings";
+import { useProviderStatusesForLocalConfig } from "~/hooks/useProviderStatusesForLocalConfig";
 import { useMessages } from "../../i18n/context";
 import type { Messages } from "../../i18n/locales/en";
 import { CentralIcon } from "~/lib/central-icons";
 import { DownloadIcon, ExternalLinkIcon, Loader2Icon } from "~/lib/icons";
 import { projectOmpProviderPolicy, type OmpPolicyFeatureId } from "~/lib/ompProviderPolicy";
 import {
+  hasReconciledServerProviderStatuses,
   serverConfigQueryOptions,
   serverQueryKeys,
   serverSettingsQueryOptions,
@@ -65,6 +67,7 @@ import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collaps
 import { DisclosureChevron } from "../ui/DisclosureChevron";
 import { Switch } from "../ui/switch";
 import { toastManager } from "../ui/toast";
+import { ProviderIcon } from "../ProviderIcon";
 import { DebouncedSettingTextInput } from "./DebouncedSettingTextInput";
 import { SettingResetButton, useSettingsRestoreSignal } from "./SettingControls";
 import { SettingsListRow, SettingsRow, SettingsSection } from "./SettingsPanelPrimitives";
@@ -430,8 +433,17 @@ function setProviderHidden(
   return hidden ? [...withoutTarget, provider] : withoutTarget;
 }
 
+function isProviderPickerProviderEnabled(
+  providerStatus: Pick<ServerProviderStatus, "available"> | null | undefined,
+  isHidden: boolean,
+): boolean {
+  return providerStatus?.available === true && !isHidden;
+}
+
 function SortableProviderVisibilityRow(props: {
   option: { provider: ProviderKind; title: string };
+  providerStatus: ServerProviderStatus | undefined;
+  statusReconciled: boolean;
   isHidden: boolean;
   onHiddenChange: (hidden: boolean) => void;
 }) {
@@ -445,6 +457,9 @@ function SortableProviderVisibilityRow(props: {
     transition,
     isDragging,
   } = useSortable({ id: props.option.provider });
+  const isChecking = !props.statusReconciled || props.providerStatus === undefined;
+  const isAvailable = props.providerStatus?.available === true;
+  const isEnabled = isProviderPickerProviderEnabled(props.providerStatus, props.isHidden);
 
   return (
     <div
@@ -471,12 +486,25 @@ function SortableProviderVisibilityRow(props: {
         >
           <CentralIcon name="dot-grid-2x3" className="size-4" />
         </button>
-        <span className="min-w-0 text-sm text-foreground">{props.option.title}</span>
+        <ProviderIcon provider={props.option.provider} className="size-4 shrink-0" />
+        <span className="min-w-0">
+          <span className="block truncate text-sm text-foreground">{props.option.title}</span>
+          <span className="block text-[11px] text-muted-foreground">
+            {isChecking ? "Checking" : isAvailable ? "Installed" : "CLI not installed"}
+          </span>
+        </span>
       </div>
       <Switch
-        checked={!props.isHidden}
+        checked={isEnabled}
+        disabled={isChecking || !isAvailable}
         onCheckedChange={(checked) => props.onHiddenChange(!Boolean(checked))}
-        aria-label={m.settings.providers.picker.showInPicker(props.option.title)}
+        aria-label={
+          isChecking
+            ? m.settings.providers.picker.checkingCli(props.option.title)
+            : isAvailable
+              ? m.settings.providers.picker.showInPicker(props.option.title)
+              : m.settings.providers.picker.cliNotInstalled(props.option.title)
+        }
       />
     </div>
   );
@@ -929,6 +957,8 @@ export function ProvidersSettingsPanel({
   const m = useMessages();
   const queryClient = useQueryClient();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
+  const localProviderStatuses = useProviderStatusesForLocalConfig();
+  const providerStatusesReconciled = hasReconciledServerProviderStatuses(queryClient);
   const serverSettingsQuery = useQuery(serverSettingsQueryOptions());
   const [openInstallProviders, setOpenInstallProviders] = useState<Record<ProviderKind, boolean>>(
     () => createProviderInstallDisclosureState(settings),
@@ -958,10 +988,22 @@ export function ProvidersSettingsPanel({
   );
   const isProviderOrderDirty = !sameProviderOrder(settings.providerOrder, defaults.providerOrder);
   const providerStatusByProvider = useMemo(
-    () =>
-      new Map((serverConfigQuery.data?.providers ?? []).map((status) => [status.provider, status])),
-    [serverConfigQuery.data?.providers],
+    () => new Map(localProviderStatuses.map((status) => [status.provider, status])),
+    [localProviderStatuses],
   );
+  const availableProviderCount = orderedProviderVisibilityOptions.filter(
+    (option) => providerStatusByProvider.get(option.provider)?.available === true,
+  ).length;
+  const visibleAvailableProviderCount = orderedProviderVisibilityOptions.filter(
+    (option) =>
+      providerStatusByProvider.get(option.provider)?.available === true &&
+      !hiddenProviderSet.has(option.provider),
+  ).length;
+  const hasPendingProviderStatuses =
+    !providerStatusesReconciled ||
+    orderedProviderVisibilityOptions.some(
+      (option) => !providerStatusByProvider.has(option.provider),
+    );
   const providerUpdateServerSettings = useMemo(
     () =>
       serverSettingsQuery.data
@@ -1058,6 +1100,70 @@ export function ProvidersSettingsPanel({
 
   return (
     <div className="space-y-6">
+      <SettingsSection title="Provider picker">
+        <SettingsRow
+          title="Available CLIs"
+          description="Installed providers appear in the picker. Turn off any you don't want to see, and drag them into your preferred order."
+          status={
+            serverConfigQuery.isPending || hasPendingProviderStatuses
+              ? "Checking installed CLIs"
+              : availableProviderCount === 0
+                ? "No CLIs detected"
+                : visibleAvailableProviderCount < availableProviderCount
+                  ? `${visibleAvailableProviderCount} of ${availableProviderCount} installed shown`
+                  : isProviderOrderDirty
+                    ? `${availableProviderCount} installed · custom order`
+                    : `${availableProviderCount} installed`
+          }
+          resetAction={
+            hiddenProviderCount > 0 || isProviderOrderDirty ? (
+              <SettingResetButton
+                label="provider picker"
+                onClick={() =>
+                  updateSettings({
+                    hiddenProviders: defaults.hiddenProviders,
+                    providerOrder: defaults.providerOrder,
+                  })
+                }
+              />
+            ) : null
+          }
+        >
+          <DndContext
+            sensors={providerVisibilitySensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis]}
+            onDragEnd={handleProviderOrderDragEnd}
+          >
+            <SortableContext
+              items={orderedProviderVisibilityOptions.map((option) => option.provider)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="mt-4 space-y-2">
+                {orderedProviderVisibilityOptions.map((option) => (
+                  <SortableProviderVisibilityRow
+                    key={option.provider}
+                    option={option}
+                    providerStatus={providerStatusByProvider.get(option.provider)}
+                    statusReconciled={providerStatusesReconciled}
+                    isHidden={hiddenProviderSet.has(option.provider)}
+                    onHiddenChange={(hidden) =>
+                      updateSettings({
+                        hiddenProviders: setProviderHidden(
+                          settings.hiddenProviders,
+                          option.provider,
+                          hidden,
+                        ),
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </SettingsRow>
+      </SettingsSection>
+
       <div id={SETTINGS_TARGETS.providerUpdates}>
         <SettingsSection title={m.settings.providers.updates.title}>
           <SettingsRow
@@ -1182,6 +1288,8 @@ export function ProvidersSettingsPanel({
                   <SortableProviderVisibilityRow
                     key={option.provider}
                     option={option}
+                    providerStatus={providerStatusByProvider.get(option.provider)}
+                    statusReconciled={providerStatusesReconciled}
                     isHidden={hiddenProviderSet.has(option.provider)}
                     onHiddenChange={(hidden) =>
                       updateSettings({

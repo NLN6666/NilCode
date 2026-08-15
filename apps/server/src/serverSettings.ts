@@ -6,6 +6,7 @@
  * and process-authoritative on the server.
  */
 import {
+  DEFAULT_GIT_TEXT_GENERATION_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
   DEFAULT_SERVER_SETTINGS,
   type ModelSelection,
@@ -96,6 +97,27 @@ export function migrateLegacyDisabledSkills(settings: unknown): unknown {
     skills: {
       ...skills,
       disabled: Object.fromEntries(ALL_PROVIDER_KINDS.map((provider) => [provider, disabled])),
+    },
+  };
+}
+
+const PREVIOUS_GIT_TEXT_GENERATION_MODEL = "gpt-5.4-mini";
+
+function migrateSettings(settings: ServerSettings, migrationVersion: number): ServerSettings {
+  const selection = settings.textGenerationModelSelection;
+  if (
+    migrationVersion >= 2 ||
+    selection.provider !== "codex" ||
+    selection.model !== PREVIOUS_GIT_TEXT_GENERATION_MODEL
+  ) {
+    return settings;
+  }
+
+  return {
+    ...settings,
+    textGenerationModelSelection: {
+      ...selection,
+      model: DEFAULT_GIT_TEXT_GENERATION_MODEL,
     },
   };
 }
@@ -385,7 +407,9 @@ const makeServerSettings = Effect.gen(function* () {
       ),
     );
     return {
-      settings: yield* withCredentialState(decoded.value),
+      settings: yield* withCredentialState(
+        migrateSettings(decoded.value, decoded.migrationVersion),
+      ),
       revision: decoded.revision,
       migrated:
         legacyPasswords.size > 0 ||

@@ -12,7 +12,7 @@ const projectionProjectsColumnNames = (sql: SqlClient.SqlClient) =>
     SELECT name FROM pragma_table_info('projection_projects')
   `.pipe(Effect.map((rows) => rows.map((row) => row.name)));
 
-layer("088_ProjectionProjectsBrowserSharing", (it) => {
+layer("097_ProjectionProjectsBrowserSharing", (it) => {
   it.effect("adds durable project browser-sharing state", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;

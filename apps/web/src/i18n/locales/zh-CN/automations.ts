@@ -47,6 +47,7 @@ export const automations: Automations = {
     unread: "标为未读",
     archive: "归档",
     unarchive: "取消归档",
+    reEnable: "重新启用",
   },
 
   deleteConfirm: (name) => `要删除「${name}」吗？`,
@@ -54,6 +55,7 @@ export const automations: Automations = {
   runBlocked: {
     pendingProposal: "请先接受这条自动化建议",
     needsApproval: "请先批准这条自动化",
+    reEnable: "请先重新启用这条自动化",
   },
 
   proposal: {
@@ -77,6 +79,14 @@ export const automations: Automations = {
     title: "正在设置自动化",
     cancelLabel: "取消自动化设置",
     cancel: "取消",
+  },
+
+  heading: {
+    nameLabel: "自动化名称",
+    promptLabel: "自动化提示词",
+    promptPlaceholder: "这个自动化每次运行应该做什么？",
+    saving: "保存中…",
+    saved: "已保存",
   },
 
   detail: {
@@ -109,6 +119,7 @@ export const automations: Automations = {
     stopWhen: "停止条件",
     stopWhenPlaceholder: "从不",
     maxIterations: "最大运行次数",
+    onFailure: "失败时",
     noMemory: "还没有持久记忆。",
     noRuns: "还没有运行记录。",
     archiveHint: "归档不会删除已生成的工作树或分支。",
@@ -139,6 +150,7 @@ export const automations: Automations = {
     stopWhen: "停止条件",
     stopWhenPlaceholder: "PR 可以合并时",
     stopOnError: "出错时停止",
+    onFailure: "失败时",
     maxIterations: "最大运行次数",
     notify: "通知",
     permissions: "权限",
@@ -149,6 +161,13 @@ export const automations: Automations = {
     paused: "已暂停",
     scheduled: "已排期",
     done: "已完成",
+  },
+
+  stoppedReason: {
+    singleFailure: "在一次运行失败后停止",
+    multipleFailures: (count) => `在连续 ${count} 次运行失败后停止`,
+    maxIterations: "已达运行次数上限而停止",
+    completion: "已满足停止条件",
   },
 
   worktreeMode: {
@@ -172,6 +191,26 @@ export const automations: Automations = {
     approvalRequired: "需要批准",
     auto: "自动",
     fullAccess: "完全访问",
+  },
+
+  failurePolicy: {
+    keepRunning: "持续运行",
+    stopAfterOne: "失败 1 次后停止",
+    stopAfterCount: (count) => `失败 ${count} 次后停止`,
+  },
+
+  riskConfirm: {
+    localCheckoutTitle: "本地检出",
+    localCheckoutDetail: "运行可能会修改当前项目检出中的文件。",
+    switch: "切换",
+    switchTo: (target) => `切换到${target}`,
+    continueThreadTitle: "继续一个已有会话",
+    releaseThreadTitle: "释放当前会话？",
+    continueThreadDetail: "每次运行都会在你选择的会话中追加一轮对话，并等待它进入空闲状态。",
+    releaseThreadDetail: (threadName) =>
+      `自动化将停止写入${threadName}；该会话本身会被保留。`,
+    unnamedThread: "它的会话",
+    pickThreadPlaceholder: "选择一个会话…",
   },
 
   timestamp: {
@@ -217,10 +256,42 @@ export const automations: Automations = {
     everyHours: (amount) => `每 ${amount} 小时`,
   },
 
+  validation: {
+    addName: "请填写名称",
+    nameTooLong: (max) => `名称不能超过 ${max} 个字符`,
+    addPrompt: "请填写提示词",
+    promptTooLong: (max) => `提示词不能超过 ${max} 个字符`,
+    cronFieldCount: "请使用 5 段式 cron 表达式（分 时 日 月 星期）",
+    addTimezone: "请填写时区",
+    unknownTimezone: "未知时区",
+    pickProject: "请选择项目",
+    pickTargetThread: "请选择目标会话",
+    fastIntervalLimit: (maxIterations) =>
+      `间隔低于 1 分钟时，最大运行次数需设为 ${maxIterations} 次或更少。`,
+    setValidInterval: "请设置有效的间隔",
+    addCronExpression: "请填写 cron 表达式",
+    pickRunTime: "请选择运行时间",
+    setValidTime: "请设置有效的时间",
+    acknowledgeRisks: "请先确认已标记的风险",
+  },
+
   maxIterationOption: {
     unlimited: "不限",
     runs: (count) => `${count} 次`,
   },
+
+  scheduleKind: {
+    manual: "手动",
+    once: "一次性",
+    hourly: "每小时",
+    daily: "每天",
+    weekdays: "工作日",
+    weekly: "每周",
+    custom: "自定义",
+    cron: "Cron",
+  },
+
+  weekdayShort: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
 
   templates: {
     triageCrashes: {

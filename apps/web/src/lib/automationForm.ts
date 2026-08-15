@@ -4,6 +4,8 @@
 // Exports: form builders, schedule formatters, warning adapters, and payload mappers.
 
 import {
+  AUTOMATION_NAME_MAX_LENGTH,
+  AUTOMATION_PROMPT_MAX_LENGTH,
   DEFAULT_AUTOMATION_FAST_INTERVAL_MAX_ITERATIONS,
   DEFAULT_AUTOMATION_MINIMUM_INTERVAL_SECONDS,
 } from "@synara/contracts";
@@ -13,7 +15,6 @@ import type {
   AutomationMode,
   AutomationNotificationPolicy,
   AutomationSchedule,
-  AutomationUpdateInput,
   AutomationWorktreeMode,
   ModelSelection,
   ProjectId,
@@ -30,12 +31,24 @@ import {
   automationContinuationThreadId,
   automationRequiresTargetThread,
 } from "@synara/shared/automationMode";
+import { automations as defaultAutomationsCopy } from "~/i18n/locales/en/automations";
 import {
   acknowledgedRiskIdsForDraft,
   buildAutomationDraftWarnings,
   type AutomationDraftWarning,
   type AutomationDraftWarningId,
 } from "./automationDraft";
+import {
+  DEFAULT_AUTOMATION_FAILURE_POLICY_VALUE,
+  automationFailurePolicyValue,
+  stopAfterConsecutiveFailuresFromPolicyValue,
+  type AutomationFailurePolicyValue,
+} from "./automationFailurePolicy";
+
+/** The `automations.interval` catalog group, threaded into the cadence formatters below. */
+type IntervalCopy = typeof defaultAutomationsCopy.interval;
+/** The `automations.validation` catalog group, threaded into the form validators below. */
+type ValidationCopy = typeof defaultAutomationsCopy.validation;
 
 export const defaultModelSelection: ModelSelection = {
   provider: "codex",
@@ -61,16 +74,30 @@ export type ScheduleKind =
 
 export type IntervalUnit = "seconds" | "minutes";
 
-export const SCHEDULE_KIND_OPTIONS: readonly { value: ScheduleKind; label: string }[] = [
-  { value: "manual", label: "Manual" },
-  { value: "once", label: "Once" },
-  { value: "hourly", label: "Hourly" },
-  { value: "daily", label: "Daily" },
-  { value: "weekdays", label: "Weekdays" },
-  { value: "weekly", label: "Weekly" },
-  { value: "custom", label: "Custom" },
-  { value: "cron", label: "Cron" },
-];
+/** The `automations.scheduleKind` catalog group, threaded into {@link scheduleKindOptions}. */
+type ScheduleKindCopy = typeof defaultAutomationsCopy.scheduleKind;
+
+/** Options for the "Repeats" cadence-kind picker (detail page and create/edit dialog). */
+export function scheduleKindOptions(
+  copy: ScheduleKindCopy = defaultAutomationsCopy.scheduleKind,
+): readonly { readonly value: ScheduleKind; readonly label: string }[] {
+  return [
+    { value: "manual", label: copy.manual },
+    { value: "once", label: copy.once },
+    { value: "hourly", label: copy.hourly },
+    { value: "daily", label: copy.daily },
+    { value: "weekdays", label: copy.weekdays },
+    { value: "weekly", label: copy.weekly },
+    { value: "custom", label: copy.custom },
+    { value: "cron", label: copy.cron },
+  ];
+}
+
+// English-only snapshot: -automations.shared.tsx's create/edit dialog reads this constant
+// directly and is out of scope for this localization pass. New callers (the detail page)
+// use scheduleKindOptions(copy) instead so their labels follow the active locale.
+export const SCHEDULE_KIND_OPTIONS: readonly { value: ScheduleKind; label: string }[] =
+  scheduleKindOptions();
 
 export type AutomationFormState = {
   readonly name: string;
@@ -92,7 +119,7 @@ export type AutomationFormState = {
   readonly notificationPolicy: AutomationNotificationPolicy;
   readonly targetThreadId: string;
   readonly maxIterations: string;
-  readonly stopOnError: boolean;
+  readonly stopAfterFailures: AutomationFailurePolicyValue;
   readonly stopWhen: string;
 };
 
@@ -331,8 +358,11 @@ export function formatNextRun(nextRunAt: string | null, now: number = Date.now()
   return days === 1 ? "in 1 day" : `in ${days} days`;
 }
 
-export function weekdayLabel(value: number): string {
-  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][value] ?? "Sun";
+export function weekdayLabel(
+  value: number,
+  copy: typeof defaultAutomationsCopy.weekdayShort = defaultAutomationsCopy.weekdayShort,
+): string {
+  return copy[value] ?? copy[0] ?? "Sun";
 }
 
 // --- Thread automation lookups ---------------------------------------------
@@ -376,9 +406,57 @@ export function groupAutomationsByContinuedThread(
   return byThreadId;
 }
 
+// --- Interval presets --------------------------------------------------------
+// Single preset list for every interval picker (creation dialog and detail page)
+// so cadence options and labels never diverge between surfaces.
+
+export const AUTOMATION_INTERVAL_PRESET_SECONDS: readonly number[] = [
+  900, 1800, 3600, 7200, 21600, 43200, 86400,
+];
+
+export function formatIntervalPresetLabel(
+  seconds: number,
+  copy: IntervalCopy = defaultAutomationsCopy.interval,
+): string {
+  if (seconds === 3600) return copy.everyHour;
+  if (seconds % 3600 === 0) return copy.everyHours(String(seconds / 3600));
+  if (seconds >= 60 && seconds % 60 === 0) return copy.everyMinutes(String(seconds / 60));
+  return copy.everySeconds(String(seconds));
+}
+
+/**
+ * Options for an interval cadence picker. A stored non-preset interval is prepended so the
+ * current value always renders as itself. The dialog omits the hourly preset because
+ * "Hourly" is its own ScheduleKind there; the detail page includes it.
+ */
+export function automationIntervalPresetOptions({
+  currentSeconds,
+  includeHourly,
+  copy = defaultAutomationsCopy.interval,
+}: {
+  readonly currentSeconds?: number | undefined;
+  readonly includeHourly: boolean;
+  readonly copy?: IntervalCopy | undefined;
+}): readonly { readonly value: string; readonly label: string }[] {
+  const presetSeconds = includeHourly
+    ? AUTOMATION_INTERVAL_PRESET_SECONDS
+    : AUTOMATION_INTERVAL_PRESET_SECONDS.filter((seconds) => seconds !== 3600);
+  const presets = presetSeconds.map((seconds) => ({
+    value: String(seconds),
+    label: formatIntervalPresetLabel(seconds, copy),
+  }));
+  if (currentSeconds === undefined || presetSeconds.includes(currentSeconds)) {
+    return presets;
+  }
+  return [
+    { value: String(currentSeconds), label: formatIntervalPresetLabel(currentSeconds, copy) },
+    ...presets,
+  ];
+}
+
 // --- Form state and API payloads -------------------------------------------
 
-function intervalFormPartsFromSeconds(everySeconds: number): {
+export function intervalFormPartsFromSeconds(everySeconds: number): {
   readonly amount: string;
   readonly unit: IntervalUnit;
 } {
@@ -430,7 +508,9 @@ export function formFromDefinition(
     notificationPolicy: definition?.notificationPolicy ?? "all",
     targetThreadId: definition?.targetThreadId ?? "",
     maxIterations: definition?.maxIterations != null ? String(definition.maxIterations) : "",
-    stopOnError: definition?.stopOnError ?? true,
+    stopAfterFailures: definition
+      ? automationFailurePolicyValue(definition.stopAfterConsecutiveFailures)
+      : DEFAULT_AUTOMATION_FAILURE_POLICY_VALUE,
     stopWhen: definition
       ? stopWhenFromCompletionPolicy(definition.completionPolicy ?? { type: "none" })
       : "",
@@ -505,7 +585,10 @@ function maxIterationsFromForm(form: Pick<AutomationFormState, "maxIterations">)
   return parsed > 0 ? parsed : null;
 }
 
-export function automationFastIntervalLimitMessage(form: AutomationFormState): string | null {
+export function automationFastIntervalLimitMessage(
+  form: AutomationFormState,
+  copy: ValidationCopy = defaultAutomationsCopy.validation,
+): string | null {
   const schedule = scheduleFromForm(form);
   const maxIterations = maxIterationsFromForm(form);
   if (
@@ -513,7 +596,7 @@ export function automationFastIntervalLimitMessage(form: AutomationFormState): s
     schedule.everySeconds < DEFAULT_AUTOMATION_MINIMUM_INTERVAL_SECONDS &&
     (maxIterations === null || maxIterations > DEFAULT_AUTOMATION_FAST_INTERVAL_MAX_ITERATIONS)
   ) {
-    return `Intervals under one minute need max iterations set to ${DEFAULT_AUTOMATION_FAST_INTERVAL_MAX_ITERATIONS} runs or fewer.`;
+    return copy.fastIntervalLimit(DEFAULT_AUTOMATION_FAST_INTERVAL_MAX_ITERATIONS);
   }
   return null;
 }
@@ -551,18 +634,6 @@ export function providerOptionsForAutomationModelSelection(
   return modelIdentityMatches(definition.modelSelection, nextModelSelection)
     ? definition.providerOptions
     : (currentProviderOptions ?? {});
-}
-
-export function providerOptionsForAutomationEdit(
-  definition: Pick<AutomationDefinition, "modelSelection" | "providerOptions">,
-  form: Pick<AutomationFormState, "modelSelection">,
-  currentProviderOptions?: ProviderStartOptions,
-): ProviderStartOptions | undefined {
-  return providerOptionsForAutomationModelSelection(
-    definition,
-    form.modelSelection,
-    currentProviderOptions,
-  );
 }
 
 export function modelSelectionForProjectChange(
@@ -606,21 +677,11 @@ export function createInputFromForm(
       ? (form.targetThreadId as ThreadId)
       : null,
     maxIterations,
-    stopOnError: form.stopOnError,
+    stopAfterConsecutiveFailures: stopAfterConsecutiveFailuresFromPolicyValue(
+      form.stopAfterFailures,
+    ),
     completionPolicy: completionPolicyFromStopWhen(stopWhen),
     ...(acknowledgedRisks ? { acknowledgedRisks } : {}),
-  };
-}
-
-export function updateInputFromForm(
-  definition: AutomationDefinition,
-  form: AutomationFormState,
-  providerOptions?: ProviderStartOptions,
-  acknowledgedRisks?: AutomationCreateInput["acknowledgedRisks"],
-): AutomationUpdateInput {
-  return {
-    id: definition.id,
-    ...createInputFromForm(form, providerOptions, acknowledgedRisks),
   };
 }
 
@@ -644,18 +705,95 @@ export function acknowledgedRiskIdsForFormWarnings(
   return acknowledgedRiskIdsForDraft(warnings, acknowledgedWarningIds);
 }
 
-export function isFormSubmittable(form: AutomationFormState): boolean {
-  if (!form.name.trim() || !form.prompt.trim() || !form.projectId) return false;
-  if (automationRequiresTargetThread(form.mode) && !form.targetThreadId) return false;
-  if (automationFastIntervalLimitMessage(form)) return false;
+// --- Validation ---------------------------------------------------------------
+
+/** Error for an automation name draft, or null when saveable. */
+export function automationNameError(
+  name: string,
+  copy: ValidationCopy = defaultAutomationsCopy.validation,
+): string | null {
+  const trimmed = name.trim();
+  if (!trimmed) return copy.addName;
+  if (trimmed.length > AUTOMATION_NAME_MAX_LENGTH) {
+    return copy.nameTooLong(AUTOMATION_NAME_MAX_LENGTH);
+  }
+  return null;
+}
+
+// One token per cron field: digits, `*`, lists, ranges, steps. Deliberately structural —
+// range semantics (minute 0-59, month 1-12, …) stay with the server's parser, so this can't
+// drift from it; it only stops obviously incomplete input from becoming a doomed request.
+const CRON_FIELD_PATTERN = /^[\d*,/-]+$/;
+
+/** Error for a cron expression draft, or null when it is worth sending to the server. */
+export function automationCronExpressionError(
+  expression: string,
+  copy: ValidationCopy = defaultAutomationsCopy.validation,
+): string | null {
+  const fields = expression.trim().split(/\s+/).filter(Boolean);
+  if (fields.length !== 5 || !fields.every((field) => CRON_FIELD_PATTERN.test(field))) {
+    return copy.cronFieldCount;
+  }
+  return null;
+}
+
+/** Error for a schedule timezone draft, or null when it names a real IANA timezone. */
+export function automationTimezoneError(
+  timezone: string,
+  copy: ValidationCopy = defaultAutomationsCopy.validation,
+): string | null {
+  const trimmed = timezone.trim();
+  if (!trimmed) return copy.addTimezone;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: trimmed });
+  } catch {
+    return copy.unknownTimezone;
+  }
+  return null;
+}
+
+/** Error for an automation prompt draft, or null when saveable. */
+export function automationPromptError(
+  prompt: string,
+  copy: ValidationCopy = defaultAutomationsCopy.validation,
+): string | null {
+  const trimmed = prompt.trim();
+  if (!trimmed) return copy.addPrompt;
+  if (trimmed.length > AUTOMATION_PROMPT_MAX_LENGTH) {
+    return copy.promptTooLong(AUTOMATION_PROMPT_MAX_LENGTH.toLocaleString("en-US"));
+  }
+  return null;
+}
+
+/**
+ * Why the form can't be submitted right now, as user-facing copy — or null when
+ * submittable. Rendered beside the dialog's Save button so a disabled Save is never
+ * a silent dead end.
+ */
+export function automationFormSubmitBlockReason(
+  form: AutomationFormState,
+  warnings: readonly AutomationDraftWarning[],
+  acknowledgedWarningIds: ReadonlySet<AutomationDraftWarningId>,
+  copy: ValidationCopy = defaultAutomationsCopy.validation,
+): string | null {
+  const nameError = automationNameError(form.name, copy);
+  if (nameError) return nameError;
+  const promptError = automationPromptError(form.prompt, copy);
+  if (promptError) return promptError;
+  if (!form.projectId) return copy.pickProject;
+  if (automationRequiresTargetThread(form.mode) && !form.targetThreadId) {
+    return copy.pickTargetThread;
+  }
+  const fastIntervalMessage = automationFastIntervalLimitMessage(form, copy);
+  if (fastIntervalMessage) return fastIntervalMessage;
   if (
     form.scheduleKind === "custom" &&
     (!form.intervalAmount.trim() || Number.parseInt(form.intervalAmount, 10) <= 0)
   ) {
-    return false;
+    return copy.setValidInterval;
   }
-  if (form.scheduleKind === "cron" && !form.cronExpression.trim()) return false;
-  if (form.scheduleKind === "once" && !form.onceRunAt.trim()) return false;
+  if (form.scheduleKind === "cron" && !form.cronExpression.trim()) return copy.addCronExpression;
+  if (form.scheduleKind === "once" && !form.onceRunAt.trim()) return copy.pickRunTime;
   if (
     (form.scheduleKind === "daily" ||
       form.scheduleKind === "weekdays" ||
@@ -663,7 +801,7 @@ export function isFormSubmittable(form: AutomationFormState): boolean {
       form.scheduleKind === "weekly") &&
     !form.timezone.trim()
   ) {
-    return false;
+    return copy.addTimezone;
   }
   if (
     (form.scheduleKind === "daily" ||
@@ -671,7 +809,18 @@ export function isFormSubmittable(form: AutomationFormState): boolean {
       form.scheduleKind === "weekly") &&
     !TIME_OF_DAY_PATTERN.test(form.timeOfDay)
   ) {
-    return false;
+    return copy.setValidTime;
   }
-  return true;
+  if (
+    warnings.some(
+      (warning) => warning.requiresAcknowledgement && !acknowledgedWarningIds.has(warning.id),
+    )
+  ) {
+    return copy.acknowledgeRisks;
+  }
+  return null;
+}
+
+export function isFormSubmittable(form: AutomationFormState): boolean {
+  return automationFormSubmitBlockReason(form, [], new Set()) === null;
 }

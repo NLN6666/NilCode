@@ -8,6 +8,7 @@ import {
   listWorkspaceDirectories,
   resolveWorkspaceFileBySuffix,
   searchLocalEntries,
+  searchWorkspaceContent,
   searchWorkspaceEntries,
 } from "../../workspaceEntries";
 import { toWorkspaceEntriesError, WorkspaceEntries } from "../Services/WorkspaceEntries";
@@ -22,6 +23,11 @@ export const WorkspaceEntriesLive = Layer.succeed(WorkspaceEntries, {
     Effect.tryPromise({
       try: () => searchWorkspaceEntries(input),
       catch: (cause) => toWorkspaceEntriesError("search workspace entries", cause),
+    }),
+  searchContent: (input) =>
+    Effect.tryPromise({
+      try: () => searchWorkspaceContent(input),
+      catch: (cause) => toWorkspaceEntriesError("search workspace content", cause),
     }),
   discoverScripts: (input) =>
     Effect.tryPromise({

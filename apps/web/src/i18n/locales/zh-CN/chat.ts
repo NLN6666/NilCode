@@ -356,6 +356,7 @@ export const chat: Chat = {
     loading: "正在加载模型",
     comingSoon: "即将推出",
     change: "更换模型",
+    addProviders: "添加提供方",
   },
 
   emptyState: {
@@ -419,3 +420,4 @@ export const chat: Chat = {
     handoffTo: (provider) => `交接给 ${provider}`,
   },
 };
+

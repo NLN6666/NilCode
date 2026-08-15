@@ -409,6 +409,7 @@ export const chat = {
     loading: "Loading models",
     comingSoon: "Coming soon",
     change: "Change model",
+    addProviders: "Add providers",
   },
 
   emptyState: {
@@ -486,3 +487,4 @@ export const chat = {
 };
 
 export type Chat = typeof chat;
+

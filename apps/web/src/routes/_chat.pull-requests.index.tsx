@@ -563,8 +563,19 @@ function PullRequestsRouteView() {
         }}
         onAddPane={() => {}}
         renderPane={(pane, context) => (
-          <Suspense fallback={<PanelStateMessage>{copy.loading}</PanelStateMessage>}>
-            <PullRequestDockPane pane={pane} pollingEnabled={context.isVisible} />
+            <Suspense fallback={<PanelStateMessage>{copy.loading}</PanelStateMessage>}>
+              <PullRequestDockPane
+                pane={pane}
+                pollingEnabled={context.isVisible}
+                onSelectPullRequest={(number) =>
+                  renderedInput &&
+                  updateSearch({
+                    selectedProjectId: renderedInput.projectId,
+                    selectedRepo: renderedInput.repository,
+                    number,
+                  })
+                }
+              />
           </Suspense>
         )}
       />

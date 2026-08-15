@@ -35,7 +35,6 @@ import { Button } from "~/components/ui/button";
 import { Dialog, DialogPopup, DialogTitle } from "~/components/ui/dialog";
 import {
   Menu,
-  MenuCheckboxItem,
   MenuGroup,
   MenuGroupLabel,
   MenuItem,
@@ -48,15 +47,13 @@ import {
 } from "~/components/ui/menu";
 import { TimePicker } from "~/components/ui/time-picker";
 import { toastManager } from "~/components/ui/toast";
-import {
-  hasBlockingAutomationDraftWarnings,
-  type AutomationDraftWarning,
-  type AutomationDraftWarningId,
-} from "~/lib/automationDraft";
+import type { AutomationDraftWarning, AutomationDraftWarningId } from "~/lib/automationDraft";
 import {
   acknowledgedRiskIdsForFormWarnings,
   applyScheduleToForm,
   automationFastIntervalLimitMessage,
+  automationFormSubmitBlockReason,
+  automationIntervalPresetOptions,
   buildAutomationFormWarnings,
   createInputFromForm,
   datetimeLocalFromIso,
@@ -70,18 +67,17 @@ import {
   formFromDefinition,
   groupAutomationsByContinuedThread,
   automationsForThread,
+  intervalFormPartsFromSeconds,
   isFormSubmittable,
   isoFromDatetimeLocal,
   modelSelectionForProjectChange,
   projectModelSelection,
-  providerOptionsForAutomationEdit,
   providerOptionsForAutomationModelSelection,
   scheduleFromForm,
   scheduleFromKind,
   scheduleKindFromSchedule,
   SCHEDULE_KIND_OPTIONS,
   TIME_OF_DAY_PATTERN,
-  updateInputFromForm,
   updateWeeklyScheduleDay,
   updateWeeklyScheduleTime,
   weekdayLabel,
@@ -89,6 +85,10 @@ import {
   type IntervalUnit,
   type ScheduleKind,
 } from "~/lib/automationForm";
+import {
+  automationFailurePolicyOptions,
+  type AutomationFailurePolicyValue,
+} from "~/lib/automationFailurePolicy";
 import { SkillCubeIcon, WorktreeIcon } from "~/lib/icons";
 import { CentralIcon } from "~/lib/central-icons";
 import { resolveRuntimeModelDescriptor } from "~/components/chat/runtimeModelCapabilities";
@@ -114,11 +114,22 @@ export const EMPTY_AUTOMATION_LIST: AutomationListResult = {
   runs: [],
   memories: [],
 };
+const AUTOMATION_DEFINITION_UPDATE_SCOPE = {
+  id: "automation-definition-updates",
+} as const;
+
+export function automationDefinitionUpdateMutationOptions(
+  mutationFn: (input: AutomationUpdateInput) => Promise<AutomationDefinition>,
+) {
+  return { scope: AUTOMATION_DEFINITION_UPDATE_SCOPE, mutationFn };
+}
 
 export {
   acknowledgedRiskIdsForFormWarnings,
   applyScheduleToForm,
   automationFastIntervalLimitMessage,
+  automationFormSubmitBlockReason,
+  automationIntervalPresetOptions,
   buildAutomationFormWarnings,
   createInputFromForm,
   datetimeLocalFromIso,
@@ -136,14 +147,12 @@ export {
   isoFromDatetimeLocal,
   modelSelectionForProjectChange,
   projectModelSelection,
-  providerOptionsForAutomationEdit,
   providerOptionsForAutomationModelSelection,
   scheduleFromForm,
   scheduleFromKind,
   scheduleKindFromSchedule,
   SCHEDULE_KIND_OPTIONS,
   TIME_OF_DAY_PATTERN,
-  updateInputFromForm,
   updateWeeklyScheduleDay,
   updateWeeklyScheduleTime,
   weekdayLabel,
@@ -408,6 +417,11 @@ export function automationListRowIcon(
     };
   }
   if (!definition.enabled) {
+    // Auto-disabled after consecutive failures is a problem to look at, not a pause the
+    // user chose — keep the warning glyph so the row doesn't read as intentionally idle.
+    if (definition.disabledReason === "failures") {
+      return { name: "exclamation-circle", className: "size-4 text-amber-500" };
+    }
     return { name: "pause", className: "size-4 text-muted-foreground/40" };
   }
   if (latestRun?.status === "succeeded") {
@@ -625,6 +639,44 @@ export function applyAutomationEvent(
   }
 }
 
+/**
+ * Roll back only the fields a failed update patched. Restoring the whole pre-mutation list
+ * snapshot would also clobber everything that landed after it — a second inline edit's
+ * optimistic merge, stream upserts — so the failed patch's keys are restored from the
+ * pre-merge definition into the definition as it exists in the cache *now*. Input keys the
+ * definition never had (legacy aliases) are removed rather than restored.
+ */
+export function rollbackAutomationDefinitionPatch(
+  list: AutomationListResult,
+  input: AutomationUpdateInput,
+  previousDefinition: AutomationDefinition,
+): AutomationListResult {
+  return {
+    definitions: list.definitions.map((definition) => {
+      if (definition.id !== input.id) return definition;
+      const next: Record<string, unknown> = { ...definition };
+      for (const key of Object.keys(input)) {
+        if (key === "id") continue;
+        // A newer optimistic patch or authoritative stream event may already have
+        // replaced this field while the failed request was in flight. Only undo the
+        // value this mutation itself installed; otherwise an older failure can erase
+        // the newer edit.
+        if (!Object.is(next[key], (input as unknown as Record<string, unknown>)[key])) {
+          continue;
+        }
+        if (key in previousDefinition) {
+          next[key] = (previousDefinition as unknown as Record<string, unknown>)[key];
+        } else {
+          delete next[key];
+        }
+      }
+      return next as unknown as AutomationDefinition;
+    }),
+    runs: list.runs,
+    memories: list.memories ?? [],
+  };
+}
+
 export function useAutomations(onRunStarted?: (threadId: ThreadId) => void) {
   const queryClient = useQueryClient();
 
@@ -640,11 +692,15 @@ export function useAutomations(onRunStarted?: (threadId: ThreadId) => void) {
     onError: (error) => toastManager.add({ type: "error", title: error.message }),
   });
   const updateMutation = useMutation({
-    mutationFn: (input: AutomationUpdateInput) => ensureNativeApi().automation.update(input),
+    ...automationDefinitionUpdateMutationOptions((input) =>
+      ensureNativeApi().automation.update(input),
+    ),
     // Optimistically merge the patch so inline edits on the detail page feel instant; the
     // server's authoritative definition (with recomputed nextRunAt) arrives via the stream.
     onMutate: (input) => {
       const previous = queryClient.getQueryData<AutomationListResult>(automationQueryKey);
+      const previousDefinition =
+        previous?.definitions.find((definition) => definition.id === input.id) ?? null;
       queryClient.setQueryData<AutomationListResult>(automationQueryKey, (prev) => {
         const base = prev ?? EMPTY_AUTOMATION_LIST;
         return {
@@ -657,14 +713,18 @@ export function useAutomations(onRunStarted?: (threadId: ThreadId) => void) {
           memories: base.memories ?? [],
         };
       });
-      return { previous };
+      return { previousDefinition };
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: automationQueryKey }),
-    onError: (error, _input, context) => {
-      // A failed update would otherwise leave the incomplete optimistic merge in the cache
-      // until the next stream tick; restore the pre-edit snapshot so the UI reflects reality.
-      if (context?.previous) {
-        queryClient.setQueryData<AutomationListResult>(automationQueryKey, context.previous);
+    onError: (error, input, context) => {
+      // A failed update would otherwise leave its optimistic merge in the cache until the
+      // next stream tick. Roll back just this patch's fields — not the whole snapshot, which
+      // would also erase concurrent edits' merges (see rollbackAutomationDefinitionPatch).
+      const previousDefinition = context?.previousDefinition;
+      if (previousDefinition) {
+        queryClient.setQueryData<AutomationListResult>(automationQueryKey, (prev) =>
+          prev ? rollbackAutomationDefinitionPatch(prev, input, previousDefinition) : prev,
+        );
       }
       toastManager.add({ type: "error", title: error.message });
     },
@@ -731,32 +791,6 @@ export function useAutomations(onRunStarted?: (threadId: ThreadId) => void) {
 const CHIP_CLASS =
   "gap-1.5 rounded-lg px-2 font-normal text-[var(--color-text-foreground-secondary)]";
 type CadenceOption = { readonly value: string; readonly label: string };
-type IntervalCadenceOption = {
-  readonly amount: string;
-  readonly unit: IntervalUnit;
-  readonly label: string;
-};
-
-/** Interval cadence presets shown by default; second-level intervals are preserved when present. */
-function intervalPresets(copy: AutomationsCopy["interval"]): readonly IntervalCadenceOption[] {
-  return (["15", "30", "120", "360", "720", "1440"] as const).map((amount) => ({
-    amount,
-    unit: "minutes" as const,
-    label: copy.everyMinutes(amount),
-  }));
-}
-
-function intervalOptionValue(option: Pick<IntervalCadenceOption, "amount" | "unit">): string {
-  return `${option.unit}:${option.amount}`;
-}
-
-function intervalOptionLabel(
-  amount: string,
-  unit: IntervalUnit,
-  copy: AutomationsCopy["interval"],
-): string {
-  return unit === "seconds" ? copy.everySeconds(amount) : copy.everyMinutes(amount);
-}
 
 /** Heartbeat run-count presets ("" = unlimited). */
 function maxIterationPresets(
@@ -826,11 +860,13 @@ export function AutomationApprovalBanner({
 export function AutomationModelPicker({
   value,
   projectCwd,
+  disabled,
   onChange,
   onAutoModeSupportChange,
 }: {
   readonly value: ModelSelection;
   readonly projectCwd: string | null;
+  readonly disabled?: boolean;
   readonly onChange: (value: ModelSelection) => void;
   readonly onAutoModeSupportChange?: (supported: boolean) => void;
 }) {
@@ -886,6 +922,7 @@ export function AutomationModelPicker({
       loadingModelProviders={loadingModelProviders}
       hiddenProviders={settings.hiddenProviders}
       providerOrder={settings.providerOrder}
+      disabled={disabled ?? false}
       open={open}
       onOpenChange={setOpen}
       onProviderModelChange={(provider, model) => {
@@ -918,7 +955,6 @@ export function reconcileAutomationFormAutoModeSupport(
 
 export function AutomationDialog({
   open,
-  editing,
   form,
   projects,
   threads,
@@ -931,7 +967,6 @@ export function AutomationDialog({
   busy,
 }: {
   readonly open: boolean;
-  readonly editing: boolean;
   readonly form: AutomationFormState;
   readonly projects: ReturnType<typeof useStore.getState>["projects"];
   readonly threads: readonly Thread[];
@@ -969,24 +1004,20 @@ export function AutomationDialog({
   );
   const schedule = scheduleFromForm(form);
   const fastIntervalLimitMessage = automationFastIntervalLimitMessage(form);
-  const hasBlockingWarning = hasBlockingAutomationDraftWarnings(warnings, acknowledgedWarningIds);
-  const submittable = isFormSubmittable(form) && !hasBlockingWarning;
-  const intervalValue = intervalOptionValue({
-    amount: form.intervalAmount,
-    unit: form.intervalUnit,
-  });
+  const submitBlockReason = automationFormSubmitBlockReason(form, warnings, acknowledgedWarningIds);
+  const submittable = submitBlockReason === null;
   const maxIterationChoices = maxIterationOptions(form.maxIterations, copy.maxIterationOption);
-  const presets = intervalPresets(copy.interval);
-  const intervalChoices = presets.some((preset) => intervalOptionValue(preset) === intervalValue)
-    ? presets
-    : [
-        {
-          amount: form.intervalAmount,
-          unit: form.intervalUnit,
-          label: intervalOptionLabel(form.intervalAmount, form.intervalUnit, copy.interval),
-        },
-        ...presets,
-      ];
+  const intervalAmount = Number.parseInt(form.intervalAmount, 10);
+  const intervalSeconds = Number.isFinite(intervalAmount)
+    ? form.intervalUnit === "seconds"
+      ? intervalAmount
+      : intervalAmount * 60
+    : undefined;
+  // "Hourly" is its own ScheduleKind in this dialog, so the interval list skips it.
+  const intervalPresetOptions = automationIntervalPresetOptions({
+    currentSeconds: intervalSeconds,
+    includeHourly: false,
+  });
 
   const chooseProject = (projectId: string) => {
     const targetStillMatches =
@@ -1026,9 +1057,7 @@ export function AutomationDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogPopup showCloseButton={false} className="max-w-3xl">
-        <DialogTitle className="sr-only">
-          {editing ? copy.editAutomation : copy.newAutomation}
-        </DialogTitle>
+        <DialogTitle className="sr-only">{copy.newAutomation}</DialogTitle>
 
         <div className="flex items-start gap-3 px-5 pt-5">
           <input
@@ -1207,23 +1236,20 @@ export function AutomationDialog({
                     <MenuGroup>
                       <MenuGroupLabel>{copy.dialog.every}</MenuGroupLabel>
                       <MenuRadioGroup
-                        value={intervalValue}
+                        value={intervalSeconds === undefined ? "" : String(intervalSeconds)}
                         onValueChange={(value) => {
-                          const [unit, amount] = value.split(":");
-                          if (unit === "seconds" || unit === "minutes") {
-                            onFormChange({
-                              ...form,
-                              intervalUnit: unit,
-                              intervalAmount: amount ?? "1",
-                            });
-                          }
+                          const seconds = Number.parseInt(value, 10);
+                          if (!Number.isFinite(seconds) || seconds <= 0) return;
+                          const parts = intervalFormPartsFromSeconds(seconds);
+                          onFormChange({
+                            ...form,
+                            intervalUnit: parts.unit,
+                            intervalAmount: parts.amount,
+                          });
                         }}
                       >
-                        {intervalChoices.map((preset) => (
-                          <MenuRadioItem
-                            key={intervalOptionValue(preset)}
-                            value={intervalOptionValue(preset)}
-                          >
+                        {intervalPresetOptions.map((preset) => (
+                          <MenuRadioItem key={preset.value} value={preset.value}>
                             {preset.label}
                           </MenuRadioItem>
                         ))}
@@ -1393,12 +1419,21 @@ export function AutomationDialog({
                   </div>
                 </MenuGroup>
                 <MenuSeparator />
-                <MenuCheckboxItem
-                  checked={form.stopOnError}
-                  onCheckedChange={(checked) => setField("stopOnError", checked)}
-                >
-                  {copy.dialog.stopOnError}
-                </MenuCheckboxItem>
+                <MenuGroup>
+                  <MenuGroupLabel>{copy.dialog.onFailure}</MenuGroupLabel>
+                  <MenuRadioGroup
+                    value={form.stopAfterFailures}
+                    onValueChange={(value) =>
+                      setField("stopAfterFailures", value as AutomationFailurePolicyValue)
+                    }
+                  >
+                    {automationFailurePolicyOptions(form.stopAfterFailures).map((option) => (
+                      <MenuRadioItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                </MenuGroup>
                 <MenuSeparator />
                 <MenuGroup>
                   <MenuGroupLabel>{copy.dialog.maxIterations}</MenuGroupLabel>
@@ -1480,7 +1515,12 @@ export function AutomationDialog({
             </Menu>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex min-w-0 shrink-0 items-center gap-2">
+            {submitBlockReason ? (
+              <span className="min-w-0 truncate text-xs text-muted-foreground" role="status">
+                {submitBlockReason}
+              </span>
+            ) : null}
             <Button
               type="button"
               variant="ghost"
@@ -1489,8 +1529,13 @@ export function AutomationDialog({
             >
               {copy.actions.cancel}
             </Button>
-            <Button type="button" onClick={submit} disabled={busy || !submittable}>
-              {editing ? copy.actions.save : copy.actions.create}
+            <Button
+              type="button"
+              onClick={submit}
+              disabled={busy || !submittable}
+              title={submitBlockReason ?? undefined}
+            >
+              {copy.actions.create}
             </Button>
           </div>
         </div>

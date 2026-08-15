@@ -15,7 +15,7 @@ import { toastManager } from "~/components/ui/toast";
 import { copyTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { useMessages } from "../../i18n/context";
 import type { Messages } from "../../i18n/locales/en";
-import { cn } from "~/lib/utils";
+import { cn, getNavigatorPlatform } from "~/lib/utils";
 import { ensureNativeApi } from "~/nativeApi";
 import {
   buildExternalMcpClientConfiguration,
@@ -232,7 +232,7 @@ export function ExternalMcpSettingsPanel(props: { active: boolean }) {
           : pairingExpired
             ? copy.setup.status.pairingExpired
             : copy.setup.status.waiting;
-  const platform = typeof navigator === "undefined" ? "" : navigator.platform;
+  const platform = getNavigatorPlatform();
   const setupPrompt = setup
     ? buildExternalMcpSetupPrompt({
         setupCommand: paired ? null : setup.setupCommand,

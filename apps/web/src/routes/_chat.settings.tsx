@@ -14,6 +14,7 @@ import {
   type AppSettings,
   type FollowUpBehavior,
   DEFAULT_UI_DENSITY,
+  DEFAULT_CHAT_WIDTH,
   type UiDensity,
   MAX_CHAT_FONT_SIZE_PX,
   MAX_TERMINAL_FONT_SIZE_PX,
@@ -91,9 +92,10 @@ import { SidebarHeaderNavigationControls } from "../components/SidebarHeaderNavi
 import { useDesktopTopBarTrafficLightGutterClassName } from "../hooks/useDesktopTopBarGutter";
 import { useTheme } from "../hooks/useTheme";
 import { isUiDensity } from "../lib/appDensity";
+import { isChatWidthMode, type ChatWidthMode } from "../lib/chatWidth";
 import { isElectron } from "../env";
 import { RotateCcwIcon } from "../lib/icons";
-import { cn, isMacPlatform } from "../lib/utils";
+import { cn, getNavigatorPlatform, isMacPlatform } from "../lib/utils";
 import { ensureNativeApi, readNativeApi } from "../nativeApi";
 import { sameProviderOrder } from "../providerOrdering";
 import {
@@ -115,6 +117,14 @@ function uiDensityOptions(m: Messages): readonly SettingsSegmentedOption<UiDensi
     { value: "compact", label: m.settings.appearance.uiDensity.options.compact },
     { value: "comfortable", label: m.settings.appearance.uiDensity.options.comfortable },
     { value: "spacious", label: m.settings.appearance.uiDensity.options.spacious },
+  ];
+}
+
+function chatWidthOptions(m: Messages): readonly SettingsSegmentedOption<ChatWidthMode>[] {
+  return [
+    { value: "standard", label: m.settings.appearance.chatWidth.options.standard },
+    { value: "wide", label: m.settings.appearance.chatWidth.options.wide },
+    { value: "full", label: m.settings.appearance.chatWidth.options.full },
   ];
 }
 
@@ -162,9 +172,8 @@ function SettingsRouteView() {
   const desktopTopBarTrafficLightGutterClassName = useDesktopTopBarTrafficLightGutterClassName();
   const [releaseHistoryOpen, setReleaseHistoryOpen] = useState(false);
   const [resetEpoch, setResetEpoch] = useState(0);
-  const shouldShowFontSmoothing = isMacPlatform(
-    typeof navigator === "undefined" ? "" : navigator.platform,
-  );
+  const platform = getNavigatorPlatform();
+  const shouldShowFontSmoothing = isMacPlatform(platform);
   const visibleTerminalFontFamilySuggestions = useMemo(() => {
     const query = settings.terminalFontFamily.trim().toLowerCase();
     if (!query) return TERMINAL_FONT_FAMILY_SUGGESTIONS;
@@ -202,7 +211,11 @@ function SettingsRouteView() {
       : []),
     ...(settings.showChatsSection !== defaults.showChatsSection ? ["Chats section"] : []),
     ...(settings.showStudioSection !== defaults.showStudioSection ? ["Studio section"] : []),
+    ...(settings.showAutomationRunThreads !== defaults.showAutomationRunThreads
+      ? ["Automation runs"]
+      : []),
     ...(settings.uiDensity !== defaults.uiDensity ? ["UI density"] : []),
+    ...(settings.chatWidth !== defaults.chatWidth ? ["Chat width"] : []),
     ...(settings.desktopAppIcon !== defaults.desktopAppIcon ? ["App icon"] : []),
     ...(settings.chatFontSizePx !== defaults.chatFontSizePx ? ["Base font size"] : []),
     ...(settings.terminalFontSizePx !== defaults.terminalFontSizePx ? ["Terminal font size"] : []),
@@ -538,6 +551,12 @@ function SettingsRouteView() {
           anchorKey: "general:studio-section",
           ...m.settings.general.sidebarSections.studio,
         })}
+
+        {renderBooleanSettingRow({
+          settingKey: "showAutomationRunThreads",
+          anchorKey: "general:automation-run-threads",
+          ...m.settings.general.sidebarSections.automationRuns,
+        })}
       </SettingsSection>
 
       <div id={SETTINGS_TARGETS.environmentPanel} className="space-y-6">
@@ -667,6 +686,7 @@ function SettingsRouteView() {
             }
             control={
               <AppIconPicker
+                platform={platform}
                 value={settings.desktopAppIcon}
                 onValueChange={(desktopAppIcon) => updateSettings({ desktopAppIcon })}
               />
@@ -722,6 +742,36 @@ function SettingsRouteView() {
               }}
               ariaLabel={m.settings.appearance.uiDensity.ariaLabel}
               options={uiDensityOptions(m)}
+            />
+          }
+        />
+
+        <SettingsRow
+          title={m.settings.appearance.chatWidth.title}
+          description={m.settings.appearance.chatWidth.description}
+          resetAction={
+            settings.chatWidth !== defaults.chatWidth ? (
+              <SettingResetButton
+                label={m.settings.appearance.chatWidth.resetLabel}
+                onClick={() =>
+                  updateSettings({
+                    chatWidth: DEFAULT_CHAT_WIDTH,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <SettingsSegmentedControl
+              value={settings.chatWidth}
+              onValueChange={(value) => {
+                if (!isChatWidthMode(value)) {
+                  return;
+                }
+                updateSettings({ chatWidth: value });
+              }}
+              ariaLabel={m.settings.appearance.chatWidth.ariaLabel}
+              options={chatWidthOptions(m)}
             />
           }
         />

@@ -109,7 +109,11 @@ export function ComposerSlashStatusDialog(props: {
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">{copy.mode}</p>
               <p className="font-medium text-foreground">
-                {interactionMode === "plan" ? copy.planMode : copy.defaultMode}
+                {interactionMode === "plan"
+                  ? copy.planMode
+                  : interactionMode === "debug"
+                    ? copy.debugMode
+                    : copy.defaultMode}
               </p>
             </div>
             <div className="space-y-1">

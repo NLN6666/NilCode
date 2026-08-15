@@ -33,6 +33,7 @@ export const git: Messages["git"] = {
     busy: "Git 操作进行中。",
     noStatus: "无法获取 Git 状态。",
     unavailable: "当前无法执行该操作。",
+    selectFilesToCommit: "请至少选择一个文件再提交。",
     cleanWorktree: "工作区是干净的。先做出改动再提交。",
     commitUnavailable: "当前无法提交。",
     detachedPush: "分离 HEAD：推送前请先检出一个分支。",
@@ -128,6 +129,25 @@ export const git: Messages["git"] = {
     refreshing: "正在刷新 Git 状态…",
     noFiles: "无",
     fileCount: (selected, total) => `（${selected} / ${total}）`,
+    defaultBranchEyebrow: "默认分支",
+    messageAriaLabel: "提交信息",
+    messageFieldPlaceholder: "留空则自动生成提交信息",
+    noLocalChanges: "没有本地改动",
+    allFilesCount: (total) => `共 ${total} 个文件`,
+    partialFilesCount: (selected, total) => `已选择 ${selected} / ${total} 个文件`,
+  },
+
+  createPrDialog: {
+    eyebrow: (isNewBranch, baseBranchName) =>
+      `${isNewBranch ? "新分支" : "分支"} → ${baseBranchName}`,
+    autoNamedFeatureBranch: "自动命名的特性分支",
+    titleAriaLabel: "PR 标题",
+    titlePlaceholder: "留空则自动生成标题",
+    descriptionAriaLabel: "PR 描述",
+    descriptionPlaceholder: "留空则自动生成描述",
+    commitAndPushLocalChanges: "提交并推送本地改动",
+    createDraftPr: "创建草稿 PR",
+    openPrInBrowser: "在浏览器中打开 PR",
   },
 
   createBranchDialog: {
@@ -258,3 +278,4 @@ export const git: Messages["git"] = {
     selectFile: "选择一个文件查看差异。",
   },
 };
+

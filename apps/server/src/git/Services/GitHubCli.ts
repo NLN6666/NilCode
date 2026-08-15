@@ -19,6 +19,8 @@ import type {
   PullRequestLabel,
   PullRequestMergeCapabilities,
   PullRequestMergeMethod,
+  PullRequestStack,
+  PullRequestStackSummary,
   PullRequestState,
 } from "@synara/contracts";
 
@@ -83,6 +85,7 @@ export interface GitHubPullRequestListItem {
   readonly reviewRequestLogins: ReadonlyArray<string>;
   readonly labels: ReadonlyArray<PullRequestLabel>;
   readonly mergeability: "mergeable" | "conflicting" | "unknown";
+  readonly stack: PullRequestStackSummary | null;
 }
 
 /** Internal list result retaining the raw array cardinality before malformed entries are dropped. */
@@ -150,6 +153,7 @@ export interface GitHubCliShape {
     readonly timeoutMs?: number;
     readonly maxBufferBytes?: number;
     readonly outputMode?: "error" | "truncate";
+    readonly allowNonZeroExit?: boolean;
     /** Piped to the child's stdin — for payloads that must never appear in argv. */
     readonly stdin?: string;
     readonly env?: NodeJS.ProcessEnv;
@@ -211,6 +215,13 @@ export interface GitHubCliShape {
     readonly number: number;
   }) => Effect.Effect<GitHubPullRequestDetailData, GitHubCliError>;
 
+  /** Read the selected PR's full GitHub stack, or null for a standalone pull request. */
+  readonly getPullRequestStack: (input: {
+    readonly cwd: string;
+    readonly repository: string;
+    readonly number: number;
+  }) => Effect.Effect<PullRequestStack | null, GitHubCliError>;
+
   readonly getRepositoryMergeCapabilities: (input: {
     readonly cwd: string;
     readonly repository: string;
@@ -228,7 +239,7 @@ export interface GitHubCliShape {
     readonly number: number;
     readonly action: "merge" | "ready" | "draft" | "close" | "reopen";
     readonly mergeMethod?: PullRequestMergeMethod;
-  }) => Effect.Effect<void, GitHubCliError>;
+  }) => Effect.Effect<{ readonly mergeOutcome: "merged" | "enqueued" | null }, GitHubCliError>;
 
   /**
    * Post an issue comment on a pull request as the authenticated gh user.

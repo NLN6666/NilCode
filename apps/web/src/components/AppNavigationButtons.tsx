@@ -5,7 +5,7 @@
 
 import { goBackInAppHistory, goForwardInAppHistory, useAppNavigationState } from "~/appNavigation";
 import { isElectron } from "~/env";
-import { cn } from "~/lib/utils";
+import { cn, isMacNavigatorPlatform } from "~/lib/utils";
 import { IoIosArrowRoundBack, IoIosArrowRoundForward } from "react-icons/io";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -14,8 +14,7 @@ import { useMessages } from "~/i18n/context";
 export function AppNavigationButtons({ className }: { className?: string }) {
   const copy = useMessages().app.nav;
   const { canGoBack, canGoForward } = useAppNavigationState();
-  const platform = typeof navigator === "undefined" ? "" : navigator.platform;
-  const isMac = /Mac|iPhone|iPad|iPod/i.test(platform);
+  const isMac = isMacNavigatorPlatform();
   const backShortcutLabel = isMac ? "⌘[" : "Alt+Left";
   const forwardShortcutLabel = isMac ? "⌘]" : "Alt+Right";
 

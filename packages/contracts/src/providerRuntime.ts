@@ -206,6 +206,7 @@ const ProviderRuntimeEventType = Schema.Literals([
   "omp.advisor.note",
   "runtime.warning",
   "runtime.error",
+  "event.unmapped",
 ]);
 export type ProviderRuntimeEventType = typeof ProviderRuntimeEventType.Type;
 
@@ -260,6 +261,7 @@ const VcsStateChangedType = Schema.Literal("vcs.state.changed");
 const OmpAdvisorNoteType = Schema.Literal("omp.advisor.note");
 const RuntimeWarningType = Schema.Literal("runtime.warning");
 const RuntimeErrorType = Schema.Literal("runtime.error");
+const EventUnmappedType = Schema.Literal("event.unmapped");
 
 const ProviderRuntimeEventBase = Schema.Struct({
   eventId: EventId,
@@ -435,7 +437,12 @@ export const ItemLifecyclePayload = Schema.Struct({
   itemType: CanonicalItemType,
   status: Schema.optional(RuntimeItemStatus),
   title: Schema.optional(TrimmedNonEmptyStringSchema),
-  detail: Schema.optional(TrimmedNonEmptyStringSchema),
+  // Free-form body (e.g. raw tool output), which legitimately carries leading
+  // and/or trailing whitespace. Keep it unconstrained so item events from
+  // provider adapters (pi, opencode, codex, ...) always pass the durable
+  // journal's encode step; a TrimmedNonEmptyString here rejects ordinary
+  // tool output and forces the event into quarantine.
+  detail: Schema.optional(Schema.String),
   data: Schema.optional(Schema.Unknown),
 });
 export type ItemLifecyclePayload = typeof ItemLifecyclePayload.Type;
@@ -760,6 +767,15 @@ const RuntimeErrorPayload = Schema.Struct({
   detail: Schema.optional(Schema.Unknown),
 });
 export type RuntimeErrorPayload = typeof RuntimeErrorPayload.Type;
+
+// Forward-compatible diagnostic for provider events without an explicit mapping.
+// The adapter bounds and redacts `data`; `detail` is a safe readable one-liner.
+const EventUnmappedPayload = Schema.Struct({
+  nativeType: TrimmedNonEmptyStringSchema,
+  detail: Schema.optional(TrimmedNonEmptyStringSchema),
+  data: Schema.optional(Schema.Unknown),
+});
+export type EventUnmappedPayload = typeof EventUnmappedPayload.Type;
 
 const ProviderRuntimeSessionStartedEvent = Schema.Struct({
   ...ProviderRuntimeEventBase.fields,
@@ -1128,6 +1144,13 @@ const ProviderRuntimeWarningEvent = Schema.Struct({
 });
 export type ProviderRuntimeWarningEvent = typeof ProviderRuntimeWarningEvent.Type;
 
+const ProviderRuntimeEventUnmappedEvent = Schema.Struct({
+  ...ProviderRuntimeEventBase.fields,
+  type: EventUnmappedType,
+  payload: EventUnmappedPayload,
+});
+export type ProviderRuntimeEventUnmappedEvent = typeof ProviderRuntimeEventUnmappedEvent.Type;
+
 const ProviderRuntimeErrorEvent = Schema.Struct({
   ...ProviderRuntimeEventBase.fields,
   type: RuntimeErrorType,
@@ -1187,6 +1210,7 @@ export const ProviderRuntimeEventV2 = Schema.Union([
   ProviderRuntimeOmpAdvisorNoteEvent,
   ProviderRuntimeWarningEvent,
   ProviderRuntimeErrorEvent,
+  ProviderRuntimeEventUnmappedEvent,
 ]);
 export type ProviderRuntimeEventV2 = typeof ProviderRuntimeEventV2.Type;
 

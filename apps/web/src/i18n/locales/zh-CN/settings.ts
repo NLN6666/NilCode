@@ -85,6 +85,13 @@ export const settings: Settings = {
         resetLabel: "Studio 板块",
         ariaLabel: "在侧边栏中显示 Studio 板块",
       },
+      automationRuns: {
+        title: "自动化运行",
+        description:
+          "在侧边栏中显示每次独立自动化运行所创建的会话。无论开关如何，运行记录都会列在自动化页面上；由专属或心跳自动化拥有的会话始终可见。",
+        resetLabel: "自动化运行",
+        ariaLabel: "在侧边栏中显示自动化运行会话",
+      },
     },
     environmentPanel: {
       title: "环境面板",
@@ -180,6 +187,13 @@ export const settings: Settings = {
       ariaLabel: "界面密度",
       resetLabel: "界面密度",
       options: { compact: "紧凑", comfortable: "适中", spacious: "宽松" },
+    },
+    chatWidth: {
+      title: "对话宽度",
+      description: "控制对话栏的最大宽度。“宽”和“全宽”能给表格和宽内容更多空间。",
+      ariaLabel: "对话宽度",
+      resetLabel: "对话宽度",
+      options: { standard: "标准", wide: "宽", full: "全宽" },
     },
     baseFontSize: {
       title: "基础字号",
@@ -624,6 +638,8 @@ export const settings: Settings = {
       allVisible: "所有提供商均可见",
       reorder: (name) => `重新排序 ${name}`,
       showInPicker: (name) => `在提供商选择器中显示 ${name}`,
+      checkingCli: (name) => `正在检测 ${name} CLI 是否可用`,
+      cliNotInstalled: (name) => `${name} CLI 未安装`,
     },
     tools: {
       title: "提供商工具",

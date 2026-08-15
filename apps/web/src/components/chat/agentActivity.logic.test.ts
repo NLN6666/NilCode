@@ -8,7 +8,9 @@ import {
   isAgentActivityWorkEntry,
   isCodexActivityStatusWorkEntry,
   isReasoningUpdateWorkEntry,
+  isUnmappedProviderEventWorkEntry,
 } from "./agentActivity.logic";
+import { deriveTimelineEntries } from "../../workLog";
 
 function workEntry(overrides: Partial<WorkLogEntry> & Pick<WorkLogEntry, "id">): WorkLogEntry {
   return {
@@ -280,4 +282,74 @@ describe("deriveAgentActivityTimelineState", () => {
       text: "Read",
     });
   });
+
+  it("anchors a reasoning group spanning an interleaved tool row to its first update", () => {
+    const firstReasoningAt = "2026-06-05T00:00:01.000Z";
+    const interleavedToolAt = "2026-06-05T00:00:02.000Z";
+    const secondReasoningAt = "2026-06-05T00:00:03.000Z";
+    const trailingToolAt = "2026-06-05T00:00:04.000Z";
+    const state = deriveAgentActivityTimelineState([
+      workEntry({
+        id: "reasoning-1",
+        label: "Reasoning update",
+        tone: "info",
+        createdAt: firstReasoningAt,
+      }),
+      workEntry({
+        id: "reasoning-2",
+        label: "Reasoning update",
+        tone: "info",
+        createdAt: secondReasoningAt,
+      }),
+      workEntry({ id: "tool-1", label: "bash", createdAt: interleavedToolAt }),
+      workEntry({ id: "tool-2", label: "bash", createdAt: trailingToolAt }),
+    ]);
+
+    expect(state.timelineWorkEntries[0]!.createdAt).toBe(firstReasoningAt);
+    const timeline = deriveTimelineEntries([], [], state.timelineWorkEntries);
+    expect(timeline.map((entry) => entry.id)).toEqual([
+      "agent-reasoning:reasoning-1",
+      "tool-1",
+      "tool-2",
+    ]);
+  });
 });
+
+describe("unmapped provider events", () => {
+  it("labels an unmapped event with its native type and safe detail", () => {
+    const entry = workEntry({
+      id: "unmapped-1",
+      label: "item/agentMessage/completed",
+      toolTitle: "item/agentMessage/completed",
+      activityKind: "provider.event.unmapped",
+      nativeEventType: "item/agentMessage/completed",
+      detail: "Finished the refactor",
+      tone: "info",
+    });
+
+    expect(isUnmappedProviderEventWorkEntry(entry)).toBe(true);
+    // Raw native type/label is the title instead of the generic "Activity".
+    expect(formatAgentActivityEntryTitle(entry)).toEqual({
+      kind: "text",
+      text: "Item/agentMessage/completed",
+    });
+    expect(formatAgentActivityEntryPreview(entry)).toBe("Finished the refactor");
+    // The unmapped fallback never hijacks explicit, working mappings.
+    expect(isCodexActivityStatusWorkEntry(entry)).toBe(false);
+    expect(isAgentActivityWorkEntry(entry)).toBe(false);
+  });
+
+  it("still derives a native-type title when the normalized heading is empty", () => {
+    const entry = workEntry({
+      id: "unmapped-2",
+      label: "done",
+      activityKind: "provider.event.unmapped",
+      nativeEventType: "done",
+      tone: "info",
+    });
+    // normalizeCompactToolLabel strips the trailing "done", which previously
+    // fell through to the generic "Activity" label.
+    expect(formatAgentActivityEntryTitle(entry)).toEqual({ kind: "text", text: "Done" });
+  });
+});
+

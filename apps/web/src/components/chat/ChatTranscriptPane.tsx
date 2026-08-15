@@ -63,13 +63,16 @@ interface ChatTranscriptPaneProps {
   pinnedMessageIds?: ReadonlySet<MessageId>;
   canPinMessage?: (messageId: MessageId) => boolean;
   onTogglePinMessage?: (messageId: MessageId) => void;
+  onForkFromMessage?: (messageId: MessageId) => void;
   threadMarkers?: readonly ThreadMarker[];
+  goalAchievements?: ComponentProps<typeof MessagesTimeline>["goalAchievements"];
   enteringUserMessageIds?: ComponentProps<typeof MessagesTimeline>["enteringUserMessageIds"];
   tailAnchorMessageId?: ComponentProps<typeof MessagesTimeline>["tailAnchorMessageId"];
   tailAnchorScrollInFlightRef?: ComponentProps<
     typeof MessagesTimeline
   >["tailAnchorScrollInFlightRef"];
   crossTaskOrigin?: ComponentProps<typeof MessagesTimeline>["crossTaskOrigin"];
+  forkSource?: ComponentProps<typeof MessagesTimeline>["forkSource"];
   markdownCwd: string | undefined;
   onExpandTimelineImage: (preview: ExpandedImagePreview) => void;
   onMessagesClickCapture: MouseEventHandler<HTMLDivElement>;
@@ -140,11 +143,14 @@ export function ChatTranscriptPane({
   pinnedMessageIds,
   canPinMessage,
   onTogglePinMessage,
+  onForkFromMessage,
   threadMarkers,
+  goalAchievements,
   enteringUserMessageIds,
   tailAnchorMessageId,
   tailAnchorScrollInFlightRef,
   crossTaskOrigin,
+  forkSource,
   markdownCwd,
   onExpandTimelineImage,
   onMessagesClickCapture,

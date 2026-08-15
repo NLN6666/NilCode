@@ -11,6 +11,13 @@ export const composer = {
     planMode: "Plan mode",
     fast: "Fast",
     default: "Default",
+    /** Submenu that switches the thread between the provider interaction modes. */
+    mode: {
+      title: "Mode",
+      default: "Default",
+      plan: "Plan",
+      debug: "Debug",
+    },
     advisor: {
       /** Submenu title; the options below decide it for this thread only. */
       title: "Advisor",
@@ -94,6 +101,7 @@ export const composer = {
       issue: "Issue",
       fast: "Fast Mode",
       plan: "Plan Mode",
+      debug: "Debug Mode",
       default: "Default Mode",
       review: "Code Review",
       fork: "Fork",
@@ -314,6 +322,7 @@ export const composer = {
     mode: "Mode",
     planMode: "Plan",
     defaultMode: "Default",
+    debugMode: "Debug",
     environment: "Environment",
     envLocal: "Local",
     envWorktree: "Worktree",
@@ -342,3 +351,4 @@ export const composer = {
     close: "Close",
   },
 };
+

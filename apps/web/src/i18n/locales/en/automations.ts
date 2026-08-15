@@ -46,6 +46,7 @@ export const automations = {
     unread: "Unread",
     archive: "Archive",
     unarchive: "Unarchive",
+    reEnable: "Re-enable",
   },
 
   deleteConfirm: (name: string) => `Delete "${name}"?`,
@@ -54,6 +55,7 @@ export const automations = {
   runBlocked: {
     pendingProposal: "Accept the automation proposal first",
     needsApproval: "Approve the automation first",
+    reEnable: "Re-enable the automation first",
   },
 
   proposal: {
@@ -77,6 +79,15 @@ export const automations = {
     title: "Setting up automation",
     cancelLabel: "Cancel automation setup",
     cancel: "Cancel",
+  },
+
+  /** The detail page's inline-editable name/prompt heading and its save feedback. */
+  heading: {
+    nameLabel: "Automation name",
+    promptLabel: "Automation prompt",
+    promptPlaceholder: "What should this automation do on each run?",
+    saving: "Saving…",
+    saved: "Saved",
   },
 
   /** Right-hand detail panel on a single automation. */
@@ -110,6 +121,7 @@ export const automations = {
     stopWhen: "Stop when",
     stopWhenPlaceholder: "Never",
     maxIterations: "Max iterations",
+    onFailure: "On failure",
     noMemory: "No persistent memory yet.",
     noRuns: "No runs yet.",
     archiveHint: "Archiving does not remove generated worktrees or branches.",
@@ -141,6 +153,7 @@ export const automations = {
     stopWhen: "Stop when",
     stopWhenPlaceholder: "PR is ready to merge",
     stopOnError: "Stop on error",
+    onFailure: "On failure",
     maxIterations: "Max iterations",
     notify: "Notify",
     permissions: "Permissions",
@@ -152,6 +165,14 @@ export const automations = {
     paused: "Paused",
     scheduled: "Scheduled",
     done: "Done",
+  },
+
+  /** Why the server stopped an automation on its own. */
+  stoppedReason: {
+    singleFailure: "Stopped after a failed run",
+    multipleFailures: (count: number) => `Stopped after ${count} failed runs`,
+    maxIterations: "Stopped at run limit",
+    completion: "Stop condition met",
   },
 
   worktreeMode: {
@@ -175,6 +196,30 @@ export const automations = {
     approvalRequired: "Approval required",
     auto: "Auto",
     fullAccess: "Full access",
+  },
+
+  /** Options for the "On failure" preset picker (create dialog and detail page). */
+  failurePolicy: {
+    keepRunning: "Keep running",
+    stopAfterOne: "Stop after 1 failure",
+    stopAfterCount: (count: string) => `Stop after ${count} failures`,
+  },
+
+  /** Anchored confirm popover shown before an inline edit changes where an automation runs
+   *  or which thread it is bound to. */
+  riskConfirm: {
+    localCheckoutTitle: "Local checkout",
+    localCheckoutDetail: "Runs may edit files in the active project checkout.",
+    switch: "Switch",
+    switchTo: (target: string) => `Switch to ${target}`,
+    continueThreadTitle: "Continue an existing thread",
+    releaseThreadTitle: "Release the current thread?",
+    continueThreadDetail:
+      "Each run appends a turn to the thread you pick and waits for it to go idle.",
+    releaseThreadDetail: (threadName: string) =>
+      `The automation stops writing to ${threadName}; the thread itself is kept.`,
+    unnamedThread: "its thread",
+    pickThreadPlaceholder: "Pick a thread…",
   },
 
   /** Absolute run timestamps: near days read as words, everything else as a formatted date. */
@@ -223,10 +268,45 @@ export const automations = {
     everyHours: (amount: string) => `Every ${amount} hours`,
   },
 
+  /** Inline field validators and the create/edit dialog's submit-blocked reason. */
+  validation: {
+    addName: "Add a name",
+    nameTooLong: (max: number) => `Name must be ${max} characters or fewer`,
+    addPrompt: "Add a prompt",
+    promptTooLong: (max: string) => `Prompt must be ${max} characters or fewer`,
+    cronFieldCount: "Use a 5-field cron expression (minute hour day month weekday)",
+    addTimezone: "Add a timezone",
+    unknownTimezone: "Unknown timezone",
+    pickProject: "Pick a project",
+    pickTargetThread: "Pick a target thread",
+    fastIntervalLimit: (maxIterations: number) =>
+      `Intervals under one minute need max iterations set to ${maxIterations} runs or fewer.`,
+    setValidInterval: "Set a valid interval",
+    addCronExpression: "Add a cron expression",
+    pickRunTime: "Pick a run time",
+    setValidTime: "Set a valid time",
+    acknowledgeRisks: "Acknowledge the flagged risks first",
+  },
+
   maxIterationOption: {
     unlimited: "Unlimited",
     runs: (count: string) => (count === "1" ? "1 run" : `${count} runs`),
   },
+
+  /** The "Repeats" picker's cadence-kind options (detail page and create/edit dialog). */
+  scheduleKind: {
+    manual: "Manual",
+    once: "Once",
+    hourly: "Hourly",
+    daily: "Daily",
+    weekdays: "Weekdays",
+    weekly: "Weekly",
+    custom: "Custom",
+    cron: "Cron",
+  },
+
+  /** Abbreviated weekday labels, indexed Sunday (0) through Saturday (6). */
+  weekdayShort: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
 
   /** Starter prompts behind the dialog's "Use template" button. */
   templates: {

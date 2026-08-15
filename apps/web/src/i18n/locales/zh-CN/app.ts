@@ -80,6 +80,8 @@ export const app: Messages["app"] = {
     temporaryOff: "把它设为临时对话（离开后删除）",
     planModeActive: "计划模式 —— 点击返回普通构建模式",
     plan: "计划",
+    debugModeActive: "调试模式 —— 点击返回普通构建模式",
+    debug: "调试",
     stopGeneration: "停止生成",
     stopGenerationHint: "停止当前回复。在 Mac 上可按 Ctrl+C 中断。",
     implementationActions: "实现操作",

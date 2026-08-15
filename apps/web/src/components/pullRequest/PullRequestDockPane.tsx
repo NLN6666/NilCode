@@ -19,10 +19,12 @@ import { useMessages } from "~/i18n/context";
 export function PullRequestDockPane({
   pane,
   onClose,
+  onSelectPullRequest,
   pollingEnabled: pollingEnabledProp,
 }: {
   pane: RightDockPane;
   onClose?: (() => void) | undefined;
+  onSelectPullRequest?: ((number: number) => void) | undefined;
   pollingEnabled?: boolean;
 }) {
   const copy = useMessages().pullRequests;
@@ -38,6 +40,7 @@ export function PullRequestDockPane({
       initialTab={pane.pullRequestInitialTab ?? "summary"}
       pollingEnabled={pollingEnabled}
       {...(onClose ? { onClose } : {})}
+      {...(onSelectPullRequest ? { onSelectPullRequest } : {})}
     />
   );
 }

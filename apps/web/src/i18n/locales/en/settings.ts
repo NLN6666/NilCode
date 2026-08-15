@@ -96,6 +96,13 @@ export const settings = {
         resetLabel: "studio section",
         ariaLabel: "Show the Studio section in the sidebar",
       },
+      automationRuns: {
+        title: "Automation runs",
+        description:
+          "Show the thread each standalone automation run creates. Runs stay listed on the automation's page either way; threads owned by dedicated or heartbeat automations always stay visible.",
+        resetLabel: "automation runs",
+        ariaLabel: "Show automation run threads in the sidebar",
+      },
     },
     environmentPanel: {
       title: "Environment panel",
@@ -194,6 +201,14 @@ export const settings = {
       ariaLabel: "UI density",
       resetLabel: "UI density",
       options: { compact: "Compact", comfortable: "Comfortable", spacious: "Spacious" },
+    },
+    chatWidth: {
+      title: "Chat width",
+      description:
+        "Control how wide the chat column grows. Wide and Full give tables and wide content more room.",
+      ariaLabel: "Chat width",
+      resetLabel: "chat width",
+      options: { standard: "Standard", wide: "Wide", full: "Full" },
     },
     baseFontSize: {
       title: "Base font size",
@@ -667,6 +682,8 @@ export const settings = {
       allVisible: "All providers visible",
       reorder: (name: string) => `Reorder ${name}`,
       showInPicker: (name: string) => `Show ${name} in the provider picker`,
+      checkingCli: (name: string) => `Checking ${name} CLI availability`,
+      cliNotInstalled: (name: string) => `${name} CLI is not installed`,
     },
     tools: {
       title: "Provider tools",

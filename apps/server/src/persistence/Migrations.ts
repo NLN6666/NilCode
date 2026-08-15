@@ -103,10 +103,17 @@ import Migration0084 from "./Migrations/084_AutomationNotificationPolicy.ts";
 import Migration0085 from "./Migrations/085_AutomationSettings.ts";
 import Migration0086 from "./Migrations/086_NormalizeStudioThreadWorkspaces.ts";
 import Migration0087 from "./Migrations/087_DropUnusedOrchestrationEventIndexes.ts";
-import Migration0088 from "./Migrations/088_ProjectionProjectsBrowserSharing.ts";
-import Migration0089 from "./Migrations/089_ProjectionThreadsSettledAt.ts";
-import Migration0090 from "./Migrations/090_RecoverRetentionHiddenThreads.ts";
-import Migration0091 from "./Migrations/091_ProjectionThreadsAdvisorEnabled.ts";
+import Migration0088 from "./Migrations/088_ProjectionThreadsSettledAt.ts";
+import Migration0089 from "./Migrations/089_RecoverRetentionHiddenThreads.ts";
+import Migration0090 from "./Migrations/090_ProjectionThreadMessageTextSegments.ts";
+import Migration0091 from "./Migrations/091_AutomationFailureTolerance.ts";
+import Migration0092 from "./Migrations/092_BackfillAutomationRunThreadSource.ts";
+import Migration0093 from "./Migrations/093_BackfillMaxIterationsDisabledReason.ts";
+import Migration0094 from "./Migrations/094_ProjectionThreadsGoal.ts";
+import Migration0095 from "./Migrations/095_ProjectionThreadsGoalTiming.ts";
+import Migration0096 from "./Migrations/096_ProjectionThreadsGoalAchievements.ts";
+import Migration0097 from "./Migrations/097_ProjectionProjectsBrowserSharing.ts";
+import Migration0098 from "./Migrations/098_ProjectionThreadsAdvisorEnabled.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -209,10 +216,17 @@ export const migrationEntries = [
   [85, "AutomationSettings", Migration0085],
   [86, "NormalizeStudioThreadWorkspaces", Migration0086],
   [87, "DropUnusedOrchestrationEventIndexes", Migration0087],
-  [88, "ProjectionProjectsBrowserSharing", Migration0088],
-  [89, "ProjectionThreadsSettledAt", Migration0089],
-  [90, "RecoverRetentionHiddenThreads", Migration0090],
-  [91, "ProjectionThreadsAdvisorEnabled", Migration0091],
+  [88, "ProjectionThreadsSettledAt", Migration0088],
+  [89, "RecoverRetentionHiddenThreads", Migration0089],
+  [90, "ProjectionThreadMessageTextSegments", Migration0090],
+  [91, "AutomationFailureTolerance", Migration0091],
+  [92, "BackfillAutomationRunThreadSource", Migration0092],
+  [93, "BackfillMaxIterationsDisabledReason", Migration0093],
+  [94, "ProjectionThreadsGoal", Migration0094],
+  [95, "ProjectionThreadsGoalTiming", Migration0095],
+  [96, "ProjectionThreadsGoalAchievements", Migration0096],
+  [97, "ProjectionProjectsBrowserSharing", Migration0097],
+  [98, "ProjectionThreadsAdvisorEnabled", Migration0098],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>
@@ -296,6 +310,25 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     historicalId: 54,
     historicalName: "ProjectPullRequestPins",
     currentId: 69,
+    historicalSlotRequiresRerun: false,
+  },
+  {
+    // The dev branch briefly recorded this at 88 before the v0.7.2 upstream
+    // merge canonicalized the shared 88-96 range (both branches had appended
+    // migrations there) and moved this fork-only migration to 97. The
+    // migration content is unchanged, only its ID moved.
+    historicalId: 88,
+    historicalName: "ProjectionProjectsBrowserSharing",
+    currentId: 97,
+    historicalSlotRequiresRerun: false,
+  },
+  {
+    // Same v0.7.2 merge: this fork-only migration briefly recorded at 91
+    // moved to 98 for the same reason as the ProjectionProjectsBrowserSharing
+    // alias above.
+    historicalId: 91,
+    historicalName: "ProjectionThreadsAdvisorEnabled",
+    currentId: 98,
     historicalSlotRequiresRerun: false,
   },
 ];

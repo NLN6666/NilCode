@@ -5,15 +5,13 @@
 
 import { type AdvisorThreadOverride, type ProviderInteractionMode } from "@synara/contracts";
 import { useId, useRef, type ChangeEvent } from "react";
-import { GoTasklist } from "react-icons/go";
 
-import { PaperclipIcon, PlusIcon } from "~/lib/icons";
+import { BugIcon, ListTodoIcon, MessageCircleIcon, PaperclipIcon, PlusIcon } from "~/lib/icons";
 import { advisorOverrideValue, parseAdvisorOverrideValue } from "./advisorOverride.logic";
 import { ComposerPickerMenuPopup, ComposerPickerMenuSubPopup } from "./ComposerPickerMenuPopup";
 import { Button } from "../ui/button";
 import {
   Menu,
-  MenuCheckboxItem,
   MenuItem,
   MenuRadioGroup,
   MenuRadioItem,
@@ -32,7 +30,7 @@ export const ComposerExtrasMenu = function ComposerExtrasMenu(props: {
   advisorOverride: AdvisorThreadOverride;
   onAddAttachments: (files: File[]) => void;
   onToggleFastMode: () => void;
-  onSetPlanMode: (enabled: boolean) => void;
+  onInteractionModeChange: (mode: ProviderInteractionMode) => void;
   onSetAdvisorOverride: (advisorEnabled: AdvisorThreadOverride) => void;
 }) {
   const copy = useMessages().composer.extras;
@@ -83,18 +81,38 @@ export const ComposerExtrasMenu = function ComposerExtrasMenu(props: {
           </MenuItem>
 
           <MenuSeparator />
-          <MenuCheckboxItem
-            checked={props.interactionMode === "plan"}
-            variant="switch"
-            onCheckedChange={(checked) => {
-              props.onSetPlanMode(checked === true);
-            }}
-          >
-            <span className="inline-flex items-center gap-2">
-              <GoTasklist className="size-4 shrink-0" />
-              {copy.planMode}
-            </span>
-          </MenuCheckboxItem>
+          <MenuSub>
+            <MenuSubTrigger>{copy.mode.title}</MenuSubTrigger>
+            <ComposerPickerMenuSubPopup>
+              <MenuRadioGroup
+                value={props.interactionMode}
+                onValueChange={(value) => {
+                  if (value === "default" || value === "plan" || value === "debug") {
+                    props.onInteractionModeChange(value);
+                  }
+                }}
+              >
+                <MenuRadioItem value="default">
+                  <span className="inline-flex items-center gap-2">
+                    <MessageCircleIcon className="size-4 shrink-0" />
+                    {copy.mode.default}
+                  </span>
+                </MenuRadioItem>
+                <MenuRadioItem value="plan">
+                  <span className="inline-flex items-center gap-2">
+                    <ListTodoIcon className="size-4 shrink-0" />
+                    {copy.mode.plan}
+                  </span>
+                </MenuRadioItem>
+                <MenuRadioItem value="debug">
+                  <span className="inline-flex items-center gap-2">
+                    <BugIcon className="size-4 shrink-0" />
+                    {copy.mode.debug}
+                  </span>
+                </MenuRadioItem>
+              </MenuRadioGroup>
+            </ComposerPickerMenuSubPopup>
+          </MenuSub>
 
           <MenuSeparator />
           <MenuSub>

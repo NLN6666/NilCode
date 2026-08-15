@@ -28,6 +28,8 @@ export const pullRequests: Messages["pullRequests"] = {
     convertToDraft: "转为草稿",
     merge: "合并",
     merging: "正在合并…",
+    mergeStack: "合并栈",
+    mergingStack: "正在合并栈…",
     mergeBlocked: "合并前请先解决冲突",
     closePanel: "关闭 Pull Request 面板",
     closeLabel: "关闭",
@@ -51,6 +53,12 @@ export const pullRequests: Messages["pullRequests"] = {
     close: "关闭",
     mergeDescription: (number, method) => `将以 ${method} 方式合并 #${number}。`,
     closeDescription: (number) => `将关闭 #${number} 而不合并。`,
+    mergeStackTitle: (count) => `要合并这 ${count} 个 Pull Request 吗？`,
+    mergeStack: "合并栈",
+    mergeStackDescription: (number, baseBranch, method, retargets) =>
+      `将把 #${number} 及其之前所有开放的 Pull Request 以 ${method} 方式原子合并到 ${baseBranch}。${
+        retargets ? "位于其之上的 Pull Request 会保持开放，GitHub 会自动改指基线。" : ""
+      }`,
   },
 
   status: {
@@ -62,6 +70,9 @@ export const pullRequests: Messages["pullRequests"] = {
 
   toast: {
     merged: "Pull Request 已合并",
+    enqueued: "Pull Request 已加入合并队列",
+    stackEnqueued: "栈已加入合并队列",
+    stackMerged: "栈已合并",
     markedReady: "已标记为可评审",
     convertedToDraft: "已转为草稿",
     closed: "Pull Request 已关闭",

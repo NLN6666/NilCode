@@ -77,17 +77,27 @@ export function isAgentActivityWorkEntry(entry: WorkLogEntry): boolean {
   return entry.itemType === "collab_agent_tool_call" || isReasoningUpdateWorkEntry(entry);
 }
 
+// Unmapped provider events keep their native type as the title and a safe detail as preview.
+export function isUnmappedProviderEventWorkEntry(
+  entry: Pick<WorkLogEntry, "activityKind">,
+): boolean {
+  return entry.activityKind === "provider.event.unmapped";
+}
+
 export function formatAgentActivityEntryTitle(entry: WorkLogEntry): AgentActivityEntryTitle {
   if (isReasoningUpdateWorkEntry(entry)) {
     return { kind: "reasoning" };
   }
   const heading = normalizeCompactToolLabel(entry.toolTitle ?? entry.label).trim();
-  if (!heading) {
-    return entry.itemType === "collab_agent_tool_call"
-      ? { kind: "agentTask" }
-      : { kind: "activity" };
+  if (heading) {
+    return { kind: "text", text: capitalizePhrase(heading) };
   }
-  return { kind: "text", text: capitalizePhrase(heading) };
+  if (isUnmappedProviderEventWorkEntry(entry) && entry.nativeEventType) {
+    // The raw native type/label is the only title the event carries; use it
+    // verbatim instead of degrading to the generic "Activity" label.
+    return { kind: "text", text: capitalizePhrase(entry.nativeEventType) };
+  }
+  return entry.itemType === "collab_agent_tool_call" ? { kind: "agentTask" } : { kind: "activity" };
 }
 
 export function formatAgentActivityEntryPreview(entry: WorkLogEntry): string | null {
@@ -149,8 +159,9 @@ export function deriveAgentActivityTimelineState(
     const displayEntry: WorkLogEntry = {
       ...latest,
       id: groupId,
-      label: REASONING_TRACE_TITLE_KEY,
-      toolTitle: REASONING_TRACE_TITLE_KEY,
+        createdAt: first.createdAt,
+        label: REASONING_TRACE_TITLE_KEY,
+        toolTitle: REASONING_TRACE_TITLE_KEY,
       tone: "tool",
       ...(updateCount > 1 ? { reasoningUpdateCount: updateCount } : {}),
       ...(latestPreview ? { preview: latestPreview, detail: latestPreview } : {}),

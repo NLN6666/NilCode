@@ -10,6 +10,12 @@ export const composer: Messages["composer"] = {
     planMode: "计划模式",
     fast: "快速",
     default: "默认",
+    mode: {
+      title: "模式",
+      default: "默认",
+      plan: "计划",
+      debug: "调试",
+    },
     advisor: {
       title: "监察",
       followDefault: "跟随全局设置",
@@ -77,6 +83,7 @@ export const composer: Messages["composer"] = {
       model: "切换模型",
       fast: "快速模式",
       plan: "计划模式",
+      debug: "调试模式",
       default: "默认模式",
       review: "代码审查",
       fork: "复刻会话",
@@ -266,6 +273,7 @@ export const composer: Messages["composer"] = {
     mode: "模式",
     planMode: "计划",
     defaultMode: "默认",
+    debugMode: "调试",
     environment: "环境",
     envLocal: "本地",
     envWorktree: "工作树",
@@ -290,3 +298,4 @@ export const composer: Messages["composer"] = {
     close: "关闭",
   },
 };
+

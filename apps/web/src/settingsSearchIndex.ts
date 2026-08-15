@@ -86,6 +86,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "Show the Studio tab in the sidebar switcher. sidebar section content outbox 侧边栏板块",
   },
   {
+    id: "general:automation-run-threads",
+    section: "general",
+    title: (m) => m.settings.general.sidebarSections.automationRuns.title,
+    keywords:
+      "Show the thread each standalone automation run creates in the sidebar. hide automation run threads clutter scheduled",
+  },
+  {
     id: "general:environment-default-open",
     section: "general",
     title: (m) => m.settings.general.environmentPanel.defaultOpen.title,
@@ -176,6 +183,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     title: (m) => m.settings.appearance.uiDensity.title,
     keywords:
       "Control spacing in the sidebar, composer, chat gutters, and settings rows without changing font size. compact comfortable 界面密度 紧凑 宽松 间距",
+  },
+  {
+    id: "appearance:chat-width",
+    section: "appearance",
+    title: (m) => m.settings.appearance.chatWidth.title,
+    keywords:
+      "Control how wide the chat column grows so tables and wide content get more room. standard wide full",
   },
   {
     id: "appearance:base-font-size",

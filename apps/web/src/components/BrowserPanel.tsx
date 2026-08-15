@@ -47,7 +47,7 @@ import type { DockPaneRuntimeMode } from "~/lib/dockPaneActivation";
 import { readDesktopZoomFactor, subscribeDesktopZoomFactor } from "~/lib/desktopZoom";
 import { NATIVE_SURFACE_OCCLUSION_SYNC_EVENT } from "~/lib/nativeSurfaceOcclusion";
 import { serverLocalServersQueryOptions } from "~/lib/serverReactQuery";
-import { cn, isMacPlatform } from "~/lib/utils";
+import { cn, isMacNavigatorPlatform } from "~/lib/utils";
 
 import {
   useBrowserStateStore,
@@ -1821,7 +1821,7 @@ export function BrowserPanel({
           alt: event.altKey,
           key: event.key,
         },
-        isMacPlatform(navigator.platform),
+        isMacNavigatorPlatform(),
       );
       if (!matches) {
         return;

@@ -29,6 +29,8 @@ export const pullRequests = {
     convertToDraft: "Convert to draft",
     merge: "Merge",
     merging: "Merging…",
+    mergeStack: "Merge stack",
+    mergingStack: "Merging stack…",
     mergeBlocked: "Resolve merge conflicts before merging",
     closePanel: "Close pull request panel",
     closeLabel: "Close",
@@ -54,6 +56,15 @@ export const pullRequests = {
     mergeDescription: (number: number, method: string) =>
       `This will merge #${number} using ${method}.`,
     closeDescription: (number: number) => `This will close #${number} without merging it.`,
+    mergeStackTitle: (count: number) =>
+      `Merge ${count} ${count === 1 ? "pull request" : "pull requests"}?`,
+    mergeStack: "Merge stack",
+    mergeStackDescription: (number: number, baseBranch: string, method: string, retargets: boolean) =>
+      `This will atomically merge every open pull request through #${number} into ${baseBranch} using ${method}.${
+        retargets
+          ? " Pull requests above it will remain open and GitHub will retarget them."
+          : ""
+      }`,
   },
 
   status: {
@@ -65,6 +76,9 @@ export const pullRequests = {
 
   toast: {
     merged: "Pull request merged",
+    enqueued: "Pull request added to merge queue",
+    stackEnqueued: "Stack added to merge queue",
+    stackMerged: "Stack merged",
     markedReady: "Marked ready for review",
     convertedToDraft: "Converted to draft",
     closed: "Pull request closed",

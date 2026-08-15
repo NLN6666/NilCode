@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { DesktopWindowState } from "@synara/contracts";
 
 import { isElectron } from "~/env";
-import { cn, isWindowsPlatform } from "~/lib/utils";
+import { cn, getNavigatorPlatform, isWindowsPlatform } from "~/lib/utils";
 import { useMessages } from "~/i18n/context";
 
 const DEFAULT_WINDOW_STATE: DesktopWindowState = {
@@ -46,7 +46,7 @@ function CaptionGlyph({ glyph }: { glyph: string }) {
 export function DesktopWindowControls({ className }: { className?: string }) {
   const copy = useMessages().app.window;
   const [windowState, setWindowState] = useState<DesktopWindowState>(DEFAULT_WINDOW_STATE);
-  const platform = typeof navigator === "undefined" ? "" : navigator.platform;
+  const platform = getNavigatorPlatform();
   const isWindowsDesktop = isWindowsPlatform(platform);
   const controls = typeof window === "undefined" ? undefined : window.desktopBridge?.windowControls;
 
