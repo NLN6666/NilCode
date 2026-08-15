@@ -80,6 +80,7 @@ export interface OmpExtensionClientState {
 
 export type OmpEnvelopeAcceptanceReason =
   | "accepted"
+  | "not-negotiated"
   | "cross-session"
   | "stale-generation"
   | "duplicate-sequence";
@@ -197,6 +198,16 @@ export function acceptOmpExtensionEnvelope(
   };
 }
 
+export function acceptOmpExtensionNotification(
+  state: OmpExtensionClientState,
+  envelope: OmpExtensionEnvelope,
+): OmpEnvelopeAcceptance {
+  if (state.mode !== "typed" || !state.sessionId || !state.generation) {
+    return { accepted: false, reason: "not-negotiated", state };
+  }
+  return acceptOmpExtensionEnvelope(state, envelope);
+}
+
 export function isKnownOmpExtensionNotification(method: string): boolean {
   return EVENT_SET.has(method);
 }
@@ -237,10 +248,10 @@ export function requestOmpExtension(
   },
 ) {
   const payload = {
+    ...input.params,
     sessionId: input.sessionId,
     timeoutMs: input.timeoutMs,
     correlationId: input.correlationId ?? crypto.randomUUID(),
-    ...input.params,
   };
   return runtime.request(input.method, payload).pipe(
     Effect.timeoutOption(input.timeoutMs),

@@ -94,7 +94,7 @@ import {
 import { parsePermissionRequest } from "../acp/AcpRuntimeModel.ts";
 import type { AcpSessionRuntimeShape } from "../acp/AcpSessionRuntime.ts";
 import {
-  acceptOmpExtensionEnvelope,
+  acceptOmpExtensionNotification,
   createConfiguredOnlyOmpExtensionState,
   drainOmpTurnExtensions,
   isKnownOmpExtensionNotification,
@@ -800,7 +800,7 @@ export function makeOhMyPiAdapter(
           yield* registerStandardAcpClientHandlers(acp, sessionScope);
           yield* registerOmpExtensionNotifications(acp, (method, envelope) =>
             Effect.gen(function* () {
-              const accepted = acceptOmpExtensionEnvelope(ctx.ompExtensionState, envelope);
+              const accepted = acceptOmpExtensionNotification(ctx.ompExtensionState, envelope);
               if (!accepted.accepted) return;
               ctx.ompExtensionState = projectOmpEnvelopeData(
                 ctx.ompExtensionState,

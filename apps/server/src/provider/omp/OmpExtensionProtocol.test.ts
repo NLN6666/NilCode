@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   acceptOmpExtensionEnvelope,
+  acceptOmpExtensionNotification,
   createConfiguredOnlyOmpExtensionState,
   decodeOmpExtensionEnvelope,
   negotiateOmpExtensions,
@@ -12,6 +13,7 @@ import {
   projectOmpEnvelopeData,
   projectOmpExtensionRuntimeStatus,
   projectOmpLaunchLogs,
+  requestOmpExtension,
 } from "./OmpExtensionProtocol";
 
 function envelope(overrides: Record<string, unknown> = {}) {
@@ -78,6 +80,58 @@ describe("OMP typed extension protocol", () => {
         decodeOmpExtensionEnvelope(envelope({ sessionId: "other", sequence: 2 })),
       ).reason,
     ).toBe("cross-session");
+  });
+
+  it("rejects typed notifications until capabilities negotiation establishes session ownership", () => {
+    const configuredOnly = createConfiguredOnlyOmpExtensionState("negotiating");
+    const early = acceptOmpExtensionNotification(
+      configuredOnly,
+      decodeOmpExtensionEnvelope(envelope()),
+    );
+    expect(early).toMatchObject({ accepted: false, reason: "not-negotiated" });
+    expect(early.state.mode).toBe("configured-only");
+
+    const negotiated = acceptOmpExtensionEnvelope(
+      configuredOnly,
+      decodeOmpExtensionEnvelope(envelope()),
+    );
+    const next = acceptOmpExtensionNotification(
+      negotiated.state,
+      decodeOmpExtensionEnvelope(envelope({ sequence: 2 })),
+    );
+    expect(next).toMatchObject({ accepted: true, reason: "accepted" });
+  });
+
+  it("keeps session, timeout, and correlation fields authoritative over extension params", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const runtime = {
+      request: (_method: string, payload: Record<string, unknown>) => {
+        captured = payload;
+        return Effect.succeed(envelope({ correlationId: "trusted-correlation" }));
+      },
+    } as unknown as Pick<AcpSessionRuntimeShape, "request">;
+
+    await Effect.runPromise(
+      requestOmpExtension(runtime, {
+        method: OMP_EXTENSION_METHODS.capabilities,
+        sessionId: "omp-session",
+        timeoutMs: 100,
+        correlationId: "trusted-correlation",
+        params: {
+          sessionId: "other-session",
+          timeoutMs: 15_000,
+          correlationId: "untrusted-correlation",
+          supportedSchemaVersions: [1],
+        },
+      }),
+    );
+
+    expect(captured).toEqual({
+      sessionId: "omp-session",
+      timeoutMs: 100,
+      correlationId: "trusted-correlation",
+      supportedSchemaVersions: [1],
+    });
   });
 
   it("keeps methods and events in a provider-specific namespace", () => {
