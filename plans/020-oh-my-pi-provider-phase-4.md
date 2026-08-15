@@ -1,6 +1,6 @@
 # Plan 020 — Oh My Pi Provider Phase 4（publication and adoption）
 
-- 状态：IN PROGRESS
+- 状态：EXECUTED — publication/adoption complete；official native/release adoption blocked by upstream approval/release
 - 创建：2026-08-15
 - NilCode 发布基线：`NLN6666/NilCode` `dev` / `c4c79f32fb4f672e0f49443a303c15605449f228`
 - OMP 发布基线：`can1357/oh-my-pi` `main` / `ffd53ff92a6f575d499730475a73460dd7cc2eea`（`v17.3.4`）
@@ -134,22 +134,22 @@
 
 ## 10. 验收台账
 
-| 项目                            | 状态                 | 证据                                                                                                      |
-| ------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------- |
-| W0 auth/remotes/releases        | DONE                 | `NLN6666`; official OMP `v17.3.4`; scoped bases above                                                     |
-| #496 reference decision         | DONE                 | 独立发布；仅参考通用 ACP lifecycle/config wiring                                                          |
-| Plan 020 scoped commit          | DONE                 | `978012821`                                                                                               |
-| OMP rebase/cherry-pick          | DONE                 | `origin/main@ffd53ff92a` → `bc07667437`                                                                   |
-| OMP focused/types/build         | PARTIAL              | fresh `check:ts` PASS；focused 34/34；workspace build blocked by missing `zip` + native setup             |
-| formal native gate              | LOCAL BLOCKED        | pinned nightly install stalled；必须由官方 CI native gate terminal evidence 关闭                          |
-| OMP Draft PR + CI               | PENDING              | no merge                                                                                                  |
-| NilCode 15-commit closure       | DONE WITH ADAPTATION | 15 scoped commits; excluded provider-isolation/VCS/device/service-panel prerequisites                     |
-| NilCode focused/build           | DONE                 | fresh server 56/56；contracts 68/68；Web 38/38 + health 9/9；三项 production build；heavyweight NOT RUN   |
-| NilCode Draft PR + CI           | IN PROGRESS          | Draft #1；首轮 main job stopped at format；26 PR-owned files scoped-formatted，1 base-only file unchanged |
-| one review / one fix            | DONE                 | 7 candidates triaged；4 direct fixes + non-retryable Memory timeout；no second review                     |
-| artifact provenance             | PENDING              | version/files/native/hash/source                                                                          |
-| isolated install/smoke/rollback | PENDING              | no global overwrite                                                                                       |
-| official release adoption       | BLOCKED BY UPSTREAM  | `v17.3.4` lacks `f7fd74b63b`                                                                              |
+| 项目                            | 状态                  | 证据                                                                                                          |
+| ------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| W0 auth/remotes/releases        | DONE                  | `NLN6666`; official OMP `v17.3.4`; scoped bases above                                                         |
+| #496 reference decision         | DONE                  | 独立发布；仅参考通用 ACP lifecycle/config wiring                                                              |
+| Plan 020 scoped commit          | DONE                  | `978012821`                                                                                                   |
+| OMP rebase/cherry-pick          | DONE                  | `origin/main@ffd53ff92a` → `bc07667437`                                                                       |
+| OMP focused/types/build         | PARTIAL               | fresh `check:ts` PASS；focused 34/34；workspace build blocked by missing `zip` + native setup                 |
+| formal native gate              | LOCAL BLOCKED         | pinned nightly install stalled；必须由官方 CI native gate terminal evidence 关闭                              |
+| OMP Draft PR + CI               | ACTION REQUIRED       | Draft #8609；CI/Nix runs require upstream maintainer approval before jobs/native matrix can start             |
+| NilCode 15-commit closure       | DONE WITH ADAPTATION  | 15 scoped commits; excluded provider-isolation/VCS/device/service-panel prerequisites                         |
+| NilCode focused/build           | DONE                  | fresh server 56/56；contracts 68/68；Web 38/38 + health 9/9；三项 production build；heavyweight NOT RUN       |
+| NilCode Draft PR + CI           | TERMINAL BASE FAILURE | Draft #1；PR-owned files pass format；main job only fails on unchanged base-only format drift；其他 jobs PASS |
+| one review / one fix            | DONE                  | 7 candidates triaged；4 direct fixes + non-retryable Memory timeout；no second review                         |
+| artifact provenance             | DONE                  | `17.3.4` tgz from OMP PR HEAD；SHA-256 `06338edc...d617f1`；native leaf is official 17.3.4 baseline           |
+| isolated install/smoke/rollback | DONE                  | stock configured-only → patched schema v1/four domains → stock configured-only；global hash unchanged         |
+| official release adoption       | BLOCKED BY UPSTREAM   | `v17.3.4` lacks `f7fd74b63b`                                                                                  |
 
 ## 11. 最终不变量
 
@@ -158,3 +158,13 @@
 - 不覆盖或改写用户全局 OMP binary、package、profile、memory 或 config。
 - 不关闭用户现有 Synara/OMP/service；只管理隔离验收进程。
 - 自动测试/build/CI 不证明官方 release adoption；未 merge/release 时明确 external blocker。
+
+## 12. 执行结果（2026-08-15）
+
+- OMP publication：`NLN6666/oh-my-pi:agent/omp-acp-typed-extensions@591eaaa21e`，Draft PR `can1357/oh-my-pi#8609`，base `main@ffd53ff92a`。官方 `CI` run `31863300837` 与 `OMP Nix` run `31863300824` 均以 `action_required`/0 秒终止，原因是 fork workflow 需要 upstream maintainer 批准；没有 job/check/native matrix 可执行，本地也没有 formal native success，因此 native 发布门禁保持 external blocker。
+- NilCode publication：`NLN6666/NilCode:agent/synara-omp-provider@032e0af8a`，Draft PR `NLN6666/NilCode#1`，base `dev@c4c79f32`。CI run `31863597651` 已终态：Windows Process Regression、Migration Lineage、Release Smoke 与 PR policy jobs 通过；主 job 只在未被 PR 修改的 base 文件 `docs/superpowers/specs/2026-08-08-launch-mention-design.md` 的 `fmt:check` 失败，PR-owned 26 个文件 targeted check 均通过。
+- Artifact：从 OMP PR HEAD 以 `PI_NATIVE_VARIANT=baseline bun pm pack` 生成 `@oh-my-pi/pi-coding-agent@17.3.4`，1648 entries、10425363 bytes、SHA-256 `06338edc275b5534f1409442cf6942882cee7efaac3afc7fe06bb34ad6d617f1`、Bun pack SHA-1 `4cbf61afa6dbd1531db80fd7a3f6386ee2abc037`。tarball 不内嵌 `.node`；安装解析到官方 `@oh-my-pi/pi-natives-win32-x64@17.3.4` baseline addon，SHA-256 `966091fdf8d50a26024226b1bd5b93ba702378202a195b7029fdba7a92e93138`。
+- 隔离 adoption：临时 Bun prefix/profile/cwd 中先安装官方 stock 17.3.4，ACP initialize/auth/session 正常，`_omp/capabilities` 返回 `-32603`；替换为 tarball 后 schema v1 negotiation 成功，Advisor/Auto-Learn/Memory/Launch 的 status/drain/safe methods 通过，sequence 单调且 generation 稳定。Memory clear 只取得 confirmation challenge，未 confirm；Launch list 为空，未 stop/restart 用户服务。
+- Synara：先 dry-run 得到 server/web `8094/10054`，再以 Node production CLI 启动隐藏的隔离实例；`SYNARA_AUTH_TOKEN` 未设置，home/state/settings 均为隔离根，`binaryPath` 指向隔离 patched `omp.exe`，`/health` 返回 `status=ok` 及所有 startup readiness。低层手写 WS probe 只完成 negotiation/upgrade，未完成 Effect RPC framing，不作为产品失败或 typed 证据；typed 能力由同一 binary 的真实 ACP smoke 证明。
+- 回滚/清理：patched package 卸载并恢复官方 stock 17.3.4 后，普通 ACP 仍正常且 typed capability 再次为 `-32603`；随后从隔离 prefix 卸载。隔离 Synara root/descendant、OMP child、8094/10054 listener 均为零。用户全局 `omp.exe` 仍为 17.3.4，SHA-256 `59b379b53354da72d2c5262119fe70c44b4e473826ebbaa94d47a2d58a359b1a`，未被覆盖或配置。
+- Official release adoption：`BLOCKED BY UPSTREAM`。PR #8609 尚未 merge，官方 package/release 不包含 `591eaaa21e`，因此本阶段只称为 Draft PR + CI approval blocker + isolated artifact adoption。
