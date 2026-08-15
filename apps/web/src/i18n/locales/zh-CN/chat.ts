@@ -139,6 +139,12 @@ export const chat: Chat = {
     emptyHint:
       "让智能体启动一个长期运行的进程（游戏服务器、开发服务器、数据库），它就会出现在这里。",
     loading: "正在加载后台服务…",
+    ompAuthority: "OMP Launch · OMP 权威",
+    ompScoped: "仅限所属 OMP 会话；控制不会经过 Synara daemon broker。",
+    ompLogsLoading: "正在加载 OMP 服务日志…",
+    ompCommand: "命令",
+    ompCwd: "工作目录",
+    ompRestartPolicy: "重启策略",
 
     states: {
       starting: "启动中",
@@ -147,6 +153,7 @@ export const chat: Chat = {
       exited: "已退出",
       failed: "已失败",
       restarting: "重启中",
+      stopping: "停止中",
     },
 
     pid: (pid) => `PID ${pid}`,

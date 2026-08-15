@@ -82,6 +82,7 @@ async function withReactor<A>(
     readonly verdicts: ReadonlyArray<AdvisorVerdict | null>;
     readonly advisorEnabled?: boolean;
     readonly threadOverride?: boolean | null;
+    readonly threadProvider?: "codex" | "omp";
   },
   body: (input: {
     readonly emit: (event: OrchestrationEvent) => Effect.Effect<void>;
@@ -113,6 +114,10 @@ async function withReactor<A>(
             Effect.succeed(
               Option.some({
                 id: THREAD_ID,
+                modelSelection: {
+                  provider: options.threadProvider ?? "codex",
+                  model: "fixture/model",
+                },
                 runtimeMode: "full-access",
                 interactionMode: "default",
                 workingDirectory: "/repo",
@@ -273,6 +278,16 @@ describe("AdvisorReactor", () => {
   it("does not ask the advisor when the feature is off", async () => {
     const recorder = await withReactor(
       { verdicts: [{ verdict: "silent" }], advisorEnabled: false },
+      (input) => oneTurn(input).pipe(Effect.as(input.recorder)),
+    );
+
+    expect(recorder.evaluations).toEqual([]);
+    expect(recorder.commands).toEqual([]);
+  });
+
+  it("does not run Synara Advisor for OMP-owned threads", async () => {
+    const recorder = await withReactor(
+      { verdicts: [{ verdict: "concern", message: "duplicate advisor" }], threadProvider: "omp" },
       (input) => oneTurn(input).pipe(Effect.as(input.recorder)),
     );
 

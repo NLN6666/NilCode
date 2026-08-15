@@ -165,6 +165,12 @@ export const chat = {
     emptyHint:
       "Ask the agent to start a long-running process — a game server, dev server, or database — and it will appear here.",
     loading: "Loading background services...",
+    ompAuthority: "OMP Launch · OMP authority",
+    ompScoped: "Scoped to the owning OMP session; controls never use Synara's daemon broker.",
+    ompLogsLoading: "Loading OMP service logs...",
+    ompCommand: "Command",
+    ompCwd: "Working directory",
+    ompRestartPolicy: "Restart policy",
 
     /** Lifecycle labels, keyed by `DaemonState`. */
     states: {
@@ -174,6 +180,7 @@ export const chat = {
       exited: "Exited",
       failed: "Failed",
       restarting: "Restarting",
+      stopping: "Stopping",
     },
 
     pid: (pid: number) => `PID ${pid}`,

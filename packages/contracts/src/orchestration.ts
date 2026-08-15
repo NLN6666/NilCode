@@ -7,6 +7,7 @@ import {
   DroidModelOptions,
   GrokModelOptions,
   OpenCodeModelOptions,
+  OhMyPiModelOptions,
   PiModelOptions,
 } from "./model";
 import { ProviderMentionReference, ProviderSkillReference } from "./providerDiscovery";
@@ -81,6 +82,7 @@ export const ProviderKind = Schema.Literals([
   "droid",
   "kilo",
   "opencode",
+  "omp",
   "pi",
 ]);
 export type ProviderKind = typeof ProviderKind.Type;
@@ -163,6 +165,13 @@ export const PiModelSelection = Schema.Struct({
 });
 export type PiModelSelection = typeof PiModelSelection.Type;
 
+export const OhMyPiModelSelection = Schema.Struct({
+  provider: Schema.Literal("omp"),
+  model: TrimmedNonEmptyString,
+  options: Schema.optional(OhMyPiModelOptions),
+});
+export type OhMyPiModelSelection = typeof OhMyPiModelSelection.Type;
+
 export const ModelSelection = Schema.Union([
   CodexModelSelection,
   ClaudeModelSelection,
@@ -172,6 +181,7 @@ export const ModelSelection = Schema.Union([
   DroidModelSelection,
   KiloModelSelection,
   OpenCodeModelSelection,
+  OhMyPiModelSelection,
   PiModelSelection,
 ]);
 export type ModelSelection = typeof ModelSelection.Type;
@@ -220,6 +230,10 @@ export const PiProviderStartOptions = Schema.Struct({
   agentDir: Schema.optional(TrimmedNonEmptyString),
 });
 
+export const OhMyPiProviderStartOptions = Schema.Struct({
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
+});
+
 export const ProviderStartOptions = Schema.Struct({
   codex: Schema.optional(CodexProviderStartOptions),
   claudeAgent: Schema.optional(ClaudeProviderStartOptions),
@@ -229,6 +243,7 @@ export const ProviderStartOptions = Schema.Struct({
   droid: Schema.optional(DroidProviderStartOptions),
   kilo: Schema.optional(KiloProviderStartOptions),
   opencode: Schema.optional(OpenCodeProviderStartOptions),
+  omp: Schema.optional(OhMyPiProviderStartOptions),
   pi: Schema.optional(PiProviderStartOptions),
 });
 export type ProviderStartOptions = typeof ProviderStartOptions.Type;

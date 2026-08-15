@@ -1,14 +1,13 @@
 // FILE: ServicesPanel.tsx
-// Purpose: The background services dock pane — daemon roster, live log, console input,
-//          and the stop/restart controls.
+// Purpose: The background services dock pane — Synara daemon and OMP-owned service rosters,
+//          live logs, console input, and typed stop/restart controls.
 // Layer: Background services UI
 // Depends on: daemonStore (state), daemonPresentation (judgements), DaemonLogView (render).
 //
-// Server-wide content inside a per-thread dock. Everything here is keyed by daemon name
-// and nothing takes a thread id, because a background service outlives the conversation
-// that started it — switching or deleting a chat must leave this pane unchanged.
+// Synara daemons are server-wide. OMP Launch entries remain scoped to their owning OMP
+// session and route through the provider's typed ACP extension rather than the daemon broker.
 
-import type { DaemonSnapshot } from "@synara/contracts";
+import type { DaemonSnapshot, OmpLaunchDescribeResult, OmpRuntimeService } from "@synara/contracts";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { emptyDaemonLogBuffer } from "~/daemonLogBuffer";
@@ -16,6 +15,7 @@ import { applyDaemonEvent, useDaemonStore } from "~/daemonStore";
 import { useMessages } from "~/i18n/context";
 import { describeErrorMessage } from "@synara/shared/errorMessages";
 import { ensureNativeApi } from "~/nativeApi";
+import { useProviderStatusesForLocalConfig } from "~/hooks/useProviderStatusesForLocalConfig";
 import { cn } from "~/lib/utils";
 import { ELEVATED_HOVER_SURFACE_CLASS_NAME, THIN_SCROLLBAR_CLASS_NAME } from "~/surfaceStyles";
 import { Button } from "../ui/button";
@@ -45,6 +45,21 @@ const TONE_DOT_CLASS: Record<DaemonTone, string> = {
   neutral: "bg-foreground/30",
   danger: "bg-red-500",
 };
+
+function ompServiceTone(service: OmpRuntimeService): DaemonTone {
+  if (
+    service.state === "starting" ||
+    service.state === "restarting" ||
+    service.state === "stopping"
+  )
+    return "pending";
+  if (service.state === "running" || service.state === "ready") return "healthy";
+  return service.state === "failed" ? "danger" : "neutral";
+}
+
+function isOmpServiceAlive(service: OmpRuntimeService): boolean {
+  return service.state !== "exited" && service.state !== "failed";
+}
 
 /**
  * Subscribe while the pane is mounted.
@@ -261,9 +276,174 @@ function DaemonDetail(props: { snapshot: DaemonSnapshot }) {
   );
 }
 
+function OmpLaunchDetail(props: { service: OmpRuntimeService }) {
+  const copy = useMessages().chat.services;
+  const [logs, setLogs] = useState<string | null>(null);
+  const [description, setDescription] = useState<OmpLaunchDescribeResult | null>(null);
+  const [text, setText] = useState("");
+  const [pendingAction, setPendingAction] = useState<"send" | "stop" | "restart" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const owner = props.service.owner;
+
+  useEffect(() => {
+    if (!owner) return;
+    let cancelled = false;
+    setLogs(null);
+    setDescription(null);
+    void Promise.all([
+      ensureNativeApi().ompLaunch.describe({ owner, name: props.service.name }),
+      ensureNativeApi().ompLaunch.readLogs({
+        owner,
+        name: props.service.name,
+        lines: 100,
+        cursor: 0,
+      }),
+    ])
+      .then(([nextDescription, result]) => {
+        if (!cancelled) {
+          setDescription(nextDescription);
+          setLogs(result.content);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(describeErrorMessage(cause, copy.unknownError));
+      });
+    return () => void (cancelled = true);
+  }, [copy.unknownError, owner, props.service.name]);
+
+  const run = (action: "stop" | "restart") => {
+    if (!owner || pendingAction) return;
+    setPendingAction(action);
+    setError(null);
+    const request =
+      action === "stop"
+        ? ensureNativeApi().ompLaunch.stop({ owner, name: props.service.name, timeoutSeconds: 5 })
+        : ensureNativeApi().ompLaunch.restart({ owner, name: props.service.name });
+    void request
+      .catch((cause: unknown) => setError(describeErrorMessage(cause, copy.unknownError)))
+      .finally(() => setPendingAction(null));
+  };
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!owner || !text || pendingAction) return;
+    const value = text;
+    setText("");
+    setPendingAction("send");
+    setError(null);
+    void ensureNativeApi()
+      .ompLaunch.sendText({ owner, name: props.service.name, text: value })
+      .catch((cause: unknown) => setError(describeErrorMessage(cause, copy.unknownError)))
+      .finally(() => setPendingAction(null));
+  };
+
+  return (
+    <div className="flex min-h-0 flex-col border-border border-t">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <span className="min-w-0 flex-1 truncate font-medium text-xs">{props.service.name}</span>
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={!owner || pendingAction !== null}
+          onClick={() => run("restart")}
+        >
+          {pendingAction === "restart" ? copy.restarting : copy.restart}
+        </Button>
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={!owner || pendingAction !== null || !isOmpServiceAlive(props.service)}
+          onClick={() => run("stop")}
+        >
+          {pendingAction === "stop" ? copy.stopping : copy.stop}
+        </Button>
+      </div>
+      {description ? (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 border-border border-t px-3 py-2 text-[11px]">
+          <dt className="text-foreground/60">{copy.ompCommand}</dt>
+          <dd className="min-w-0 truncate font-mono" title={description.command}>
+            {description.command}
+          </dd>
+          <dt className="text-foreground/60">{copy.ompCwd}</dt>
+          <dd className="min-w-0 truncate font-mono" title={description.cwd}>
+            {description.cwd}
+          </dd>
+          <dt className="text-foreground/60">{copy.ompRestartPolicy}</dt>
+          <dd>{description.restart}</dd>
+        </dl>
+      ) : null}
+      {error ? (
+        <p className="px-3 py-1.5 text-[11px] text-red-500">{copy.actionFailed(error)}</p>
+      ) : null}
+      <pre className="max-h-36 overflow-auto whitespace-pre-wrap border-border border-t px-3 py-2 font-mono text-[11px] text-foreground/80">
+        {logs ?? copy.ompLogsLoading}
+      </pre>
+      <form onSubmit={submit} className="flex items-center gap-2 border-border border-t px-3 py-2">
+        <Input
+          value={text}
+          variant="soft"
+          size="sm"
+          aria-label={copy.inputLabel}
+          placeholder={copy.inputPlaceholder}
+          onChange={(event) => setText(event.target.value)}
+          className="flex-1 font-mono"
+        />
+        <Button
+          type="submit"
+          size="sm"
+          variant="secondary"
+          disabled={!owner || !text || pendingAction !== null}
+        >
+          {copy.send}
+        </Button>
+      </form>
+    </div>
+  );
+}
+
+function OmpLaunchServices(props: { services: readonly OmpRuntimeService[] }) {
+  const copy = useMessages().chat.services;
+  const [selectedId, setSelectedId] = useState<string | null>(props.services[0]?.serviceId ?? null);
+  const selected =
+    props.services.find((service) => service.serviceId === selectedId) ?? props.services[0] ?? null;
+
+  return (
+    <section className="shrink-0 border-border border-b">
+      <div className="px-3 py-2">
+        <div className="font-medium text-xs text-foreground">{copy.ompAuthority}</div>
+        <div className="text-[11px] text-foreground/60">{copy.ompScoped}</div>
+      </div>
+      <div className="flex flex-col gap-0.5 px-1.5 pb-1.5">
+        {props.services.map((service) => (
+          <button
+            key={service.serviceId}
+            type="button"
+            onClick={() => setSelectedId(service.serviceId)}
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-2 py-1.5 text-left",
+              ELEVATED_HOVER_SURFACE_CLASS_NAME,
+              service.serviceId === selected?.serviceId &&
+                "bg-[var(--color-background-elevated-secondary)]",
+            )}
+          >
+            <span
+              aria-hidden
+              className={cn("size-2 rounded-full", TONE_DOT_CLASS[ompServiceTone(service)])}
+            />
+            <span className="min-w-0 flex-1 truncate text-xs">{service.name}</span>
+            <span className="text-[11px] text-foreground/60">{copy.states[service.state]}</span>
+          </button>
+        ))}
+      </div>
+      {selected ? <OmpLaunchDetail service={selected} /> : null}
+    </section>
+  );
+}
+
 export function ServicesPanel() {
   const copy = useMessages().chat.services;
   useDaemonFeed();
+  const providerStatuses = useProviderStatusesForLocalConfig();
 
   const daemonsByName = useDaemonStore((store) => store.daemonsByName);
   const hydrated = useDaemonStore((store) => store.hydrated);
@@ -272,10 +452,13 @@ export function ServicesPanel() {
   useDaemonLogBacklog(selectedName);
 
   const daemons = sortDaemons(Object.values(daemonsByName));
+  const ompServices =
+    providerStatuses.find((status) => status.provider === "omp")?.ompPolicy?.runtime?.launch
+      ?.services ?? [];
   const selected = selectedName === null ? null : (daemonsByName[selectedName] ?? null);
 
   if (!hydrated) return <PanelStateMessage>{copy.loading}</PanelStateMessage>;
-  if (daemons.length === 0) {
+  if (daemons.length === 0 && ompServices.length === 0) {
     return (
       <PanelStateMessage>
         <span className="flex flex-col gap-1">
@@ -288,23 +471,26 @@ export function ServicesPanel() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div
-        className={cn(
-          "max-h-40 shrink-0 overflow-y-auto border-border border-b p-1.5",
-          THIN_SCROLLBAR_CLASS_NAME,
-        )}
-      >
-        <div className="flex flex-col gap-0.5">
-          {daemons.map((daemon) => (
-            <DaemonRow
-              key={daemon.name}
-              snapshot={daemon}
-              selected={daemon.name === selectedName}
-              onSelect={() => select(daemon.name)}
-            />
-          ))}
+      {ompServices.length > 0 ? <OmpLaunchServices services={ompServices} /> : null}
+      {daemons.length > 0 ? (
+        <div
+          className={cn(
+            "max-h-40 shrink-0 overflow-y-auto border-border border-b p-1.5",
+            THIN_SCROLLBAR_CLASS_NAME,
+          )}
+        >
+          <div className="flex flex-col gap-0.5">
+            {daemons.map((daemon) => (
+              <DaemonRow
+                key={daemon.name}
+                snapshot={daemon}
+                selected={daemon.name === selectedName}
+                onSelect={() => select(daemon.name)}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
       {selected !== null && <DaemonDetail snapshot={selected} />}
     </div>
   );

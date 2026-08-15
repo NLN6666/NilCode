@@ -1,4 +1,5 @@
 import {
+  ADVISOR_ACTIVITY_KIND,
   ApprovalRequestId,
   EventId,
   isToolLifecycleItemType,
@@ -531,6 +532,27 @@ export function projectProviderRuntimeActivities(
     ];
   }
   switch (event.type) {
+    case "omp.advisor.note": {
+      return [
+        {
+          id: event.eventId,
+          createdAt: event.createdAt,
+          tone: event.payload.severity === "blocker" ? "error" : "info",
+          kind: ADVISOR_ACTIVITY_KIND,
+          summary: event.payload.content,
+          payload: toActivityPayload({
+            severity: event.payload.severity,
+            channel: event.payload.delivery,
+            source: event.payload.source,
+            advisorId: event.payload.advisorId,
+            turn: event.payload.turn,
+          }),
+          turnId: toTurnId(event.turnId) ?? null,
+          ...maybeSequence,
+        },
+      ];
+    }
+
     case "session.configured": {
       const payload = buildConfiguredContextWindowPayload(event);
       if (!payload) {

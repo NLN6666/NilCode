@@ -373,6 +373,8 @@ function formatProviderLabel(provider: ProviderKind): string {
       return "Kilo";
     case "opencode":
       return "OpenCode";
+    case "omp":
+      return "Oh My Pi";
     case "pi":
       return "Pi";
   }

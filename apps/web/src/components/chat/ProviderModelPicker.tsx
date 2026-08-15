@@ -111,7 +111,10 @@ function providerIconClassName(
   provider: ProviderKind | ProviderPickerKind,
   fallbackClassName: string,
 ): string {
-  return provider === "claudeAgent" || provider === "antigravity" || provider === "pi"
+  return provider === "claudeAgent" ||
+    provider === "antigravity" ||
+    provider === "omp" ||
+    provider === "pi"
     ? "text-foreground"
     : fallbackClassName;
 }
@@ -290,6 +293,7 @@ export const ProviderModelMenuItems = function ProviderModelMenuItems(
       (provider === "kilo" ||
         provider === "opencode" ||
         provider === "cursor" ||
+        provider === "omp" ||
         provider === "pi") &&
       providerOptions.length >= SEARCHABLE_MODEL_PICKER_THRESHOLD;
     const normalizedModelSearchQuery = deferredModelSearchQuery.trim().toLowerCase();
@@ -329,8 +333,8 @@ export const ProviderModelMenuItems = function ProviderModelMenuItems(
         </MenuRadioGroup>
       ) : (
         <div className="px-2 py-2 text-muted-foreground text-sm">
-          {provider === "pi" && normalizedModelSearchQuery.length === 0
-            ? "No Pi models found"
+          {(provider === "omp" || provider === "pi") && normalizedModelSearchQuery.length === 0
+            ? `No ${provider === "omp" ? "Oh My Pi" : "Pi"} models found`
             : "No matches"}
         </div>
       );

@@ -41,6 +41,7 @@ export const COMPOSER_PROVIDER_KINDS = [
   "droid",
   "kilo",
   "opencode",
+  "omp",
   "pi",
 ] as const satisfies readonly ProviderKind[];
 
@@ -206,6 +207,14 @@ export function makeModelSelection(
           ? { options: options as Extract<ModelSelection, { provider: "opencode" }>["options"] }
           : {}),
       };
+    case "omp":
+      return {
+        provider,
+        model,
+        ...(options
+          ? { options: options as Extract<ModelSelection, { provider: "omp" }>["options"] }
+          : {}),
+      };
     case "pi":
       return {
         provider,
@@ -254,6 +263,10 @@ export function normalizeProviderModelOptions(
   const kiloCandidate =
     candidate?.kilo && typeof candidate.kilo === "object"
       ? (candidate.kilo as Record<string, unknown>)
+      : null;
+  const ompCandidate =
+    candidate?.omp && typeof candidate.omp === "object"
+      ? (candidate.omp as Record<string, unknown>)
       : null;
   const piCandidate =
     candidate?.pi && typeof candidate.pi === "object"
@@ -384,6 +397,8 @@ export function normalizeProviderModelOptions(
           ...(kiloAgent !== undefined ? { agent: kiloAgent } : {}),
         }
       : undefined;
+  const ompThinkingLevel = trimStringOrUndefined(ompCandidate?.thinkingLevel);
+  const omp = ompThinkingLevel !== undefined ? { thinkingLevel: ompThinkingLevel } : undefined;
   const piThinkingLevel: PiThinkingLevel | undefined =
     piCandidate?.thinkingLevel === "off" ||
     piCandidate?.thinkingLevel === "minimal" ||
@@ -403,6 +418,7 @@ export function normalizeProviderModelOptions(
     !droid &&
     !kilo &&
     !opencode &&
+    !omp &&
     !pi
   ) {
     return null;
@@ -416,6 +432,7 @@ export function normalizeProviderModelOptions(
     ...(droid ? { droid } : {}),
     ...(kilo ? { kilo } : {}),
     ...(opencode ? { opencode } : {}),
+    ...(omp ? { omp } : {}),
     ...(pi ? { pi } : {}),
   };
 }
@@ -488,9 +505,11 @@ export function normalizeModelSelection(
                   ? modelOptions?.cursor
                   : provider === "opencode"
                     ? modelOptions?.opencode
-                    : provider === "pi"
-                      ? modelOptions?.pi
-                      : undefined;
+                    : provider === "omp"
+                      ? modelOptions?.omp
+                      : provider === "pi"
+                        ? modelOptions?.pi
+                        : undefined;
   const normalizedOptions =
     provider === "antigravity" && hasLegacyAntigravityEffort
       ? {

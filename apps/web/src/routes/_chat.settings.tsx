@@ -260,6 +260,7 @@ function SettingsRouteView() {
     settings.customDroidModels.length > 0 ||
     settings.customKiloModels.length > 0 ||
     settings.customOpenCodeModels.length > 0 ||
+    settings.customOmpModels.length > 0 ||
     settings.customPiModels.length > 0
       ? ["Custom models"]
       : []),

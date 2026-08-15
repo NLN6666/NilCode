@@ -674,6 +674,35 @@ export const settings = {
       noSafeCommand:
         "A newer version is available, but Synara could not identify a safe one-click update command for this installation.",
       passwordConfigured: "Configured — enter a replacement or leave blank",
+      ompPolicy: {
+        title: "OMP-native session policy",
+        owner: "OMP owned",
+        enabled: "Enabled",
+        degraded: "Degraded",
+        launch: "Launch",
+        advisor: "Advisor",
+        memory: "Memory",
+        autoLearn: "Auto-Learn",
+        sharedHome: "Uses the shared ~/.omp home; Synara does not set PI_CODING_AGENT_DIR.",
+        overlay: "Synara process overlay",
+        memoryEffective: "Effective backend",
+        memoryUser: "user configuration",
+        memoryFallback: "Synara local fallback",
+        advisorRole: "Advisor model role",
+        autoLearnDetail: "Auto-continue enabled · experimental",
+        autoLearnCost: "Auto-Learn can use extra tokens and write learned data to disk.",
+        typedLive: "Typed OMP runtime",
+        typedFallback: "Configured-policy-only fallback",
+        runtimeVersion: "OMP version",
+        runtimeSessions: "Active typed sessions",
+        advisorLive: "Advisor runtime",
+        advisorRisk: "Advisor tool risk",
+        autoLearnLive: "Auto-Learn runtime",
+        memoryLive: "Memory runtime",
+        launchLive: "OMP Launch authority",
+        typedBoundary:
+          "No compatible typed OMP session is active. Synara keeps the Phase 2 configured-policy-only view and bounded settle fallback.",
+      },
     },
     update: {
       action: "Update",
@@ -757,6 +786,10 @@ export const settings = {
         label: "OpenAI response WebSockets",
         description:
           "Use Opencode's experimental OpenAI response WebSocket transport for managed local servers.",
+      },
+      ompBinaryPath: {
+        label: "Oh My Pi binary path",
+        placeholder: "Oh My Pi binary path",
       },
       piBinaryPath: { label: "Pi binary path", placeholder: "Pi binary path" },
       piAgentDir: {

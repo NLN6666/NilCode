@@ -46,6 +46,188 @@ export const ServerProviderAuthStatus = Schema.Literals([
 ]);
 export type ServerProviderAuthStatus = typeof ServerProviderAuthStatus.Type;
 
+const OmpTypedFeatureCapability = Schema.Struct({
+  available: Schema.Boolean,
+  enabled: Schema.Boolean,
+  observable: Schema.Boolean,
+  controllable: Schema.Boolean,
+  recoverable: Schema.Boolean,
+  methods: Schema.Array(TrimmedNonEmptyString),
+  events: Schema.Array(TrimmedNonEmptyString),
+  reason: Schema.optional(TrimmedNonEmptyString),
+});
+
+export const OmpRuntimeService = Schema.Struct({
+  serviceId: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  state: Schema.Literals([
+    "starting",
+    "running",
+    "ready",
+    "restarting",
+    "stopping",
+    "exited",
+    "failed",
+  ]),
+  pid: Schema.optional(PositiveInt),
+  startedAt: Schema.optional(IsoDateTime),
+  exitedAt: Schema.optional(IsoDateTime),
+  exitCode: Schema.optional(Schema.Number),
+  failure: Schema.optional(TrimmedNonEmptyString),
+  restartCount: NonNegativeInt,
+  outputBytes: NonNegativeInt,
+  owner: Schema.optional(TrimmedNonEmptyString),
+  persist: Schema.Boolean,
+  detached: Schema.Boolean,
+});
+export type OmpRuntimeService = typeof OmpRuntimeService.Type;
+
+const OmpLaunchTarget = Schema.Struct({
+  owner: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+});
+
+export const OmpLaunchDescribeInput = OmpLaunchTarget;
+export type OmpLaunchDescribeInput = typeof OmpLaunchDescribeInput.Type;
+
+export const OmpLaunchDescribeResult = Schema.Struct({
+  service: OmpRuntimeService,
+  command: TrimmedNonEmptyString,
+  cwd: TrimmedNonEmptyString,
+  restart: TrimmedNonEmptyString,
+});
+export type OmpLaunchDescribeResult = typeof OmpLaunchDescribeResult.Type;
+
+export const OmpLaunchReadLogsInput = Schema.Struct({
+  ...OmpLaunchTarget.fields,
+  lines: Schema.optional(NonNegativeInt).pipe(Schema.withDecodingDefault(() => 100)),
+  cursor: Schema.optional(NonNegativeInt).pipe(Schema.withDecodingDefault(() => 0)),
+});
+export type OmpLaunchReadLogsInput = typeof OmpLaunchReadLogsInput.Type;
+
+export const OmpLaunchReadLogsResult = Schema.Struct({
+  content: Schema.String,
+  nextCursor: NonNegativeInt,
+  state: TrimmedNonEmptyString,
+  timedOut: Schema.Boolean,
+});
+export type OmpLaunchReadLogsResult = typeof OmpLaunchReadLogsResult.Type;
+
+export const OmpLaunchSendInput = Schema.Struct({
+  ...OmpLaunchTarget.fields,
+  text: Schema.String,
+});
+export type OmpLaunchSendInput = typeof OmpLaunchSendInput.Type;
+
+export const OmpLaunchStopInput = Schema.Struct({
+  ...OmpLaunchTarget.fields,
+  timeoutSeconds: Schema.optional(NonNegativeInt).pipe(Schema.withDecodingDefault(() => 5)),
+});
+export type OmpLaunchStopInput = typeof OmpLaunchStopInput.Type;
+
+export const OmpLaunchRestartInput = OmpLaunchTarget;
+export type OmpLaunchRestartInput = typeof OmpLaunchRestartInput.Type;
+
+const OmpRuntimeDrainStatus = Schema.Struct({
+  settled: Schema.Boolean,
+  cancelled: Schema.optional(Schema.Boolean),
+  updatedAt: Schema.optional(IsoDateTime),
+  error: Schema.optional(TrimmedNonEmptyString),
+});
+
+export const OmpProviderRuntimeStatus = Schema.Struct({
+  mode: Schema.Literals(["configured-only", "typed"]),
+  sessionCount: NonNegativeInt,
+  ompVersion: Schema.optional(TrimmedNonEmptyString),
+  generation: Schema.optional(TrimmedNonEmptyString),
+  updatedAt: Schema.optional(IsoDateTime),
+  degradedReason: Schema.optional(TrimmedNonEmptyString),
+  features: Schema.optional(
+    Schema.Struct({
+      advisor: Schema.optional(OmpTypedFeatureCapability),
+      autolearn: Schema.optional(OmpTypedFeatureCapability),
+      memory: Schema.optional(OmpTypedFeatureCapability),
+      launch: Schema.optional(OmpTypedFeatureCapability),
+      managedSkills: Schema.optional(OmpTypedFeatureCapability),
+    }),
+  ),
+  advisor: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.Boolean,
+      active: Schema.Boolean,
+      toolRisk: Schema.Literals(["read-only", "write-or-exec"]),
+      grantedTools: Schema.Array(TrimmedNonEmptyString),
+      inFlight: Schema.Boolean,
+      drain: Schema.optional(OmpRuntimeDrainStatus),
+      status: Schema.optional(Schema.Unknown),
+    }),
+  ),
+  autolearn: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.Boolean,
+      autoContinue: Schema.Boolean,
+      state: TrimmedNonEmptyString,
+      captureGeneration: NonNegativeInt,
+      turn: Schema.optional(NonNegativeInt),
+      pending: Schema.Boolean,
+      drain: Schema.optional(OmpRuntimeDrainStatus),
+      lastResult: Schema.optional(TrimmedNonEmptyString),
+      lastFailure: Schema.optional(TrimmedNonEmptyString),
+    }),
+  ),
+  memory: Schema.optional(
+    Schema.Struct({
+      backend: TrimmedNonEmptyString,
+      active: Schema.Boolean,
+      writable: Schema.Boolean,
+      searchable: Schema.Boolean,
+      scope: Schema.optional(TrimmedNonEmptyString),
+      storage: Schema.optional(Schema.Unknown),
+      queue: Schema.optional(Schema.Unknown),
+      error: Schema.optional(TrimmedNonEmptyString),
+    }),
+  ),
+  launch: Schema.optional(
+    Schema.Struct({
+      authority: Schema.Literal("omp"),
+      services: Schema.Array(OmpRuntimeService),
+    }),
+  ),
+});
+export type OmpProviderRuntimeStatus = typeof OmpProviderRuntimeStatus.Type;
+
+/** OMP-only configured policy plus the latest typed runtime projection when negotiated. */
+export const OmpProviderPolicyStatus = Schema.Struct({
+  owner: Schema.Literal("omp-native"),
+  overlayPath: TrimmedNonEmptyString,
+  sharedHome: Schema.Literal(true),
+  launch: Schema.Struct({
+    configured: Schema.Literal(true),
+    observability: Schema.Literal("acp-tool-activity-only"),
+  }),
+  advisor: Schema.Struct({
+    configured: Schema.Literal(true),
+    state: Schema.Literals(["configured", "degraded"]),
+    modelRole: Schema.optional(TrimmedNonEmptyString),
+    warning: Schema.optional(TrimmedNonEmptyString),
+    observability: Schema.Literal("transcript-only"),
+  }),
+  memory: Schema.Struct({
+    backend: Schema.Literals(["local", "hindsight", "mnemopi"]),
+    source: Schema.Literals(["user-config", "synara-fallback"]),
+    observability: Schema.Literal("ordinary-tools-only"),
+  }),
+  autoLearn: Schema.Struct({
+    configured: Schema.Literal(true),
+    autoContinue: Schema.Literal(true),
+    experimental: Schema.Literal(true),
+    observability: Schema.Literal("bounded-settle-only"),
+  }),
+  typedObservability: Schema.Literal("phase-3-required"),
+  runtime: Schema.optional(OmpProviderRuntimeStatus),
+});
+export type OmpProviderPolicyStatus = typeof OmpProviderPolicyStatus.Type;
+
 export const ServerProviderStatus = Schema.Struct({
   provider: ProviderKind,
   status: ServerProviderStatusState,
@@ -59,6 +241,7 @@ export const ServerProviderStatus = Schema.Struct({
   version: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   checkedAt: IsoDateTime,
   message: Schema.optional(TrimmedNonEmptyString),
+  ompPolicy: Schema.optionalKey(OmpProviderPolicyStatus),
   versionAdvisory: Schema.optionalKey(
     Schema.Struct({
       status: Schema.Literals(["unknown", "current", "behind_latest"]),

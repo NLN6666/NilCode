@@ -151,6 +151,14 @@ import type { StudioListThreadOutputsInput, StudioListThreadOutputsResult } from
 import type {
   ServerConfig,
   ServerDiagnosticsResult,
+  OmpLaunchDescribeInput,
+  OmpLaunchDescribeResult,
+  OmpLaunchReadLogsInput,
+  OmpLaunchReadLogsResult,
+  OmpLaunchRestartInput,
+  OmpLaunchSendInput,
+  OmpLaunchStopInput,
+  OmpRuntimeService,
   ServerGenerateAutomationIntentInput,
   ServerGenerateAutomationIntentResult,
   ServerGenerateThreadRecapInput,
@@ -666,6 +674,14 @@ export interface NativeApi {
     stop: (input: DaemonStopInput) => Promise<DaemonSnapshot>;
     restart: (input: DaemonRestartInput) => Promise<DaemonSnapshot>;
     onEvent: (callback: (event: DaemonEvent) => void) => () => void;
+  };
+  /** OMP-native Launch controls. These never route through Synara's daemon broker. */
+  ompLaunch: {
+    describe: (input: OmpLaunchDescribeInput) => Promise<OmpLaunchDescribeResult>;
+    readLogs: (input: OmpLaunchReadLogsInput) => Promise<OmpLaunchReadLogsResult>;
+    sendText: (input: OmpLaunchSendInput) => Promise<OmpRuntimeService>;
+    stop: (input: OmpLaunchStopInput) => Promise<OmpRuntimeService>;
+    restart: (input: OmpLaunchRestartInput) => Promise<OmpRuntimeService>;
   };
   projects: {
     discoverScripts: (input: ProjectDiscoverScriptsInput) => Promise<ProjectDiscoverScriptsResult>;

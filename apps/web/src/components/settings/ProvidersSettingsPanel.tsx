@@ -33,6 +33,7 @@ import { useMessages } from "../../i18n/context";
 import type { Messages } from "../../i18n/locales/en";
 import { CentralIcon } from "~/lib/central-icons";
 import { DownloadIcon, ExternalLinkIcon, Loader2Icon } from "~/lib/icons";
+import { projectOmpProviderPolicy, type OmpPolicyFeatureId } from "~/lib/ompProviderPolicy";
 import {
   serverConfigQueryOptions,
   serverQueryKeys,
@@ -81,6 +82,7 @@ type ProviderInstallTextKey =
   | "kiloServerUrl"
   | "openCodeBinaryPath"
   | "openCodeServerUrl"
+  | "ompBinaryPath"
   | "piBinaryPath"
   | "piAgentDir";
 type ProviderInstallPasswordKey = "kiloServerPassword" | "openCodeServerPassword";
@@ -324,6 +326,20 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
         kind: "boolean",
         settingsKey: "openCodeExperimentalWebSockets",
         copy: (c) => c.fields.openCodeExperimentalWebSockets,
+      },
+    ],
+  },
+  {
+    provider: "omp",
+    docs: [
+      { labelKey: "install", href: "https://github.com/can1357/oh-my-pi" },
+      { labelKey: "config", href: "https://github.com/can1357/oh-my-pi" },
+    ],
+    fields: [
+      {
+        kind: "text",
+        settingsKey: "ompBinaryPath",
+        copy: (c) => ({ ...c.fields.ompBinaryPath, description: binaryHint(c, "omp") }),
       },
     ],
   },
@@ -631,6 +647,139 @@ function ProviderInstallFieldControl(props: {
   );
 }
 
+function formatOmpRuntimeDetail(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus | undefined }) {
+  const m = useMessages();
+  const projection = projectOmpProviderPolicy(props.status);
+  if (!projection) return null;
+  const copy = m.settings.providers.tools.ompPolicy;
+  const featureLabels: Record<OmpPolicyFeatureId, string> = {
+    launch: copy.launch,
+    advisor: copy.advisor,
+    memory: copy.memory,
+    autoLearn: copy.autoLearn,
+  };
+  const runtime = projection.runtime;
+
+  return (
+    <div className={cn(SETTINGS_OUTLINED_SURFACE_CLASS_NAME, "space-y-3 p-3 text-xs")}>
+      <div className="font-medium text-foreground">{copy.title}</div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {projection.features.map((feature) => {
+          const value =
+            feature.id === "advisor" && projection.advisorState === "degraded"
+              ? copy.degraded
+              : feature.id === "memory"
+                ? projection.memoryBackend
+                : feature.id === "autoLearn"
+                  ? copy.autoLearnDetail
+                  : copy.enabled;
+          return (
+            <div key={feature.id} className="flex items-start justify-between gap-3">
+              <span className="text-muted-foreground">{featureLabels[feature.id]}</span>
+              <span className="text-right text-foreground">
+                {value} · {copy.owner}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="space-y-1 text-muted-foreground">
+        <div>{copy.sharedHome}</div>
+        <div>
+          {copy.memoryEffective}:{" "}
+          <span className="text-foreground">{projection.memoryBackend}</span> ·{" "}
+          {projection.memorySource === "user-config" ? copy.memoryUser : copy.memoryFallback}
+        </div>
+        {projection.advisorModelRole ? (
+          <div>
+            {copy.advisorRole}:{" "}
+            <code className="text-foreground">{projection.advisorModelRole}</code>
+          </div>
+        ) : null}
+        <div>{copy.autoLearnCost}</div>
+        <div>
+          {copy.overlay}:{" "}
+          <code className="break-all text-foreground">{projection.overlayPath}</code>
+        </div>
+      </div>
+      {projection.advisorWarning ? (
+        <div className="rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-2 text-amber-950 dark:text-amber-100">
+          {projection.advisorWarning}
+        </div>
+      ) : null}
+      {runtime?.mode === "typed" ? (
+        <div className="space-y-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2.5 py-2 text-muted-foreground">
+          <div className="font-medium text-foreground">{copy.typedLive}</div>
+          <div>
+            {copy.runtimeVersion}:{" "}
+            <span className="text-foreground">{runtime.ompVersion ?? "—"}</span>
+            {" · "}
+            {copy.runtimeSessions}: <span className="text-foreground">{runtime.sessionCount}</span>
+          </div>
+          {runtime.advisor ? (
+            <div>
+              {copy.advisorLive}:{" "}
+              <span className="text-foreground">{runtime.advisor.active ? "active" : "idle"}</span>
+              {" · "}
+              {copy.advisorRisk}:{" "}
+              <span className="text-foreground">{runtime.advisor.toolRisk}</span>
+              {runtime.advisor.inFlight ? " · in flight" : ""}
+              {runtime.advisor.drain
+                ? ` · drain ${runtime.advisor.drain.settled ? "settled" : "degraded"}${runtime.advisor.drain.error ? `: ${runtime.advisor.drain.error}` : ""}`
+                : ""}
+            </div>
+          ) : null}
+          {runtime.autolearn ? (
+            <div>
+              {copy.autoLearnLive}:{" "}
+              <span className="text-foreground">{runtime.autolearn.state}</span>
+              {` · generation ${runtime.autolearn.captureGeneration}`}
+              {runtime.autolearn.pending ? " · pending" : ""}
+              {runtime.autolearn.drain
+                ? ` · drain ${runtime.autolearn.drain.settled ? "settled" : "degraded"}${runtime.autolearn.drain.cancelled ? " (cancelled)" : ""}${runtime.autolearn.drain.error ? `: ${runtime.autolearn.drain.error}` : ""}`
+                : ""}
+              {runtime.autolearn.lastFailure ? ` · ${runtime.autolearn.lastFailure}` : ""}
+            </div>
+          ) : null}
+          {runtime.memory ? (
+            <div>
+              {copy.memoryLive}: <span className="text-foreground">{runtime.memory.backend}</span>
+              {runtime.memory.scope ? ` · ${runtime.memory.scope}` : ""}
+              {formatOmpRuntimeDetail(runtime.memory.queue)
+                ? ` · queue ${formatOmpRuntimeDetail(runtime.memory.queue)}`
+                : ""}
+              {runtime.memory.error ? ` · ${runtime.memory.error}` : ""}
+            </div>
+          ) : null}
+          {runtime.launch ? (
+            <div>
+              {copy.launchLive}: <span className="text-foreground">OMP</span>
+              {` · ${runtime.launch.services.length} service(s)`}
+            </div>
+          ) : null}
+        </div>
+      ) : runtime?.degradedReason ? (
+        <div className="rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-2 text-amber-950 dark:text-amber-100">
+          {copy.typedFallback}: {runtime.degradedReason}
+        </div>
+      ) : null}
+      {projection.typedObservabilityPending ? (
+        <div className="text-muted-foreground">{copy.typedBoundary}</div>
+      ) : null}
+    </div>
+  );
+}
+
 function ProviderToolRow(props: {
   config: ProviderInstallSettings;
   open: boolean;
@@ -761,6 +910,9 @@ function ProviderToolRow(props: {
                   updateSettings={props.updateSettings}
                 />
               ))}
+              {props.config.provider === "omp" ? (
+                <OmpProviderPolicyDetails status={props.providerStatus} />
+              ) : null}
             </div>
           </div>
         </CollapsiblePanel>

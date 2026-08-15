@@ -105,12 +105,14 @@ const runListSkills = (input: {
 const runListModels = (input: {
   adapter: Partial<ProviderAdapterShape<ProviderAdapterError>>;
   enabled: boolean;
+  provider?: ProviderKind;
 }) => {
+  const provider = input.provider ?? "cursor";
   const baseLayer = Layer.mergeAll(
     makeConfigLayer(),
     ServerSettingsService.layerTest({
       providers: {
-        cursor: {
+        [provider]: {
           enabled: input.enabled,
         },
       },
@@ -120,7 +122,7 @@ const runListModels = (input: {
   const testLayer = ProviderDiscoveryServiceLive.pipe(Layer.provideMerge(baseLayer));
   const program = Effect.gen(function* () {
     const discovery = yield* ProviderDiscoveryService;
-    return yield* discovery.listModels({ provider: "cursor" });
+    return yield* discovery.listModels({ provider, cwd });
   }).pipe(Effect.provide(testLayer));
   return Effect.runPromise(
     program as unknown as Effect.Effect<ProviderListModelsResult, never, never>,
@@ -229,6 +231,30 @@ describe("ProviderDiscoveryService.getComposerCapabilities", () => {
 });
 
 describe("ProviderDiscoveryService.listModels", () => {
+  it("routes Oh My Pi runtime discovery through the registered adapter", async () => {
+    const result = await runListModels({
+      provider: "omp",
+      enabled: true,
+      adapter: {
+        listModels: (input) =>
+          Effect.succeed({
+            models: [{ slug: "anthropic/claude-sonnet-4-5", name: "Claude Sonnet 4.5" }],
+            source: "omp-acp",
+            cached: false,
+          }).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                expect(input.cwd).toBe(cwd);
+              }),
+            ),
+          ),
+      },
+    });
+
+    expect(result.source).toBe("omp-acp");
+    expect(result.models[0]?.slug).toBe("anthropic/claude-sonnet-4-5");
+  });
+
   it("does not invoke the adapter for a disabled provider", async () => {
     let adapterCalls = 0;
     const result = await runListModels({

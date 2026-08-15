@@ -68,12 +68,14 @@ const SETTINGS = {
   customGrokModels: [],
   customKiloModels: [],
   customOpenCodeModels: [],
+  customOmpModels: [],
   customPiModels: [],
   droidBinaryPath: "",
   grokBinaryPath: "",
   hiddenProviders: [],
   kiloBinaryPath: "",
   openCodeBinaryPath: "",
+  ompBinaryPath: "",
   piAgentDir: "",
   piBinaryPath: "",
 };
@@ -277,5 +279,44 @@ describe("useProviderModelCatalog", () => {
     expect(catalog?.runtimeModelsByProvider.cursor).toEqual([
       { slug: "composer-2", name: "Composer 2" },
     ]);
+  });
+
+  it("uses the Oh My Pi ACP catalog and source as the selected runtime model set", () => {
+    modelQueries.set("omp", {
+      data: {
+        models: [
+          {
+            slug: "anthropic/claude-sonnet-4-5",
+            name: "Claude Sonnet 4.5",
+            options: [
+              {
+                id: "thinkingLevel",
+                label: "Thinking",
+                type: "select",
+                options: [{ value: "adaptive", label: "Adaptive" }],
+              },
+            ],
+          },
+        ],
+        source: "omp-acp",
+        cached: false,
+      },
+      isFetching: false,
+      isLoading: false,
+      isPlaceholderData: false,
+    });
+
+    const catalog = readCatalogRenders({
+      selectedProvider: "omp",
+      discoveryEnabled: false,
+      modelHintByProvider: { omp: "anthropic/claude-sonnet-4-5" },
+    }).at(-1);
+
+    expect(readModelQueryEnabled("omp")).toBe(true);
+    expect(catalog?.modelOptionsByProvider.omp.map((model) => model.slug)).toEqual([
+      "anthropic/claude-sonnet-4-5",
+    ]);
+    expect(catalog?.runtimeModelsByProvider.omp).toHaveLength(1);
+    expect(catalog?.selectedProviderRuntimeModelDiscoveryPending).toBe(false);
   });
 });
