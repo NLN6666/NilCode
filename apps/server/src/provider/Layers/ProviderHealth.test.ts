@@ -2033,7 +2033,10 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
               assert.strictEqual(command.toLowerCase(), "c:\\windows\\system32\\cmd.exe");
               assert.strictEqual(windowsCommandIncludes(args, binaryPath), true);
               assert.strictEqual(windowsCommandIncludes(args, '"--version"'), true);
-              assert.strictEqual(args.some((arg) => arg === "acp"), false);
+              assert.strictEqual(
+                args.some((arg) => arg === "acp"),
+                false,
+              );
               return { stdout: "omp/17.3.3\n", stderr: "", code: 0 };
             }),
           ),

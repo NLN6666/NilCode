@@ -19,10 +19,10 @@
 
 ### 2.1 当前拓扑
 
-| 仓库 | 原始 checkout | publication worktree | base | branch |
-| --- | --- | --- | --- | --- |
-| NilCode | `D:/Codes/NilCode`，`dev@58e538361`，clean，ahead `origin/dev` 302 | `D:/Codes/NilCode-phase4-publish` | `origin/dev@c4c79f32` | `agent/synara-omp-provider` |
-| OMP | `D:/Codes/oh-my-pi-phase3`，`main@f7fd74b63b`，clean，ahead 1 / behind 31 | `D:/Codes/oh-my-pi-phase4-publish` | `origin/main@ffd53ff92a` | `agent/omp-acp-typed-extensions` |
+| 仓库    | 原始 checkout                                                             | publication worktree               | base                     | branch                           |
+| ------- | ------------------------------------------------------------------------- | ---------------------------------- | ------------------------ | -------------------------------- |
+| NilCode | `D:/Codes/NilCode`，`dev@58e538361`，clean，ahead `origin/dev` 302        | `D:/Codes/NilCode-phase4-publish`  | `origin/dev@c4c79f32`    | `agent/synara-omp-provider`      |
+| OMP     | `D:/Codes/oh-my-pi-phase3`，`main@f7fd74b63b`，clean，ahead 1 / behind 31 | `D:/Codes/oh-my-pi-phase4-publish` | `origin/main@ffd53ff92a` | `agent/omp-acp-typed-extensions` |
 
 - GitHub 账户：`NLN6666`；认证 scope 已核验包含 `repo` / `workflow`。
 - OMP 官方仓库无 push 权限；使用 `NLN6666/oh-my-pi` fork remote 发布 head branch。
@@ -134,22 +134,22 @@
 
 ## 10. 验收台账
 
-| 项目 | 状态 | 证据 |
-| --- | --- | --- |
-| W0 auth/remotes/releases | DONE | `NLN6666`; official OMP `v17.3.4`; scoped bases above |
-| #496 reference decision | DONE | 独立发布；仅参考通用 ACP lifecycle/config wiring |
-| Plan 020 scoped commit | DONE | `978012821` |
-| OMP rebase/cherry-pick | DONE | `origin/main@ffd53ff92a` → `bc07667437` |
-| OMP focused/types/build | PARTIAL | fresh `check:ts` PASS；focused 34/34；workspace build blocked by missing `zip` + native setup |
-| formal native gate | LOCAL BLOCKED | pinned nightly install stalled；必须由官方 CI native gate terminal evidence 关闭 |
-| OMP Draft PR + CI | PENDING | no merge |
-| NilCode 15-commit closure | DONE WITH ADAPTATION | 15 scoped commits; excluded provider-isolation/VCS/device/service-panel prerequisites |
-| NilCode focused/build | DONE | fresh server 56/56；contracts 68/68；Web 38/38 + health 9/9；三项 production build；heavyweight NOT RUN |
-| NilCode Draft PR + CI | PENDING | links OMP PR and discloses #496 overlap |
-| one review / one fix | DONE | 7 candidates triaged；4 direct fixes + non-retryable Memory timeout；no second review |
-| artifact provenance | PENDING | version/files/native/hash/source |
-| isolated install/smoke/rollback | PENDING | no global overwrite |
-| official release adoption | BLOCKED BY UPSTREAM | `v17.3.4` lacks `f7fd74b63b` |
+| 项目                            | 状态                 | 证据                                                                                                      |
+| ------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------- |
+| W0 auth/remotes/releases        | DONE                 | `NLN6666`; official OMP `v17.3.4`; scoped bases above                                                     |
+| #496 reference decision         | DONE                 | 独立发布；仅参考通用 ACP lifecycle/config wiring                                                          |
+| Plan 020 scoped commit          | DONE                 | `978012821`                                                                                               |
+| OMP rebase/cherry-pick          | DONE                 | `origin/main@ffd53ff92a` → `bc07667437`                                                                   |
+| OMP focused/types/build         | PARTIAL              | fresh `check:ts` PASS；focused 34/34；workspace build blocked by missing `zip` + native setup             |
+| formal native gate              | LOCAL BLOCKED        | pinned nightly install stalled；必须由官方 CI native gate terminal evidence 关闭                          |
+| OMP Draft PR + CI               | PENDING              | no merge                                                                                                  |
+| NilCode 15-commit closure       | DONE WITH ADAPTATION | 15 scoped commits; excluded provider-isolation/VCS/device/service-panel prerequisites                     |
+| NilCode focused/build           | DONE                 | fresh server 56/56；contracts 68/68；Web 38/38 + health 9/9；三项 production build；heavyweight NOT RUN   |
+| NilCode Draft PR + CI           | IN PROGRESS          | Draft #1；首轮 main job stopped at format；26 PR-owned files scoped-formatted，1 base-only file unchanged |
+| one review / one fix            | DONE                 | 7 candidates triaged；4 direct fixes + non-retryable Memory timeout；no second review                     |
+| artifact provenance             | PENDING              | version/files/native/hash/source                                                                          |
+| isolated install/smoke/rollback | PENDING              | no global overwrite                                                                                       |
+| official release adoption       | BLOCKED BY UPSTREAM  | `v17.3.4` lacks `f7fd74b63b`                                                                              |
 
 ## 11. 最终不变量
 

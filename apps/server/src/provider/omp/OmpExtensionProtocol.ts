@@ -100,7 +100,9 @@ function optionalRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
+    : [];
 }
 
 function requiredString(value: unknown, label: string): string {
@@ -134,14 +136,19 @@ export function decodeOmpExtensionEnvelope(value: unknown): OmpExtensionEnvelope
   if (value.schemaVersion !== OMP_EXTENSION_SCHEMA_VERSION) {
     throw new Error(`OMP extension unsupported schemaVersion: ${String(value.schemaVersion)}.`);
   }
-  if (typeof value.sequence !== "number" || !Number.isSafeInteger(value.sequence) || value.sequence < 1) {
+  if (
+    typeof value.sequence !== "number" ||
+    !Number.isSafeInteger(value.sequence) ||
+    value.sequence < 1
+  ) {
     throw new Error("OMP extension sequence must be a positive safe integer.");
   }
   if (value.data !== undefined && !isRecord(value.data)) {
     throw new Error("OMP extension data must be an object when present.");
   }
   const timestamp = requiredString(value.timestamp, "timestamp");
-  if (!Number.isFinite(Date.parse(timestamp))) throw new Error("OMP extension timestamp must be ISO date-time.");
+  if (!Number.isFinite(Date.parse(timestamp)))
+    throw new Error("OMP extension timestamp must be ISO date-time.");
   const data = value.data;
   const error = decodeError(value.error);
   const correlationId = optionalString(value.correlationId, "correlationId");
@@ -212,10 +219,7 @@ export function isKnownOmpExtensionNotification(method: string): boolean {
   return EVENT_SET.has(method);
 }
 
-export type OmpExtensionRuntime = Pick<
-  AcpSessionRuntimeShape,
-  "handleExtNotification" | "request"
->;
+export type OmpExtensionRuntime = Pick<AcpSessionRuntimeShape, "handleExtNotification" | "request">;
 
 export function registerOmpExtensionNotifications(
   runtime: OmpExtensionRuntime,
@@ -268,9 +272,7 @@ export function requestOmpExtension(
     Effect.flatMap((envelope) =>
       envelope.error
         ? Effect.fail(
-            new Error(
-              `${input.method} failed (${envelope.error.code}): ${envelope.error.message}`,
-            ),
+            new Error(`${input.method} failed (${envelope.error.code}): ${envelope.error.message}`),
           )
         : Effect.succeed(envelope),
     ),
@@ -291,7 +293,9 @@ export function negotiateOmpExtensions(
       params: { supportedSchemaVersions: [OMP_EXTENSION_SCHEMA_VERSION] },
     });
     if (capabilities.data?.protocol !== "omp-acp-extensions") {
-      return yield* Effect.fail(new Error("OMP returned an incompatible typed extension protocol."));
+      return yield* Effect.fail(
+        new Error("OMP returned an incompatible typed extension protocol."),
+      );
     }
     if (
       capabilities.data.selectedSchemaVersion !== OMP_EXTENSION_SCHEMA_VERSION ||
@@ -308,7 +312,9 @@ export function negotiateOmpExtensions(
       !projectFeature(advertisedFeatures.memory) ||
       !projectFeature(advertisedFeatures.launch)
     ) {
-      return yield* Effect.fail(new Error("OMP returned a malformed typed extension feature matrix."));
+      return yield* Effect.fail(
+        new Error("OMP returned a malformed typed extension feature matrix."),
+      );
     }
     let state = projectOmpEnvelopeData(
       createConfiguredOnlyOmpExtensionState("negotiating"),
@@ -348,8 +354,16 @@ export function negotiateOmpExtensions(
 export function drainOmpTurnExtensions(
   runtime: Pick<AcpSessionRuntimeShape, "request">,
   state: OmpExtensionClientState,
-  input: { readonly sessionId: string; readonly timeoutMs: number; readonly cancelAutolearn?: boolean },
-): Effect.Effect<{ readonly typed: boolean; readonly settled: boolean; readonly state: OmpExtensionClientState }> {
+  input: {
+    readonly sessionId: string;
+    readonly timeoutMs: number;
+    readonly cancelAutolearn?: boolean;
+  },
+): Effect.Effect<{
+  readonly typed: boolean;
+  readonly settled: boolean;
+  readonly state: OmpExtensionClientState;
+}> {
   if (state.mode !== "typed") return Effect.succeed({ typed: false, settled: false, state });
   return Effect.gen(function* () {
     let next = state;
@@ -458,8 +472,7 @@ function projectOmpLaunchLifecycle(
   const existing = Array.isArray(launch?.services) ? launch.services : [];
   const services = [
     ...existing.filter(
-      (candidate) =>
-        !isRecord(candidate) || candidate.serviceId !== service.serviceId,
+      (candidate) => !isRecord(candidate) || candidate.serviceId !== service.serviceId,
     ),
     service,
   ];
@@ -611,7 +624,8 @@ export function projectOmpExtensionRuntimeStatus(
   const advisorEnabled = typeof advisor?.enabled === "boolean" ? advisor.enabled : undefined;
   const advisorActive = typeof advisor?.active === "boolean" ? advisor.active : undefined;
   const autolearnEnabled = typeof autolearn?.enabled === "boolean" ? autolearn.enabled : undefined;
-  const autoContinue = typeof autolearn?.autoContinue === "boolean" ? autolearn.autoContinue : undefined;
+  const autoContinue =
+    typeof autolearn?.autoContinue === "boolean" ? autolearn.autoContinue : undefined;
   const captureGeneration =
     typeof autolearn?.captureGeneration === "number" ? autolearn.captureGeneration : undefined;
   const memoryActive = typeof memory?.active === "boolean" ? memory.active : undefined;
@@ -627,7 +641,9 @@ export function projectOmpExtensionRuntimeStatus(
     ...(features
       ? {
           features: {
-            ...(projectFeature(features.advisor) ? { advisor: projectFeature(features.advisor) } : {}),
+            ...(projectFeature(features.advisor)
+              ? { advisor: projectFeature(features.advisor) }
+              : {}),
             ...(projectFeature(features.autolearn)
               ? { autolearn: projectFeature(features.autolearn) }
               : {}),
@@ -652,20 +668,22 @@ export function projectOmpExtensionRuntimeStatus(
           },
         }
       : {}),
-    ...(autolearnEnabled !== undefined && autoContinue !== undefined && captureGeneration !== undefined
+    ...(autolearnEnabled !== undefined &&
+    autoContinue !== undefined &&
+    captureGeneration !== undefined
       ? {
           autolearn: {
             enabled: autolearnEnabled,
             autoContinue,
             state: typeof autolearn?.state === "string" ? autolearn.state : "unknown",
             captureGeneration,
-            ...(typeof autolearn?.turn === "number" && Number.isSafeInteger(autolearn.turn) && autolearn.turn >= 0
+            ...(typeof autolearn?.turn === "number" &&
+            Number.isSafeInteger(autolearn.turn) &&
+            autolearn.turn >= 0
               ? { turn: autolearn.turn }
               : {}),
             pending: autolearn?.pending === true,
-            ...(projectDrain(autolearn?.drain)
-              ? { drain: projectDrain(autolearn?.drain) }
-              : {}),
+            ...(projectDrain(autolearn?.drain) ? { drain: projectDrain(autolearn?.drain) } : {}),
             ...(typeof autolearn?.lastResult === "string"
               ? { lastResult: autolearn.lastResult }
               : {}),
@@ -675,7 +693,10 @@ export function projectOmpExtensionRuntimeStatus(
           },
         }
       : {}),
-    ...(typeof memory?.backend === "string" && memoryActive !== undefined && memoryWritable !== undefined && memorySearchable !== undefined
+    ...(typeof memory?.backend === "string" &&
+    memoryActive !== undefined &&
+    memoryWritable !== undefined &&
+    memorySearchable !== undefined
       ? {
           memory: {
             backend: memory.backend,

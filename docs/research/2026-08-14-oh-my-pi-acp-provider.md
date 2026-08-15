@@ -77,16 +77,16 @@ ACP TypeScript SDK：Synara 当前 `1.2.1`；上游当前 `1.3.0` / `01010146a73
 
 ## ACP 能力适配
 
-| 能力 | 标准 ACP v1 | OMP 当前实现 | Synara 现状 | 判断 |
-| --- | --- | --- | --- | --- |
-| 启动/认证 | `initialize`、`authenticate` | `agent` 本地凭据；客户端支持 terminal auth 时额外广告 `terminal` | runtime 已支持 auth resolver | 直接可做 |
-| 会话 | new/load/list/resume/fork/close | 全部广告并实现 | runtime 已支持 new/load/resume/fork；adapter 需补 read/import 语义 | 直接可做 |
-| Prompt/Cancel | 标准 | 已实现；取消清理有 5s 上限 | 已支持 | 直接可做 |
-| 模型/思考/模式 | session config/mode | 只暴露 `mode`、`model`、`thinking` | 已有 generic config option support | 直接可做 |
-| 文件/终端 | client capabilities | OMP 按 initialize capability 路由 | runtime 已有 handler surface | 需接到 Synara workspace/terminal 策略 |
-| 权限 | `session/request_permission` | 总是可请求，是否发请求由 OMP policy 决定 | 已有 canonical decision mapping | 需完整矩阵验证 |
-| MCP | session MCP servers | stdio/http/sse；initialize 广告 http/sse | Synara 已有 agent gateway MCP builder 模式 | 直接可做 |
-| 高级 OMP 功能状态 | 无专属标准 | 无已确认 typed capability/event | 无 OMP 投影 | 需要扩展 |
+| 能力              | 标准 ACP v1                     | OMP 当前实现                                                     | Synara 现状                                                        | 判断                                  |
+| ----------------- | ------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------- |
+| 启动/认证         | `initialize`、`authenticate`    | `agent` 本地凭据；客户端支持 terminal auth 时额外广告 `terminal` | runtime 已支持 auth resolver                                       | 直接可做                              |
+| 会话              | new/load/list/resume/fork/close | 全部广告并实现                                                   | runtime 已支持 new/load/resume/fork；adapter 需补 read/import 语义 | 直接可做                              |
+| Prompt/Cancel     | 标准                            | 已实现；取消清理有 5s 上限                                       | 已支持                                                             | 直接可做                              |
+| 模型/思考/模式    | session config/mode             | 只暴露 `mode`、`model`、`thinking`                               | 已有 generic config option support                                 | 直接可做                              |
+| 文件/终端         | client capabilities             | OMP 按 initialize capability 路由                                | runtime 已有 handler surface                                       | 需接到 Synara workspace/terminal 策略 |
+| 权限              | `session/request_permission`    | 总是可请求，是否发请求由 OMP policy 决定                         | 已有 canonical decision mapping                                    | 需完整矩阵验证                        |
+| MCP               | session MCP servers             | stdio/http/sse；initialize 广告 http/sse                         | Synara 已有 agent gateway MCP builder 模式                         | 直接可做                              |
+| 高级 OMP 功能状态 | 无专属标准                      | 无已确认 typed capability/event                                  | 无 OMP 投影                                                        | 需要扩展                              |
 
 ACP 允许 `_` 前缀的私有方法，并允许 `_meta` 携带扩展数据。Synara runtime 已有任意 `request()` / `notify()` 与 extension handler，这正是高保真层应该使用的扩展点，不必另造第二套 transport。
 
@@ -254,18 +254,18 @@ Provider options 至少应包含：
 
 ## 风险与验证
 
-| 风险 | 严重度 | 缓解/验证 |
-| --- | --- | --- |
-| OMP 版本/ACP capability 漂移 | 高 | 最低版本 + initialize feature detection + `_omp/capabilities` schema version |
-| 双 Advisor 互相 steer | 高 | provider policy 互斥；组合测试确保只能启动一个 |
-| 双 Launch registry | 高 | 明确 owner；Services UI 只展示权威 registry |
-| Auto-Learn 在关闭时丢写 | 高 | stop/drain protocol、超时、kill/restart 测试 |
-| Memory/managed skills 泄露敏感上下文 | 高 | opt-in、scope 显示、redaction、remote backend disclosure |
-| resume/load 重复或丢事件 | 高 | prompt 中 kill、resume/load replay、事件序列去重测试 |
-| Windows 子进程/孙进程泄漏 | 高 | initialize/prompt/permission/launch 各阶段 kill tree 实测 |
-| ACP update 无法表达 OMP 特性 | 中高 | raw diagnostic + typed extensions；禁止字符串猜测成为持久契约 |
-| 背压/大帧 | 中高 | >2048 update burst、慢 consumer、8 MiB 边界测试 |
-| SDK 版本差异 | 中 | 先用 v1 wire fixture 验证；`1.2.1 → 1.3.0` 单独升级，不与 adapter 大改绑在一起 |
+| 风险                                 | 严重度 | 缓解/验证                                                                      |
+| ------------------------------------ | ------ | ------------------------------------------------------------------------------ |
+| OMP 版本/ACP capability 漂移         | 高     | 最低版本 + initialize feature detection + `_omp/capabilities` schema version   |
+| 双 Advisor 互相 steer                | 高     | provider policy 互斥；组合测试确保只能启动一个                                 |
+| 双 Launch registry                   | 高     | 明确 owner；Services UI 只展示权威 registry                                    |
+| Auto-Learn 在关闭时丢写              | 高     | stop/drain protocol、超时、kill/restart 测试                                   |
+| Memory/managed skills 泄露敏感上下文 | 高     | opt-in、scope 显示、redaction、remote backend disclosure                       |
+| resume/load 重复或丢事件             | 高     | prompt 中 kill、resume/load replay、事件序列去重测试                           |
+| Windows 子进程/孙进程泄漏            | 高     | initialize/prompt/permission/launch 各阶段 kill tree 实测                      |
+| ACP update 无法表达 OMP 特性         | 中高   | raw diagnostic + typed extensions；禁止字符串猜测成为持久契约                  |
+| 背压/大帧                            | 中高   | >2048 update burst、慢 consumer、8 MiB 边界测试                                |
+| SDK 版本差异                         | 中     | 先用 v1 wire fixture 验证；`1.2.1 → 1.3.0` 单独升级，不与 adapter 大改绑在一起 |
 
 ## POC 验收清单
 

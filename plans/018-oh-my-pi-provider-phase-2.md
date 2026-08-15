@@ -38,14 +38,14 @@ Synara 启动的 OMP ACP session 必须使用 OMP-native Launch、Advisor、Memo
 
 OMP 17.3.2 官方源码 schema：
 
-| 路径 | 类型/默认 | Phase 2 行为 |
-| --- | --- | --- |
-| `launch.enabled` | boolean / `true` | overlay 强制 `true` |
-| `advisor.enabled` | boolean / `false` | overlay 强制 `true` |
-| `modelRoles` | `Record<string,string>` | 只读 `advisor`；不制造当前模型 fallback |
-| `memory.backend` | `off|local|hindsight|mnemopi` / `off` | usable 显式值保留，否则 overlay 写 `local` |
-| `autolearn.enabled` | boolean / `false` | overlay 强制 `true` |
-| `autolearn.autoContinue` | boolean / `false` | overlay 强制 `true` |
+| 路径                     | 类型/默认               | Phase 2 行为                            |
+| ------------------------ | ----------------------- | --------------------------------------- | --------- | -------------- | ------------------------------------------ |
+| `launch.enabled`         | boolean / `true`        | overlay 强制 `true`                     |
+| `advisor.enabled`        | boolean / `false`       | overlay 强制 `true`                     |
+| `modelRoles`             | `Record<string,string>` | 只读 `advisor`；不制造当前模型 fallback |
+| `memory.backend`         | `off                    | local                                   | hindsight | mnemopi`/`off` | usable 显式值保留，否则 overlay 写 `local` |
+| `autolearn.enabled`      | boolean / `false`       | overlay 强制 `true`                     |
+| `autolearn.autoContinue` | boolean / `false`       | overlay 强制 `true`                     |
 
 OMP 官方实现明确：Advisor enabled 但 `modelRoles.advisor` 无法解析时 Advisor inactive。标准 ACP session config 只暴露 mode/model/thinking，不能安全推断“当前模型可作为 Advisor fallback”；因此 Phase 2 不生成 fallback role，返回 recoverable degraded warning。
 
@@ -124,16 +124,16 @@ OMP 官方实现明确：Advisor enabled 但 `modelRoles.advisor` 无法解析�
 
 ## 8. TDD 测试矩阵
 
-| Seam | 必测行为 |
-| --- | --- |
-| overlay | deterministic、atomic、mode 0600（平台允许时）、no-secret、global untouched、同内容 no-op |
-| memory | explicit local/hindsight/mnemopi 保留；off/missing/invalid → local；不生成 remote credentials |
-| advisor | role present → configured；missing/blank/unparseable → recoverable degraded warning |
-| spawn | args/order、Windows 空格 path、overlay missing error、无 `PI_CODING_AGENT_DIR` |
-| host policy | OMP Advisor reactor 不评估；OMP 无 gateway lease/MCP/daemon policy；Codex/其他 provider 不变 |
-| settle | queued success、quiet success、timeout、abort、process exit、late activity resets quiet |
-| lifecycle | stopSession、stopAll/server stop、process crash、重复 stop、无残留 pending interaction |
-| contract/UI | OMP-only projection roundtrip；四项 ownership/backend/warning/experimental/Phase 3 边界文案 |
+| Seam        | 必测行为                                                                                      |
+| ----------- | --------------------------------------------------------------------------------------------- |
+| overlay     | deterministic、atomic、mode 0600（平台允许时）、no-secret、global untouched、同内容 no-op     |
+| memory      | explicit local/hindsight/mnemopi 保留；off/missing/invalid → local；不生成 remote credentials |
+| advisor     | role present → configured；missing/blank/unparseable → recoverable degraded warning           |
+| spawn       | args/order、Windows 空格 path、overlay missing error、无 `PI_CODING_AGENT_DIR`                |
+| host policy | OMP Advisor reactor 不评估；OMP 无 gateway lease/MCP/daemon policy；Codex/其他 provider 不变  |
+| settle      | queued success、quiet success、timeout、abort、process exit、late activity resets quiet       |
+| lifecycle   | stopSession、stopAll/server stop、process crash、重复 stop、无残留 pending interaction        |
+| contract/UI | OMP-only projection roundtrip；四项 ownership/backend/warning/experimental/Phase 3 边界文案   |
 
 测试只走 `bun run test` 包级 focused 命令；禁止 `bun test`。本轮未授权 `bun fmt`、`bun lint`、`bun typecheck`。
 

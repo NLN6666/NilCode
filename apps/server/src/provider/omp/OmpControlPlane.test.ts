@@ -46,16 +46,18 @@ describe("OmpControlPlane overlay policy", () => {
       updatedAt: "2026-08-14T00:00:00.000Z",
       launch: {
         authority: "omp",
-        services: [{
-          serviceId: "service-1",
-          name: "fixture",
-          state: "ready",
-          restartCount: 0,
-          outputBytes: 12,
-          owner: "omp-session-1",
-          persist: false,
-          detached: false,
-        }],
+        services: [
+          {
+            serviceId: "service-1",
+            name: "fixture",
+            state: "ready",
+            restartCount: 0,
+            outputBytes: 12,
+            owner: "omp-session-1",
+            persist: false,
+            detached: false,
+          },
+        ],
       },
     });
     expect(getOmpRuntimeStatus()).toMatchObject({
@@ -168,7 +170,11 @@ describe("OmpControlPlane overlay policy", () => {
     "resolves %s memory configuration without inventing remote credentials",
     (_label, configured, env, backend, source, writesFallback) => {
       const globalConfigText = configured ? `memory:\n  backend: ${configured}\n` : undefined;
-      const plan = buildOmpControlPlanePlan({ overlayPath: "C:/overlay.yml", globalConfigText, env });
+      const plan = buildOmpControlPlanePlan({
+        overlayPath: "C:/overlay.yml",
+        globalConfigText,
+        env,
+      });
 
       expect(plan.policy.memory).toMatchObject({ backend, source });
       expect(plan.overlayContent.includes("memory:\n  backend: local\n")).toBe(writesFallback);
@@ -176,7 +182,11 @@ describe("OmpControlPlane overlay policy", () => {
   );
 
   it("degrades Advisor when its model role is missing or invalid", () => {
-    for (const globalConfigText of [undefined, "modelRoles:\n  advisor: ''\n", "modelRoles:\n  advisor: |\n"] as const) {
+    for (const globalConfigText of [
+      undefined,
+      "modelRoles:\n  advisor: ''\n",
+      "modelRoles:\n  advisor: |\n",
+    ] as const) {
       const plan = buildOmpControlPlanePlan({
         overlayPath: "C:/overlay.yml",
         globalConfigText,
@@ -250,22 +260,33 @@ describe("OmpControlPlane bounded turn settle", () => {
   });
 
   it.each([
-    ["timeout", { processed: 0, activityVersion: 0, aborted: false, processExited: false }, "timed-out"],
+    [
+      "timeout",
+      { processed: 0, activityVersion: 0, aborted: false, processExited: false },
+      "timed-out",
+    ],
     ["abort", { processed: 0, activityVersion: 0, aborted: true, processExited: false }, "aborted"],
-    ["process crash", { processed: 0, activityVersion: 0, aborted: false, processExited: true }, "process-exited"],
-  ] as const)("reports bounded %s without claiming Auto-Learn capture", async (_label, snapshot, outcome) => {
-    const clock = virtualClock();
-    const result = await waitForOmpTurnSettle({
-      targetEnqueued: 1,
-      getSnapshot: () => snapshot,
-      quietWindowMs: 20,
-      maxWaitMs: 50,
-      pollMs: 10,
-      ...clock,
-    });
+    [
+      "process crash",
+      { processed: 0, activityVersion: 0, aborted: false, processExited: true },
+      "process-exited",
+    ],
+  ] as const)(
+    "reports bounded %s without claiming Auto-Learn capture",
+    async (_label, snapshot, outcome) => {
+      const clock = virtualClock();
+      const result = await waitForOmpTurnSettle({
+        targetEnqueued: 1,
+        getSnapshot: () => snapshot,
+        quietWindowMs: 20,
+        maxWaitMs: 50,
+        pollMs: 10,
+        ...clock,
+      });
 
-    expect(result.outcome).toBe(outcome);
-    expect(result).not.toHaveProperty("captureComplete");
-    expect(result.waitedMs).toBe(outcome === "timed-out" ? 50 : 0);
-  });
+      expect(result.outcome).toBe(outcome);
+      expect(result).not.toHaveProperty("captureComplete");
+      expect(result.waitedMs).toBe(outcome === "timed-out" ? 50 : 0);
+    },
+  );
 });

@@ -93,7 +93,10 @@ describe("agent gateway target resolver", () => {
         options: { thinkingLevel: "high" },
       });
       assert.deepEqual(
-        yield* resolveAgentGatewayTarget({ target: guidance.exampleTarget!, discovery: ompDiscovery }),
+        yield* resolveAgentGatewayTarget({
+          target: guidance.exampleTarget!,
+          discovery: ompDiscovery,
+        }),
         guidance.exampleTarget,
       );
     }),

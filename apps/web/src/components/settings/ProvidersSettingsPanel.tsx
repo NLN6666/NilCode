@@ -696,17 +696,20 @@ function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus
       <div className="space-y-1 text-muted-foreground">
         <div>{copy.sharedHome}</div>
         <div>
-          {copy.memoryEffective}: <span className="text-foreground">{projection.memoryBackend}</span>{" "}
-          · {projection.memorySource === "user-config" ? copy.memoryUser : copy.memoryFallback}
+          {copy.memoryEffective}:{" "}
+          <span className="text-foreground">{projection.memoryBackend}</span> ·{" "}
+          {projection.memorySource === "user-config" ? copy.memoryUser : copy.memoryFallback}
         </div>
         {projection.advisorModelRole ? (
           <div>
-            {copy.advisorRole}: <code className="text-foreground">{projection.advisorModelRole}</code>
+            {copy.advisorRole}:{" "}
+            <code className="text-foreground">{projection.advisorModelRole}</code>
           </div>
         ) : null}
         <div>{copy.autoLearnCost}</div>
         <div>
-          {copy.overlay}: <code className="break-all text-foreground">{projection.overlayPath}</code>
+          {copy.overlay}:{" "}
+          <code className="break-all text-foreground">{projection.overlayPath}</code>
         </div>
       </div>
       {projection.advisorWarning ? (
@@ -718,15 +721,18 @@ function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus
         <div className="space-y-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2.5 py-2 text-muted-foreground">
           <div className="font-medium text-foreground">{copy.typedLive}</div>
           <div>
-            {copy.runtimeVersion}: <span className="text-foreground">{runtime.ompVersion ?? "—"}</span>
+            {copy.runtimeVersion}:{" "}
+            <span className="text-foreground">{runtime.ompVersion ?? "—"}</span>
             {" · "}
             {copy.runtimeSessions}: <span className="text-foreground">{runtime.sessionCount}</span>
           </div>
           {runtime.advisor ? (
             <div>
-              {copy.advisorLive}: <span className="text-foreground">{runtime.advisor.active ? "active" : "idle"}</span>
+              {copy.advisorLive}:{" "}
+              <span className="text-foreground">{runtime.advisor.active ? "active" : "idle"}</span>
               {" · "}
-              {copy.advisorRisk}: <span className="text-foreground">{runtime.advisor.toolRisk}</span>
+              {copy.advisorRisk}:{" "}
+              <span className="text-foreground">{runtime.advisor.toolRisk}</span>
               {runtime.advisor.inFlight ? " · in flight" : ""}
               {runtime.advisor.drain
                 ? ` · drain ${runtime.advisor.drain.settled ? "settled" : "degraded"}${runtime.advisor.drain.error ? `: ${runtime.advisor.drain.error}` : ""}`
@@ -735,7 +741,8 @@ function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus
           ) : null}
           {runtime.autolearn ? (
             <div>
-              {copy.autoLearnLive}: <span className="text-foreground">{runtime.autolearn.state}</span>
+              {copy.autoLearnLive}:{" "}
+              <span className="text-foreground">{runtime.autolearn.state}</span>
               {` · generation ${runtime.autolearn.captureGeneration}`}
               {runtime.autolearn.pending ? " · pending" : ""}
               {runtime.autolearn.drain

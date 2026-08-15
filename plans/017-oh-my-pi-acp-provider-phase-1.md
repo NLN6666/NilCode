@@ -22,18 +22,18 @@ Phase 1 的完成定义是“OMP 成为稳定可用的标准 ACP Provider”，�
 
 ## 2. 已锁定的决策
 
-| 决策 | 结论 | 实施含义 |
-| --- | --- | --- |
-| 内部 Provider id | `omp` | 避免与现有 `pi` 混淆；显示名固定为 `Oh My Pi`，实现文件使用 `OhMyPi*` |
-| 功能所有权 | OMP-native | 后续由 OMP 拥有 Launch、Advisor、Memory、Auto-Learn；Synara 负责托管、投影和控制 |
-| OMP Home | 共享 `~/.omp` | Phase 1 不设置 `PI_CODING_AGENT_DIR`，不创建 Synara 隔离 profile |
-| 自动启用 | 检测到可兼容 `omp` 即 ready | `settings.providers.omp.enabled` 默认 `true`；health probe 决定 `available`，不在探测阶段启动常驻 ACP 进程 |
-| 未安装行为 | Settings 可见，Composer 不可选 | 显示可操作的安装/路径错误；缺少 binary 不等于启动失败后的活跃 session |
-| 显式禁用 | 用户设置优先 | 用户将 `enabled=false` 后不探测、不出现在可用 Provider 集合中 |
-| 兼容路线 | stock-first | Phase 1 不要求 Synara 私有 OMP fork；只依赖标准 ACP 和已确认的 OMP 行为 |
-| 最低版本 | `>=16.1.12` | 与后续共享配置和高级功能阶段采用同一最低基线；开发与 fixture 基线为 `17.3.3` |
-| ACP 版本 | negotiated stable v1 | 只相信 `initialize.protocolVersion` 和 capabilities，不根据 SDK 包版本推断 wire 能力 |
-| 配置写入 | Phase 1 不写 OMP 配置 | 不生成强制高级功能的 overlay；该工作留给 Phase 2 |
+| 决策             | 结论                           | 实施含义                                                                                                   |
+| ---------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| 内部 Provider id | `omp`                          | 避免与现有 `pi` 混淆；显示名固定为 `Oh My Pi`，实现文件使用 `OhMyPi*`                                      |
+| 功能所有权       | OMP-native                     | 后续由 OMP 拥有 Launch、Advisor、Memory、Auto-Learn；Synara 负责托管、投影和控制                           |
+| OMP Home         | 共享 `~/.omp`                  | Phase 1 不设置 `PI_CODING_AGENT_DIR`，不创建 Synara 隔离 profile                                           |
+| 自动启用         | 检测到可兼容 `omp` 即 ready    | `settings.providers.omp.enabled` 默认 `true`；health probe 决定 `available`，不在探测阶段启动常驻 ACP 进程 |
+| 未安装行为       | Settings 可见，Composer 不可选 | 显示可操作的安装/路径错误；缺少 binary 不等于启动失败后的活跃 session                                      |
+| 显式禁用         | 用户设置优先                   | 用户将 `enabled=false` 后不探测、不出现在可用 Provider 集合中                                              |
+| 兼容路线         | stock-first                    | Phase 1 不要求 Synara 私有 OMP fork；只依赖标准 ACP 和已确认的 OMP 行为                                    |
+| 最低版本         | `>=16.1.12`                    | 与后续共享配置和高级功能阶段采用同一最低基线；开发与 fixture 基线为 `17.3.3`                               |
+| ACP 版本         | negotiated stable v1           | 只相信 `initialize.protocolVersion` 和 capabilities，不根据 SDK 包版本推断 wire 能力                       |
+| 配置写入         | Phase 1 不写 OMP 配置          | 不生成强制高级功能的 overlay；该工作留给 Phase 2                                                           |
 
 “自动启用”不表示 Synara 启动时常驻一个 `omp acp`。探测只运行有界的 `omp --version`；真正的 ACP 进程只在模型/命令发现、创建会话或恢复会话时短暂或按需启动。
 
@@ -529,17 +529,17 @@ Phase 1 只有同时满足以下条件才可标为 DONE：
 
 ## 10. 风险与缓解
 
-| 风险 | 缓解 |
-| --- | --- |
-| OMP ACP schema/命令漂移 | W0 fixture、最低版本、initialize capability negotiation；不根据版本号猜 capability |
-| `pi` 与 `omp` 混淆 | 内部 id `omp`、类型/文件 `OhMyPi*`、UI 显示全名 |
-| 自动探测拖慢启动 | 只做有界 `--version`、缓存 binary identity、health 并发执行 |
-| discovery 反复 spawn OMP | model/command 共用 lock、cache 和 disposable runtime |
-| 共享 `~/.omp` 泄露或被改写 | Phase 1 不解析/写入配置；protocol logs 做 redaction；UI 明示共享状态 |
-| OMP 多模型凭据被错误剥离 | 使用 ACP 多模型 credential policy，同时继续剥离 Synara control-plane secrets |
-| resume 失败制造重复 session | 保留 `AcpSessionRuntime` no-fallback-new 不变量并写回归测试 |
-| Adapter 复制已有大量代码 | 复用 `AcpSessionRuntime`/`AcpAdapterSupport`；只提取有真实重复且 interface 较小的 helper |
-| 高级功能普通事件被误判为正式支持 | Phase 1 UI/文档只承诺 ACP 可见范围；高级状态留到 typed extension 阶段 |
+| 风险                                      | 缓解                                                                                              |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| OMP ACP schema/命令漂移                   | W0 fixture、最低版本、initialize capability negotiation；不根据版本号猜 capability                |
+| `pi` 与 `omp` 混淆                        | 内部 id `omp`、类型/文件 `OhMyPi*`、UI 显示全名                                                   |
+| 自动探测拖慢启动                          | 只做有界 `--version`、缓存 binary identity、health 并发执行                                       |
+| discovery 反复 spawn OMP                  | model/command 共用 lock、cache 和 disposable runtime                                              |
+| 共享 `~/.omp` 泄露或被改写                | Phase 1 不解析/写入配置；protocol logs 做 redaction；UI 明示共享状态                              |
+| OMP 多模型凭据被错误剥离                  | 使用 ACP 多模型 credential policy，同时继续剥离 Synara control-plane secrets                      |
+| resume 失败制造重复 session               | 保留 `AcpSessionRuntime` no-fallback-new 不变量并写回归测试                                       |
+| Adapter 复制已有大量代码                  | 复用 `AcpSessionRuntime`/`AcpAdapterSupport`；只提取有真实重复且 interface 较小的 helper          |
+| 高级功能普通事件被误判为正式支持          | Phase 1 UI/文档只承诺 ACP 可见范围；高级状态留到 typed extension 阶段                             |
 | Auto-Learn/Advisor 在用户全局配置中已启用 | Phase 1 不抑制 OMP 原生行为，但 session stop 只承诺标准 ACP settle；Phase 2 再建立完整 drain/仲裁 |
 
 ## 11. 已考虑并否决

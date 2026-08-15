@@ -875,7 +875,11 @@ const runOhMyPiCommand = (
   executable: string,
   env: NodeJS.ProcessEnv,
 ) =>
-  runProviderCommand(executable, args, buildProviderChildEnvironment({ provider: "acp", baseEnv: env })).pipe(
+  runProviderCommand(
+    executable,
+    args,
+    buildProviderChildEnvironment({ provider: "acp", baseEnv: env }),
+  ).pipe(
     Effect.flatMap((result) =>
       isWindowsShellCommandMissingResult({ code: result.code, stderr: result.stderr })
         ? Effect.fail(new Error(`spawn ${executable} ENOENT`))
@@ -2476,10 +2480,7 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
       const applyVolatileProviderState = Effect.fn("applyVolatileProviderState")(function* (
         status: ServerProviderStatus,
       ) {
-        const statusWithOmpRuntime = projectVolatileOmpRuntimeStatus(
-          status,
-          getOmpRuntimeStatus(),
-        );
+        const statusWithOmpRuntime = projectVolatileOmpRuntimeStatus(status, getOmpRuntimeStatus());
         const updateStates = yield* Ref.get(updateStatesRef);
         const updateState = updateStates.get(statusWithOmpRuntime.provider);
         if (!updateState) {

@@ -61,7 +61,10 @@ describe("OMP typed extension protocol", () => {
 
   it("drops duplicate, stale-generation, and cross-session notifications", () => {
     const configuredOnly = createConfiguredOnlyOmpExtensionState("configured-policy-only");
-    const negotiated = acceptOmpExtensionEnvelope(configuredOnly, decodeOmpExtensionEnvelope(envelope()));
+    const negotiated = acceptOmpExtensionEnvelope(
+      configuredOnly,
+      decodeOmpExtensionEnvelope(envelope()),
+    );
     expect(negotiated.accepted).toBe(true);
     expect(negotiated.state.mode).toBe("typed");
 
@@ -249,7 +252,10 @@ describe("OMP typed extension protocol", () => {
       advisor,
       OMP_EXTENSION_EVENTS.advisorNote,
       decodeOmpExtensionEnvelope(
-        envelope({ sequence: 2, data: { advisorId: "security", severity: "concern", content: "note" } }),
+        envelope({
+          sequence: 2,
+          data: { advisorId: "security", severity: "concern", content: "note" },
+        }),
       ),
     );
     const launched = projectOmpEnvelopeData(
@@ -285,6 +291,8 @@ describe("OMP typed extension protocol", () => {
     expect(
       projectOmpLaunchLogs({ text: "ready", cursor: 12, state: "ready", timedOut: false }),
     ).toEqual({ content: "ready", nextCursor: 12, state: "ready", timedOut: false });
-    expect(projectOmpLaunchLogs({ text: "ready", cursor: -1, state: "ready", timedOut: false })).toBeUndefined();
+    expect(
+      projectOmpLaunchLogs({ text: "ready", cursor: -1, state: "ready", timedOut: false }),
+    ).toBeUndefined();
   });
 });

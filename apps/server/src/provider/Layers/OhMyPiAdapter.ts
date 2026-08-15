@@ -249,7 +249,10 @@ export function unknownOmpExtensionNotificationMethod(payload: unknown): string 
   return method;
 }
 
-function resolveSessionCwd(inputCwd: string | undefined, config: ServerConfigShape): string | undefined {
+function resolveSessionCwd(
+  inputCwd: string | undefined,
+  config: ServerConfigShape,
+): string | undefined {
   return resolveAcpSessionCwd({
     inputCwd,
     serverCwd: config.cwd,
@@ -439,7 +442,12 @@ export function makeOhMyPiAdapter(
         }),
       );
 
-    const emitParsedEvent = (ctx: OhMyPiSessionContext, event: ReturnType<AcpSessionRuntimeShape["getEvents"]> extends Stream.Stream<infer A, never> ? A : never) =>
+    const emitParsedEvent = (
+      ctx: OhMyPiSessionContext,
+      event: ReturnType<AcpSessionRuntimeShape["getEvents"]> extends Stream.Stream<infer A, never>
+        ? A
+        : never,
+    ) =>
       Effect.gen(function* () {
         ctx.sessionActivityVersion += 1;
         const turnId = ctx.activeTurnId;
@@ -637,7 +645,9 @@ export function makeOhMyPiAdapter(
                     return;
                   }
                   if (method !== "session/update" || !isRecord(payload.params)) return;
-                  const update = isRecord(payload.params.update) ? payload.params.update : undefined;
+                  const update = isRecord(payload.params.update)
+                    ? payload.params.update
+                    : undefined;
                   const updateKind =
                     typeof update?.sessionUpdate === "string" ? update.sessionUpdate : undefined;
                   if (
@@ -671,7 +681,9 @@ export function makeOhMyPiAdapter(
           const now = yield* nowIso;
           let ctx: OhMyPiSessionContext = {
             threadId: input.threadId,
-            ...(input.lifecycleGeneration ? { lifecycleGeneration: input.lifecycleGeneration } : {}),
+            ...(input.lifecycleGeneration
+              ? { lifecycleGeneration: input.lifecycleGeneration }
+              : {}),
             session: {
               provider: PROVIDER,
               status: "connecting",
@@ -1265,11 +1277,7 @@ export function makeOhMyPiAdapter(
               }),
           ),
         );
-        ctx.ompExtensionState = projectOmpEnvelopeData(
-          ctx.ompExtensionState,
-          method,
-          response,
-        );
+        ctx.ompExtensionState = projectOmpEnvelopeData(ctx.ompExtensionState, method, response);
         updateOmpRuntimeStatus(
           ctx.threadId,
           projectOmpExtensionRuntimeStatus(ctx.ompExtensionState, 1),
@@ -1508,9 +1516,7 @@ export function makeOhMyPiAdapter(
         }),
       );
 
-    yield* Effect.addFinalizer(() =>
-      stopAll().pipe(Effect.tap(() => PubSub.shutdown(events))),
-    );
+    yield* Effect.addFinalizer(() => stopAll().pipe(Effect.tap(() => PubSub.shutdown(events))));
 
     return {
       provider: PROVIDER,

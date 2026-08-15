@@ -47,7 +47,12 @@ const TONE_DOT_CLASS: Record<DaemonTone, string> = {
 };
 
 function ompServiceTone(service: OmpRuntimeService): DaemonTone {
-  if (service.state === "starting" || service.state === "restarting" || service.state === "stopping") return "pending";
+  if (
+    service.state === "starting" ||
+    service.state === "restarting" ||
+    service.state === "stopping"
+  )
+    return "pending";
   if (service.state === "running" || service.state === "ready") return "healthy";
   return service.state === "failed" ? "danger" : "neutral";
 }
@@ -287,7 +292,12 @@ function OmpLaunchDetail(props: { service: OmpRuntimeService }) {
     setDescription(null);
     void Promise.all([
       ensureNativeApi().ompLaunch.describe({ owner, name: props.service.name }),
-      ensureNativeApi().ompLaunch.readLogs({ owner, name: props.service.name, lines: 100, cursor: 0 }),
+      ensureNativeApi().ompLaunch.readLogs({
+        owner,
+        name: props.service.name,
+        lines: 100,
+        cursor: 0,
+      }),
     ])
       .then(([nextDescription, result]) => {
         if (!cancelled) {
@@ -331,24 +341,40 @@ function OmpLaunchDetail(props: { service: OmpRuntimeService }) {
     <div className="flex min-h-0 flex-col border-border border-t">
       <div className="flex items-center gap-2 px-3 py-2">
         <span className="min-w-0 flex-1 truncate font-medium text-xs">{props.service.name}</span>
-        <Button size="xs" variant="ghost" disabled={!owner || pendingAction !== null} onClick={() => run("restart")}>
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={!owner || pendingAction !== null}
+          onClick={() => run("restart")}
+        >
           {pendingAction === "restart" ? copy.restarting : copy.restart}
         </Button>
-        <Button size="xs" variant="ghost" disabled={!owner || pendingAction !== null || !isOmpServiceAlive(props.service)} onClick={() => run("stop")}>
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={!owner || pendingAction !== null || !isOmpServiceAlive(props.service)}
+          onClick={() => run("stop")}
+        >
           {pendingAction === "stop" ? copy.stopping : copy.stop}
         </Button>
       </div>
       {description ? (
         <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 border-border border-t px-3 py-2 text-[11px]">
           <dt className="text-foreground/60">{copy.ompCommand}</dt>
-          <dd className="min-w-0 truncate font-mono" title={description.command}>{description.command}</dd>
+          <dd className="min-w-0 truncate font-mono" title={description.command}>
+            {description.command}
+          </dd>
           <dt className="text-foreground/60">{copy.ompCwd}</dt>
-          <dd className="min-w-0 truncate font-mono" title={description.cwd}>{description.cwd}</dd>
+          <dd className="min-w-0 truncate font-mono" title={description.cwd}>
+            {description.cwd}
+          </dd>
           <dt className="text-foreground/60">{copy.ompRestartPolicy}</dt>
           <dd>{description.restart}</dd>
         </dl>
       ) : null}
-      {error ? <p className="px-3 py-1.5 text-[11px] text-red-500">{copy.actionFailed(error)}</p> : null}
+      {error ? (
+        <p className="px-3 py-1.5 text-[11px] text-red-500">{copy.actionFailed(error)}</p>
+      ) : null}
       <pre className="max-h-36 overflow-auto whitespace-pre-wrap border-border border-t px-3 py-2 font-mono text-[11px] text-foreground/80">
         {logs ?? copy.ompLogsLoading}
       </pre>
@@ -362,7 +388,12 @@ function OmpLaunchDetail(props: { service: OmpRuntimeService }) {
           onChange={(event) => setText(event.target.value)}
           className="flex-1 font-mono"
         />
-        <Button type="submit" size="sm" variant="secondary" disabled={!owner || !text || pendingAction !== null}>
+        <Button
+          type="submit"
+          size="sm"
+          variant="secondary"
+          disabled={!owner || !text || pendingAction !== null}
+        >
           {copy.send}
         </Button>
       </form>
@@ -373,7 +404,8 @@ function OmpLaunchDetail(props: { service: OmpRuntimeService }) {
 function OmpLaunchServices(props: { services: readonly OmpRuntimeService[] }) {
   const copy = useMessages().chat.services;
   const [selectedId, setSelectedId] = useState<string | null>(props.services[0]?.serviceId ?? null);
-  const selected = props.services.find((service) => service.serviceId === selectedId) ?? props.services[0] ?? null;
+  const selected =
+    props.services.find((service) => service.serviceId === selectedId) ?? props.services[0] ?? null;
 
   return (
     <section className="shrink-0 border-border border-b">
@@ -390,10 +422,14 @@ function OmpLaunchServices(props: { services: readonly OmpRuntimeService[] }) {
             className={cn(
               "flex items-center gap-2 rounded-lg px-2 py-1.5 text-left",
               ELEVATED_HOVER_SURFACE_CLASS_NAME,
-              service.serviceId === selected?.serviceId && "bg-[var(--color-background-elevated-secondary)]",
+              service.serviceId === selected?.serviceId &&
+                "bg-[var(--color-background-elevated-secondary)]",
             )}
           >
-            <span aria-hidden className={cn("size-2 rounded-full", TONE_DOT_CLASS[ompServiceTone(service)])} />
+            <span
+              aria-hidden
+              className={cn("size-2 rounded-full", TONE_DOT_CLASS[ompServiceTone(service)])}
+            />
             <span className="min-w-0 flex-1 truncate text-xs">{service.name}</span>
             <span className="text-[11px] text-foreground/60">{copy.states[service.state]}</span>
           </button>

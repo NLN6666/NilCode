@@ -200,8 +200,7 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 2. **规则被稀释。** daemon 规则是 `controlPolicy` 数组第 7 条，前后被 browser\_\*、automation、thread 创建等约 20 条挤着；而 Claude Code preset 本身在强推它自己的 Bash `run_in_background`。宿主的一行字对抗的是 provider 原生习惯。
 3. **枚举漏了 Windows 惯用法。** `harnessPolicy.ts:25` 点名了 `&`、`nohup`、`start /b`、run-in-background flag，**唯独没有 PowerShell 的 `Start-Process`** —— 而这正是 Windows 上 Agent 的首选写法。
 
-**次生缺口（本次不触发，但会咬别的 provider）：** `takeSynaraHarnessPolicyForSession`（`harnessPolicy.ts:96`）只判断 `harnessPolicyDelivered` 布尔值，**不比对 `SYNARA_HARNESS_POLICY_VERSION`**。claudeAgent 走 `systemPrompt.append`（`ClaudeAdapter.ts:5257`）每次会话都带，不受影响；codex / cursor / grok / droid / pi / opencode / antigravity 走一次性投递，策略版本升级后，同一 server 进程里已开着的会话永远收不到新规则。
----
+## **次生缺口（本次不触发，但会咬别的 provider）：** `takeSynaraHarnessPolicyForSession`（`harnessPolicy.ts:96`）只判断 `harnessPolicyDelivered` 布尔值，**不比对 `SYNARA_HARNESS_POLICY_VERSION`**。claudeAgent 走 `systemPrompt.append`（`ClaudeAdapter.ts:5257`）每次会话都带，不受影响；codex / cursor / grok / droid / pi / opencode / antigravity 走一次性投递，策略版本升级后，同一 server 进程里已开着的会话永远收不到新规则。
 
 ## 28. OMP ACP Provider 调研（2026-08-14）
 
@@ -252,6 +251,7 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 首次运行扩展后的 `appSettings.test.ts` 有 2 个 expected-map 失败：旧断言缺少新增 `omp` provider/config；补齐 exhaustive expected values。ProviderService OMP routing 测试首次遗漏必需 `threadId`，修正后第二次误断言 `providerName` 而实际 `ProviderSession` 字段为 `provider`；均只修正测试输入/断言，不涉及运行时代码绕过。
 - W5/W6 focused 验证通过：server Adapter/registry/discovery/service 共 108 项，Web settings/icon/composer/catalog/model/options/order/prefetch 共 174 项。计划指定的完整 server wiring 命令为 202 通过、28 失败；OMP 的 8 个 health 场景全部通过，失败来自本机已安装 Codex/Claude/OpenCode/Pi/Antigravity 改变旧 mock 的裸命令假设，以及 2 个既有 executable-bit/PATH 环境断言。
 - 计划指定的 ACP suite 为 63 通过、1 失败；单独重跑仍失败的是既有 `AcpSdkConformance` teardown 断言（预期 `{ code: 0, signal: null }`，Windows/Bun 实际 `{ code: null, signal: "SIGTERM" }`）。该测试、`AcpSessionRuntime` 与 `AcpJsonRpcConnection` 相对基线 `3e6ad7d16` 均无差异，且测试不导入 OMP 新增的标准 client handlers，因此未修改既有 conformance 断言来隐藏环境差异。
+
 ---
 
 ## 32. OMP Phase 2 启动与配置契约实测（2026-08-14）
@@ -314,3 +314,4 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - OMP workspace build 还暴露 `browser-relay` 的环境依赖 `zip` 不在 Windows PATH；native 子任务真实进入 `cargo metadata` 并继续下载 fixed nightly（临时 component 从约 23.0 MiB 增至 27.2 MiB），但执行通道随后关闭，未留下 modern local addon 或 terminal-success 证据。一次后续 `rustup toolchain list` 又因 pinned cwd 自动同步，已按精确 command line 只终止本轮 rustup 子进程。local formal native gate 因此仍是 BLOCKED，不修改 workflow，等待官方 PR native CI。
 - Phase 4 唯一一次双轴独立 review 返回 7 条候选：确认并集中修复 OMP malformed params 逃逸 typed envelope、Launch lifecycle 值未定义、NilCode 未协商 notification 可切入 typed state、request params 可覆盖保留字段；Memory mutation timeout 无 owner-level AbortSignal，不能虚构取消，改为 `operationMayContinue=true` + `recoverable=false` 禁止自动重试。多 provider credentials 是 Plan 017 §W1 明确兼容契约且继续剥离 `SYNARA_*`/native authority，87-file Phase 1–3 闭包也是本轮用户明确发布范围，故未把二者当作 Phase 4 越界修复。未启动第二轮 review。
 - 集中修复后的 fresh verification：OMP `check:ts` 全 workspace PASS、协议/Auto-Learn 34/34；NilCode server OMP 56/56、ProviderHealth OMP 9/9（94 skipped）、contracts 68/68、Web 38/38，contracts/Web/server production build 全部 PASS；`git diff --check` clean。并行 PowerShell profile 偶发报告 oh-my-posh init cache 正被另一测试进程使用，但各命令退出码均为 0 且不影响 test result。NilCode heavyweight `bun fmt`、`bun lint`、`bun typecheck` 继续保持 `NOT RUN (UNAUTHORIZED)`。
+- NilCode Draft PR 首轮主 CI 在 `fmt:check` 失败，后续 lint/typecheck/test/browser/build 因 fail-fast 未运行；job `94960262290` 明确列出 27 个文件。逐项与 `origin/dev...HEAD` 对照证明其中 `docs/superpowers/specs/2026-08-08-launch-mention-design.md` 是未被本 PR 修改的 base 漂移，其余 26 个均属于 OMP publication diff。没有运行被禁止的整仓 `bun fmt`，只用 `bunx oxfmt --write <26 exact files>` 做 scoped mechanical fix；无关 baseline 文档保持不变。
