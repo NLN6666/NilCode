@@ -495,3 +495,14 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 修复：只有当前 generation 成功结束会话时才发布 selection；Web 接收层只接受当前 browser surface 的 active tab 事件。
 - 验证：desktop 聚焦测试 20/20、Web scope 逻辑测试 31/31；独立只读审查 `NO FINDINGS`；`git diff --check` 仅有仓库既有 LF→CRLF 提示，无 whitespace error。
 - 工具/运行错误：首次聚焦测试按预期红灯（1 failed / 19 passed），用于证明回归测试能捕获本 bug。
+
+## 2026-08-16 Windows 桌面端卡顿诊断
+
+- 当前安装实例的长会话可直接复现：在 transcript 内上下滚动后，视口出现大段空白，只剩远处一条消息或 composer；两次滚动调用分别约 229ms、295ms。该现象在流式输出停止后仍存在，因此不是单纯的 token streaming 负载。
+- 当前 7 个 Synara/Electron/后端进程工作集合计约 2.4GB，但 3 秒采样没有持续 CPU 饱和；Node 后端 RSS 约 434MB、heap used 约 74MB，远离 4GB heap limit。当前没有新的 native hang dump，最近 hang diagnostic 是 2026-08-12 的旧记录。
+- 首要根因候选是长 transcript 的虚拟列表与多套滚动控制器竞争：LegendList 自带 `maintainScrollAtEnd`，timeline 还安排 RAF 与 80/180/260ms restick，tail-anchor hook 又有最长 3 秒的 RAF/layout 读写和 subtree MutationObserver，ChatView 另有 transcript-grow pin、ResizeObserver、1.5 秒 glide 及 composer inset 的直接 `scrollTop` 写入。动态高度消息配合固定 `estimatedItemSize: 90` 时，容易造成测量/滚动反馈与虚拟列表空白段。
+- 该高风险路径由 2026-08-14 的 chat performance 变更 `3616d7141` 引入并经 `1d425f660` 合并；当前 HEAD 包含它。现有 `ChatTranscriptPane.browser.tsx` 只用单条消息验证 composer 输入不会重渲染 transcript，稳定配置 3/3 通过，但没有覆盖长列表滚动空白；`MessagesTimeline.tailAnchor.browser.tsx` 的 4 个 geometry 测试在当前 Windows 配置全部 skipped。
+- Windows 运行时当前明确使用 `--disable-gpu-compositing` 与 `d3d11-warp-webgl`。源码会在 Windows 启动前禁用硬件加速，这是 2026-08-12 GPU/Mojo hang 修复的当前策略；软件 WARP 合成不是空白的唯一根因，但会明显放大上述 DOM 测量和重绘成本。
+- 次要放大项是状态体量：主 `state.sqlite` 约 254MB，含 48,648 条 orchestration events、26,483 条 projected activities、1,098 条消息。它更可能拖慢启动、切线程与 hydration，不足以解释已经加载完成后的滚动空白。
+- 后台日志还在重复记录 Advisor inference 非零退出，以及 provider runtime ingestion 的 command identity collision；它们会增加后台噪声和偶发负载，但现有 CPU/heap 证据不支持它们是当前滚动卡顿的主因。
+- 本轮仅诊断并记录，没有修改运行行为。未获授权，因此 `bun fmt`、`bun lint`、`bun typecheck` 均未运行。
