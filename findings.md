@@ -540,3 +540,10 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 验证：MessageTrail/theme/ChatTranscriptPane/row-overlap/tail-anchor 浏览器 11/11；message-trail 与 transcript-scroll 单元 37/37；`bun run build:desktop` 4/4 build tasks 成功。真实 Electron profile 使用独立临时 profile/端口；Windows GPU 禁用安全护栏保持不变。
 - 整仓 `bun run test` 被既有 Windows/POSIX 路径断言阻断（Canary、macOS icon/profile、preview URL、login shell home 等）；Web 全量为 4,423/4,426，通过项之外的 3 个失败是当前 OMP provider 数量/文案 catalog 预期未同步，与本轮文件无关。本轮没有扩 scope 修复这些基线问题。
 - 按项目约束未运行 `bun fmt`、`bun lint`、`bun typecheck`，因为用户当前对话未显式授权这些 heavyweight checks。FastCtx transport 持续 closed，读取降级为本地 `rg`/PowerShell；失败截图属于测试临时产物，最终清理。
+
+## 2026-08-16 Windows NSIS 安装包构建
+
+- 从提交 `448a2562bb` 使用官方 `scripts/build-desktop-artifact.ts` 构建 Windows x64 NSIS 安装包，构建进程退出码为 0，产物为 `release/windows-dev-448a2562b/Synara-0.7.2-x64.exe`。
+- `scripts/verify-packaged-desktop-startup.ts` 从隔离状态启动打包后的程序并通过，没有安装、覆盖或复用当前用户的 Synara 数据目录。
+- 产物 SHA-256 为 `A3D13F123CC159779D74093F263524A211FC85E0111B7B8EB8DACFC6951DD4E0`，Authenticode 状态为 `NotSigned`；Windows 可能显示 SmartScreen 提示。
+- 冒烟脚本退出前未能删除 `synara-packaged-smoke-win-SEwpqd` 临时目录；首次 PowerShell `Remove-Item` 被执行策略拒绝且未删除内容，随后用 Node 对系统 temp 下的精确 absolute/real path 做双重校验后删除成功。
