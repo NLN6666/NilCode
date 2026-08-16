@@ -1580,6 +1580,44 @@ function installImmediateScrollToSpy(
   };
 }
 
+function installScrollTopWriteSpy(scrollContainer: HTMLElement): {
+  readonly writes: number[];
+  readonly restore: () => void;
+} {
+  const ownDescriptor = Object.getOwnPropertyDescriptor(scrollContainer, "scrollTop");
+  let descriptorOwner: object | null = scrollContainer;
+  let descriptor: PropertyDescriptor | undefined;
+  while (descriptorOwner && !descriptor) {
+    descriptor = Object.getOwnPropertyDescriptor(descriptorOwner, "scrollTop");
+    descriptorOwner = Object.getPrototypeOf(descriptorOwner) as object | null;
+  }
+  if (!descriptor?.get || !descriptor.set) {
+    throw new Error("Unable to instrument scrollTop writes in the browser test.");
+  }
+
+  const writes: number[] = [];
+  Object.defineProperty(scrollContainer, "scrollTop", {
+    configurable: true,
+    enumerable: descriptor.enumerable ?? false,
+    get: () => descriptor!.get!.call(scrollContainer) as number,
+    set: (value: number) => {
+      writes.push(value);
+      descriptor!.set!.call(scrollContainer, value);
+    },
+  });
+
+  return {
+    writes,
+    restore: () => {
+      if (ownDescriptor) {
+        Object.defineProperty(scrollContainer, "scrollTop", ownDescriptor);
+      } else {
+        delete (scrollContainer as HTMLElement & { scrollTop?: number }).scrollTop;
+      }
+    },
+  };
+}
+
 /** Lets timer-driven scroll work (glides, anchor settles, tail re-sticks) run to completion. */
 async function settleFor(ms: number): Promise<void> {
   // Executor form, not `Promise.withResolvers`: this package's `lib` target predates it.
@@ -3729,6 +3767,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       snapshot: currentSnapshot,
     });
     let restoreScrollTo = () => {};
+    let restoreScrollTop = () => {};
 
     const syncActiveThread = (
       update: (
@@ -3758,11 +3797,14 @@ describe("ChatView timeline estimator parity (full app)", () => {
 
       const scrollSpy = installImmediateScrollToSpy(scrollContainer);
       restoreScrollTo = scrollSpy.restore;
+      const scrollTopSpy = installScrollTopWriteSpy(scrollContainer);
+      restoreScrollTop = scrollTopSpy.restore;
       // Let mount-time tail/image expansion retries (max 260ms) settle before
       // isolating scrolls caused by the state transitions below.
       await new Promise<void>((resolve) => window.setTimeout(resolve, 300));
       await waitForLayout();
       scrollSpy.calls.length = 0;
+      scrollTopSpy.writes.length = 0;
 
       // Buffering/connecting state changes generic turn chrome, but does not add a
       // transcript message and therefore must not re-stick the transcript.
@@ -3779,6 +3821,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       }));
       await waitForLayout();
       expect(scrollSpy.calls).toHaveLength(0);
+      expect(scrollTopSpy.writes).toHaveLength(0);
 
       const activeTurnId = TurnId.makeUnsafe("turn-auto-follow-wiring");
       syncActiveThread((thread) => ({
@@ -3819,6 +3862,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       }));
       await waitForLayout();
       expect(scrollSpy.calls).toHaveLength(0);
+      expect(scrollTopSpy.writes).toHaveLength(0);
 
       syncActiveThread((thread) => ({
         ...thread,
@@ -3841,6 +3885,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       }));
       await waitForLayout();
       expect(scrollSpy.calls).toHaveLength(0);
+      expect(scrollTopSpy.writes).toHaveLength(0);
 
       scrollContainer.scrollTop = scrollContainer.scrollHeight;
       scrollContainer.dispatchEvent(new Event("scroll"));
@@ -3907,6 +3952,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       await settleFor(300);
       expect(getScrollContainerDistanceFromBottom(scrollContainer)).toBeLessThanOrEqual(1);
     } finally {
+      restoreScrollTop();
       restoreScrollTo();
       await mounted.cleanup();
     }

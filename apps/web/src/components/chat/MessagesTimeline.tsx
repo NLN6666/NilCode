@@ -1234,9 +1234,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   // Scroll events can fire several times per frame (smooth scrolls, streaming
   // re-sticks); the trail-highlight derivation is coalesced to one per frame.
-  // At-end ownership stays synchronous: ChatView's auto-follow layout effect
-  // reads it via a ref in the same frame, and a deferred update would let a
-  // scheduled scrollToEnd override a user gesture that just scrolled away.
+  // At-end ownership stays synchronous: ChatView reads it via a ref when deciding
+  // whether a message signal may request list-owned tail follow, and a deferred
+  // update could let that request override a user gesture that just scrolled away.
   const listScrollFrameRef = useRef<number | null>(null);
   useEffect(() => {
     return () => {

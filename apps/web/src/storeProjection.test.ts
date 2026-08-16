@@ -2173,6 +2173,23 @@ describe("resume cursor lifecycle in projection transitions", () => {
     expect(hasThreadDetailResumeCursor(threadId)).toBe(false);
   });
 
+  it("preserves retained detail and its resume cursor for an already applied snapshot", () => {
+    const readModel = {
+      ...makeReadModel(makeReadModelThread({ id: threadId, projectId })),
+      snapshotSequence: 60,
+    };
+    const hydrated = syncServerReadModel(
+      makeState(makeThread({ id: threadId, projectId })),
+      readModel,
+    );
+    setThreadDetailResumeCursor(threadId, 42);
+
+    const next = syncServerReadModel(hydrated, structuredClone(readModel));
+
+    expect(next).toBe(hydrated);
+    expect(hasThreadDetailResumeCursor(threadId)).toBe(true);
+  });
+
   it("clears the cursor when a tombstone rejects the thread's detail snapshot", () => {
     const state = removeDeletedThreadFromClientState(
       makeState(makeThread({ id: threadId, projectId })),

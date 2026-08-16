@@ -506,3 +506,16 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 次要放大项是状态体量：主 `state.sqlite` 约 254MB，含 48,648 条 orchestration events、26,483 条 projected activities、1,098 条消息。它更可能拖慢启动、切线程与 hydration，不足以解释已经加载完成后的滚动空白。
 - 后台日志还在重复记录 Advisor inference 非零退出，以及 provider runtime ingestion 的 command identity collision；它们会增加后台噪声和偶发负载，但现有 CPU/heap 证据不支持它们是当前滚动卡顿的主因。
 - 本轮仅诊断并记录，没有修改运行行为。未获授权，因此 `bun fmt`、`bun lint`、`bun typecheck` 均未运行。
+
+## 2026-08-16 Windows 桌面端长会话优化
+
+- 两条可失败基线均在旧实现上稳定复现：连接状态这一项非消息更新仍触发一次直接 `scrollTop=2608`；相同序列的全量 read model 虽最终复用 state，却先清空 thread detail resume cursor。前者证明 ChatView 的 commit/ResizeObserver 滚动路径绕过 LegendList 所有权，后者证明结构 no-op 判断前存在隐藏副作用。
+- 主修复把普通尾随收敛到 LegendList：移除 ChatView 每 commit 的直接 pin、ResizeObserver pin 和最长 1.5 秒的逐帧 glide；只有真实 transcript message 的生命周期 signal 变化时，才在下一帧请求一次 list-owned `scrollToEnd`。用户滚动意图、发送锚点与 list 自有的 streaming `maintainScrollAtEnd` 保持原有优先级。
+- 第一次绿色尝试把 list scroll 请求放在 layout effect 当帧，浏览器回归显示流结束后尾部仍差 29px；改为只延后一帧，让 LegendList 完成行高测量后再发唯一请求。没有恢复旧的直接 `scrollTop` 或观察器循环。
+- 全量 projection 的 resume cursor reset 移到结构 no-op 判断之后；完全相同的 snapshot retry 不再产生游标副作用，真正改变 detail 的 full resync/repair 仍清空游标，tombstone retirement 与更高 snapshot sequence 记录保持不变。
+- 保留 Windows `disableHardwareAcceleration()` / WARP 策略：它是此前 GPU/Mojo hang 的安全护栏，只是 DOM 测量竞争的放大器，不是本轮可安全撤销的根因。Advisor CLI exit 1 与 command identity collision 也没有持续 CPU 证据，因此本轮没有盲改后台容错路径。
+- 唯一一次独立审查无生产 finding，只指出浏览器测试 `scrollTop` spy 若遇到元素自有 descriptor 时恢复不完整；一次集中修复已保存并恢复原 descriptor，没有开启第二轮审查。
+- 聚焦验证：6 个单元文件 396/396 通过；真实 Chromium 核心性能回归 1/1 通过；包含发送锚点、延迟图片、用户接管、长响应、虚拟行重叠等宽回归 12/13 通过。唯一未通过用例在进入布局断言前因浏览器中文 locale 与测试硬编码英文 `2 files changed` / `1 out of 3 tasks completed` 不匹配，页面实际已渲染对应中文文本，属于既有测试国际化问题。
+- `bun run build:desktop` 成功（4/4 build tasks）；使用独立系统临时 `SYNARA_HOME=C:/Users/kingt/AppData/Local/Temp/synara-perf-smoke-47acf87f49df47e78210bf874bd90a18/synara-home` 的原生 Electron smoke 成功（5/5 tasks），未触碰当前运行实例的 `C:/Users/kingt/.synara`。没有替换或安装用户当前桌面应用，因此没有把隔离启动冒充为已安装实例的人工长会话复测。
+- 工具/运行记录：FastCtx continuation 首次因 transport closed 失败，按规则降级到本地只读命令；首次从仓库根执行带 `-t` 的测试被 Turbo 拒绝，改为 `apps/web` workspace 的 `bun run test -- ... -t ...`；最终 Chromium 通过后报告 Vitest close timeout，但测试正常完成。`git diff --check` 无 whitespace error，仅有 Windows LF→CRLF 提示。
+- 未获当前会话明确授权，`bun fmt`、`bun lint`、`bun typecheck` 均未运行。

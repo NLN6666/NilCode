@@ -157,13 +157,10 @@ import {
 } from "../confirmedCustomBinaryPathStore";
 import { isElectron } from "../env";
 import {
-  AUTO_FOLLOW_GLIDE_SETTLE_EPSILON_PX,
   USER_SCROLL_INTENT_WINDOW_MS,
-  computeAutoFollowGlideStep,
   getScrollContainerDistanceFromBottom,
   isScrollAwayFromTail,
   isScrollContainerNearBottom,
-  resolveAutoFollowGlidePhase,
   shouldIgnoreListAtEndReport,
 } from "../chat-scroll";
 import { stripDiffSearchParams } from "../diffRouteSearch";
@@ -5575,9 +5572,6 @@ export default function ChatView({
   const lastTranscriptScrollTopRef = useRef(0);
   // Smooth only the first auto-follow after a send; live stream re-sticks stay cheap.
   const animateNextAutoFollowScrollRef = useRef(false);
-  // While the send glide owns the viewport the resize pin stays hands-off, so
-  // the two writers can never fight over scrollTop in the same frame.
-  const transcriptGlideActiveRef = useRef(false);
   // Single writer for the at-end state so the ref and the render state that drives the
   // list's tail-stick can never disagree.
   const setTranscriptAtEnd = useCallback((isAtEnd: boolean) => {
@@ -5591,8 +5585,8 @@ export default function ChatView({
   // The viewport belongs to the user, so its live geometry — not the list's cached
   // at-end report, which lags a scroll gesture by a frame and can stay stale-true —
   // decides whether a send is allowed to follow the tail. Chrome resizes that
-  // temporarily push the viewport off-bottom re-stick themselves before the next
-  // send (see the composer ResizeObserver below).
+  // temporarily push the viewport off-bottom are reconciled by the list before
+  // the next send.
   const isTranscriptFollowingTail = useCallback(() => {
     const scrollContainer = legendListRef.current?.getScrollableNode?.();
     if (!(scrollContainer instanceof HTMLElement)) return isAtEndRef.current;
@@ -5781,135 +5775,39 @@ export default function ChatView({
   const onMessagesWheelBase = useCallback(() => {
     noteUserScrollIntent();
   }, [noteUserScrollIntent]);
-  // Re-anchors the tail stick unless another writer owns the viewport: the send
-  // glide, a user gesture, or a viewport that already left the bottom.
-  const pinTranscriptToBottom = useCallback(() => {
-    // A pending animated follow (armed by a send) owns the upcoming travel;
-    // pinning first would snap the viewport before the glide can ease it.
-    if (animateNextAutoFollowScrollRef.current) return;
-    if (transcriptGlideActiveRef.current) return;
-    // The tail-anchor slide owns the scroll after a send: it parks the sent
-    // message at the viewport top and the spacer keeps the end exact once it
-    // settles. Pinning to the bottom mid-slide would hard-jump past it.
-    if (tailAnchorScrollInFlightRef.current) return;
-    if (!isAtEndRef.current) return;
-    if (performance.now() < userScrollIntentUntilRef.current) return;
-    const scrollContainer = legendListRef.current?.getScrollableNode?.();
-    if (!(scrollContainer instanceof HTMLElement)) return;
-    if (
-      getScrollContainerDistanceFromBottom(scrollContainer) <= AUTO_FOLLOW_GLIDE_SETTLE_EPSILON_PX
-    ) {
-      return;
-    }
-    programmaticScrollUntilRef.current = performance.now() + 200;
-    scrollContainer.scrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
-  }, []);
-  // Every commit that grows the transcript (optimistic appends, streaming
-  // tokens, rows settling) re-pins before paint, so no off-bottom frame is
-  // ever visible. Deliberately dependency-free: any commit may move the tail.
+  // LegendList is the single passive tail-follow owner. React commits, generic
+  // chrome changes, and ResizeObserver callbacks must not write scrollTop: they
+  // otherwise race the list's own measurement correction and can leave a long
+  // virtualized transcript pointed at empty estimated space. This signal changes
+  // only for real transcript messages; streamed text growth stays on the list's
+  // `maintainScrollAtEnd` path.
+  const previousTranscriptAutoFollowSignalRef = useRef(transcriptAutoFollowSignal);
   useLayoutEffect(() => {
-    pinTranscriptToBottom();
-  });
-  // The list's estimated content height oscillates while freshly appended rows
-  // get measured, so any scroll target computed once is stale by the time the
-  // browser reaches it: the viewport overshoots the inflated estimate and gets
-  // clamped back when the measurement lands — the visible send bounce. The
-  // glide therefore eases toward the live bottom re-read every frame.
-  useLayoutEffect(() => {
-    // An armed turn may re-stick even when the list reports "not at end", because a
-    // freshly appended row reads as off-bottom for a frame. It must not outrank a
-    // viewport the user actually left: gestures that miss `noteUserScrollIntent`
-    // (keyboard paging, for one) leave the arm set, and without this the turn's last
-    // transcript signal drags the reader back down. Live geometry breaks the tie.
-    const shouldFollowPendingTurn =
-      activeThread?.id !== undefined &&
-      autoFollowThreadIdRef.current === activeThread.id &&
-      isTranscriptFollowingTail();
-    if (!isAtEndRef.current && !shouldFollowPendingTurn) {
+    if (previousTranscriptAutoFollowSignalRef.current === transcriptAutoFollowSignal) {
       return;
     }
-    const scrollContainer = legendListRef.current?.getScrollableNode?.();
-    if (!(scrollContainer instanceof HTMLElement)) {
-      return;
-    }
-    // Safety net for size corrections the list applies outside React commits.
-    // The pin is deferred one frame: writing scrollTop inside the observer
-    // callback cascades into "ResizeObserver loop" errors.
-    let pinFrameId: number | null = null;
-    const resizeObserver = new ResizeObserver(() => {
-      if (pinFrameId !== null) return;
-      pinFrameId = window.requestAnimationFrame(() => {
-        pinFrameId = null;
-        pinTranscriptToBottom();
-      });
-    });
-    resizeObserver.observe(scrollContainer);
-    const contentNode = scrollContainer.firstElementChild;
-    if (contentNode instanceof HTMLElement) {
-      resizeObserver.observe(contentNode);
-    }
-    let frameId: number | null = null;
-    // The tail-anchor slide parks a freshly sent message at the viewport top and
-    // owns the scroll until it settles. Both writers below pull toward the
-    // bottom, so they stand down; the armed follow survives and resumes on the
-    // next transcript signal, once the anchor has cleared the in-flight flag.
-    const tailAnchorOwnsScroll = tailAnchorScrollInFlightRef.current;
+    previousTranscriptAutoFollowSignalRef.current = transcriptAutoFollowSignal;
+
     if (
-      !tailAnchorOwnsScroll &&
-      animateNextAutoFollowScrollRef.current &&
-      !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      tailAnchorScrollInFlightRef.current ||
+      !isAtEndRef.current ||
+      performance.now() < userScrollIntentUntilRef.current
     ) {
-      transcriptGlideActiveRef.current = true;
-      const startedAt = performance.now();
-      let lastFrameAt = startedAt;
-      let hasTraveled = false;
-      const runGlideFrame = () => {
-        frameId = null;
-        // A scroll gesture revokes the pending follow mid-glide; continuing
-        // would yank the viewport back out of the user's hands.
-        if (!animateNextAutoFollowScrollRef.current) {
-          transcriptGlideActiveRef.current = false;
-          return;
-        }
-        const now = performance.now();
-        const distancePx = getScrollContainerDistanceFromBottom(scrollContainer);
-        const phase = resolveAutoFollowGlidePhase({ distancePx, hasTraveled, now, startedAt });
-        if (phase === "settled") {
-          animateNextAutoFollowScrollRef.current = false;
-          transcriptGlideActiveRef.current = false;
-          programmaticScrollUntilRef.current = now + 200;
-          scrollContainer.scrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
-          return;
-        }
-        if (phase === "moving") {
-          hasTraveled = true;
-          programmaticScrollUntilRef.current = now + 200;
-          scrollContainer.scrollTop += computeAutoFollowGlideStep(distancePx, now - lastFrameAt);
-        }
-        lastFrameAt = now;
-        frameId = window.requestAnimationFrame(runGlideFrame);
-      };
-      frameId = window.requestAnimationFrame(runGlideFrame);
-    } else if (!tailAnchorOwnsScroll) {
       animateNextAutoFollowScrollRef.current = false;
-      pinTranscriptToBottom();
+      return;
     }
+
+    const animated =
+      animateNextAutoFollowScrollRef.current &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    animateNextAutoFollowScrollRef.current = false;
+    const frameId = window.requestAnimationFrame(() => {
+      scrollToEnd(animated);
+    });
     return () => {
-      resizeObserver.disconnect();
-      transcriptGlideActiveRef.current = false;
-      if (pinFrameId !== null) {
-        window.cancelAnimationFrame(pinFrameId);
-      }
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
-      }
+      window.cancelAnimationFrame(frameId);
     };
-  }, [
-    activeThread?.id,
-    isTranscriptFollowingTail,
-    pinTranscriptToBottom,
-    transcriptAutoFollowSignal,
-  ]);
+  }, [scrollToEnd, transcriptAutoFollowSignal]);
   const {
     pendingTranscriptSelectionAction,
     commitTranscriptAssistantSelection,

@@ -1427,12 +1427,6 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
       return normalizeThreadFromReadModel(thread, existing);
     });
   const nextThreadIds = new Set(nextThreads.map((thread) => thread.id));
-  // This full resync (including the "Repair local state" action) replaces
-  // every thread's detail wholesale: pruned threads lose their detail, and a
-  // surviving thread's cursor would vouch for history the replacement does not
-  // contain. No cursor survives — the next subscribe takes a snapshot and
-  // re-establishes one that matches what is actually cached.
-  resetThreadDetailResumeCursors();
   let normalizedState: AppState = {
     ...state,
     threadIds: reuseThreadIdRegistry(state.threadIds, nextThreadIds),
@@ -1512,6 +1506,11 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
       livePresentProjectIds,
     );
   }
+  // A changed full resync (including the "Repair local state" action) replaces
+  // thread detail wholesale: pruned threads lose their detail, and a surviving
+  // thread's cursor could otherwise resume past the replacement. Keep this after
+  // the structural no-op check so an identical retry has no hidden side effects.
+  resetThreadDetailResumeCursors();
   return retireConfirmedDeletionTombstones(
     {
       ...normalizedState,
