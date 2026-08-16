@@ -54,8 +54,35 @@ function resolvePositionedContainer(row: HTMLElement): HTMLElement | null {
 export function useTimelineRowOverlapGuard(): (element: HTMLElement | null) => (() => void) | void {
   const observerRef = useRef<ResizeObserver | null>(null);
   const observedRowsRef = useRef(new Set<HTMLElement>());
+  const observedRowHeightsRef = useRef(new WeakMap<HTMLElement, number>());
 
   const closeOverlaps = useCallback((entries?: readonly ResizeObserverEntry[]) => {
+    let changedEntries = entries;
+    if (entries !== undefined) {
+      const rowHeights = observedRowHeightsRef.current;
+      changedEntries = entries.filter((entry) => {
+        const target = entry.target;
+        if (!(target instanceof HTMLElement)) {
+          return false;
+        }
+        const nextHeight = entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height;
+        const previousHeight = rowHeights.get(target);
+        rowHeights.set(target, nextHeight);
+        // Every newly observed row receives one delivery even though it did not
+        // resize. Treat that delivery as the baseline: virtualized scrolling
+        // mounts rows continuously, and measuring all placed containers for
+        // each initial callback turns an otherwise cheap mount into O(visible
+        // rows) forced geometry reads.
+        return (
+          previousHeight !== undefined &&
+          Math.abs(nextHeight - previousHeight) > OVERLAP_EPSILON_PX
+        );
+      });
+      if (changedEntries.length === 0) {
+        return;
+      }
+    }
+
     // Inline-style reads only — no forced layout yet.
     const containerTops = new Map<HTMLElement, number>();
     for (const row of observedRowsRef.current) {
@@ -81,7 +108,7 @@ export function useTimelineRowOverlapGuard(): (element: HTMLElement | null) => (
     // container cannot intrude on anything (nothing is placed below it, and
     // this guard only ever pushes rows down), so the measurement pass — the
     // one getBoundingClientRect per frame — is skipped entirely.
-    if (entries !== undefined) {
+    if (changedEntries !== undefined) {
       let maxTop = Number.NEGATIVE_INFINITY;
       let maxTopCount = 0;
       for (const top of containerTops.values()) {
@@ -94,7 +121,7 @@ export function useTimelineRowOverlapGuard(): (element: HTMLElement | null) => (
       }
       if (maxTopCount === 1) {
         let onlyBottomMostResized = true;
-        for (const entry of entries) {
+        for (const entry of changedEntries) {
           const target = entry.target;
           if (!(target instanceof HTMLElement) || !target.isConnected) {
             continue;
@@ -159,11 +186,13 @@ export function useTimelineRowOverlapGuard(): (element: HTMLElement | null) => (
       // correction below lands in the same frame as the size change.
       observerRef.current ??= new ResizeObserver(closeOverlaps);
       const observer = observerRef.current;
+      observedRowHeightsRef.current.delete(element);
       observer.observe(element);
       observedRowsRef.current.add(element);
       return () => {
         observer.unobserve(element);
         observedRowsRef.current.delete(element);
+        observedRowHeightsRef.current.delete(element);
       };
     },
     [closeOverlaps],

@@ -161,6 +161,7 @@ import { getAppTypographyScale } from "../../lib/appTypography";
 import {
   USER_MESSAGE_COLLAPSED_FADE_LINES,
   USER_MESSAGE_COLLAPSED_MAX_LINES,
+  userMessageDefinitelyFitsCollapsedView,
   userMessageLikelyOverflows,
 } from "./userMessageCollapse";
 import { useMessages } from "~/i18n/context";
@@ -1745,6 +1746,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         text={userMessageText}
                         expanded={userMessageExpanded}
                         chatFontSizePx={normalizedChatFontSizePx}
+                        skipOverflowMeasurement={userMessageDefinitelyFitsCollapsedView(
+                          userMessageText,
+                          {
+                            hasMentionReferences: (row.message.mentions?.length ?? 0) > 0,
+                            hasTerminalContexts: terminalContexts.length > 0,
+                          },
+                        )}
                         onToggle={() => {
                           setExpandedUserMessagesById((previous) => ({
                             ...previous,
@@ -2611,7 +2619,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         data={rows}
         keyExtractor={(row) => row.id}
         renderItem={({ item }) => renderRowContent(item)}
-        estimatedItemSize={90}
+        // The long-transcript corpus settles near 113px per row (close to the
+        // common one-line message estimate in timelineHeight). Starting at 90px made a
+        // 1,000-row list grow by about a quarter while scrolling, forcing repeated
+        // position correction on the Windows software renderer.
+        estimatedItemSize={113}
         // LegendList caches rendered rows, so every local expansion map that changes row content
         // has to be surfaced through extraData.
         extraData={timelineExtraData}
@@ -3315,9 +3327,14 @@ const UserMessageEditForm = memo(function UserMessageEditForm(props: {
 // compiled component.
 function measureUserMessageOverflow(
   collapsed: boolean,
+  skipMeasurement: boolean,
   contentRef: RefObject<HTMLDivElement | null>,
   setOverflowing: (overflowing: boolean) => void,
 ): (() => void) | undefined {
+  if (skipMeasurement) {
+    setOverflowing(false);
+    return undefined;
+  }
   if (!collapsed) {
     return undefined;
   }
@@ -3338,6 +3355,7 @@ const UserMessageCollapsibleText = memo(function UserMessageCollapsibleText(prop
   text: string;
   expanded: boolean;
   chatFontSizePx: number;
+  skipOverflowMeasurement: boolean;
   onToggle: () => void;
   children: ReactNode;
 }) {
@@ -3347,8 +3365,14 @@ const UserMessageCollapsibleText = memo(function UserMessageCollapsibleText(prop
   const collapsed = !props.expanded;
 
   useLayoutEffect(
-    () => measureUserMessageOverflow(collapsed, contentRef, setOverflowing),
-    [collapsed, props.text],
+    () =>
+      measureUserMessageOverflow(
+        collapsed,
+        props.skipOverflowMeasurement,
+        contentRef,
+        setOverflowing,
+      ),
+    [collapsed, props.skipOverflowMeasurement, props.text],
   );
 
   const lineHeightPx = getChatTranscriptUserMessageLineHeightPx(props.chatFontSizePx);

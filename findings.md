@@ -519,3 +519,14 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - `bun run build:desktop` 成功（4/4 build tasks）；使用独立系统临时 `SYNARA_HOME=C:/Users/kingt/AppData/Local/Temp/synara-perf-smoke-47acf87f49df47e78210bf874bd90a18/synara-home` 的原生 Electron smoke 成功（5/5 tasks），未触碰当前运行实例的 `C:/Users/kingt/.synara`。没有替换或安装用户当前桌面应用，因此没有把隔离启动冒充为已安装实例的人工长会话复测。
 - 工具/运行记录：FastCtx continuation 首次因 transport closed 失败，按规则降级到本地只读命令；首次从仓库根执行带 `-t` 的测试被 Turbo 拒绝，改为 `apps/web` workspace 的 `bun run test -- ... -t ...`；最终 Chromium 通过后报告 Vitest close timeout，但测试正常完成。`git diff --check` 无 whitespace error，仅有 Windows LF→CRLF 提示。
 - 用户随后明确授权最终重型门禁：`bun fmt` 成功，但改写了 712 个本轮无关文件，已完整撤销这批未提交 formatter 产物并恢复到已验证提交；`bun lint` 以 0 error / 467 warning 通过；`bun typecheck` 被本轮未修改的 `desktopHangWatchdog*.ts` 与 `windowsHangDump.ts` 既有类型错误阻断。因此仓库级重型门禁未全绿，本轮没有越界修改这些桌面诊断模块。回退期间 Git Bash 因 `HCS_E_CONNECTION_TIMEOUT` 无法启动，PowerShell reverse apply 未生效；确认格式化前工作树干净且目标为当前 workspace 后，使用 `git restore --worktree -- .` 精确恢复全部 formatter 产物。
+
+## 2026-08-16 Windows 桌面端长会话追加剖析
+
+- 真实 Electron 性能夹具确认当前 Windows 图形状态是全软件路径：`gpu_compositing=disabled_software`、`rasterization=disabled_software`、WebGL unavailable。该策略来自已复现的 GPU channel/Mojo 永久等待安全修复，不能仅为帧率回退。
+- 1,000 条消息下，`estimatedItemSize=90` 会在首次完整滚动中把列表高度从约 90,455px 修正到 112,626px，增长约 24.5%；改为 113 后高度从 113,110px 收敛到 112,626px，仅漂移 -0.43%。该修改解决虚拟列表初始几何误差和位置修正，不把它误报为稳定的 P95 帧率提升。
+- ResizeObserver 会为每个新观察行发送一次初始 delivery；旧 overlap guard 将这些 delivery 当成真实 resize，持续读取全部 positioned container。回归测试先得到 3 次不必要测量，再记录初始高度作为 baseline；instrumented Electron 一次滚动的 `getBoundingClientRect` 从 11,806 降到 3,931，约减少 67%。
+- source-mapped V8 profile 显示最大应用级单点是 `measureUserMessageOverflow`：一轮滚动中约 516ms self time，用于每个短用户消息挂载时同步读取 `scrollHeight/clientHeight`。新增 96 字符以内短纯文本快路径；只有无换行/Markdown 结构、无 mention、无 terminal context 的内容跳过测量，其他内容继续走原精确折叠路径。TDD 红灯为新 helper 不存在导致 2/2 失败，最小实现后 2/2 通过；长消息 Show more/less 浏览器路径仍通过。
+- 真实 Electron 最终复测仍证明软件渲染是剩余卡顿上限：三个双向滚动周期 P95 分别为 43.1ms、40.0ms、36.7ms，丢帧分别 179/163/123；同时滚动和 10 秒 streaming 时滚动 P95 39.9ms，stream frame P95 20.1ms、flush P95 0.5ms、最终文本完全匹配。列表高度保持 -0.43% 漂移，说明几何稳定性已修正，但 1,000 行软件栅格化下仍不可能达到稳定 60fps。
+- 对 `recycleItems`、缩小 draw distance、按 row kind/role 提供 item type 的受控实验均没有稳定收益，其中前两项还增加 React commit、DOM churn 或丢帧；实验改动全部撤销，没有把噪声结果带入实现。
+- 聚焦验证：user-message policy 2/2、MessagesTimeline 单元与折叠 59/59、overlap/tail-anchor/transcript 浏览器 11/11；`bun run build:desktop` 4/4 成功。没有再次运行 `bun fmt`、`bun lint`、`bun typecheck`；上一轮记录的 typecheck 既有阻断仍适用。
+- 工具/运行记录：FastCtx 首次读取因 transport closed 降级到本地 `rg`；首次从根目录向 Turbo 传测试路径被当成缺失 task，改用 `bun run test:web:focused -- <path>`；Electron perf runner 首次从 Web workspace resolve `electron` 失败，改为 desktop package resolver 后成功。临时目录清理的 PowerShell `Remove-Item` 与 Git Bash `rm` 均被执行策略拒绝，随后用 Node 对系统 temp 下的精确 absolute/real path 双重等值校验后删除。所有性能运行使用独立临时 home/profile/端口，没有触碰当前安装实例数据。

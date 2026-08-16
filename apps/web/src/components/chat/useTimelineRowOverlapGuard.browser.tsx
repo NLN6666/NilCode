@@ -10,7 +10,7 @@
 // Layer: Vitest browser tests
 
 import { useRef, useState } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
 
 import { useTimelineRowOverlapGuard } from "./useTimelineRowOverlapGuard";
@@ -75,6 +75,32 @@ async function nextFrame(): Promise<void> {
 describe("useTimelineRowOverlapGuard", () => {
   afterEach(() => {
     document.body.innerHTML = "";
+  });
+
+  it("does not measure positioned containers for initial observer deliveries", async () => {
+    const handleRef: { current: HarnessHandle | null } = { current: null };
+    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+    let positionedContainerMeasurements = 0;
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(function getBoundingClientRectSpy(this: Element) {
+        if (this instanceof HTMLElement && this.hasAttribute("data-overlap-container")) {
+          positionedContainerMeasurements += 1;
+        }
+        return originalGetBoundingClientRect.call(this);
+      });
+
+    const screen = await render(<StaleContainers handleRef={handleRef} />);
+    try {
+      await expect.poll(() => handleRef.current != null).toBe(true);
+      await nextFrame();
+      await nextFrame();
+
+      expect(positionedContainerMeasurements).toBe(0);
+    } finally {
+      rectSpy.mockRestore();
+      await screen.unmount();
+    }
   });
 
   it("pushes stale containers down in the frame a row grows", async () => {
