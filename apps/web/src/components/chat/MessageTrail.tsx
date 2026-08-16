@@ -15,7 +15,6 @@ import {
   useId,
   useRef,
   useState,
-  useSyncExternalStore,
   type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -93,13 +92,10 @@ export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps
   const [hasGutter, setHasGutter] = useState(false);
   const [rovingIndex, setRovingIndex] = useState(0);
 
-  // Reading-position highlights — fed by the timeline via a stable store so only
-  // this rail re-renders when they change.
-  const trailSnapshot = useSyncExternalStore(
-    activeStore.subscribe,
-    activeStore.get,
-    activeStore.get,
-  );
+  // Read the current snapshot for initial/occasional React renders. Subsequent
+  // scroll-position updates are consumed imperatively below: rerendering all ticks
+  // for every viewport change made long transcripts needlessly expensive.
+  const trailSnapshot = activeStore.get();
   const anchorIndex = items.findIndex((item) => item.id === trailSnapshot.currentId);
   const visibleIdSet = new Set(trailSnapshot.visibleIds);
   const visibleIndexes: number[] = [];
@@ -127,6 +123,7 @@ export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps
   const viewportTopRef = useRef(0);
   const tooltipIndexRef = useRef(-1);
   const reducedMotionRef = useRef(false);
+  const tickStylesRef = useRef<TickStyle[]>([]);
   // Mirror render values into refs so the rAF/handlers stay stable and current.
   // Mirrored in an effect (not during render) so the component stays eligible
   // for React Compiler; the rAF loop and handlers only fire post-commit.
@@ -153,14 +150,23 @@ export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps
   // --- Imperative writers ----------------------------------------------------
   const writeStyles = (styles: readonly TickStyle[]) => {
     const refs = tickRefs.current;
+    const previousStyles = tickStylesRef.current;
     for (let i = 0; i < styles.length; i += 1) {
       const el = refs[i];
-      if (!el) {
+      const style = styles[i];
+      if (!el || !style) {
         continue;
       }
-      el.style.width = `${styles[i]!.width}px`;
-      el.style.opacity = `${styles[i]!.opacity}`;
+      const previous = previousStyles[i];
+      if (!previous || previous.width !== style.width) {
+        el.style.width = `${style.width}px`;
+      }
+      if (!previous || previous.opacity !== style.opacity) {
+        el.style.opacity = `${style.opacity}`;
+      }
+      previousStyles[i] = { width: style.width, opacity: style.opacity };
     }
+    previousStyles.length = styles.length;
   };
 
   const hideTooltip = () => {
@@ -332,6 +338,33 @@ export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps
     }
   };
 
+  const syncTrailSnapshot = () => {
+    const snapshot = activeStore.get();
+    const currentItems = itemsRef.current;
+    const previousAnchorIndex = anchorIndexRef.current;
+    const nextAnchorIndex = currentItems.findIndex((item) => item.id === snapshot.currentId);
+    const visibleIds = new Set(snapshot.visibleIds);
+    const nextVisibleIndexes: number[] = [];
+    currentItems.forEach((item, index) => {
+      if (visibleIds.has(item.id)) {
+        nextVisibleIndexes.push(index);
+      }
+    });
+
+    anchorIndexRef.current = nextAnchorIndex;
+    visibleIndexesRef.current = nextVisibleIndexes;
+    if (previousAnchorIndex !== nextAnchorIndex) {
+      tickRefs.current[previousAnchorIndex]?.removeAttribute("aria-current");
+      tickRefs.current[nextAnchorIndex]?.setAttribute("aria-current", "location");
+    }
+
+    if (latestPointerClientYRef.current !== null || focusOverrideIndexRef.current !== null) {
+      scheduleFrame();
+    } else {
+      applyRest();
+    }
+  };
+
   // --- Gutter visibility: rail only shows when the pane is wide enough --------
   // Width-only ResizeObserver; the tick layout is count-driven (see `geometry`),
   // so observing size never feeds back into the layout.
@@ -366,6 +399,14 @@ export function MessageTrail({ items, activeStore, onSelect }: MessageTrailProps
   useEffect(() => {
     layoutTicks();
   }, [geometry, layoutTicks]);
+
+  // Active reading/visibility changes happen on nearly every transcript scroll.
+  // Consume them without a React state update so a 500-message trail changes only
+  // the handful of affected attributes instead of reconciling all 500 buttons.
+  useEffect(() => {
+    syncTrailSnapshot();
+    return activeStore.subscribe(syncTrailSnapshot);
+  }, [activeStore, syncTrailSnapshot]);
 
   // Refresh idle highlights when the current anchor or visible-message set changes.
   useEffect(() => {

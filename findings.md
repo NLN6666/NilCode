@@ -530,3 +530,13 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 对 `recycleItems`、缩小 draw distance、按 row kind/role 提供 item type 的受控实验均没有稳定收益，其中前两项还增加 React commit、DOM churn 或丢帧；实验改动全部撤销，没有把噪声结果带入实现。
 - 聚焦验证：user-message policy 2/2、MessagesTimeline 单元与折叠 59/59、overlap/tail-anchor/transcript 浏览器 11/11；`bun run build:desktop` 4/4 成功。没有再次运行 `bun fmt`、`bun lint`、`bun typecheck`；上一轮记录的 typecheck 既有阻断仍适用。
 - 工具/运行记录：FastCtx 首次读取因 transport closed 降级到本地 `rg`；首次从根目录向 Turbo 传测试路径被当成缺失 task，改用 `bun run test:web:focused -- <path>`；Electron perf runner 首次从 Web workspace resolve `electron` 失败，改为 desktop package resolver 后成功。临时目录清理的 PowerShell `Remove-Item` 与 Git Bash `rm` 均被执行策略拒绝，随后用 Node 对系统 temp 下的精确 absolute/real path 双重等值校验后删除。所有性能运行使用独立临时 home/profile/端口，没有触碰当前安装实例数据。
+
+## 2026-08-16 Windows 桌面端长会话挂载热点追加优化
+
+- source-mapped Electron profile 将剩余应用侧热点进一步定位到两个重复工作：一次双向滚动会挂载/卸载 1,958 个 Markdown root（其中 979 个用户消息折叠 root）；每个 `ChatMarkdown` 挂载都调用 `useTheme()`，旧 effect 因而重复计算主题并向 document root 重写整套约 179 个 CSS 变量。浏览器回归在旧实现上测到两个额外 hook subscriber 写入 358 次变量；按主题状态、系统明暗、Electron/Web 与平台生成语义 projection key 后，相同投影只保留 desktop bridge 同步，不再重写 DOM。真实 profile 中此前约 166.6ms 的 root `setProperty` 热点消失。
+- MessageTrail 原来通过 `useSyncExternalStore` 消费每次 viewport highlight：500 个刻度会整组件重渲染，随后 `applyRest()` 再写所有 width/opacity。新增浏览器回归先稳定得到额外 React commit；修复改为命令式订阅、只更新 anchor ARIA，并缓存上一组 tick style 跳过相同写入。真实 profile 中 MessageTrail 两个热点合计由约 99ms 降到约 13ms（约 -87%），原生 highlight 属性写入只剩约 1.1ms；同一采样轮 dropped frames 从 82 降到 57，P95 仍约 36.7ms。
+- P95 未继续下降的主因已收敛到 LegendList Web 内部 `measureContainersInLayoutEffect`：每个活跃容器固定调用 `getBoundingClientRect()`，一次 profile 约 557ms；虚拟化同时仍造成 1,958 次 Markdown 重挂载/解析。库的 `getFixedItemSize` 只适用于真正固定高度，而聊天行受 Markdown、折叠、工具卡、streaming 和窗口宽度影响；实验性 adaptive render 也没有高度保持的占位模型，因此没有用错误固定高度换取表面帧率。
+- 去掉主题重复写入后，既有 steer tail-anchor 测试稳定暴露真实时序竞态：锚点先落在 12px，LegendList 随后只改 `scrollTop`（没有行 style mutation），采样一帧掉到 368px，再被下一帧 hook 拉回。旧主题写入的额外延迟只是掩盖它。锚点拥有滚动权期间现在同时监听 scroll container 并立即重校正；原来稳定失败的 tail-anchor 4/4 及组合浏览器回归 11/11 通过。
+- 验证：MessageTrail/theme/ChatTranscriptPane/row-overlap/tail-anchor 浏览器 11/11；message-trail 与 transcript-scroll 单元 37/37；`bun run build:desktop` 4/4 build tasks 成功。真实 Electron profile 使用独立临时 profile/端口；Windows GPU 禁用安全护栏保持不变。
+- 整仓 `bun run test` 被既有 Windows/POSIX 路径断言阻断（Canary、macOS icon/profile、preview URL、login shell home 等）；Web 全量为 4,423/4,426，通过项之外的 3 个失败是当前 OMP provider 数量/文案 catalog 预期未同步，与本轮文件无关。本轮没有扩 scope 修复这些基线问题。
+- 按项目约束未运行 `bun fmt`、`bun lint`、`bun typecheck`，因为用户当前对话未显式授权这些 heavyweight checks。FastCtx transport 持续 closed，读取降级为本地 `rg`/PowerShell；失败截图属于测试临时产物，最终清理。

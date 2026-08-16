@@ -41,6 +41,7 @@ let listeners: Array<() => void> = [];
 let lastSnapshot: ThemeSnapshot | null = null;
 let lastSnapshotKey = "";
 let lastDesktopTheme: ThemeMode | null = null;
+let lastAppliedThemeProjectionKey = "";
 
 // ─── Store wiring ─────────────────────────────────────────────────────────
 
@@ -149,11 +150,23 @@ function applyThemeState(state: ThemeState, suppressTransitions = false) {
     return;
   }
 
+  const systemDark = getSystemDark();
+  const projectionKey = [
+    serializeThemeState(state),
+    systemDark ? "dark" : "light",
+    isElectron ? "electron" : "web",
+    isMacNavigatorPlatform() ? "mac" : "other",
+  ].join("|");
+  if (projectionKey === lastAppliedThemeProjectionKey) {
+    syncDesktopTheme(state.mode);
+    return;
+  }
+
   if (suppressTransitions) {
     root.classList.add("no-transitions");
   }
 
-  const variant = resolveThemeVariant(state.mode, getSystemDark());
+  const variant = resolveThemeVariant(state.mode, systemDark);
   const activeTheme = resolveThemePack(state, variant);
   const cssVariableBuild = buildThemeCssVariables(activeTheme, variant, {
     electron: isElectron,
@@ -174,6 +187,8 @@ function applyThemeState(state: ThemeState, suppressTransitions = false) {
     }
     root.style.setProperty(name, value);
   }
+
+  lastAppliedThemeProjectionKey = projectionKey;
 
   syncDesktopTheme(state.mode);
 

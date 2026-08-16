@@ -153,6 +153,7 @@ export function useTailAnchorScroll({
     let disposed = false;
     let frameId: number | null = null;
     let layoutObserver: MutationObserver | null = null;
+    let observedScrollContainer: HTMLElement | null = null;
     // The transcript's top padding is fixed for the life of a slide, so the
     // (layout-forcing) computed-style read is done once instead of every frame.
     let topInsetPx: number | null = null;
@@ -178,6 +179,19 @@ export function useTailAnchorScroll({
     // reserve that has yet to appear.
     let hasBeenReachable = false;
 
+    const correctOwnedScroll = () => {
+      anchorSlideCorrectionRef.current?.();
+    };
+
+    function observeOwnedScroll(container: HTMLElement): void {
+      if (observedScrollContainer === container) {
+        return;
+      }
+      observedScrollContainer?.removeEventListener("scroll", correctOwnedScroll);
+      observedScrollContainer = container;
+      container.addEventListener("scroll", correctOwnedScroll, { passive: true });
+    }
+
     function stopFrameLoop(): void {
       if (frameId !== null) {
         window.cancelAnimationFrame(frameId);
@@ -186,6 +200,8 @@ export function useTailAnchorScroll({
       anchorSlideCorrectionRef.current = null;
       layoutObserver?.disconnect();
       layoutObserver = null;
+      observedScrollContainer?.removeEventListener("scroll", correctOwnedScroll);
+      observedScrollContainer = null;
     }
 
     // The slide is over (or was never possible): hand scroll ownership back to
@@ -220,6 +236,9 @@ export function useTailAnchorScroll({
       const elapsedMs = now - startedAt;
 
       const container = getTranscriptScrollContainer(listRef);
+      if (container) {
+        observeOwnedScroll(container);
+      }
       if (container && topInsetPx === null) {
         topInsetPx = Number.parseFloat(window.getComputedStyle(container).paddingTop) || 0;
       }
