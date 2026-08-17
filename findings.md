@@ -600,3 +600,10 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 唯一一次独立审查发现旧的 pairwise comparator 在有/无 sequence 混排时不满足传递性。补充三条混排红灯后，排序改为先按时间建立稳定槽位，再只在 sequenced 槽位中按 durable sequence 排列；无 sequence 的用户消息/计划卡保持相对时间位置，同时消除排序环。
 - 为避免长 transcript 回归，时间槽仍复用各来源数组的已排序检查与线性 merge；sequenced 槽本身已单调时也直接返回，不做全量 `toSorted`。
 - 最终聚焦验证：`workLog`、`MessagesTimeline.logic`、`agentActivity.logic` 共 201/201 通过；`git diff --check` 无空白错误。按当前对话授权边界未运行 `bun fmt`、`bun lint`、`bun typecheck`。
+
+## 2026-08-17 Windows NSIS 安装包构建（时间线顺序修复）
+
+- 从干净的 `dev` / `8a6cdcbbd`、版本 `0.7.2` 使用官方 `scripts/build-desktop-artifact.ts` 构建 Windows x64 NSIS；提交专属输出目录为 `release/windows-dev-8a6cdcbbd`，builder 退出码 0。
+- `scripts/verify-packaged-desktop-startup.ts` 使用隔离状态完成原生启动 smoke，退出码 0；没有安装、覆盖或复用当前运行实例与 `C:\Users\kingt\.synara`。
+- 产物 `Synara-0.7.2-x64.exe` 为 197,786,114 bytes，SHA-256 `A0592EDF2B76C09EA3DBEFDEBEAA228B03A13ADDD3D9499C0F9FBEFC4418963D`，Authenticode `NotSigned`；blockmap 为 206,298 bytes，Windows 仍可能显示 SmartScreen 提示。
+- smoke 脚本留下 `C:\Users\kingt\AppData\Local\Temp\synara-packaged-smoke-win-nRk2Zk`；在单个 Node 进程中校验 realpath、系统 Temp 直接父目录和固定前缀后删除，最终 `TempExists=false`。
