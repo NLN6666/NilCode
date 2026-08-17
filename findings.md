@@ -564,3 +564,10 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 标准项目列表移除了 AutoAnimate，只保留仓库规定的共享 220ms disclosure motion；手动排序仍由 dnd-kit 负责，Studio 线程列表的既有 AutoAnimate 保持不变。浏览器回归同时断言项目列表不再被 AutoAnimate 接管，点击项目后直接子项也没有 list-wide FLIP animation。
 - 红灯后的 fresh 结果：选择器新增 4/4 通过；store selector、composer mention、Sidebar logic/UI state 聚焦套件 180/180 通过；真实 Chromium 的项目 disclosure 与 transcript subtree 隔离 2/2 通过；Web production build 成功（保留既有大 chunk warning）。唯一一次独立审查为 `NO FINDINGS`，没有开启第二轮审查。
 - 运行记录：首次 FastCtx batch 因重复列出 `ChatView.browser.tsx` 被原子拒绝；首次组合补丁因 Sidebar 精确上下文未匹配被原子拒绝，均未产生部分写入。浏览器测试前两次因默认 `manual` 分支不挂 AutoAnimate而假绿，随后把 fixture 锁到真实 `updated_at` 分支，稳定得到预期红灯后才实施修复。按本轮授权边界未运行 `bun fmt`、`bun lint`、`bun typecheck`。
+
+## 2026-08-17 Windows NSIS 安装包构建（交互卡顿修复）
+
+- 从干净的 `dev` / `8269e7d60`、版本 `0.7.2` 使用官方 `scripts/build-desktop-artifact.ts` 构建 Windows x64 NSIS；提交专属输出目录为 `release/windows-dev-8269e7d60`，builder 退出码 0。
+- `scripts/verify-packaged-desktop-startup.ts` 使用隔离状态完成原生启动 smoke，退出码 0；没有安装、覆盖或复用当前运行实例与 `C:\Users\kingt\.synara`。
+- 产物 `Synara-0.7.2-x64.exe` 为 197,784,590 bytes（188.62 MiB），SHA-256 `2A52BBB6DC4269373B787B4FA63A486BB77AC1C544AA0D1085C06CB5A4890E7A`，Authenticode `NotSigned`；Windows 仍可能显示 SmartScreen 提示。blockmap 为 206,119 bytes。
+- smoke 脚本未能自动删除 `C:\Users\kingt\AppData\Local\Temp\synara-packaged-smoke-win-NCqgiN`；第一次经 PowerShell 做精确路径校验后的删除被执行策略拒绝，未删除任何内容。随后在单个 Node 进程中校验 realpath、系统 Temp 直接父目录和固定前缀后删除，最终 `TempExists=false`。
