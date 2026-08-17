@@ -4,7 +4,10 @@
 // Depends on: the toast option builder and the provider-delivery block format.
 
 import { ThreadId } from "@synara/contracts";
-import { formatProviderDeliveryBlockDetail } from "@synara/shared/providerDeliveryBlock";
+import {
+  formatProviderDeliveryBlockDetail,
+  PROVIDER_DELIVERY_BLOCK_SUMMARY,
+} from "@synara/shared/providerDeliveryBlock";
 import { describe, expect, it } from "vitest";
 
 import { buildThreadErrorToastOptions, threadErrorToastId } from "./useThreadErrorToast";
@@ -41,6 +44,20 @@ describe("buildThreadErrorToastOptions", () => {
 
   it("offers the unblock action for a provider-delivery quarantine", () => {
     expect(build(blockedError).actionProps).toMatchObject({ children: "Unblock thread" });
+  });
+
+  it("keeps persisted provider stacks out of the visible quarantine toast", () => {
+    const stackedError = formatProviderDeliveryBlockDetail(
+      "Provider adapter process error (codex): Close the other client.\n    at file:///C:/internal/app.asar/index.mjs:81539:22",
+    );
+
+    const options = build(stackedError);
+
+    expect(options.title).toBe(PROVIDER_DELIVERY_BLOCK_SUMMARY);
+    expect(options.description).toBe(
+      "Provider adapter process error (codex): Close the other client.",
+    );
+    expect(options.data).toMatchObject({ copyText: stackedError });
   });
 
   it("disables the action while unblocking", () => {

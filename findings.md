@@ -607,3 +607,12 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - `scripts/verify-packaged-desktop-startup.ts` 使用隔离状态完成原生启动 smoke，退出码 0；没有安装、覆盖或复用当前运行实例与 `C:\Users\kingt\.synara`。
 - 产物 `Synara-0.7.2-x64.exe` 为 197,786,114 bytes，SHA-256 `A0592EDF2B76C09EA3DBEFDEBEAA228B03A13ADDD3D9499C0F9FBEFC4418963D`，Authenticode `NotSigned`；blockmap 为 206,298 bytes，Windows 仍可能显示 SmartScreen 提示。
 - smoke 脚本留下 `C:\Users\kingt\AppData\Local\Temp\synara-packaged-smoke-win-nRk2Zk`；在单个 Node 进程中校验 realpath、系统 Temp 直接父目录和固定前缀后删除，最终 `TempExists=false`。
+
+## 2026-08-17 Codex active-writer 隔离错误泄漏内部堆栈
+
+- 症状：Codex `thread/resume` 返回 `already has an active writer` 后，下一条消息命中 provider delivery quarantine；错误 toast 把 `app.asar` 内部文件路径、Effect 堆栈和多层 cause 全部显示为标题，几乎占满窗口。
+- 链路：`formatCodexThreadResumeError` 已生成简洁可操作文案，但 `classifyProviderAttemptOutcome` 随后使用 `Cause.pretty` 作为 durable delivery 的 `lastError`；`skipQuarantinedSideEffect` 再把该字段直接写入 thread session error。
+- 回归 seam：直接构造带嵌套 cause/内部 `file:///...app.asar` stack 的 `ProviderAdapterProcessError`，断言 uncertain outcome 的持久化 detail 只包含顶层错误 message。
+- 服务端红灯稳定收到完整 Vitest/internal `file:///` stack 与嵌套 cause；修复后 durable blocker 只保存顶层 `Error.message`，Effect cause 仍保留在 bounded-call 失败对象的诊断链路中。
+- Web 侧另加历史数据防线：隔离 toast 的标题固定为简洁 summary，description 只展示 blocker 的首行，原始完整错误仍保留在 Copy error payload；因此数据库里已经存在的长 stack 也不会继续撑满窗口，`Unblock thread` 操作能正常露出。
+- 最终聚焦验证：server active-writer/blocker 5/5、Web toast 5/5、shared provider-delivery contract 2/2 通过；未运行 `bun fmt`、`bun lint`、`bun typecheck`（当前对话未显式授权 heavyweight checks）。

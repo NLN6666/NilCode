@@ -109,6 +109,26 @@ const asMessageId = (value: string): MessageId => MessageId.makeUnsafe(value);
 const asTurnId = (value: string): TurnId => TurnId.makeUnsafe(value);
 
 describe("legacy provider blocker recovery", () => {
+  it("keeps internal stacks out of persisted provider blocker details", () => {
+    const nested = new Error("thread/resume failed: thread provider-thread already has an active writer");
+    nested.stack = "Error: thread/resume failed\n    at file:///C:/internal/app.asar/index.mjs:81539:22";
+    const error = new ProviderAdapterProcessError({
+      provider: "codex",
+      threadId: ThreadId.makeUnsafe("thread-blocked"),
+      detail:
+        "Codex thread provider-thread is open in another Codex client. Close that client before continuing the original thread, or import it as a copy instead.",
+      cause: nested,
+    });
+
+    const outcome = classifyProviderAttemptOutcome(Exit.fail(error));
+
+    expect(outcome).toEqual({
+      _tag: "uncertain",
+      detail: error.message,
+    });
+    expect(outcome.detail).not.toContain("file:///");
+  });
+
   it("keeps process lifecycle failures uncertain", () => {
     const outcome = classifyProviderAttemptOutcome(
       Exit.fail(

@@ -173,11 +173,22 @@ type ProviderAttemptOutcome =
   | { readonly _tag: "safe_retry"; readonly detail: string }
   | { readonly _tag: "uncertain"; readonly detail: string };
 
+function providerAttemptFailureDetail(cause: Cause.Cause<unknown>): string {
+  const failure = Option.getOrUndefined(Cause.findErrorOption(cause));
+  const error = failure ?? Cause.squash(cause);
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.trim();
+  return normalized.length > 0 ? normalized : "Provider command failed without an error message.";
+}
+
 export function classifyProviderAttemptOutcome(
   exit: Exit.Exit<void, unknown>,
 ): ProviderAttemptOutcome {
   if (Exit.isSuccess(exit)) return { _tag: "accepted" };
-  const detail = Cause.pretty(exit.cause);
+  // Delivery errors become durable blocker text and are surfaced directly in the
+  // thread UI. Keep the full Cause for logs, but persist only the top-level message
+  // so internal stacks and nested causes never fill the recovery toast.
+  const detail = providerAttemptFailureDetail(exit.cause);
   const failure = Cause.findErrorOption(exit.cause);
   if (Option.isNone(failure)) return { _tag: "uncertain", detail };
 
