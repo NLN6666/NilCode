@@ -583,3 +583,10 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 唯一一次独立审查未发现生产逻辑问题，提出 1 个 P2 测试缺口：metrics 返回缺失、0、NaN 或字符串 zoom 时未锁定回退行为；一次集中修复补充参数化用例，不开启第二轮审查。
 - 工具错误：移动本节到 `findings.md` 末尾时，首次组合 `apply_patch` 因 Windows 路径反斜杠上下文不匹配而原子失败，未产生部分修改；拆成精确删除与末尾追加后成功。
 - 最终聚焦验证：附件尺寸确认为 `245 × 62` 与 `555 × 299`；picker + selection builder 两个测试文件 39/39 通过。按当前对话授权边界未运行 `bun fmt`、`bun lint`、`bun typecheck`。
+
+## 2026-08-17 Windows NSIS 安装包构建（元素截图裁剪修复）
+
+- 从干净的 `dev` / `6b1a25063`、版本 `0.7.2` 使用官方 `scripts/build-desktop-artifact.ts` 构建 Windows x64 NSIS；提交专属输出目录为 `release/windows-dev-6b1a25063`，builder 退出码 0。
+- `scripts/verify-packaged-desktop-startup.ts` 使用隔离状态完成原生启动 smoke，退出码 0；没有安装、覆盖或复用当前运行实例与 `C:\Users\kingt\.synara`。
+- 产物 `Synara-0.7.2-x64.exe` 为 197,784,213 bytes，SHA-256 `8DB218B61BAE488F998BCE3A36574B27D3C6B1BA4E4821BBDA95D93BE7E03798`，Authenticode `NotSigned`；blockmap 为 206,118 bytes，Windows 仍可能显示 SmartScreen 提示。
+- smoke 脚本留下 `C:\Users\kingt\AppData\Local\Temp\synara-packaged-smoke-win-VfFcX9`；首次在单一 PowerShell 进程内校验并删除的命令被执行策略拒绝，未删除任何内容。随后在单个 Node 进程中校验 realpath、系统 Temp 直接父目录和固定前缀后删除，最终 `TempExists=false`。
