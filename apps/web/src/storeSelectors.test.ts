@@ -7,7 +7,9 @@ import {
   createAccountRateLimitThreadsSelector,
   createAllThreadsSelector,
   createAllThreadsMessagelessSelector,
+  createComposerThreadMentionProjectsSelector,
   createComposerThreadMentionSourcesSelector,
+  createProjectMetadataSelector,
   createProjectLastActivityAtSelector,
   createSidebarDisplayThreadsSelector,
   createSidebarTreeThreadsSelector,
@@ -17,7 +19,7 @@ import {
   createThreadWorkspaceMetadataSelector,
   isSidebarThreadVisible,
 } from "./storeSelectors";
-import type { SidebarThreadSummary, ThreadShell } from "./types";
+import type { Project, SidebarThreadSummary, ThreadShell } from "./types";
 
 const threadIdA = "thread-a" as ThreadId;
 const threadIdB = "thread-b" as ThreadId;
@@ -37,6 +39,7 @@ const summaryA = {
 } as SidebarThreadSummary;
 
 interface TestStateSlices {
+  projects?: readonly Project[];
   threadIds?: readonly ThreadId[];
   threadShellById?: Readonly<Record<string, ThreadShell>>;
   sidebarThreadSummaryById?: Readonly<Record<string, SidebarThreadSummary>>;
@@ -47,6 +50,7 @@ interface TestStateSlices {
 
 function makeState(slices: TestStateSlices): AppState {
   return {
+    projects: slices.projects ?? [],
     threadIds: slices.threadIds ?? [],
     threadShellById: slices.threadShellById ?? {},
     sidebarThreadSummaryById: slices.sidebarThreadSummaryById ?? {},
@@ -55,6 +59,84 @@ function makeState(slices: TestStateSlices): AppState {
     activityByThreadId: slices.activityByThreadId ?? {},
   } as unknown as AppState;
 }
+
+describe("createComposerThreadMentionProjectsSelector", () => {
+  const project = {
+    id: projectId,
+    kind: "project",
+    name: "Project",
+    folderName: "project",
+    expanded: true,
+  } as Project;
+
+  it("stays reference-stable when only sidebar expansion changes", () => {
+    const selectProjects = createComposerThreadMentionProjectsSelector();
+
+    const before = selectProjects(makeState({ projects: [project] }));
+    const after = selectProjects(
+      makeState({
+        projects: [{ ...project, expanded: false }],
+      }),
+    );
+
+    expect(after).toBe(before);
+    expect(after).toEqual([
+      { id: projectId, kind: "project", name: "Project", folderName: "project" },
+    ]);
+  });
+
+  it("returns a new projection when mention metadata changes", () => {
+    const selectProjects = createComposerThreadMentionProjectsSelector();
+
+    const before = selectProjects(makeState({ projects: [project] }));
+    const after = selectProjects(
+      makeState({
+        projects: [{ ...project, name: "Renamed project" }],
+      }),
+    );
+
+    expect(after).not.toBe(before);
+    expect(after[0]?.name).toBe("Renamed project");
+  });
+});
+
+describe("createProjectMetadataSelector", () => {
+  const project = {
+    id: projectId,
+    kind: "project",
+    name: "Project",
+    folderName: "project",
+    expanded: true,
+  } as Project;
+
+  it("does not invalidate active consumers for a sidebar-only expansion change", () => {
+    const selectProject = createProjectMetadataSelector(projectId);
+
+    const before = selectProject(makeState({ projects: [project] }));
+    const after = selectProject(
+      makeState({
+        projects: [{ ...project, expanded: false }],
+      }),
+    );
+
+    expect(after).toBe(before);
+    expect(after).not.toHaveProperty("expanded");
+  });
+
+  it("invalidates active consumers when operational project metadata changes", () => {
+    const selectProject = createProjectMetadataSelector(projectId);
+
+    const before = selectProject(makeState({ projects: [project] }));
+    const after = selectProject(
+      makeState({
+        projects: [{ ...project, cwd: "D:/renamed" }],
+      }),
+    );
+
+    expect(after).not.toBe(before);
+    expect(after?.cwd).toBe("D:/renamed");
+  });
+});
 
 function makeActivity(id: string, kind: string) {
   return { id, kind, createdAt: "2026-01-01T00:00:00.000Z", payload: {} };

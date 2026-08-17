@@ -264,8 +264,9 @@ import {
   extendReplacementRangeForTrailingSpace,
 } from "../composerTriggerInsertion";
 import {
-  createProjectSelector,
+  createComposerThreadMentionProjectsSelector,
   createComposerThreadMentionSourcesSelector,
+  createProjectMetadataSelector,
   createThreadSelector,
 } from "../storeSelectors";
 import { buildThreadSubscribeInput } from "../threadDetailResumeCursors";
@@ -1446,7 +1447,9 @@ export default function ChatView({
   const composerThreadSummaries = useStore(
     useMemo(() => createComposerThreadMentionSourcesSelector(), []),
   );
-  const composerThreadProjects = useStore((state) => state.projects);
+  const composerThreadProjects = useStore(
+    useMemo(() => createComposerThreadMentionProjectsSelector(), []),
+  );
   const crossTaskSourceThreadId =
     serverThread?.creationSource && serverThread.sourceThreadId
       ? serverThread.sourceThreadId
@@ -1482,7 +1485,10 @@ export default function ChatView({
   );
   const fallbackDraftProjectId = draftThread?.projectId ?? null;
   const fallbackDraftProject = useStore(
-    useMemo(() => createProjectSelector(fallbackDraftProjectId), [fallbackDraftProjectId]),
+    useMemo(
+      () => createProjectMetadataSelector(fallbackDraftProjectId),
+      [fallbackDraftProjectId],
+    ),
   );
   const promptRef = useRef(prompt);
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
@@ -2050,7 +2056,7 @@ export default function ChatView({
   const latestTurnLive = Boolean(activeLatestTurn?.startedAt) && !latestTurnSettled;
   const activeProjectId = activeThread?.projectId ?? draftThread?.projectId ?? null;
   const activeProject = useStore(
-    useMemo(() => createProjectSelector(activeProjectId), [activeProjectId]),
+    useMemo(() => createProjectMetadataSelector(activeProjectId), [activeProjectId]),
   );
   const deletePlaceholderTerminalThread = useCallback(
     async (terminalThreadId: ThreadId) => {

@@ -48,7 +48,10 @@ import type { Messages } from "~/i18n/locales/en";
 import type { ComposerCommandItem } from "../components/chat/ComposerCommandMenu";
 import type { ProviderModelOption } from "../providerModelOptions";
 import { compareProvidersByOrder } from "../providerOrdering";
-import type { ComposerThreadMentionSource, Project } from "../types";
+import type {
+  ComposerThreadMentionProjectSource,
+  ComposerThreadMentionSource,
+} from "../types";
 
 type ComposerPluginSuggestion = {
   plugin: ProviderPluginDescriptor;
@@ -242,7 +245,9 @@ function threadSuggestionTitle(title: string): string {
   return title.trim() || "Untitled thread";
 }
 
-function threadSuggestionContainerName(project: Project | undefined): string {
+function threadSuggestionContainerName(
+  project: ComposerThreadMentionProjectSource | undefined,
+): string {
   if (!project) return "Unknown project";
   if (project.kind === "chat") return "Chats";
   if (project.kind === "studio") return "Studio";
@@ -351,7 +356,7 @@ function withDisambiguatedMentionNames(
 
 export function buildThreadMentionComposerItems(input: {
   readonly threads: readonly ComposerThreadMentionSource[];
-  readonly projects: readonly Project[];
+  readonly projects: readonly ComposerThreadMentionProjectSource[];
   readonly currentThreadId: string | null;
   readonly query: string;
 }): ComposerCommandItem[] {
@@ -443,7 +448,7 @@ export interface ComposerCommandMenuInput {
   dynamicAgents: readonly ProviderAgentDescriptor[];
   threadMentionSources?: {
     readonly threads: readonly ComposerThreadMentionSource[];
-    readonly projects: readonly Project[];
+    readonly projects: readonly ComposerThreadMentionProjectSource[];
     readonly currentThreadId: string | null;
   };
   /** `.nilcode/launch.json` entries, offered as `@Launch:<name>` rows. */

@@ -10,8 +10,10 @@ import { ACCOUNT_RATE_LIMIT_ACTIVITY_KINDS } from "./lib/rateLimits";
 import { resolveThreadDisplayProvider } from "./lib/threadDisplayProvider";
 import { collectByIds, getThreadFromState, getThreadsFromState } from "./threadDerivation";
 import type {
+  ComposerThreadMentionProjectSource,
   ComposerThreadMentionSource,
   Project,
+  ProjectMetadata,
   SidebarThreadSummary,
   Thread,
   ThreadShell,
@@ -58,6 +60,86 @@ export function createProjectSelector(
   projectId: ProjectId | null | undefined,
 ): (state: AppState) => Project | undefined {
   return createStableEntitySelector((state) => state.projects, projectId);
+}
+
+function projectMetadata(project: Project): ProjectMetadata {
+  const { expanded: _expanded, ...metadata } = project;
+  return metadata;
+}
+
+function projectMetadataEqual(left: ProjectMetadata, right: ProjectMetadata): boolean {
+  const leftKeys = Object.keys(left) as Array<keyof ProjectMetadata>;
+  const rightKeys = Object.keys(right) as Array<keyof ProjectMetadata>;
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) => Object.prototype.hasOwnProperty.call(right, key) && Object.is(left[key], right[key]),
+    )
+  );
+}
+
+/** Stable project projection for consumers that must ignore sidebar disclosure toggles. */
+export function createProjectMetadataSelector(
+  projectId: ProjectId | null | undefined,
+): (state: AppState) => ProjectMetadata | undefined {
+  let previousProjects: readonly Project[] | undefined;
+  let previousResult: ProjectMetadata | undefined;
+
+  return (state) => {
+    if (!projectId) return undefined;
+    if (state.projects === previousProjects) return previousResult;
+
+    previousProjects = state.projects;
+    const project = state.projects.find((candidate) => candidate.id === projectId);
+    if (!project) {
+      previousResult = undefined;
+      return undefined;
+    }
+
+    const nextResult = projectMetadata(project);
+    if (previousResult && projectMetadataEqual(previousResult, nextResult)) {
+      return previousResult;
+    }
+    previousResult = nextResult;
+    return previousResult;
+  };
+}
+
+/** Stable project labels for @thread suggestions; sidebar expansion is intentionally absent. */
+export function createComposerThreadMentionProjectsSelector(): (
+  state: AppState,
+) => readonly ComposerThreadMentionProjectSource[] {
+  let previousProjects: readonly Project[] | undefined;
+  let previousResult: readonly ComposerThreadMentionProjectSource[] = [];
+
+  return (state) => {
+    if (state.projects === previousProjects) return previousResult;
+    previousProjects = state.projects;
+
+    const nextResult = state.projects.map(({ id, kind, name, folderName }) => ({
+      id,
+      kind,
+      name,
+      folderName,
+    }));
+    if (
+      nextResult.length === previousResult.length &&
+      nextResult.every((project, index) => {
+        const previous = previousResult[index];
+        return (
+          project.id === previous?.id &&
+          project.kind === previous.kind &&
+          project.name === previous.name &&
+          project.folderName === previous.folderName
+        );
+      })
+    ) {
+      return previousResult;
+    }
+
+    previousResult = nextResult;
+    return previousResult;
+  };
 }
 
 export function createThreadSelector(

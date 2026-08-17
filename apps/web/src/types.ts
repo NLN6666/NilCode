@@ -204,6 +204,15 @@ export interface Project {
   scripts: ProjectScript[];
 }
 
+/** Project data used outside the sidebar; excludes the sidebar-only disclosure state. */
+export type ProjectMetadata = Omit<Project, "expanded">;
+
+/** Lightweight project identity used to label thread mentions in the composer. */
+export type ComposerThreadMentionProjectSource = Pick<
+  Project,
+  "id" | "kind" | "name" | "folderName"
+>;
+
 export interface Space {
   id: SpaceId;
   name: string;

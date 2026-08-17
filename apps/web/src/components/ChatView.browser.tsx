@@ -2619,6 +2619,57 @@ describe("ChatView timeline estimator parity (full app)", () => {
     }
   });
 
+  it("keeps project disclosure motion from triggering list-wide FLIP animations", async () => {
+    localStorage.setItem(
+      "synara:app-settings:v1",
+      JSON.stringify({ sidebarProjectSortOrder: "updated_at" }),
+    );
+    const snapshot = addThreadToSnapshot(
+      addThreadToSnapshot(
+        createSnapshotForTargetUser({
+          targetMessageId: "msg-user-project-disclosure-performance" as MessageId,
+          targetText: "project disclosure performance",
+        }),
+        "thread-project-disclosure-2" as ThreadId,
+      ),
+      "thread-project-disclosure-3" as ThreadId,
+    );
+    const mounted = await mountChatView({ viewport: DEFAULT_VIEWPORT, snapshot });
+
+    try {
+      const projectList = await waitForElement(
+        () => document.querySelector<HTMLElement>("[data-sidebar-project-list='true']"),
+        "Unable to find the sidebar project list.",
+      );
+      const projectButton = await waitForElement(
+        () =>
+          Array.from(projectList.querySelectorAll<HTMLButtonElement>("button")).find(
+            (button) => button.textContent?.trim() === "Project",
+          ) ?? null,
+        "Unable to find the Project disclosure trigger.",
+      );
+
+      expect(
+        projectList.style.position,
+        "Project list must not be managed by AutoAnimate; its ResizeObserver/FLIP loop duplicates disclosure motion.",
+      ).not.toBe("relative");
+
+      projectButton.click();
+      await nextFrame();
+      await nextFrame();
+
+      const directChildAnimations = Array.from(projectList.children).flatMap((child) =>
+        child.getAnimations(),
+      );
+      expect(
+        directChildAnimations,
+        "Project disclosure must use only the nested shared motion, not list-wide AutoAnimate.",
+      ).toHaveLength(0);
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
   it("[geometry:linux] keeps the composer visible while a long assistant response forces a viewport relayout", async () => {
     const mounted = await mountChatView({
       viewport: TEXT_VIEWPORT_MATRIX[0],

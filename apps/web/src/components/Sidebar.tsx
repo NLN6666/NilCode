@@ -3693,13 +3693,13 @@ export default function Sidebar() {
     dragInProgressRef.current = false;
   }, []);
 
-  const animatedProjectListsRef = useRef(new WeakSet<HTMLElement>());
-  const attachProjectListAutoAnimateRef = useCallback((node: HTMLElement | null) => {
-    if (!node || animatedProjectListsRef.current.has(node)) {
+  const animatedStudioThreadListsRef = useRef(new WeakSet<HTMLElement>());
+  const attachStudioThreadListAutoAnimateRef = useCallback((node: HTMLElement | null) => {
+    if (!node || animatedStudioThreadListsRef.current.has(node)) {
       return;
     }
     autoAnimate(node, SIDEBAR_LIST_ANIMATION_OPTIONS);
-    animatedProjectListsRef.current.add(node);
+    animatedStudioThreadListsRef.current.add(node);
   }, []);
 
   // Trees need child (subagent) threads too; the flat display list stays
@@ -6126,7 +6126,7 @@ export default function Sidebar() {
                       />
                     </>,
                   )}
-                  <SidebarMenu ref={attachProjectListAutoAnimateRef} className="gap-1">
+                  <SidebarMenu ref={attachStudioThreadListAutoAnimateRef} className="gap-1">
                     {studioChatThreadRows.length > 0 ? (
                       studioChatThreadRows.map((row) =>
                         renderThreadRow(
@@ -6254,7 +6254,7 @@ export default function Sidebar() {
                       onDragEnd={handleProjectDragEnd}
                       onDragCancel={handleProjectDragCancel}
                     >
-                      <SidebarMenu className="gap-3">
+                      <SidebarMenu data-sidebar-project-list="true" className="gap-3">
                         <SortableContext
                           items={standardProjects.map((project) => project.id)}
                           strategy={verticalListSortingStrategy}
@@ -6268,7 +6268,7 @@ export default function Sidebar() {
                       </SidebarMenu>
                     </DndContext>
                   ) : (
-                    <SidebarMenu ref={attachProjectListAutoAnimateRef} className="gap-3">
+                    <SidebarMenu data-sidebar-project-list="true" className="gap-3">
                       {standardProjects.map((project) => (
                         <SidebarMenuItem key={project.id} className="rounded-md">
                           {renderProjectItem(project, null)}

@@ -556,3 +556,11 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - `deriveSidebarProjectData` 已有折叠项目短路且每个项目只预览少量行，当前真实侧栏也只有两个项目；因此“单个项目树太大”不是首要解释。更可能的侧栏根因是全局 UI 状态的订阅爆炸半径，加上双重布局动画在软件合成下被放大。可证伪修复方向是先让 ChatView 使用忽略 `expanded` 的稳定项目提及投影，再对非手动排序项目列表移除或暂停 AutoAnimate 的 resize FLIP，只保留共享 disclosure motion，并为一次点击的 root/transcript commit 数与 layout reads 建立 browser harness。
 - 对话区的聚焦 Chromium 回归 `ChatTranscriptPane.browser.tsx -t "does not re-render the transcript subtree when only composer text changes"` fresh 通过 1/1，说明此前无关 composer 更新隔离仍有效。剩余滚动上限仍与上一轮一致：LegendList 内部动态行测量/Markdown 重挂载叠加软件栅格化，而不是恢复成已经移除的 ChatView 多滚动控制器竞争。
 - 本轮仅诊断并记录，没有修改生产行为。操作时一次坐标点击误中 hover 后覆盖图标的 `Dns_DG` 固定按钮，已立即取消固定并恢复原排序；项目展开状态和 transcript 尾部位置也已恢复。另一次 `get_window_state` 因同时把 `include_text`/`include_screenshot` 设为 false 被工具拒绝，随后重新观察确认界面状态。未运行 `bun fmt`、`bun lint`、`bun typecheck`。
+
+## 2026-08-17 Windows 桌面端交互卡顿修复
+
+- 两条确定性红灯先在旧行为上复现：项目只改变 `expanded` 时，composer project projection 与 active project metadata selector 均不存在，4/4 选择器断言失败；真实 ChatView browser fixture 锁定 `sidebarProjectSortOrder=updated_at` 后，标准项目列表被 AutoAnimate 改为 `position: relative`，明确证明 list-wide ResizeObserver/FLIP 已挂到 disclosure 热路径。
+- ChatView 不再直接订阅完整 `projects` 或含 `expanded` 的 active/fallback project。新增稳定的 composer mention project projection，以及排除 sidebar-only `expanded` 的 project metadata selector；仅 disclosure 状态变化时复用旧引用，项目 cwd、名称、脚本、默认模型等运行元数据变化仍产生新投影。
+- 标准项目列表移除了 AutoAnimate，只保留仓库规定的共享 220ms disclosure motion；手动排序仍由 dnd-kit 负责，Studio 线程列表的既有 AutoAnimate 保持不变。浏览器回归同时断言项目列表不再被 AutoAnimate 接管，点击项目后直接子项也没有 list-wide FLIP animation。
+- 红灯后的 fresh 结果：选择器新增 4/4 通过；store selector、composer mention、Sidebar logic/UI state 聚焦套件 180/180 通过；真实 Chromium 的项目 disclosure 与 transcript subtree 隔离 2/2 通过；Web production build 成功（保留既有大 chunk warning）。唯一一次独立审查为 `NO FINDINGS`，没有开启第二轮审查。
+- 运行记录：首次 FastCtx batch 因重复列出 `ChatView.browser.tsx` 被原子拒绝；首次组合补丁因 Sidebar 精确上下文未匹配被原子拒绝，均未产生部分写入。浏览器测试前两次因默认 `manual` 分支不挂 AutoAnimate而假绿，随后把 fixture 锁到真实 `updated_at` 分支，稳定得到预期红灯后才实施修复。按本轮授权边界未运行 `bun fmt`、`bun lint`、`bun typecheck`。
