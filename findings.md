@@ -571,3 +571,15 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - `scripts/verify-packaged-desktop-startup.ts` 使用隔离状态完成原生启动 smoke，退出码 0；没有安装、覆盖或复用当前运行实例与 `C:\Users\kingt\.synara`。
 - 产物 `Synara-0.7.2-x64.exe` 为 197,784,590 bytes（188.62 MiB），SHA-256 `2A52BBB6DC4269373B787B4FA63A486BB77AC1C544AA0D1085C06CB5A4890E7A`，Authenticode `NotSigned`；Windows 仍可能显示 SmartScreen 提示。blockmap 为 206,119 bytes。
 - smoke 脚本未能自动删除 `C:\Users\kingt\AppData\Local\Temp\synara-packaged-smoke-win-NCqgiN`；第一次经 PowerShell 做精确路径校验后的删除被执行策略拒绝，未删除任何内容。随后在单个 Node 进程中校验 realpath、系统 Temp 直接父目录和固定前缀后删除，最终 `TempExists=false`。
+
+## 2026-08-17 页面元素截图裁剪不完整
+
+- 症状：选择 `div.mud-nav-link-text`（DevTools 显示约 `163.12 × 41.98` CSS px）后，附件 PNG 为 `245 × 62` px，只覆盖元素的一部分；页面截图中的选区显示尺寸约为 CSS 尺寸的 1.8 倍，而附件约为 1.5 倍，两者比例差为 1.2。
+- 诊断：元素选择保存 document-space CSS rect，`Page.captureScreenshot.clip` 要求 DIP；当前实现直接传 CSS 数值，没有应用 `Page.getLayoutMetrics.cssVisualViewport.zoom` 所给出的 CSS→DIP 页面 zoom。
+- 回归 seam：在 `browserElementPicker.test.ts` 用 zoom `1.2` 与非整数 rect 断言传给截图命令的 DIP clip，先确认旧实现稳定红灯，再修复。
+- 红灯：`bun run --cwd apps/desktop test -- src/browserElementPicker.test.ts` 得到 `1 failed / 20 passed`；实际 clip 完全未乘 1.2，与截图缺失比例一致。
+- 修复：截图前读取 `Page.getLayoutMetrics.cssVisualViewport.zoom`，仅将截图 clip 从 document CSS px 转为 DIP；selection 的 CSS rect 保持不变，无效或缺失 zoom 回退为 1。
+- 降级红灯：首版修复把 metrics 调用放在截图的总 try 内，metrics 抛错会使原本可用的截图变成 null；新增测试稳定得到 `1 failed / 21 passed`，随后把 metrics 读取隔离为回退 1 的 best-effort 步骤。
+- 唯一一次独立审查未发现生产逻辑问题，提出 1 个 P2 测试缺口：metrics 返回缺失、0、NaN 或字符串 zoom 时未锁定回退行为；一次集中修复补充参数化用例，不开启第二轮审查。
+- 工具错误：移动本节到 `findings.md` 末尾时，首次组合 `apply_patch` 因 Windows 路径反斜杠上下文不匹配而原子失败，未产生部分修改；拆成精确删除与末尾追加后成功。
+- 最终聚焦验证：附件尺寸确认为 `245 × 62` 与 `555 × 299`；picker + selection builder 两个测试文件 39/39 通过。按当前对话授权边界未运行 `bun fmt`、`bun lint`、`bun typecheck`。

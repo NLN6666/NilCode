@@ -25,7 +25,7 @@ interface DeferredControl {
   resolve: () => void;
 }
 
-function validElementPayload() {
+function validElementPayload(rect = { x: 0, y: 0, width: 10, height: 10 }) {
   return {
     selector: "button.btn",
     tagName: "BUTTON",
@@ -33,12 +33,20 @@ function validElementPayload() {
     classNames: ["btn"],
     textSnippet: "Save",
     outerHtmlSnippet: "<button>Save</button>",
-    rect: { x: 0, y: 0, width: 10, height: 10 },
+    rect,
     computedStyles: { display: "block" },
   };
 }
 
-function createHost(options: { gateOn?: string } = {}) {
+function createHost(
+  options: {
+    gateOn?: string;
+    pageZoom?: number;
+    layoutMetricsError?: boolean;
+    layoutMetricsResult?: Record<string, unknown>;
+    elementRect?: { x: number; y: number; width: number; height: number };
+  } = {},
+) {
   const calls: CdpCall[] = [];
   const listeners: Array<{ listener: CdpListener; unsubscribed: boolean }> = [];
   const picked: BrowserElementPickedEvent[] = [];
@@ -68,7 +76,15 @@ function createHost(options: { gateOn?: string } = {}) {
         case "DOM.resolveNode":
           return { object: { objectId: "obj-1" } };
         case "Runtime.callFunctionOn":
-          return { result: { value: validElementPayload() } };
+          return { result: { value: validElementPayload(options.elementRect) } };
+        case "Page.getLayoutMetrics":
+          if (options.layoutMetricsError) {
+            throw new Error("layout metrics unavailable");
+          }
+          if (options.layoutMetricsResult) {
+            return options.layoutMetricsResult;
+          }
+          return { cssVisualViewport: { zoom: options.pageZoom ?? 1 } };
         case "Page.captureScreenshot":
           return { data: Buffer.from("png-bytes").toString("base64") };
         default:
@@ -348,6 +364,72 @@ describe("BrowserElementPicker pick completion", () => {
     expect(picker.isPicking(THREAD_ID)).toBe(false);
     expect(fake.listeners[0]?.unsubscribed).toBe(true);
     expect(fake.cancelled).toEqual([]);
+  });
+
+  it("converts document CSS coordinates to screenshot DIP at the page zoom", async () => {
+    const fake = createHost({
+      pageZoom: 1.2,
+      elementRect: { x: 17.25, y: 203.5, width: 163.125, height: 41.984375 },
+    });
+    const picker = new BrowserElementPicker(fake.host);
+
+    await picker.start({ threadId: THREAD_ID, tabId: TAB_ID });
+    fake.emit(0, {
+      method: "Overlay.inspectNodeRequested",
+      params: { backendNodeId: BACKEND_NODE_ID },
+    });
+    await flush();
+
+    const capture = fake.calls.find((call) => call.method === "Page.captureScreenshot");
+    expect(capture?.params).toMatchObject({
+      captureBeyondViewport: true,
+      clip: {
+        x: 20.7,
+        y: 244.2,
+        width: 195.75,
+        height: 50.38125,
+        scale: 1,
+      },
+    });
+  });
+
+  it("falls back to an unscaled crop when layout metrics are unavailable", async () => {
+    const fake = createHost({ layoutMetricsError: true });
+    const picker = new BrowserElementPicker(fake.host);
+
+    await picker.start({ threadId: THREAD_ID, tabId: TAB_ID });
+    fake.emit(0, {
+      method: "Overlay.inspectNodeRequested",
+      params: { backendNodeId: BACKEND_NODE_ID },
+    });
+    await flush();
+
+    expect(fake.picked[0]?.screenshot?.mimeType).toBe("image/png");
+    expect(fake.calls.find((call) => call.method === "Page.captureScreenshot")?.params?.clip).toEqual(
+      { x: 0, y: 0, width: 10, height: 10, scale: 1 },
+    );
+  });
+
+  it.each([
+    {},
+    { cssVisualViewport: {} },
+    { cssVisualViewport: { zoom: 0 } },
+    { cssVisualViewport: { zoom: Number.NaN } },
+    { cssVisualViewport: { zoom: "1.2" } },
+  ])("falls back to zoom 1 for malformed layout metrics %#", async (layoutMetricsResult) => {
+    const fake = createHost({ layoutMetricsResult });
+    const picker = new BrowserElementPicker(fake.host);
+
+    await picker.start({ threadId: THREAD_ID, tabId: TAB_ID });
+    fake.emit(0, {
+      method: "Overlay.inspectNodeRequested",
+      params: { backendNodeId: BACKEND_NODE_ID },
+    });
+    await flush();
+
+    expect(fake.calls.find((call) => call.method === "Page.captureScreenshot")?.params?.clip).toEqual(
+      { x: 0, y: 0, width: 10, height: 10, scale: 1 },
+    );
   });
 
   it("still delivers the element when the crop fails", async () => {

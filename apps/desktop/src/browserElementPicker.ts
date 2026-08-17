@@ -230,6 +230,14 @@ function readScreenshotData(result: unknown): string | null {
   return typeof result.data === "string" && result.data.length > 0 ? result.data : null;
 }
 
+function readPageZoom(result: unknown): number {
+  if (!isRecord(result) || !isRecord(result.cssVisualViewport)) {
+    return 1;
+  }
+  const zoom = result.cssVisualViewport.zoom;
+  return typeof zoom === "number" && Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Element picking failed.";
 }
@@ -564,10 +572,28 @@ export class BrowserElementPicker {
     }
 
     try {
+      // The selected rect stays in document-space CSS pixels for prompt context, while CDP's
+      // screenshot Viewport is expressed in device-independent pixels. Page zoom is the
+      // CSS-to-DIP ratio; omitting it shifts and truncates the crop whenever the guest is
+      // zoomed (for example, a 1.2 zoom captured only 1 / 1.2 of the selected element).
+      let pageZoom = 1;
+      try {
+        const metrics = await this.host.sendCommand(target, "Page.getLayoutMetrics");
+        pageZoom = readPageZoom(metrics);
+      } catch {
+        // Screenshot capture worked without metrics before this correction existed. Keep that
+        // graceful path for unusual pages/runtimes where layout metrics are unavailable.
+      }
       const result = await this.host.sendCommand(target, "Page.captureScreenshot", {
         format: "png",
         captureBeyondViewport: true,
-        clip: { x, y, width, height, scale: 1 },
+        clip: {
+          x: x * pageZoom,
+          y: y * pageZoom,
+          width: width * pageZoom,
+          height: height * pageZoom,
+          scale: 1,
+        },
       });
       const data = readScreenshotData(result);
       if (!data) {
