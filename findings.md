@@ -627,3 +627,10 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 实现：Windows Electron 的 composer/context-menu/picker 改用不透明、无 backdrop-filter 表面；macOS 与普通浏览器保留原玻璃效果。新增共享 100ms press token，应用于 Button、侧栏图标按钮、Activity 与 surface picker；全仓 Web `transition-all` 已清零并收窄到真实的 opacity/transform/color/left/right 属性。
 - 唯一一次独立审查发现 `twMerge` 可能让后置 `transition-colors` 覆盖共享 press transition；已集中修正合并顺序，移除 prominent 重复 transition，并补默认/prominent/legacy caller 回归，未再开启第二轮审查。
 - 最终验证：主题/Button 单元 26/26、`useTheme.browser` 2/2、Activity/Search 真实点击路径 2/2、`bun run --cwd apps/web build` 成功；仅有既有大 chunk 提示。内置 Browser 因 Vite IPv6 localhost 与其错误页恢复策略未完成页面截图，改用仓库 Vitest Browser/Playwright runner。未运行 `bun fmt`、`bun lint`、`bun typecheck`（当前对话未显式授权）。隔离 dev 端口已停止，精确校验后的 `.synara-click-perf` 已删除；未替换当前已安装 Synara。
+
+## 2026-08-17 Windows 实验性 GPU 启动开关
+
+- 用户明确同意增加实验性开关。边界：Windows 默认继续调用 `app.disableHardwareAcceleration()`；只有冷启动命令行精确包含 `--enable-hardware-acceleration` 时才跳过。macOS/Linux 不受影响，不构建/安装 Windows 包。
+- 回归 seam：默认 Windows 必须返回安全软件策略并调用禁用 API；实验参数必须返回硬件实验策略且不调用；相似但非精确参数不能绕过门禁；非 Windows 即使带参数也保持不干预。先运行红灯，再实现。
+- 实现：`applyDesktopGraphicsPolicy` 返回 `software` / `hardware-experimental` / `unchanged` 结果；main 在 `app.whenReady()` 前应用策略，并分别写入 packaged desktop log 或开发控制台。实验模式日志表述为策略请求，不虚报 Chromium 最终一定使用 GPU。
+- 唯一一次独立审查无阻塞发现；确认日志 sink 先初始化、策略只调用一次且早于 ready。最终聚焦测试 5/5、desktop `tsdown` build、bundle 中 flag/禁用 API/日志顺序检查、`git diff --check` 均通过。未运行 `bun fmt`、`bun lint`、`bun typecheck`（当前对话未显式授权）。

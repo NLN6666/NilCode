@@ -4467,7 +4467,14 @@ function configureMediaPermissions(): void {
 
 // The Windows GPU process can leave Chromium's browser main thread waiting
 // indefinitely for flush verification. This Electron API must run before ready.
-applyDesktopGraphicsPolicy(app);
+const desktopGraphicsPolicy = applyDesktopGraphicsPolicy(app);
+const desktopGraphicsPolicyMessage =
+  `graphics policy mode=${desktopGraphicsPolicy.mode} reason=${desktopGraphicsPolicy.reason}`;
+if (app.isPackaged) {
+  writeDesktopLogHeader(desktopGraphicsPolicyMessage);
+} else {
+  console.info(`[desktop] ${desktopGraphicsPolicyMessage}`);
+}
 
 // Override Electron's userData path before the `ready` event so that
 // Chromium session data uses a filesystem-friendly directory name.
