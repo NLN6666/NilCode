@@ -641,3 +641,13 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 回归 seam：Windows 无参数不得调用禁用 API并返回硬件默认策略；精确 disable 参数必须调用并返回用户关闭策略；`=true` 等相似参数不得误触发；非 Windows 即使带参数仍不干预。先运行红灯，再实现。
 - Windows Web 主题继续在 GPU/软件两种模式使用相同的不透明低成本表面，避免 A/B 同时改变毛玻璃负载；旧 `--enable-hardware-acceleration` 在新版本中等同无参数默认 GPU，不再是特殊策略。
 - 唯一一次独立审查无阻塞发现；按低优先级建议更新主题测试命名并锁定旧参数语义，未开启第二轮审查。最终 desktop 策略 6/6、theme 24/24、desktop/web 生产构建、bundle flag/调用顺序检查、旧符号零残留、`git diff --check` 均通过；Web 仅有既有大 chunk 提示。未运行 `bun fmt`、`bun lint`、`bun typecheck`（当前对话未显式授权）。
+
+## 2026-08-17 Codex writer-lock overlay 悬空链接导致 Unlock 失败
+
+- 症状：点击 `Unblock thread` 后 provider 重新 resume，但 Codex 初始化 `thread-writer-locks` 时报 Windows `os error 183`；Unlock 本身不是失败点，重新启动 provider 才失败。
+- 本机证据：`~/.synara/codex-home-overlay/thread-writer-locks` 是指向 `~/.codex/thread-writer-locks` 的目录 symlink。最小 Rust `std::fs::create_dir_all` 探针证明目标存在时链接可用，目标被删除而 overlay 留下悬空链接时稳定得到同一个 183。
+- 根因：overlay 只遍历当前 source home 条目；source 的瞬态 writer-lock 根目录消失后，旧 overlay link 不会被访问或修复。不能改成 overlay 私有目录，否则 Synara 与其他 Codex 客户端会失去 active-writer 锁互斥。
+- 回归 seam：预置指向缺失 source `thread-writer-locks` 的 overlay symlink，调用 `buildCodexProcessEnv` 后断言 source 共享目录被补齐、overlay link 继续解析到同一真实目录。
+- 红灯稳定为 source lock root `ENOENT`、overlay link 仍悬空；修复在每次 Codex process env 准备时先 materialize source 共享目录，再遍历并校验 overlay 条目，随后同一测试转绿。
+- 聚焦验证：`buildCodexProcessEnv` 测试 11/11 通过；未运行 `bun fmt`、`bun lint`、`bun typecheck`（当前对话未显式授权 heavyweight checks）。
+- `codexAppServerManager.test.ts` 全文件为 130 passed / 1 failed / 2 skipped；失败项是既有 `re-probes when a PATH-resolved codex is replaced behind the same bare name`。按唯一标签 stash 本轮全部改动后在原始 HEAD 单跑仍稳定失败，确认与 writer-lock 修复无关；随后按捕获 SHA 恢复并只删除该临时 stash。

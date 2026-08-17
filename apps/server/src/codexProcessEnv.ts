@@ -19,6 +19,7 @@ import { buildProviderChildEnvironment } from "./providerChildEnvironment.ts";
 
 const CODEX_PROCESS_SHELL_ENV_NAMES = ["PATH", "SSH_AUTH_SOCK"] as const;
 const CODEX_OVERLAY_SHARED_STATE_FILES = new Set(["auth.json"]);
+const CODEX_OVERLAY_SHARED_STATE_DIRECTORIES = new Set(["thread-writer-locks"]);
 const SYNARA_CONFIG_SUPPRESSIONS_FILE = "synara-config-suppressions-v1.json";
 const SYNARA_MANAGED_MCP_TABLE_HEADER = "[mcp_servers.synara]";
 export const SYNARA_COMPETING_BROWSER_PLUGIN_SECTION_HEADERS = [
@@ -613,6 +614,14 @@ async function prepareSynaraCodexHomeOverlayUnlocked(input: {
   }
 
   await fs.mkdir(overlayHomePath, { recursive: true });
+
+  // Codex creates this root lazily. If another client later removes the empty
+  // source directory, an older overlay symlink becomes dangling; Rust's
+  // create_dir_all then fails on Windows with ERROR_ALREADY_EXISTS (183). Keep
+  // the shared root materialized so every Codex client uses the same writer locks.
+  for (const entry of CODEX_OVERLAY_SHARED_STATE_DIRECTORIES) {
+    await fs.mkdir(path.join(sourceHomePath, entry), { recursive: true });
+  }
 
   try {
     // Auth must get a best-effort link/copy before optional entries whose

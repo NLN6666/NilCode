@@ -8,6 +8,8 @@ import {
   readFileSync,
   readlinkSync,
   rmSync,
+  statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -1214,6 +1216,34 @@ describe("buildCodexProcessEnv", () => {
       expect(env.CODEX_HOME).toBe(overlayHome);
       expect(lstatSync(overlayMemoryPath).isSymbolicLink()).toBe(true);
       expect(readlinkSync(overlayMemoryPath)).toBe(sourceMemoryPath);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+      rmSync(runtimeHome, { recursive: true, force: true });
+    }
+  });
+
+  it("repairs a dangling shared writer-lock directory link before Codex starts", async () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "synara-codex-env-"));
+    const runtimeHome = mkdtempSync(path.join(os.tmpdir(), "synara-runtime-home-"));
+    try {
+      writeFileSync(path.join(tempDir, "config.toml"), 'model = "gpt-5.5"', "utf8");
+      const sourceWriterLocksPath = path.join(tempDir, "thread-writer-locks");
+      const overlayHome = path.join(runtimeHome, "codex-home-overlay");
+      const overlayWriterLocksPath = path.join(overlayHome, "thread-writer-locks");
+      mkdirSync(overlayHome, { recursive: true });
+      symlinkSync(sourceWriterLocksPath, overlayWriterLocksPath, "dir");
+
+      const env = await buildCodexProcessEnv({
+        env: { SYNARA_HOME: runtimeHome },
+        homePath: tempDir,
+        platform: "win32",
+      });
+
+      expect(env.CODEX_HOME).toBe(overlayHome);
+      expect(statSync(sourceWriterLocksPath).isDirectory()).toBe(true);
+      expect(lstatSync(overlayWriterLocksPath).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(overlayWriterLocksPath)).toBe(sourceWriterLocksPath);
+      expect(statSync(overlayWriterLocksPath).isDirectory()).toBe(true);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
       rmSync(runtimeHome, { recursive: true, force: true });
