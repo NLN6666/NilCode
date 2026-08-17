@@ -318,7 +318,7 @@ describe("code theme seeds", () => {
 });
 
 describe("buildThemeCssVariables", () => {
-  it("uses opaque low-cost glass surfaces for Windows Electron software rendering", () => {
+  it("uses opaque low-cost surfaces for Windows Electron in either graphics mode", () => {
     const pack = {
       codeThemeId: "codex",
       theme: DEFAULT_CHROME_THEME_BY_VARIANT.dark,

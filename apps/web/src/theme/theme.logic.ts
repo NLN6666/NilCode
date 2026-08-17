@@ -705,11 +705,10 @@ export function buildThemeCssVariables(
     options?.electron === true && options?.isMac === true && !pack.theme.opaqueWindows
       ? "translucent"
       : "opaque";
-  // Windows desktop intentionally disables Chromium hardware acceleration to
-  // avoid the verified GpuChannelHost::VerifyFlush hang. Backdrop-filter is
-  // disproportionately expensive on that software compositor, so desktop-only
-  // surfaces use opaque fills while browsers and GPU-backed macOS keep the glass.
-  const softwareCompositedDesktop =
+  // Keep Windows desktop surfaces opaque in both graphics modes. This avoids
+  // changing the backdrop-filter workload during GPU/software A/B tests and
+  // preserves the low-cost fallback when users disable hardware acceleration.
+  const windowsDesktopUsesLowCostEffects =
     options?.electron === true && options?.isWindows === true;
   const warningColor = WARNING_COLOR_BY_VARIANT[variant];
   // Codex paints the app sidebar with the PRIMARY surface (--color-background-surface,
@@ -723,10 +722,10 @@ export function buildThemeCssVariables(
     variant === "dark"
       ? readCodexVariable("--color-background-control-opaque")
       : "color-mix(in oklab, var(--color-background-control) 90%, transparent)";
-  // Mirrors Codex Electron's [cmdk-root] dropdown shell on GPU-backed renderers.
-  // The Windows software-compositor path uses the same opaque elevated token without
-  // blur; light vs dark is already handled by --popover.
-  const composerPickerMenuSurface = softwareCompositedDesktop
+  // Mirrors Codex Electron's [cmdk-root] dropdown shell outside Windows desktop.
+  // Windows uses the same opaque elevated token in both graphics modes so the
+  // comparison isolates the compositor; light vs dark is handled by --popover.
+  const composerPickerMenuSurface = windowsDesktopUsesLowCostEffects
     ? "var(--popover)"
     : "color-mix(in oklab, var(--popover) 70%, transparent)";
   const composerFocusBorder = buildComposerFocusBorder(
@@ -746,11 +745,11 @@ export function buildThemeCssVariables(
         ? "transparent"
         : readCodexVariable("--color-background-surface-under"),
     "--app-composer-focus-border": composerFocusBorder,
-    "--composer-glass-filter": softwareCompositedDesktop
+    "--composer-glass-filter": windowsDesktopUsesLowCostEffects
       ? "none"
       : "blur(40px) saturate(150%)",
-    "--composer-glass-opacity": softwareCompositedDesktop ? "100%" : "55%",
-    "--composer-glass-stacked-opacity": softwareCompositedDesktop
+    "--composer-glass-opacity": windowsDesktopUsesLowCostEffects ? "100%" : "55%",
+    "--composer-glass-stacked-opacity": windowsDesktopUsesLowCostEffects
       ? "100%"
       : "calc(var(--composer-glass-opacity) / 2)",
     // Frosted blur only when the shell is translucent (macOS). On an opaque
@@ -758,12 +757,14 @@ export function buildThemeCssVariables(
     // the wrong scale on fractional DPI (Windows), so text reads blurry until a
     // repaint. Keep it "none" off macOS.
     // NOTE: this gates window-vibrancy frosting. The composer's own page-content
-    // glass is controlled separately above so Windows software compositing can
-    // disable it without changing browser or macOS rendering.
+    // glass is controlled separately above so Windows keeps the same low-cost
+    // surfaces in both graphics modes without changing browser or macOS rendering.
     "--app-composer-picker-backdrop-filter": material === "translucent" ? "blur(32px)" : "none",
     "--app-composer-picker-surface": composerPickerMenuSurface,
-    "--app-context-menu-backdrop-filter": softwareCompositedDesktop ? "none" : "blur(24px)",
-    "--app-context-menu-surface": softwareCompositedDesktop
+    "--app-context-menu-backdrop-filter": windowsDesktopUsesLowCostEffects
+      ? "none"
+      : "blur(24px)",
+    "--app-context-menu-surface": windowsDesktopUsesLowCostEffects
       ? "var(--popover)"
       : "color-mix(in srgb, var(--popover) 90%, transparent)",
     "--app-chat-code-surface": chatCodeSurface,

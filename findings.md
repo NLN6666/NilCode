@@ -634,3 +634,10 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 回归 seam：默认 Windows 必须返回安全软件策略并调用禁用 API；实验参数必须返回硬件实验策略且不调用；相似但非精确参数不能绕过门禁；非 Windows 即使带参数也保持不干预。先运行红灯，再实现。
 - 实现：`applyDesktopGraphicsPolicy` 返回 `software` / `hardware-experimental` / `unchanged` 结果；main 在 `app.whenReady()` 前应用策略，并分别写入 packaged desktop log 或开发控制台。实验模式日志表述为策略请求，不虚报 Chromium 最终一定使用 GPU。
 - 唯一一次独立审查无阻塞发现；确认日志 sink 先初始化、策略只调用一次且早于 ready。最终聚焦测试 5/5、desktop `tsdown` build、bundle 中 flag/禁用 API/日志顺序检查、`git diff --check` 均通过。未运行 `bun fmt`、`bun lint`、`bun typecheck`（当前对话未显式授权）。
+
+## 2026-08-17 Windows GPU 默认策略反转
+
+- 用户在上一笔实验开关提交后明确要求改为 Windows 默认启用 GPU，用户可自行关闭。实现边界按同一冷启动命令行机制反转为 `--disable-hardware-acceleration`；已再次明确告知这会重新承担此前 Electron `VerifyFlush` 永久等待的回归风险。
+- 回归 seam：Windows 无参数不得调用禁用 API并返回硬件默认策略；精确 disable 参数必须调用并返回用户关闭策略；`=true` 等相似参数不得误触发；非 Windows 即使带参数仍不干预。先运行红灯，再实现。
+- Windows Web 主题继续在 GPU/软件两种模式使用相同的不透明低成本表面，避免 A/B 同时改变毛玻璃负载；旧 `--enable-hardware-acceleration` 在新版本中等同无参数默认 GPU，不再是特殊策略。
+- 唯一一次独立审查无阻塞发现；按低优先级建议更新主题测试命名并锁定旧参数语义，未开启第二轮审查。最终 desktop 策略 6/6、theme 24/24、desktop/web 生产构建、bundle flag/调用顺序检查、旧符号零残留、`git diff --check` 均通过；Web 仅有既有大 chunk 提示。未运行 `bun fmt`、`bun lint`、`bun typecheck`（当前对话未显式授权）。

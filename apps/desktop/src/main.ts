@@ -4465,8 +4465,9 @@ function configureMediaPermissions(): void {
   }
 }
 
-// The Windows GPU process can leave Chromium's browser main thread waiting
-// indefinitely for flush verification. This Electron API must run before ready.
+// Windows enables hardware acceleration by default. Users who encounter the
+// Chromium flush-verification hang can opt into the software fallback; the
+// Electron API must still run before ready when that override is present.
 const desktopGraphicsPolicy = applyDesktopGraphicsPolicy(app);
 const desktopGraphicsPolicyMessage =
   `graphics policy mode=${desktopGraphicsPolicy.mode} reason=${desktopGraphicsPolicy.reason}`;

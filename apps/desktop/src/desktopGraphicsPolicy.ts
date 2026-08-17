@@ -2,16 +2,16 @@ export interface DesktopGraphicsApp {
   disableHardwareAcceleration(): void;
 }
 
-export const ENABLE_HARDWARE_ACCELERATION_FLAG = "--enable-hardware-acceleration";
+export const DISABLE_HARDWARE_ACCELERATION_FLAG = "--disable-hardware-acceleration";
 
 export type DesktopGraphicsPolicyResult =
   | {
-      readonly mode: "software";
-      readonly reason: "windows-safety-default";
+      readonly mode: "hardware-default";
+      readonly reason: "windows-default";
     }
   | {
-      readonly mode: "hardware-experimental";
-      readonly reason: "windows-command-line-override";
+      readonly mode: "software-user-disabled";
+      readonly reason: "windows-command-line-disable";
     }
   | {
       readonly mode: "unchanged";
@@ -30,16 +30,16 @@ export function applyDesktopGraphicsPolicy(
     };
   }
 
-  if (argv.includes(ENABLE_HARDWARE_ACCELERATION_FLAG)) {
+  if (argv.includes(DISABLE_HARDWARE_ACCELERATION_FLAG)) {
+    app.disableHardwareAcceleration();
     return {
-      mode: "hardware-experimental",
-      reason: "windows-command-line-override",
+      mode: "software-user-disabled",
+      reason: "windows-command-line-disable",
     };
   }
 
-  app.disableHardwareAcceleration();
   return {
-    mode: "software",
-    reason: "windows-safety-default",
+    mode: "hardware-default",
+    reason: "windows-default",
   };
 }
