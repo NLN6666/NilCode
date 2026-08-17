@@ -547,3 +547,12 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - `scripts/verify-packaged-desktop-startup.ts` 从隔离状态启动打包后的程序并通过，没有安装、覆盖或复用当前用户的 Synara 数据目录。
 - 产物 SHA-256 为 `A3D13F123CC159779D74093F263524A211FC85E0111B7B8EB8DACFC6951DD4E0`，Authenticode 状态为 `NotSigned`；Windows 可能显示 SmartScreen 提示。
 - 冒烟脚本退出前未能删除 `synara-packaged-smoke-win-SEwpqd` 临时目录；首次 PowerShell `Remove-Item` 被执行策略拒绝且未删除内容，随后用 Node 对系统 temp 下的精确 absolute/real path 做双重校验后删除成功。
+
+## 2026-08-17 Windows 桌面端交互卡顿复诊
+
+- 当前安装实例仍运行 2026-08-16 的 transcript 优化构建；当前仓库 `HEAD=1e1fa252e` 只比安装构建 `448a2562b` 多一笔 findings 文档提交，相关 Web 生产代码没有后续差异。进程命令行再次确认 renderer 使用 `--disable-gpu-compositing`，GPU 进程使用 `d3d11-warp-webgl`，即 Windows 安全策略下的全软件合成路径。
+- 真实安装窗口可重复看到非即时响应：活动 `ERPC#` 项目折叠从输入到下一次完整画面捕获约 333ms，重新展开约 370ms；当前对话向上滚动一次约 421ms。Computer Use 的输入注入与 Windows Graphics Capture 自身有固定开销，因此这些数字只证明当前交互明显跨帧，不能当作纯 renderer duration 或性能门禁阈值。
+- 侧栏有两条叠加热点。其一，项目内部同时使用 220ms `grid-template-rows`/opacity disclosure，而外层项目列表又挂载 180ms AutoAnimate；AutoAnimate 0.9.0 会给直接子项安装 Resize/IntersectionObserver，在尺寸变化时读取 `getBoundingClientRect()` 并执行位置动画。其二，`toggleProject` 会替换主 store 的整个 `projects` 数组；7,001 行的 `Sidebar` 订阅该数组并重算项目派生/可见集合，13,017 行的 `ChatView` 也为 `@thread` 项目描述直接订阅整个数组，所以纯 UI 展开状态会扩大到聊天根组件。
+- `deriveSidebarProjectData` 已有折叠项目短路且每个项目只预览少量行，当前真实侧栏也只有两个项目；因此“单个项目树太大”不是首要解释。更可能的侧栏根因是全局 UI 状态的订阅爆炸半径，加上双重布局动画在软件合成下被放大。可证伪修复方向是先让 ChatView 使用忽略 `expanded` 的稳定项目提及投影，再对非手动排序项目列表移除或暂停 AutoAnimate 的 resize FLIP，只保留共享 disclosure motion，并为一次点击的 root/transcript commit 数与 layout reads 建立 browser harness。
+- 对话区的聚焦 Chromium 回归 `ChatTranscriptPane.browser.tsx -t "does not re-render the transcript subtree when only composer text changes"` fresh 通过 1/1，说明此前无关 composer 更新隔离仍有效。剩余滚动上限仍与上一轮一致：LegendList 内部动态行测量/Markdown 重挂载叠加软件栅格化，而不是恢复成已经移除的 ChatView 多滚动控制器竞争。
+- 本轮仅诊断并记录，没有修改生产行为。操作时一次坐标点击误中 hover 后覆盖图标的 `Dns_DG` 固定按钮，已立即取消固定并恢复原排序；项目展开状态和 transcript 尾部位置也已恢复。另一次 `get_window_state` 因同时把 `include_text`/`include_screenshot` 设为 false 被工具拒绝，随后重新观察确认界面状态。未运行 `bun fmt`、`bun lint`、`bun typecheck`。
