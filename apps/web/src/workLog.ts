@@ -217,6 +217,7 @@ export type TimelineEntry =
       id: string;
       kind: "message";
       createdAt: string;
+      sequence?: number;
       message: ChatMessage;
     }
   | {
@@ -2355,50 +2356,43 @@ function compareActivityLifecycleRank(kind: string): number {
   return 1;
 }
 
-function compareTimelineEntries(left: TimelineEntry, right: TimelineEntry): number {
-  if (
-    "sequence" in left &&
-    "sequence" in right &&
-    left.sequence !== undefined &&
-    right.sequence !== undefined &&
-    left.sequence !== right.sequence
-  ) {
-    return left.sequence - right.sequence;
-  }
+function timelineEntrySequence(entry: TimelineEntry): number | undefined {
+  return "sequence" in entry ? entry.sequence : undefined;
+}
+
+function compareTimelineEntriesByCreatedAt(left: TimelineEntry, right: TimelineEntry): number {
   return left.createdAt.localeCompare(right.createdAt);
 }
 
-function areTimelineEntriesOrdered(entries: ReadonlyArray<TimelineEntry>): boolean {
+function areTimelineEntriesOrdered(
+  entries: ReadonlyArray<TimelineEntry>,
+  compare: (left: TimelineEntry, right: TimelineEntry) => number,
+): boolean {
   for (let index = 1; index < entries.length; index += 1) {
-    if (compareTimelineEntries(entries[index - 1]!, entries[index]!) > 0) {
+    if (compare(entries[index - 1]!, entries[index]!) > 0) {
       return false;
     }
   }
   return true;
 }
 
-function sortedTimelineEntries(entries: TimelineEntry[]): TimelineEntry[] {
-  return areTimelineEntriesOrdered(entries) ? entries : entries.toSorted(compareTimelineEntries);
+function sortedTimelineEntriesByCreatedAt(entries: TimelineEntry[]): TimelineEntry[] {
+  return areTimelineEntriesOrdered(entries, compareTimelineEntriesByCreatedAt)
+    ? entries
+    : entries.toSorted(compareTimelineEntriesByCreatedAt);
 }
 
-function mergeTimelineEntries(
+function mergeTimelineEntriesByCreatedAt(
   left: ReadonlyArray<TimelineEntry>,
   right: ReadonlyArray<TimelineEntry>,
 ): TimelineEntry[] {
-  if (left.length === 0) {
-    return [...right];
-  }
-  if (right.length === 0) {
-    return [...left];
-  }
-
   const merged: TimelineEntry[] = [];
   let leftIndex = 0;
   let rightIndex = 0;
   while (leftIndex < left.length && rightIndex < right.length) {
     const leftEntry = left[leftIndex]!;
     const rightEntry = right[rightIndex]!;
-    if (compareTimelineEntries(leftEntry, rightEntry) <= 0) {
+    if (compareTimelineEntriesByCreatedAt(leftEntry, rightEntry) <= 0) {
       merged.push(leftEntry);
       leftIndex += 1;
     } else {
@@ -2406,15 +2400,36 @@ function mergeTimelineEntries(
       rightIndex += 1;
     }
   }
-  while (leftIndex < left.length) {
-    merged.push(left[leftIndex]!);
-    leftIndex += 1;
-  }
-  while (rightIndex < right.length) {
-    merged.push(right[rightIndex]!);
-    rightIndex += 1;
-  }
+  merged.push(...left.slice(leftIndex), ...right.slice(rightIndex));
   return merged;
+}
+
+function compareTimelineEntriesBySequence(left: TimelineEntry, right: TimelineEntry): number {
+  const sequenceDifference = timelineEntrySequence(left)! - timelineEntrySequence(right)!;
+  if (sequenceDifference !== 0) {
+    return sequenceDifference;
+  }
+  const createdAtDifference = left.createdAt.localeCompare(right.createdAt);
+  return createdAtDifference !== 0 ? createdAtDifference : left.id.localeCompare(right.id);
+}
+
+function orderSequencedTimelineSlots(timestampSlots: TimelineEntry[]): TimelineEntry[] {
+  // Some visible artifacts (user messages and plan cards) have only wall-clock
+  // time, while provider text/tool rows also have a durable causal sequence.
+  // A pairwise comparator that switches between those clocks is non-transitive.
+  // Keep timestamp-only rows in chronological slots, then order the sequenced
+  // rows inside their existing slots by the one causal clock they share.
+  const sequencedEntries = timestampSlots.filter(
+    (entry) => timelineEntrySequence(entry) !== undefined,
+  );
+  if (areTimelineEntriesOrdered(sequencedEntries, compareTimelineEntriesBySequence)) {
+    return timestampSlots;
+  }
+  const orderedSequencedEntries = sequencedEntries.toSorted(compareTimelineEntriesBySequence);
+  let sequencedIndex = 0;
+  return timestampSlots.map((entry) =>
+    timelineEntrySequence(entry) === undefined ? entry : orderedSequencedEntries[sequencedIndex++]!,
+  );
 }
 
 export function deriveTimelineEntries(
@@ -2470,6 +2485,9 @@ export function deriveTimelineEntries(
         id: displayMessage.id,
         kind: "message",
         createdAt: displayMessage.createdAt,
+        ...(textSegments?.[0]?.sequence !== undefined
+          ? { sequence: textSegments[0].sequence }
+          : {}),
         message: displayMessage,
       },
     ];
@@ -2507,11 +2525,12 @@ export function deriveTimelineEntries(
     };
   });
 
-  return mergeTimelineEntries(
-    mergeTimelineEntries(
-      sortedTimelineEntries(messageRows),
-      sortedTimelineEntries(proposedPlanRows),
+  const timestampSlots = mergeTimelineEntriesByCreatedAt(
+    mergeTimelineEntriesByCreatedAt(
+      sortedTimelineEntriesByCreatedAt(messageRows),
+      sortedTimelineEntriesByCreatedAt(proposedPlanRows),
     ),
-    sortedTimelineEntries(workRows),
+    sortedTimelineEntriesByCreatedAt(workRows),
   );
+  return orderSequencedTimelineSlots(timestampSlots);
 }

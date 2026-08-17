@@ -590,3 +590,13 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - `scripts/verify-packaged-desktop-startup.ts` 使用隔离状态完成原生启动 smoke，退出码 0；没有安装、覆盖或复用当前运行实例与 `C:\Users\kingt\.synara`。
 - 产物 `Synara-0.7.2-x64.exe` 为 197,784,213 bytes，SHA-256 `8DB218B61BAE488F998BCE3A36574B27D3C6B1BA4E4821BBDA95D93BE7E03798`，Authenticode `NotSigned`；blockmap 为 206,118 bytes，Windows 仍可能显示 SmartScreen 提示。
 - smoke 脚本留下 `C:\Users\kingt\AppData\Local\Temp\synara-packaged-smoke-win-VfFcX9`；首次在单一 PowerShell 进程内校验并删除的命令被执行策略拒绝，未删除任何内容。随后在单个 Node 进程中校验 realpath、系统 Temp 直接父目录和固定前缀后删除，最终 `TempExists=false`。
+
+## 2026-08-17 运行中助手文本与工具活动偶发换位
+
+- 症状：同一运行中的流式助手文本块与相邻工具/Hook 活动块会在后续事件到达时交换上下位置。
+- 红灯：`deriveTimelineEntries` 中构造文本段 `sequence=10`、后续工具 `sequence=20`，同时让 provider 时间戳逆序；旧实现把流式 message 当作无 sequence 条目，跨来源合并回退到 `createdAt`，稳定得到错误的 `[work, message]`。
+- 根因：服务端已把因果顺序保存在流式消息的 `textSegments[0].sequence`，但 Web 时间线只在消息完成并拆成多个 segment 后才使用该序号。于是 live 单行与 completed segment 行使用两套排序依据，状态切换时会重排。
+- 修复：普通/流式 message timeline row 在存在文本段时沿用首段 sequence；完成后的多段消息仍按各段 sequence 拆分，不改变无文本段消息、计划卡或折叠逻辑。
+- 唯一一次独立审查发现旧的 pairwise comparator 在有/无 sequence 混排时不满足传递性。补充三条混排红灯后，排序改为先按时间建立稳定槽位，再只在 sequenced 槽位中按 durable sequence 排列；无 sequence 的用户消息/计划卡保持相对时间位置，同时消除排序环。
+- 为避免长 transcript 回归，时间槽仍复用各来源数组的已排序检查与线性 merge；sequenced 槽本身已单调时也直接返回，不做全量 `toSorted`。
+- 最终聚焦验证：`workLog`、`MessagesTimeline.logic`、`agentActivity.logic` 共 201/201 通过；`git diff --check` 无空白错误。按当前对话授权边界未运行 `bun fmt`、`bun lint`、`bun typecheck`。

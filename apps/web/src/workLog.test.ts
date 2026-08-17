@@ -3870,6 +3870,92 @@ describe("deriveTimelineEntries", () => {
       message: { id: messageId, streaming: true },
     });
   });
+
+  it("keeps live assistant text ahead of later work when provider timestamps arrive out of order", () => {
+    const messageId = MessageId.makeUnsafe("assistant-live-before-work");
+    const entries = deriveTimelineEntries(
+      [
+        {
+          id: messageId,
+          role: "assistant",
+          text: "I will inspect it.",
+          textSegments: [
+            {
+              sequence: 10,
+              startedAt: "2026-02-23T00:00:01.000Z",
+              endedAt: "2026-02-23T00:00:03.000Z",
+              text: "I will inspect it.",
+            },
+          ],
+          createdAt: "2026-02-23T00:00:03.000Z",
+          streaming: true,
+        },
+      ],
+      [],
+      [
+        {
+          id: "work-after-live-text",
+          createdAt: "2026-02-23T00:00:02.000Z",
+          sequence: 20,
+          label: "Read files",
+          tone: "tool",
+        },
+      ],
+    );
+
+    expect(entries.map((entry) => entry.id)).toEqual([
+      messageId,
+      "work-after-live-text",
+    ]);
+  });
+
+  it("keeps causal order transitive around an unsequenced plan row", () => {
+    const entries = deriveTimelineEntries(
+      [
+        {
+          id: MessageId.makeUnsafe("assistant-sequence-10"),
+          role: "assistant",
+          text: "Before the plan",
+          textSegments: [
+            {
+              sequence: 10,
+              startedAt: "2026-02-23T00:00:03.000Z",
+              endedAt: "2026-02-23T00:00:03.000Z",
+              text: "Before the plan",
+            },
+          ],
+          createdAt: "2026-02-23T00:00:03.000Z",
+          streaming: true,
+        },
+      ],
+      [
+        {
+          id: "plan-between-sequenced-rows",
+          turnId: TurnId.makeUnsafe("turn-1"),
+          planMarkdown: "# Plan",
+          implementedAt: null,
+          implementationThreadId: null,
+          createdAt: "2026-02-23T00:00:02.000Z",
+          updatedAt: "2026-02-23T00:00:02.000Z",
+        },
+      ],
+      [
+        {
+          id: "work-sequence-20",
+          createdAt: "2026-02-23T00:00:01.000Z",
+          sequence: 20,
+          label: "Read files",
+          tone: "tool",
+        },
+      ],
+    );
+
+    expect(entries.map((entry) => entry.id)).toEqual([
+      "assistant-sequence-10",
+      "plan-between-sequenced-rows",
+      "work-sequence-20",
+    ]);
+  });
 });
 
 describe("deriveWorkLogEntries context window handling", () => {
