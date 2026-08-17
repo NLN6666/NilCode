@@ -318,6 +318,37 @@ describe("code theme seeds", () => {
 });
 
 describe("buildThemeCssVariables", () => {
+  it("uses opaque low-cost glass surfaces for Windows Electron software rendering", () => {
+    const pack = {
+      codeThemeId: "codex",
+      theme: DEFAULT_CHROME_THEME_BY_VARIANT.dark,
+    };
+
+    const windowsDesktop = buildThemeCssVariables(pack, "dark", {
+      electron: true,
+      isMac: false,
+      isWindows: true,
+    });
+    const windowsBrowser = buildThemeCssVariables(pack, "dark", {
+      electron: false,
+      isMac: false,
+      isWindows: true,
+    });
+
+    expect(windowsDesktop.variables["--composer-glass-filter"]).toBe("none");
+    expect(windowsDesktop.variables["--composer-glass-opacity"]).toBe("100%");
+    expect(windowsDesktop.variables["--composer-glass-stacked-opacity"]).toBe("100%");
+    expect(windowsDesktop.variables["--app-composer-picker-surface"]).toBe("var(--popover)");
+    expect(windowsDesktop.variables["--app-context-menu-backdrop-filter"]).toBe("none");
+    expect(windowsDesktop.variables["--app-context-menu-surface"]).toBe("var(--popover)");
+
+    expect(windowsBrowser.variables["--composer-glass-filter"]).toBe(
+      "blur(40px) saturate(150%)",
+    );
+    expect(windowsBrowser.variables["--composer-glass-opacity"]).toBe("55%");
+    expect(windowsBrowser.variables["--app-context-menu-backdrop-filter"]).toBe("blur(24px)");
+  });
+
   it("derives the renderer token map from the imported theme pack", () => {
     const importedTheme = parseThemeShareString(PROVIDED_THEME_STRING);
     const cssVariables = buildThemeCssVariables(

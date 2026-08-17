@@ -5,7 +5,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { isElectron } from "../env";
-import { isMacNavigatorPlatform } from "../lib/utils";
+import { getNavigatorPlatform, isMacPlatform, isWindowsPlatform } from "../lib/utils";
 import {
   DEFAULT_THEME_STATE,
   type ChromeTheme,
@@ -151,11 +151,14 @@ function applyThemeState(state: ThemeState, suppressTransitions = false) {
   }
 
   const systemDark = getSystemDark();
+  const navigatorPlatform = getNavigatorPlatform();
+  const isMac = isMacPlatform(navigatorPlatform);
+  const isWindows = isWindowsPlatform(navigatorPlatform);
   const projectionKey = [
     serializeThemeState(state),
     systemDark ? "dark" : "light",
     isElectron ? "electron" : "web",
-    isMacNavigatorPlatform() ? "mac" : "other",
+    isMac ? "mac" : isWindows ? "windows" : "other",
   ].join("|");
   if (projectionKey === lastAppliedThemeProjectionKey) {
     syncDesktopTheme(state.mode);
@@ -170,7 +173,8 @@ function applyThemeState(state: ThemeState, suppressTransitions = false) {
   const activeTheme = resolveThemePack(state, variant);
   const cssVariableBuild = buildThemeCssVariables(activeTheme, variant, {
     electron: isElectron,
-    isMac: isMacNavigatorPlatform(),
+    isMac,
+    isWindows,
     systemUiFont: state.systemUiFont,
   });
 

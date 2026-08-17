@@ -687,7 +687,12 @@ export function resolveThemeVariant(mode: ThemeMode, systemDark: boolean): Theme
 export function buildThemeCssVariables(
   pack: ThemePack,
   variant: ThemeVariant,
-  options?: { electron?: boolean; isMac?: boolean; systemUiFont?: boolean },
+  options?: {
+    electron?: boolean;
+    isMac?: boolean;
+    isWindows?: boolean;
+    systemUiFont?: boolean;
+  },
 ): ThemeCssVariableBuild {
   const resolvedTokens = buildResolvedThemeTokens(pack, variant);
   const codexVariables = resolvedTokens.codexVariables;
@@ -700,6 +705,12 @@ export function buildThemeCssVariables(
     options?.electron === true && options?.isMac === true && !pack.theme.opaqueWindows
       ? "translucent"
       : "opaque";
+  // Windows desktop intentionally disables Chromium hardware acceleration to
+  // avoid the verified GpuChannelHost::VerifyFlush hang. Backdrop-filter is
+  // disproportionately expensive on that software compositor, so desktop-only
+  // surfaces use opaque fills while browsers and GPU-backed macOS keep the glass.
+  const softwareCompositedDesktop =
+    options?.electron === true && options?.isWindows === true;
   const warningColor = WARNING_COLOR_BY_VARIANT[variant];
   // Codex paints the app sidebar with the PRIMARY surface (--color-background-surface,
   // mapped through --color-token-side-bar-background), not the darker "under" surface.
@@ -712,10 +723,12 @@ export function buildThemeCssVariables(
     variant === "dark"
       ? readCodexVariable("--color-background-control-opaque")
       : "color-mix(in oklab, var(--color-background-control) 90%, transparent)";
-  // Mirrors Codex Electron's [cmdk-root] dropdown shell: thin the dropdown-background
-  // token by 5% in oklab over the existing backdrop blur. Light vs dark is already
-  // handled by --color-background-control-opaque (white in light, dark control in dark).
-  const composerPickerMenuSurface = "color-mix(in oklab, var(--popover) 70%, transparent)";
+  // Mirrors Codex Electron's [cmdk-root] dropdown shell on GPU-backed renderers.
+  // The Windows software-compositor path uses the same opaque elevated token without
+  // blur; light vs dark is already handled by --popover.
+  const composerPickerMenuSurface = softwareCompositedDesktop
+    ? "var(--popover)"
+    : "color-mix(in oklab, var(--popover) 70%, transparent)";
   const composerFocusBorder = buildComposerFocusBorder(
     pack,
     variant,
@@ -733,15 +746,26 @@ export function buildThemeCssVariables(
         ? "transparent"
         : readCodexVariable("--color-background-surface-under"),
     "--app-composer-focus-border": composerFocusBorder,
+    "--composer-glass-filter": softwareCompositedDesktop
+      ? "none"
+      : "blur(40px) saturate(150%)",
+    "--composer-glass-opacity": softwareCompositedDesktop ? "100%" : "55%",
+    "--composer-glass-stacked-opacity": softwareCompositedDesktop
+      ? "100%"
+      : "calc(var(--composer-glass-opacity) / 2)",
     // Frosted blur only when the shell is translucent (macOS). On an opaque
     // shell this promotes the surface to a GPU layer that Chromium rasterizes at
     // the wrong scale on fractional DPI (Windows), so text reads blurry until a
     // repaint. Keep it "none" off macOS.
-    // NOTE: this gates window-vibrancy frosting only. The composer's own glass
-    // (`.chat-composer-surface`, index.css) frosts page content, not the window
-    // material, so — like the floating menus — it stays on across platforms.
+    // NOTE: this gates window-vibrancy frosting. The composer's own page-content
+    // glass is controlled separately above so Windows software compositing can
+    // disable it without changing browser or macOS rendering.
     "--app-composer-picker-backdrop-filter": material === "translucent" ? "blur(32px)" : "none",
     "--app-composer-picker-surface": composerPickerMenuSurface,
+    "--app-context-menu-backdrop-filter": softwareCompositedDesktop ? "none" : "blur(24px)",
+    "--app-context-menu-surface": softwareCompositedDesktop
+      ? "var(--popover)"
+      : "color-mix(in srgb, var(--popover) 90%, transparent)",
     "--app-chat-code-surface": chatCodeSurface,
     "--app-user-message-background": chatCodeSurface,
     "--app-sidebar-backdrop-filter":

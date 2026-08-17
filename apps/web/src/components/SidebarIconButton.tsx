@@ -16,6 +16,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+import { INTERACTIVE_PRESS_MOTION_CLASS_NAME } from "~/lib/interactionMotion";
 import { cn } from "~/lib/utils";
 import { type SidebarGlyphVariant, sidebarGlyphClass } from "./sidebarGlyphs";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -88,6 +89,7 @@ export function SidebarIconButton({
       SLOT_SIZE[size],
       triggerElement.props.className,
       className,
+      INTERACTIVE_PRESS_MOTION_CLASS_NAME,
     ),
   };
   const iconNode = <Icon className={iconClassName ?? sidebarGlyphClass(glyph)} />;

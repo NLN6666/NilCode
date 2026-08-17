@@ -616,3 +616,14 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 服务端红灯稳定收到完整 Vitest/internal `file:///` stack 与嵌套 cause；修复后 durable blocker 只保存顶层 `Error.message`，Effect cause 仍保留在 bounded-call 失败对象的诊断链路中。
 - Web 侧另加历史数据防线：隔离 toast 的标题固定为简洁 summary，description 只展示 blocker 的首行，原始完整错误仍保留在 Copy error payload；因此数据库里已经存在的长 stack 也不会继续撑满窗口，`Unblock thread` 操作能正常露出。
 - 最终聚焦验证：server active-writer/blocker 5/5、Web toast 5/5、shared provider-delivery contract 2/2 通过；未运行 `bun fmt`、`bun lint`、`bun typecheck`（当前对话未显式授权 heavyweight checks）。
+
+## 2026-08-17 Windows 桌面端全局点击动画卡顿
+
+- 当前已安装 `Synara.exe` 的 `app.asar/package.json` 记录 `synaraCommitHash=700f43fe3`，与仓库当前 HEAD 一致；已包含 `8269e7d60 perf(web): isolate project disclosure updates`，因此本轮不是旧安装包缺少此前侧栏修复。
+- 当前窗口 Computer Use 基线：打开搜索的输入调用约 266ms，侧栏 Activity 视图轻量切换约 489ms，并捕获到明显中间帧；工具本身有输入/抓图固定开销，所以数字用于 A/B，不作为纯 renderer 门禁。
+- Windows Electron 仍必须保留 `app.disableHardwareAcceleration()`，因为它防止已证实的 Chromium `GpuChannelHost::VerifyFlush` 主线程永久等待。新证据指向软件合成放大渲染成本：主题已关闭 Windows sidebar/picker blur，但 `.chat-composer-surface` 仍跨平台执行 `blur(40px) saturate(150%)`，任意点击重绘都可能反复栅格化大面积 composer 背景。
+- 回归 seam：主题 token 测试锁定 Windows Electron 使用不透明、无 backdrop-filter 的 composer/context-menu 表面；共享 Button class 测试锁定只使用 transform/颜色/opacity 的 100ms 即时按压反馈。先运行红灯，再实现。
+- 浏览器性能基准首次与单独复跑都在近上限 case 的 activity 数量断言失败（1609/1621），尚未执行真正性能断言。曾假设 short/near-cap 复用事件 ID 触发去重，但加入 case 名后结果不变，已撤回该测试改动；当前证据只支持 1,609 活动时 hot-path 增量未进入 store，和本轮 CSS/主题分支无调用链，作为既有基线问题保留，不在本轮扩改 store。
+- 实现：Windows Electron 的 composer/context-menu/picker 改用不透明、无 backdrop-filter 表面；macOS 与普通浏览器保留原玻璃效果。新增共享 100ms press token，应用于 Button、侧栏图标按钮、Activity 与 surface picker；全仓 Web `transition-all` 已清零并收窄到真实的 opacity/transform/color/left/right 属性。
+- 唯一一次独立审查发现 `twMerge` 可能让后置 `transition-colors` 覆盖共享 press transition；已集中修正合并顺序，移除 prominent 重复 transition，并补默认/prominent/legacy caller 回归，未再开启第二轮审查。
+- 最终验证：主题/Button 单元 26/26、`useTheme.browser` 2/2、Activity/Search 真实点击路径 2/2、`bun run --cwd apps/web build` 成功；仅有既有大 chunk 提示。内置 Browser 因 Vite IPv6 localhost 与其错误页恢复策略未完成页面截图，改用仓库 Vitest Browser/Playwright runner。未运行 `bun fmt`、`bun lint`、`bun typecheck`（当前对话未显式授权）。隔离 dev 端口已停止，精确校验后的 `.synara-click-perf` 已删除；未替换当前已安装 Synara。

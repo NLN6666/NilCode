@@ -39,6 +39,7 @@ import {
   type PrStatePresentation,
 } from "~/components/pullRequest/pullRequestStatePresentation";
 import { PinStatusIcon, pinActionLabel } from "~/lib/pin";
+import { INTERACTIVE_PRESS_MOTION_CLASS_NAME } from "~/lib/interactionMotion";
 import { useMessages } from "~/i18n/context";
 import { ensureNativeApi } from "~/nativeApi";
 import { autoAnimate } from "@formkit/auto-animate";
@@ -1198,12 +1199,13 @@ function SidebarActivityBellButton({
               onClick();
             }}
             className={cn(
-              "relative inline-flex shrink-0 cursor-pointer items-center justify-center transition-colors",
+              "relative inline-flex shrink-0 cursor-pointer items-center justify-center",
               sidebarIconButtonSlotClass("header"),
               SIDEBAR_ROW_FOCUS_CLASS_NAME,
               active
                 ? "bg-[color-mix(in_srgb,var(--color-text-accent)_15%,transparent)] text-[var(--color-text-accent)]"
                 : "sidebar-icon-button text-muted-foreground/75 hover:text-foreground",
+              INTERACTIVE_PRESS_MOTION_CLASS_NAME,
             )}
           />
         }
@@ -1271,6 +1273,7 @@ export function SidebarSurfacePicker({
               "flex h-8 min-w-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5",
               SIDEBAR_ROW_FOCUS_CLASS_NAME,
               SIDEBAR_ROW_HOVER_CLASS_NAME,
+              INTERACTIVE_PRESS_MOTION_CLASS_NAME,
             )}
           />
         }
