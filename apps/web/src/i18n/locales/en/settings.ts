@@ -187,6 +187,23 @@ export const settings = {
       description: "Choose the icon Synara uses in the dock or taskbar.",
       resetLabel: "app icon",
     },
+    customTitleBar: {
+      title: "Use custom title bar",
+      description:
+        "Replace the system title bar with Synara's frameless chrome and window controls. Restart required to apply.",
+      restartDescription:
+        "Restart Synara to apply. Some Linux window managers work better with the system title bar.",
+      status: "Restart required",
+      resetLabel: "custom title bar",
+      ariaLabel: "Use custom title bar",
+      restart: "Restart",
+      restartAriaLabel: "Restart Synara",
+      restartToastTitle: "Restart to apply title bar",
+      restartToastDescription: "The window frame updates the next time Synara launches.",
+      updateErrorTitle: "Could not update title bar",
+      bridgeUnavailable: "Desktop title bar bridge is unavailable.",
+      preferenceNotPersisted: "Desktop title bar preference was not persisted.",
+    },
     systemUiFont: {
       title: "Use system UI font",
       description:

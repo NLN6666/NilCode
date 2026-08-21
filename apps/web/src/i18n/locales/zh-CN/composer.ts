@@ -81,6 +81,8 @@ export const composer: Messages["composer"] = {
       clear: "清空会话",
       compact: "压缩上下文",
       model: "切换模型",
+      pullRequest: "拉取请求",
+      issue: "议题",
       fast: "快速模式",
       plan: "计划模式",
       debug: "调试模式",
@@ -113,8 +115,6 @@ export const composer: Messages["composer"] = {
       mcpServer: "MCP 服务器",
       mcpTool: "MCP 工具",
       model: "模型",
-      pullRequest: "拉取请求",
-      issue: "议题",
     },
 
     loading: {
@@ -298,4 +298,4 @@ export const composer: Messages["composer"] = {
     close: "关闭",
   },
 };
-
+

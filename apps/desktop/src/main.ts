@@ -86,7 +86,22 @@ import {
   isDesktopAppIcon,
   shouldUpdateDesktopAppIcon,
 } from "./desktopAppIcon";
-import { refreshWindowsTaskbarIcon } from "./windowsTaskbarIcon";
+import {
+  applyWindowsTaskbarIcon,
+  collectWindowsShortcutPaths,
+  nextWindowsShellIconCacheKey,
+  resolveWindowsShellIconCacheDirectory,
+  syncWindowsShortcutIcons,
+  windowsShellIconContentKey,
+  windowsShellIconCachePath,
+} from "./windowsTaskbarIcon";
+import {
+  applyWindowsShellAppUserModel,
+  ensureWindowsShellAppUserModelHelper,
+  nativeWindowHandleToHwnd,
+} from "./windowsShellAppUserModel";
+import { createExclusiveApplyQueue } from "./exclusiveApplyQueue";
+import { extractIcoPngImages, toWindowsShellIco } from "./windowsShellIco";
 import {
   makeUpdateInstallPreparationCoordinator,
   type UpdateInstallPreparationAttempt,
@@ -95,6 +110,11 @@ import {
   makeDeferredDesktopQuitIntentCoordinator,
   settleDeferredDesktopQuitAfterUpdaterFailure,
 } from "./desktopQuitIntent";
+import {
+  makeRunningChatsQuitGuard,
+  quitConfirmationPresentationForPlatform,
+  shouldPromptForRunningChatsBeforeQuit,
+} from "./runningChatsQuitGuard";
 import {
   hasPendingDesktopMigrationRecovery,
   requiresDesktopMigrationRecovery,
@@ -220,6 +240,12 @@ import { applyDesktopGraphicsPolicy } from "./desktopGraphicsPolicy";
 import { isBrokenPipeError } from "./desktopProcessErrors";
 import { createDesktopStaticProtocolResolver } from "./desktopStaticProtocol";
 import {
+  readCustomTitleBarPreference,
+  resolveDesktopCustomTitleBarState,
+  resolveDesktopTitleBarFrameOptions,
+  writeCustomTitleBarPreference,
+} from "./desktopCustomTitleBar";
+import {
   readDesktopWindowState,
   resolveVisibleWindowBounds,
   writeDesktopWindowState,
@@ -272,6 +298,7 @@ const BASE_DIR =
 const STATE_DIR = Path.join(BASE_DIR, "userdata");
 const DESKTOP_WINDOW_STATE_PATH = Path.join(STATE_DIR, "desktop-window-state.json");
 const DESKTOP_APP_ICON_PATH = Path.join(STATE_DIR, "desktop-app-icon");
+const DESKTOP_CUSTOM_TITLE_BAR_PATH = Path.join(STATE_DIR, "desktop-custom-title-bar.json");
 const DESKTOP_SCHEME = desktopIdentity.scheme;
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
 const APP_DISPLAY_NAME = desktopIdentity.displayName;
@@ -328,6 +355,8 @@ const browserPerfLoggingEnabled = process.env.SYNARA_BROWSER_PERF === "1";
 type DesktopUpdateErrorContext = DesktopUpdateState["errorContext"];
 
 let mainWindow: BrowserWindow | null = null;
+/** Whether the live BrowserWindow was created with `frame: false` (win32/linux). */
+let customTitleBarActive = false;
 let backendProcess: ChildProcess.ChildProcess | null = null;
 let backendPort = 0;
 let backendAuthToken = "";
@@ -351,6 +380,7 @@ let isUpdaterInstallPreparing = false;
 let isUpdaterQuitAndInstallInFlight = false;
 const updateInstallPreparation = makeUpdateInstallPreparationCoordinator();
 const deferredDesktopQuitIntent = makeDeferredDesktopQuitIntentCoordinator();
+const runningChatsQuitGuard = makeRunningChatsQuitGuard();
 let desktopShutdownPromise: Promise<void> | null = null;
 let desktopStartupBlockedForMigrationRecovery = false;
 let desktopShutdownComplete = false;
@@ -1005,6 +1035,10 @@ protocol.registerSchemesAsPrivileged([
       secure: true,
       supportFetchAPI: true,
       corsEnabled: true,
+      // Let V8 persist compiled bytecode for renderer bundles served over this scheme
+      // (Chromium only code-caches http(s) by default), so cold launches skip
+      // recompiling the multi-MB app bundle.
+      codeCache: true,
     },
   },
   {
@@ -1982,7 +2016,219 @@ function persistDesktopAppIcon(icon: DesktopAppIcon): void {
   FS.writeFileSync(DESKTOP_APP_ICON_PATH, icon, "utf8");
 }
 
-function applyDesktopAppIcon(icon: DesktopAppIcon): void {
+function windowsShortcutSearchDirectories(): string[] {
+  const appData = process.env.APPDATA?.trim() ?? "";
+  const programData =
+    process.env.ProgramData?.trim() ?? Path.join(Path.parse(OS.homedir()).root, "ProgramData");
+  return [
+    Path.join(OS.homedir(), "Desktop"),
+    Path.join(OS.homedir(), "OneDrive", "Desktop"),
+    Path.join(programData, "Microsoft", "Windows", "Start Menu", "Programs"),
+    Path.join(OS.homedir(), "..", "Public", "Desktop"),
+    ...(appData.length > 0
+      ? [
+          Path.join(appData, "Microsoft", "Windows", "Start Menu", "Programs"),
+          Path.join(
+            appData,
+            "Microsoft",
+            "Internet Explorer",
+            "Quick Launch",
+            "User Pinned",
+            "TaskBar",
+          ),
+        ]
+      : []),
+  ];
+}
+
+function syncWindowsTaskbarShortcuts(shellIconPath: string): string[] {
+  // Always point shortcuts at the materialized ICO. Reverting to process.execPath
+  // leaves Explorer serving the previous custom icon from its AUMID cache.
+  const shortcutIconPath = shellIconPath;
+  const shortcutPaths = collectWindowsShortcutPaths({
+    directories: windowsShortcutSearchDirectories(),
+    readdir: (directory) => FS.readdirSync(directory),
+    isDirectory: (path) => {
+      try {
+        return FS.statSync(path).isDirectory();
+      } catch {
+        return false;
+      }
+    },
+  });
+  const { matched } = syncWindowsShortcutIcons({
+    iconPath: shortcutIconPath,
+    iconIndex: 0,
+    appId: APP_USER_MODEL_ID,
+    executablePath: process.execPath,
+    shortcutPaths,
+    readShortcut: (shortcutPath) => {
+      try {
+        return shell.readShortcutLink(shortcutPath);
+      } catch {
+        return null;
+      }
+    },
+    updateShortcut: (shortcutPath, iconPath, iconIndex) => {
+      try {
+        const current = shell.readShortcutLink(shortcutPath);
+        return shell.writeShortcutLink(shortcutPath, "update", {
+          ...current,
+          icon: iconPath,
+          iconIndex,
+          appUserModelId: APP_USER_MODEL_ID,
+        });
+      } catch {
+        return false;
+      }
+    },
+  });
+  return matched;
+}
+
+function materializeWindowsShellIcon(icon: DesktopAppIcon, sourcePath: string): string {
+  const bytes = toWindowsTaskbarIcoBytes(sourcePath);
+  const contentKey = windowsShellIconContentKey(icon, bytes);
+  const cacheKey = nextWindowsShellIconCacheKey(contentKey);
+  const fallbackDirectory = Path.join(STATE_DIR, "taskbar-icons");
+  const directories = [
+    ...new Set([
+      resolveWindowsShellIconCacheDirectory({
+        executablePath: process.execPath,
+        fallbackDirectory,
+      }),
+      fallbackDirectory,
+    ]),
+  ];
+  let lastError: unknown;
+  for (const directory of directories) {
+    try {
+      FS.mkdirSync(directory, { recursive: true });
+      const destinationPath = windowsShellIconCachePath(directory, cacheKey);
+      if (FS.existsSync(destinationPath)) return destinationPath;
+      try {
+        FS.writeFileSync(destinationPath, bytes);
+      } catch (error) {
+        if (!FS.existsSync(destinationPath)) throw error;
+      }
+      return destinationPath;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Failed to materialize Windows shell icon");
+}
+
+const windowsTaskbarIcoBytesCache = new Map<string, Buffer>();
+
+function toWindowsTaskbarIcoBytes(sourcePath: string): Buffer {
+  const cached = windowsTaskbarIcoBytesCache.get(sourcePath);
+  if (cached) return cached;
+  const sourceBytes = FS.readFileSync(sourcePath);
+  try {
+    if (extractIcoPngImages(sourceBytes).length === 0) {
+      windowsTaskbarIcoBytesCache.set(sourcePath, sourceBytes);
+      return sourceBytes;
+    }
+    const converted = toWindowsShellIco(sourceBytes, (png, size) => {
+      const image = nativeImage.createFromBuffer(png);
+      if (image.isEmpty()) return null;
+      const resized = image.resize({ width: size, height: size });
+      const bgra = resized.toBitmap();
+      if (bgra.length !== size * size * 4) return null;
+      return { width: size, height: size, bgra };
+    });
+    windowsTaskbarIcoBytesCache.set(sourcePath, converted);
+    return converted;
+  } catch {
+    return sourceBytes;
+  }
+}
+
+let windowsShellStampTimer: ReturnType<typeof setImmediate> | null = null;
+let windowsShellStampResolve: (() => void) | null = null;
+let desktopAppIconApplyTail: Promise<void> = Promise.resolve();
+
+function cancelDeferredWindowsShellStamp(): void {
+  if (windowsShellStampTimer === null) return;
+  clearImmediate(windowsShellStampTimer);
+  windowsShellStampTimer = null;
+  const resolve = windowsShellStampResolve;
+  windowsShellStampResolve = null;
+  resolve?.();
+}
+
+function stampWindowsShellAppUserModel(
+  input: Parameters<typeof applyWindowsShellAppUserModel>[0],
+  options?: {
+    flush?: boolean;
+  },
+): void {
+  try {
+    applyWindowsShellAppUserModel(input, Path.join(STATE_DIR, "taskbar-icons"), options);
+  } catch (error) {
+    console.warn(
+      `[desktop] Failed to stamp Windows AppUserModel icon properties: ${formatErrorMessage(error)}`,
+    );
+  }
+}
+
+function queueWindowsShellAppUserModelStamp(
+  input: Parameters<typeof applyWindowsShellAppUserModel>[0],
+  options?: {
+    flush?: boolean;
+    immediate?: boolean;
+  },
+): Promise<void> {
+  cancelDeferredWindowsShellStamp();
+  if (options?.immediate === true) {
+    stampWindowsShellAppUserModel(input, options);
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    windowsShellStampResolve = resolve;
+    windowsShellStampTimer = setImmediate(() => {
+      windowsShellStampTimer = null;
+      windowsShellStampResolve = null;
+      stampWindowsShellAppUserModel(input, options);
+      resolve();
+    });
+  });
+}
+
+async function applyDesktopAppIcon(
+  icon: DesktopAppIcon,
+  window: BrowserWindow | null = mainWindow,
+  options?: { reregisterTaskbarButton?: boolean; flushShellIconCache?: boolean },
+): Promise<void> {
+  return enqueueDesktopAppIconJob(() => applyDesktopAppIconUnlocked(icon, window, options));
+}
+
+function applyPersistedDesktopAppIcon(
+  window: BrowserWindow | null = mainWindow,
+  options?: { reregisterTaskbarButton?: boolean; flushShellIconCache?: boolean },
+): Promise<void> {
+  return enqueueDesktopAppIconJob(() =>
+    applyDesktopAppIconUnlocked(readDesktopAppIcon(), window, options),
+  );
+}
+
+function enqueueDesktopAppIconJob(job: () => Promise<void>): Promise<void> {
+  const run = desktopAppIconApplyTail.then(job, job);
+  desktopAppIconApplyTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+async function applyDesktopAppIconUnlocked(
+  icon: DesktopAppIcon,
+  window: BrowserWindow | null = mainWindow,
+  options?: { reregisterTaskbarButton?: boolean; flushShellIconCache?: boolean },
+): Promise<void> {
   if (
     process.platform !== "darwin" &&
     process.platform !== "linux" &&
@@ -2005,13 +2251,71 @@ function applyDesktopAppIcon(icon: DesktopAppIcon): void {
     app.dock?.setIcon(image);
     return;
   }
-  mainWindow?.setIcon(image);
-  // setIcon updates the window chrome and Alt-Tab artwork, but the Windows
-  // shell caches the taskbar button icon registered for the app identity, so
-  // re-register the live taskbar button to make the new icon take effect.
   if (process.platform === "win32") {
-    refreshWindowsTaskbarIcon(mainWindow);
+    let shellIconPath = iconPath;
+    try {
+      shellIconPath = materializeWindowsShellIcon(icon, iconPath);
+    } catch (error) {
+      console.warn(
+        `[desktop] Failed to materialize Windows taskbar icon: ${formatErrorMessage(error)}`,
+      );
+    }
+    let matchedShortcuts: string[] = [];
+    try {
+      matchedShortcuts = syncWindowsTaskbarShortcuts(shellIconPath);
+    } catch (error) {
+      console.warn(`[desktop] Failed to sync Windows shortcut icons: ${formatErrorMessage(error)}`);
+    }
+    let hwnd: bigint | null = null;
+    try {
+      const handle = window?.getNativeWindowHandle();
+      if (handle) hwnd = nativeWindowHandleToHwnd(handle);
+    } catch {
+      hwnd = null;
+    }
+    // Never block window creation/show on Explorer COM. The helper used to
+    // wait on a synchronous window icon message while Electron waited in
+    // spawnSync — deadlock, no window. Stamp properties on the next turn.
+    try {
+      applyWindowsTaskbarIcon({
+        window,
+        iconPath: shellIconPath,
+        identity: {
+          appId: APP_USER_MODEL_ID,
+          relaunchCommand: `"${process.execPath}"`,
+          relaunchDisplayName: APP_DISPLAY_NAME,
+        },
+        reregisterTaskbarButton: false,
+      });
+    } catch (error) {
+      console.warn(`[desktop] Failed to apply Windows taskbar icon: ${formatErrorMessage(error)}`);
+      try {
+        window?.setIcon(shellIconPath);
+      } catch (iconError) {
+        console.warn(
+          `[desktop] Failed to set Windows window icon: ${formatErrorMessage(iconError)}`,
+        );
+      }
+    }
+    // User-initiated changes stamp immediately so Explorer can finish before
+    // the next click. Startup still defers so window creation is not blocked.
+    await queueWindowsShellAppUserModelStamp(
+      {
+        appId: APP_USER_MODEL_ID,
+        iconPath: shellIconPath,
+        relaunchCommand: `"${process.execPath}"`,
+        displayName: APP_DISPLAY_NAME,
+        shortcutPaths: matchedShortcuts,
+        hwnd,
+      },
+      {
+        flush: options?.flushShellIconCache === true,
+        immediate: options?.flushShellIconCache === true,
+      },
+    );
+    return;
   }
+  window?.setIcon(image);
 }
 
 function applyInitialMacDockIcon(): void {
@@ -3638,6 +3942,21 @@ async function disposeBrowserHostPipeServerForShutdown(reason: string): Promise<
   }
 }
 
+function hideDesktopWindowForImmediateQuit(): void {
+  const window = mainWindow;
+  if (!window || window.isDestroyed()) {
+    return;
+  }
+  try {
+    if (process.platform === "win32") {
+      window.setSkipTaskbar(true);
+    }
+    window.hide();
+  } catch (error: unknown) {
+    writeDesktopLogHeader(`hide window for quit failed message=${formatErrorMessage(error)}`);
+  }
+}
+
 // Keeps Electron alive long enough for backend finalizers to reap provider child processes.
 async function shutdownDesktopRuntime(reason: string): Promise<void> {
   if (desktopShutdownPromise) {
@@ -3647,6 +3966,7 @@ async function shutdownDesktopRuntime(reason: string): Promise<void> {
   isQuitting = true;
   desktopHangWatchdog?.stop();
   desktopHangWatchdog = null;
+  hideDesktopWindowForImmediateQuit();
   writeDesktopLogHeader(`${reason} shutdown start`);
   const shutdown = runAfterDesktopShutdown(
     stopBackendAndWaitForExit(),
@@ -3694,6 +4014,51 @@ function hideMainWindowForCommittedQuit(): void {
     // Purely cosmetic: the quit proceeds identically with the window visible.
     console.warn(`[desktop] Failed to hide window for quit: ${formatErrorMessage(error)}`);
   }
+}
+
+function isMainRendererAvailable(): boolean {
+  return Boolean(
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.webContents.isDestroyed() &&
+    !mainWindow.webContents.isCrashed(),
+  );
+}
+
+async function confirmRunningChatsThenQuit(reason: string): Promise<void> {
+  if (
+    !shouldPromptForRunningChatsBeforeQuit(reason) ||
+    runningChatsQuitGuard.hasAllowedQuit() ||
+    isQuitting ||
+    desktopShutdownPromise !== null ||
+    desktopShutdownComplete
+  ) {
+    requestGracefulAppQuit(reason);
+    return;
+  }
+
+  const window = mainWindow;
+  const presentation = quitConfirmationPresentationForPlatform();
+  const allowed = await runningChatsQuitGuard.askRenderer({
+    send: (request) => {
+      if (!isMainRendererAvailable() || !window) {
+        throw new Error("Renderer unavailable.");
+      }
+      if (window.isMinimized()) {
+        window.restore();
+      }
+      window.show();
+      window.focus();
+      window.webContents.send(IPC.quitConfirmationRequest, request);
+    },
+    isRendererAvailable: isMainRendererAvailable,
+    presentation,
+  });
+  if (!allowed) {
+    writeDesktopLogHeader(`${reason} stayed because chats are still running`);
+    return;
+  }
+  requestGracefulAppQuit(reason);
 }
 
 function requestGracefulAppQuit(reason: string): void {
@@ -3789,6 +4154,11 @@ function registerIpcHandlers(): void {
     return showDesktopConfirmDialog(message, owner);
   });
 
+  ipcMain.removeAllListeners(IPC.quitConfirmationResponse);
+  ipcMain.on(IPC.quitConfirmationResponse, (_event, payload: unknown) => {
+    runningChatsQuitGuard.receiveResponse(payload);
+  });
+
   ipcMain.removeHandler(IPC.setTheme);
   ipcMain.handle(IPC.setTheme, async (_event, rawTheme: unknown) => {
     const theme = getSafeTheme(rawTheme);
@@ -3803,13 +4173,18 @@ function registerIpcHandlers(): void {
   ipcMain.handle(IPC.getAppIcon, () => readDesktopAppIcon());
 
   ipcMain.removeHandler(IPC.setAppIcon);
+  const enqueueDesktopAppIconApply = createExclusiveApplyQueue(async (icon: DesktopAppIcon) => {
+    const shouldPersist = shouldUpdateDesktopAppIcon(readDesktopAppIcon(), icon);
+    if (shouldPersist) persistDesktopAppIcon(icon);
+    // Renderer hydration mirrors this native preference. Avoid reapplying the
+    // icon selected during boot on macOS. Windows still reapplies so a click
+    // on the already-selected icon can retry a failed Explorer refresh.
+    if (!shouldPersist && process.platform !== "win32") return;
+    await applyDesktopAppIcon(icon, mainWindow, { flushShellIconCache: true });
+  });
   ipcMain.handle(IPC.setAppIcon, async (_event, rawIcon: unknown) => {
     if (!isDesktopAppIcon(rawIcon)) return;
-    // Renderer hydration mirrors this native preference. Avoid reapplying the icon selected
-    // during boot, especially the bundled default that modern macOS renders itself.
-    if (!shouldUpdateDesktopAppIcon(readDesktopAppIcon(), rawIcon)) return;
-    persistDesktopAppIcon(rawIcon);
-    applyDesktopAppIcon(rawIcon);
+    await enqueueDesktopAppIconApply(rawIcon);
   });
 
   ipcMain.removeHandler(IPC.contextMenu);
@@ -3986,6 +4361,28 @@ function registerIpcHandlers(): void {
     return window ? getDesktopWindowState(window) : { isMaximized: false, isFullscreen: false };
   });
 
+  ipcMain.removeHandler(IPC.customTitleBarGetState);
+  ipcMain.handle(IPC.customTitleBarGetState, async () => getDesktopCustomTitleBarState());
+
+  ipcMain.removeHandler(IPC.customTitleBarSetPreference);
+  ipcMain.handle(IPC.customTitleBarSetPreference, async (_event, rawEnabled: unknown) => {
+    if (typeof rawEnabled !== "boolean") {
+      return getDesktopCustomTitleBarState();
+    }
+    const state = getDesktopCustomTitleBarState();
+    if (!state.supported) {
+      return state;
+    }
+    writeCustomTitleBarPreference(DESKTOP_CUSTOM_TITLE_BAR_PATH, rawEnabled);
+    return getDesktopCustomTitleBarState();
+  });
+
+  ipcMain.removeHandler(IPC.customTitleBarRelaunch);
+  ipcMain.handle(IPC.customTitleBarRelaunch, async () => {
+    app.relaunch();
+    requestGracefulAppQuit("custom-title-bar-relaunch");
+  });
+
   ipcMain.removeHandler(IPC.updateGetState);
   ipcMain.handle(IPC.updateGetState, async () => updateState);
 
@@ -4060,13 +4457,23 @@ function registerIpcHandlers(): void {
 function getIconOption(): { icon: string } | Record<string, never> {
   if (process.platform === "darwin") return {}; // macOS uses .icns from app bundle
   if (process.platform !== "linux" && process.platform !== "win32") return {};
+  const icon = readDesktopAppIcon();
   const resourceName = desktopAppIconResourceName({
-    icon: readDesktopAppIcon(),
+    icon,
     platform: process.platform,
     isDarkAppearance: false,
   });
   const iconPath = resolveResourcePath(resourceName);
-  return iconPath ? { icon: iconPath } : {};
+  if (!iconPath) return {};
+  if (process.platform !== "win32") return { icon: iconPath };
+  try {
+    return { icon: materializeWindowsShellIcon(icon, iconPath) };
+  } catch (error) {
+    console.warn(
+      `[desktop] Failed to materialize Windows window icon: ${formatErrorMessage(error)}`,
+    );
+    return { icon: iconPath };
+  }
 }
 
 // macOS backs the translucent shell with window vibrancy, so the window is created
@@ -4090,23 +4497,34 @@ function getWindowMaterialOptions(): BrowserWindowConstructorOptions {
   };
 }
 
-// macOS keeps native traffic lights inset into the renderer's top chrome. Windows
-// uses a fully frameless shell and renderer-owned minimize/maximize/close controls,
-// so the toolbar can occupy the top edge instead of sitting below a native title bar.
+// macOS keeps native traffic lights inset into the renderer's top chrome. Windows and
+// Linux can use a frameless shell with renderer-owned minimize/maximize/close controls
+// (see Settings → Appearance → Use custom title bar). `frame` is fixed at construction.
 function getTitleBarOptions(): BrowserWindowConstructorOptions {
-  if (process.platform === "win32") {
-    return { frame: false };
+  if (process.platform === "darwin") {
+    return {
+      titleBarStyle: "hiddenInset",
+      // Derived from the shared chat-surface header geometry (@synara/shared/desktopChrome)
+      // so the native lights and the renderer's leading toggle/arrow controls always share
+      // the same vertical center. Tune the height/radius there, never the raw px here.
+      trafficLightPosition: getMacTrafficLightPosition(),
+    };
   }
-  if (process.platform !== "darwin") {
-    return {};
-  }
-  return {
-    titleBarStyle: "hiddenInset",
-    // Derived from the shared chat-surface header geometry (@synara/shared/desktopChrome)
-    // so the native lights and the renderer's leading toggle/arrow controls always share
-    // the same vertical center. Tune the height/radius there, never the raw px here.
-    trafficLightPosition: getMacTrafficLightPosition(),
-  };
+  const preference = readCustomTitleBarPreference(DESKTOP_CUSTOM_TITLE_BAR_PATH);
+  const frameOptions = resolveDesktopTitleBarFrameOptions({
+    platform: process.platform,
+    preference,
+  });
+  customTitleBarActive = "frame" in frameOptions && frameOptions.frame === false;
+  return frameOptions;
+}
+
+function getDesktopCustomTitleBarState() {
+  return resolveDesktopCustomTitleBarState({
+    platform: process.platform,
+    preference: readCustomTitleBarPreference(DESKTOP_CUSTOM_TITLE_BAR_PATH),
+    active: customTitleBarActive,
+  });
 }
 
 function createWindow(): BrowserWindow {
@@ -4228,6 +4646,9 @@ function createWindow(): BrowserWindow {
       window.maximize();
     }
     window.show();
+    if (process.platform === "win32") {
+      void applyPersistedDesktopAppIcon(window);
+    }
     emitDesktopWindowState(window);
   });
 
@@ -4254,7 +4675,17 @@ function createWindow(): BrowserWindow {
       })
     ) {
       event.preventDefault();
-      requestGracefulAppQuit("window-close");
+      void confirmRunningChatsThenQuit("window-close");
+      return;
+    }
+
+    if (
+      process.platform === "linux" &&
+      !desktopShutdownComplete &&
+      !isUpdaterQuitAndInstallInFlight
+    ) {
+      event.preventDefault();
+      void confirmRunningChatsThenQuit("window-close");
     }
   });
 
@@ -4265,7 +4696,16 @@ function createWindow(): BrowserWindow {
     void window.loadURL(desktopIdentity.entryUrl);
   }
 
+  if (process.platform === "linux" || process.platform === "win32") {
+    try {
+      void applyPersistedDesktopAppIcon(window, { reregisterTaskbarButton: false });
+    } catch (error) {
+      console.warn(`[desktop] Failed to apply startup app icon: ${formatErrorMessage(error)}`);
+    }
+  }
+
   window.on("closed", () => {
+    runningChatsQuitGuard.cancelPending();
     if (mainWindow === window) {
       mainWindow = null;
       desktopHangWatchdog?.updateRendererPid(null);
@@ -4293,6 +4733,7 @@ function attachRendererCrashRecovery(window: BrowserWindow): void {
 
   window.webContents.on("render-process-gone", (_event, details) => {
     desktopHangWatchdog?.updateRendererPid(null);
+    runningChatsQuitGuard.cancelPending();
     const description = `reason=${details.reason} exitCode=${details.exitCode}`;
     writeDesktopLogHeader(`renderer process gone ${description}`);
     safeConsoleError(`[desktop] renderer process gone (${description})`);
@@ -4338,6 +4779,10 @@ function attachRendererCrashRecovery(window: BrowserWindow): void {
   window.webContents.on("responsive", () => {
     writeDesktopLogHeader("renderer responsive");
     desktopHangWatchdog?.rendererResponsive(getRendererOsProcessId(window.webContents));
+  });
+
+  window.webContents.on("did-start-loading", () => {
+    runningChatsQuitGuard.cancelPending();
   });
 
   window.on("closed", clearReloadTimer);
@@ -4603,7 +5048,7 @@ app.on("before-quit", (event) => {
   }
 
   event.preventDefault();
-  requestGracefulAppQuit("before-quit");
+  void confirmRunningChatsThenQuit("before-quit");
 });
 
 if (hasSingleInstanceLock) {
@@ -4612,6 +5057,15 @@ if (hasSingleInstanceLock) {
     .then(() => {
       writeDesktopLogHeader("app ready");
       configureAppIdentity();
+      if (process.platform === "win32") {
+        try {
+          ensureWindowsShellAppUserModelHelper(Path.join(STATE_DIR, "taskbar-icons"));
+        } catch (error) {
+          console.warn(
+            `[desktop] Failed to prepare Windows shell icon helper: ${formatErrorMessage(error)}`,
+          );
+        }
+      }
       applyInitialMacDockIcon();
       registerMacAppearanceIconSync();
       refreshMacIconCacheOnVersionChange();

@@ -175,6 +175,22 @@ export const settings: Settings = {
       description: "选择 Synara 在程序坞或任务栏中使用的图标。",
       resetLabel: "应用图标",
     },
+    customTitleBar: {
+      title: "使用自定义标题栏",
+      description: "用 Synara 的无边框界面和窗口控件替代系统标题栏。重启后生效。",
+      restartDescription:
+        "重启 Synara 以应用更改。部分 Linux 窗口管理器使用系统标题栏时效果更好。",
+      status: "需要重启",
+      resetLabel: "自定义标题栏",
+      ariaLabel: "使用自定义标题栏",
+      restart: "重启",
+      restartAriaLabel: "重启 Synara",
+      restartToastTitle: "重启以应用标题栏",
+      restartToastDescription: "窗口边框将在 Synara 下次启动时更新。",
+      updateErrorTitle: "无法更新标题栏",
+      bridgeUnavailable: "桌面标题栏桥接不可用。",
+      preferenceNotPersisted: "未能保存桌面标题栏偏好。",
+    },
     systemUiFont: {
       title: "使用系统界面字体",
       description: "忽略主题自定义的界面字体，改用系统原生字体渲染界面（macOS 上为 SF Pro）。",

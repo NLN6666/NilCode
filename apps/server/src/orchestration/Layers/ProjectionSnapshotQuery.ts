@@ -140,6 +140,7 @@ const ProjectionThreadShellDbRowSchema = Schema.Struct(ProjectionThreadShellFiel
 const ProjectionManagedWorktreeThreadRowSchema = Schema.Struct({
   threadId: ProjectionThread.fields.threadId,
   archivedAt: ProjectionThread.fields.archivedAt,
+  deletedAt: ProjectionThread.fields.deletedAt,
   worktreePath: ProjectionThread.fields.worktreePath,
   associatedWorktreePath: ProjectionThread.fields.associatedWorktreePath,
 });
@@ -990,6 +991,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         SELECT
           thread_id AS "threadId",
           archived_at AS "archivedAt",
+          deleted_at AS "deletedAt",
           worktree_path AS "worktreePath",
           associated_worktree_path AS "associatedWorktreePath"
         FROM projection_threads
@@ -2520,6 +2522,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             (row): ProjectionManagedWorktreeThread => ({
               id: row.threadId,
               archivedAt: row.archivedAt ?? null,
+              deletedAt: row.deletedAt ?? null,
               worktreePath: row.worktreePath ?? null,
               associatedWorktreePath: row.associatedWorktreePath ?? null,
             }),

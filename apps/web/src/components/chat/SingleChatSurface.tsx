@@ -57,6 +57,7 @@ import {
   type WorkspaceFileOpener,
 } from "../../lib/workspaceFileOpener";
 import { resolveSubagentPresentationForThread } from "../../lib/subagentPresentation";
+import { requestExplorerReveal } from "../../explorerRevealRequestStore";
 import {
   selectRightDockState,
   selectSharedBrowserVisibility,
@@ -91,6 +92,8 @@ import {
   LazyDiffPanel,
   noopChatSurfaceAction,
 } from "./ChatThreadSurfacePrimitives";
+import { FloatingBrowserPanel } from "./FloatingBrowserPanel";
+import { shouldRenderFloatingBrowserPanel } from "./floatingBrowserPanel.logic";
 import { PanelStateMessage } from "./PanelStateMessage";
 import { DockThreadPane } from "./DockThreadPane";
 import { BrowserPaneTerminalSplit } from "./BrowserPaneTerminalSplit";
@@ -103,6 +106,10 @@ import {
   CHAT_MAIN_VIEWPORT_SHELL_CLASS_NAME,
 } from "./composerPickerStyles";
 import { routeSingleBrowserPanelOpenRequest } from "./browserPanelOpenRequest";
+import {
+  selectFloatingBrowserRequested,
+  useFloatingBrowserRequestStore,
+} from "./floatingBrowserRequestStore";
 import { routeSingleDevicePaneOpenRequest } from "./devicePaneOpenRequest";
 import {
   pullRequestDetailInputFromPane,
@@ -319,6 +326,14 @@ export function SingleChatSurface(props: {
   const [editorDiffOptionsControl, setEditorDiffOptionsControl] = useState<ReactNode | null>(null);
   const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
   const [searchPaletteMode, setSearchPaletteMode] = useState<WorkspaceSearchPaletteMode>("files");
+  const floatingBrowserRequested = useFloatingBrowserRequestStore(
+    useMemo(() => selectFloatingBrowserRequested(props.threadId), [props.threadId]),
+  );
+  const requestFloatingBrowser = useFloatingBrowserRequestStore((store) => store.request);
+  const dismissFloatingBrowserForThread = useFloatingBrowserRequestStore((store) => store.dismiss);
+  const dismissFloatingBrowser = useCallback(() => {
+    dismissFloatingBrowserForThread(props.threadId);
+  }, [dismissFloatingBrowserForThread, props.threadId]);
 
   const activePane = resolveActivePane(dockState);
   const browserVisibleInCurrentThread = activePane?.kind === "browser";
@@ -370,6 +385,11 @@ export function SingleChatSurface(props: {
     },
     [closePane, dockState.panes, props.threadId, syncSharedBrowserVisibility],
   );
+  const floatingBrowserVisible = shouldRenderFloatingBrowserPanel({
+    hostThreadId: props.threadId,
+    floatingThreadId: floatingBrowserRequested ? props.threadId : null,
+    dockBrowserVisible: dockState.open && activePane?.kind === "browser",
+  });
   const {
     activePaneRuntimeMode,
     requestActivePaneLive: requestActiveDockPaneLive,
@@ -427,10 +447,24 @@ export function SingleChatSurface(props: {
     });
   };
 
-  const handleOpenWorkspaceSearchFile = (relativePath: string) => {
-    requestImmediateDockHydration("file");
-    openPane(props.threadId, { kind: "file", filePath: relativePath });
-  };
+  // Stable identities: these feed memoized result rows in the search palette,
+  // so recreating them per render would defeat the rows' React.memo bailout.
+  const handleOpenWorkspaceSearchFile = useCallback(
+    (relativePath: string) => {
+      requestImmediateDockHydration("file");
+      openPane(props.threadId, { kind: "file", filePath: relativePath });
+    },
+    [requestImmediateDockHydration, openPane, props.threadId],
+  );
+
+  const handleOpenWorkspaceSearchDirectory = useCallback(
+    (relativePath: string) => {
+      requestImmediateDockHydration("explorer");
+      openPane(props.threadId, { kind: "explorer" });
+      requestExplorerReveal(props.threadId, relativePath);
+    },
+    [requestImmediateDockHydration, openPane, props.threadId],
+  );
 
   // Ctrl/Cmd+P opens the file-name search palette; Ctrl/Cmd+Shift+F opens the
   // snippet (content) search. Registered with capture so it wins over page-level
@@ -701,10 +735,8 @@ export function SingleChatSurface(props: {
         currentThreadId: props.threadId,
         requestedThreadId,
         requestImmediateBrowserHydration: () => requestImmediateDockHydration("browser"),
-        openBrowserPane: (threadId) => {
-          syncSharedBrowserVisibility(true);
-          openPane(threadId, { kind: "browser" });
-        },
+        showFloatingBrowser: requestFloatingBrowser,
+        rememberFloatingBrowser: requestFloatingBrowser,
       });
     },
   });
@@ -1037,6 +1069,7 @@ export function SingleChatSurface(props: {
         return (
           <Suspense fallback={<PanelStateMessage>{paneCopy.loadingExplorer}</PanelStateMessage>}>
             <DockExplorerPane
+              threadId={props.threadId}
               workspaceRoot={workspaceRoot}
               onReferenceInChat={handleReferenceInChat}
               onAskWhyInChat={handleAskWhyInChat}
@@ -1247,6 +1280,18 @@ export function SingleChatSurface(props: {
                 onClick: handleOpenEditorView,
               }}
             />
+            {floatingBrowserVisible ? (
+              <FloatingBrowserPanel
+                key={props.threadId}
+                threadId={props.threadId}
+                onClose={dismissFloatingBrowser}
+                onPopToSidebar={() => {
+                  dismissFloatingBrowser();
+                  requestImmediateDockHydration("browser");
+                  openPane(props.threadId, { kind: "browser" });
+                }}
+              />
+            ) : null}
           </RouteInsetSurface>
         </ChatPaneDropOverlay>
         <RightDock
@@ -1257,7 +1302,12 @@ export function SingleChatSurface(props: {
           addMenuKinds={availableDockPaneKinds}
           launcherItems={dockLauncherItems}
           motionKey={props.threadId}
-          activePaneRuntimeMode={activePaneRuntimeMode}
+          activePaneRuntimeMode={
+            floatingBrowserVisible && activePane?.kind === "browser"
+              ? "preview"
+              : activePaneRuntimeMode
+          }
+          browserRuntimeMode={floatingBrowserVisible ? "preview" : "live"}
           {...(paneLabelOverrides ? { paneLabelOverrides } : {})}
           {...(paneIconOverrides ? { paneIconOverrides } : {})}
           onSelectPane={handleSelectDockPane}
@@ -1279,6 +1329,7 @@ export function SingleChatSurface(props: {
           onOpenChange={setSearchPaletteOpen}
           cwd={workspaceRoot}
           onOpenFile={handleOpenWorkspaceSearchFile}
+          onOpenDirectory={handleOpenWorkspaceSearchDirectory}
         />
       </div>
     </WorkspaceFileOpenerContext.Provider>

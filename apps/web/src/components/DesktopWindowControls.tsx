@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import type { DesktopWindowState } from "@synara/contracts";
 
+import { useDesktopCustomTitleBarActive } from "~/hooks/useDesktopCustomTitleBar";
 import { isElectron } from "~/env";
+import { Maximize2, Minimize2, MinusIcon, XIcon } from "~/lib/icons";
 import { cn, getNavigatorPlatform, isWindowsPlatform } from "~/lib/utils";
 import { useMessages } from "~/i18n/context";
 
@@ -43,11 +45,20 @@ function CaptionGlyph({ glyph }: { glyph: string }) {
   );
 }
 
+function CaptionSvg({ children }: { children: ReactNode }) {
+  return (
+    <span aria-hidden="true" className="flex size-3.5 items-center justify-center">
+      {children}
+    </span>
+  );
+}
+
 export function DesktopWindowControls({ className }: { className?: string }) {
   const copy = useMessages().app.window;
   const [windowState, setWindowState] = useState<DesktopWindowState>(DEFAULT_WINDOW_STATE);
+  const customTitleBarActive = useDesktopCustomTitleBarActive();
   const platform = getNavigatorPlatform();
-  const isWindowsDesktop = isWindowsPlatform(platform);
+  const useWindowsGlyphs = isWindowsPlatform(platform);
   const controls = typeof window === "undefined" ? undefined : window.desktopBridge?.windowControls;
 
   useEffect(() => {
@@ -65,7 +76,7 @@ export function DesktopWindowControls({ className }: { className?: string }) {
     };
   }, [controls]);
 
-  if (!isElectron || !isWindowsDesktop || !controls) {
+  if (!isElectron || !customTitleBarActive || !controls) {
     return null;
   }
 
@@ -82,7 +93,13 @@ export function DesktopWindowControls({ className }: { className?: string }) {
           void controls.minimize();
         }}
       >
-        <CaptionGlyph glyph={GLYPH_MINIMIZE} />
+        {useWindowsGlyphs ? (
+          <CaptionGlyph glyph={GLYPH_MINIMIZE} />
+        ) : (
+          <CaptionSvg>
+            <MinusIcon className="size-3.5" />
+          </CaptionSvg>
+        )}
       </button>
       <button
         type="button"
@@ -93,7 +110,13 @@ export function DesktopWindowControls({ className }: { className?: string }) {
           void controls.toggleMaximize().then(setWindowState);
         }}
       >
-        <CaptionGlyph glyph={isMaximized ? GLYPH_RESTORE : GLYPH_MAXIMIZE} />
+        {useWindowsGlyphs ? (
+          <CaptionGlyph glyph={isMaximized ? GLYPH_RESTORE : GLYPH_MAXIMIZE} />
+        ) : (
+          <CaptionSvg>
+            {isMaximized ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+          </CaptionSvg>
+        )}
       </button>
       <button
         type="button"
@@ -104,7 +127,13 @@ export function DesktopWindowControls({ className }: { className?: string }) {
           void controls.close();
         }}
       >
-        <CaptionGlyph glyph={GLYPH_CLOSE} />
+        {useWindowsGlyphs ? (
+          <CaptionGlyph glyph={GLYPH_CLOSE} />
+        ) : (
+          <CaptionSvg>
+            <XIcon className="size-3.5" />
+          </CaptionSvg>
+        )}
       </button>
     </div>
   );

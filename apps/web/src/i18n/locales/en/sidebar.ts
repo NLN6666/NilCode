@@ -122,6 +122,11 @@ export const sidebar = {
     /** Split around the typed folder name, which renders highlighted between the two halves. */
     createFolderPrefix: "Press Enter to create",
     createFolderSuffix: "and add it as a project.",
+    addingProject: "Adding project...",
+    browseHint: "Type a path, ↑↓ to navigate folders.",
+    highlightedFolderHint: (modifier: string) => `Enter to open · ${modifier}+Enter to add`,
+    goUpHint: "Enter to go up",
+    addProjectHint: "Enter to add project",
     groupSuggested: "Suggested",
     groupProjects: "Projects",
     groupConfigure: "Configure",

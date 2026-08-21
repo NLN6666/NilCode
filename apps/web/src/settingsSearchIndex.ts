@@ -172,6 +172,14 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     keywords: "Choose the icon Synara uses in the dock or taskbar desktop application logo.",
   },
   {
+    id: "appearance:custom-title-bar",
+    section: "appearance",
+    title: (m) => m.settings.appearance.customTitleBar.title,
+    keywords:
+      "frameless window system title bar Windows Linux caption controls minimize maximize close chrome",
+    target: null,
+  },
+  {
     id: "appearance:system-ui-font",
     section: "appearance",
     title: (m) => m.settings.appearance.systemUiFont.title,

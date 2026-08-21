@@ -3,11 +3,12 @@
 // quota/credits with linear progress meters, the provider brand icon, and plan/status pills.
 // Usage is fetched read-only from each CLI's stored credentials by the server.
 
-import type { ProviderKind, ServerProviderUsageSnapshot } from "@synara/contracts";
+import type { ServerProviderUsageSnapshot } from "@synara/contracts";
 import {
   PROVIDER_USAGE_PROVIDERS,
   providerUsageDisplayName,
   providerUsageNeedsAuthDetail,
+  selectVisibleProviderUsageSnapshots,
 } from "@synara/shared/providerUsage";
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -132,18 +133,6 @@ function ProviderUsageCard({
   );
 }
 
-function missingSnapshot(provider: ProviderKind): ServerProviderUsageSnapshot {
-  return {
-    provider,
-    updatedAt: new Date(0).toISOString(),
-    limits: [],
-    usageLines: [],
-    source: "unavailable",
-    status: "error",
-    detail: "Usage is currently unavailable.",
-  };
-}
-
 function mergeProviderUsageRefresh(
   previous: readonly ServerProviderUsageSnapshot[] | undefined,
   next: readonly ServerProviderUsageSnapshot[],
@@ -177,15 +166,9 @@ export function ProviderUsageSettingsPanel() {
     },
   });
 
-  // Always render a card per supported provider, ordered consistently, even if the batch
-  // omitted one (e.g. a transient server error) — fall back to an "unavailable" placeholder.
-  const byProvider = new Map<ProviderKind, ServerProviderUsageSnapshot>();
-  for (const snapshot of usageQuery.data ?? []) {
-    byProvider.set(snapshot.provider, snapshot);
-  }
-  const cards = PROVIDER_USAGE_PROVIDERS.map(
-    (provider) => byProvider.get(provider) ?? missingSnapshot(provider),
-  );
+  // Use the live payload only. Inventing error placeholders for omitted providers
+  // would count as "connected" and hide unsigned cards.
+  const cards = selectVisibleProviderUsageSnapshots(usageQuery.data ?? []);
 
   const showInitialLoading = usageQuery.isPending && !usageQuery.data;
 

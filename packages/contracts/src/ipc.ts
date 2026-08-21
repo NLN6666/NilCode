@@ -142,6 +142,8 @@ import type {
   ProjectListDirectoriesResult,
   ProjectReadFileInput,
   ProjectReadFileResult,
+  ProjectPrewarmSearchIndexInput,
+  ProjectPrewarmSearchIndexResult,
   ProjectResolveOutOfRootFileReferenceInput,
   ProjectResolveOutOfRootFileReferenceResult,
   ProjectRunDevServerInput,
@@ -251,6 +253,8 @@ import type {
   OrchestrationListProviderDeliveryBlockersResult,
   OrchestrationReconcileProviderDeliveryInput,
   OrchestrationReconcileProviderDeliveryResult,
+  OrchestrationPrepareQuitResumeInput,
+  OrchestrationPrepareQuitResumeResult,
   OrchestrationGetTurnDiffInput,
   OrchestrationGetTurnDiffResult,
   OrchestrationEvent,
@@ -417,6 +421,8 @@ export interface BrowserSetPanelBoundsInput {
   threadId: ThreadId;
   bounds: BrowserPanelBounds | null;
   surface?: "native" | "renderer";
+  /** Guest page zoom for a presentation surface; omitted/1 keeps the normal 100% viewport. */
+  pageZoomFactor?: number;
 }
 
 export interface BrowserAttachWebviewInput extends BrowserTabInput {
@@ -602,6 +608,44 @@ export interface DesktopWindowState {
   isFullscreen: boolean;
 }
 
+/** Main → renderer: ask whether quit should proceed while chats are running. */
+export type DesktopQuitConfirmationPresentation = "native" | "in-app";
+
+export interface DesktopQuitConfirmationRequest {
+  readonly requestId: string;
+  readonly presentation: DesktopQuitConfirmationPresentation;
+}
+
+export interface DesktopQuitConfirmationChat {
+  readonly id: string;
+  readonly title: string;
+}
+
+/**
+ * Renderer → main: first ack that the UI received the request, then the user's
+ * Stay / Quit decision. `ready` with `runningCount === 0` is treated as allow.
+ */
+export type DesktopQuitConfirmationResponse =
+  | {
+      readonly requestId: string;
+      readonly phase: "ready";
+      readonly runningCount: number;
+      readonly chats: ReadonlyArray<DesktopQuitConfirmationChat>;
+    }
+  | {
+      readonly requestId: string;
+      readonly phase: "decision";
+      readonly allow: boolean;
+    };
+
+/** Windows/Linux frameless title bar preference vs the live BrowserWindow frame. */
+export interface DesktopCustomTitleBarState {
+  supported: boolean;
+  preference: boolean;
+  active: boolean;
+  restartRequired: boolean;
+}
+
 export const DesktopAppIcon = Schema.Literals(["default", "icon", "dark"]);
 export type DesktopAppIcon = typeof DesktopAppIcon.Type;
 
@@ -647,7 +691,20 @@ export interface DesktopBridge {
     getState: () => Promise<DesktopWindowState>;
     onState: (listener: (state: DesktopWindowState) => void) => () => void;
   };
+  /**
+   * Windows/Linux only. `frame` is fixed at BrowserWindow creation, so changing
+   * the preference requires a relaunch before `active` catches up.
+   */
+  customTitleBar?: {
+    getState: () => Promise<DesktopCustomTitleBarState>;
+    setPreference: (enabled: boolean) => Promise<DesktopCustomTitleBarState>;
+    relaunch: () => Promise<void>;
+  };
   onMenuAction: (listener: (action: string) => void) => () => void;
+  onQuitConfirmationRequest: (
+    listener: (request: DesktopQuitConfirmationRequest) => void,
+  ) => () => void;
+  replyQuitConfirmation: (response: DesktopQuitConfirmationResponse) => void;
   /** Current `webContents` page zoom (1 = 100%). Used to keep macOS traffic-light gutter aligned. */
   getZoomFactor: () => number;
   onZoomFactorChange: (listener: (zoomFactor: number) => void) => () => void;
@@ -745,6 +802,9 @@ export interface NativeApi {
       input: ProjectSearchLocalEntriesInput,
     ) => Promise<ProjectSearchLocalEntriesResult>;
     searchContent: (input: ProjectSearchContentInput) => Promise<ProjectSearchContentResult>;
+    prewarmSearchIndex: (
+      input: ProjectPrewarmSearchIndexInput,
+    ) => Promise<ProjectPrewarmSearchIndexResult>;
     readFile: (input: ProjectReadFileInput) => Promise<ProjectReadFileResult>;
     resolveOutOfRootFileReference: (
       input: ProjectResolveOutOfRootFileReferenceInput,
@@ -943,6 +1003,9 @@ export interface NativeApi {
     reconcileProviderDelivery: (
       input: OrchestrationReconcileProviderDeliveryInput,
     ) => Promise<OrchestrationReconcileProviderDeliveryResult>;
+    prepareQuitResume: (
+      input: OrchestrationPrepareQuitResumeInput,
+    ) => Promise<OrchestrationPrepareQuitResumeResult>;
     subscribeShell: () => Promise<void>;
     unsubscribeShell: () => Promise<void>;
     subscribeThread: (input: OrchestrationSubscribeThreadInput) => Promise<void>;

@@ -157,7 +157,7 @@ describe("buildSettingsSkillGroups", () => {
       SKILL_LABELS,
     );
 
-    expect(groups[0]?.providers).toHaveLength(9);
+    expect(groups[0]?.providers).toHaveLength(10);
   });
 });
 

@@ -56,7 +56,6 @@ import {
   Command,
   CommandDialog,
   CommandDialogPopup,
-  CommandEmpty,
   CommandFooter,
   CommandGroup,
   CommandGroupLabel,
@@ -65,6 +64,7 @@ import {
   CommandList,
   CommandPanel,
   CommandSeparator,
+  CommandStatus,
 } from "./ui/command";
 import { useMessages } from "~/i18n/context";
 import { Button } from "./ui/button";
@@ -777,71 +777,43 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                   ) : null}
                 </div>
                 <CommandList className="max-h-[min(24rem,60vh)] not-empty:px-1.5 not-empty:pt-0 not-empty:pb-1.5">
-                  {isBrowsing ? (
-                    unsupportedWindowsPath ? (
-                      <CommandEmpty className="py-10">
-                        <div className="text-center text-sm text-muted-foreground/79">
-                          {m.sidebar.searchPalette.windowsPathsUnsupported}
-                        </div>
-                      </CommandEmpty>
-                    ) : (
-                      <>
-                        {canBrowseUp || filteredBrowseEntries.length > 0 ? (
-                          <CommandGroup>
-                            {canBrowseUp ? (
-                              <CommandItem
-                                key="browse-up"
-                                value="__browse_up__"
-                                className="cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5"
-                                onMouseDown={(event) => {
-                                  event.preventDefault();
-                                }}
-                                onClick={() => {
-                                  if (browseParentPath) setQuery(browseParentPath);
-                                }}
-                              >
-                                <LuCornerLeftUp className="size-3.5 text-muted-foreground/60" />
-                                <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                                  ..
-                                </span>
-                              </CommandItem>
-                            ) : null}
-                            {filteredBrowseEntries.map((entry) => (
-                              <CommandItem
-                                key={entry.fullPath}
-                                value={`folder:${entry.fullPath}`}
-                                className="cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5"
-                                onMouseDown={(event) => {
-                                  event.preventDefault();
-                                }}
-                                onClick={() => setQuery(appendBrowsePathSegment(query, entry.name))}
-                              >
-                                <FolderClosed className="size-3.5 text-muted-foreground/60" />
-                                <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                                  {entry.name}
-                                </span>
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        ) : !isBrowseFetching ? (
-                          <div className="px-3 py-2 text-sm text-muted-foreground">
-                            {m.sidebar.searchPalette.noMatchingFolders}
-                          </div>
-                        ) : null}
-                        {willCreateMissingFolder ? (
-                          <div className="mx-1.5 mt-2 rounded-md border border-dashed border-[color:var(--color-border)] px-3 py-2 text-sm text-muted-foreground">
-                            {m.sidebar.searchPalette.createFolderPrefix}{" "}
-                            <span className="text-foreground">{trimmedQuery}</span>{" "}
-                            {m.sidebar.searchPalette.createFolderSuffix}
-                          </div>
-                        ) : null}
-                        {addProjectError ? (
-                          <div className="mx-1.5 mt-2 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                            {addProjectError}
-                          </div>
-                        ) : null}
-                      </>
-                    )
+                  {canBrowse && (canBrowseUp || filteredBrowseEntries.length > 0) ? (
+                    <CommandGroup>
+                      {canBrowseUp ? (
+                        <CommandItem
+                          key="browse-up"
+                          value="__browse_up__"
+                          className="cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                          }}
+                          onClick={() => {
+                            if (browseParentPath) setQuery(browseParentPath);
+                          }}
+                        >
+                          <LuCornerLeftUp className="size-3.5 text-muted-foreground/60" />
+                          <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                            ..
+                          </span>
+                        </CommandItem>
+                      ) : null}
+                      {filteredBrowseEntries.map((entry) => (
+                        <CommandItem
+                          key={entry.fullPath}
+                          value={`folder:${entry.fullPath}`}
+                          className="cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                          }}
+                          onClick={() => setQuery(appendBrowsePathSegment(query, entry.name))}
+                        >
+                          <FolderClosed className="size-3.5 text-muted-foreground/60" />
+                          <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                            {entry.name}
+                          </span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
                   ) : null}
 
                   {!isBrowsing && matchedActions.length > 0 ? (
@@ -1108,15 +1080,44 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                     </>
                   ) : null}
 
-                  {!isBrowsing && !hasSearchResults ? (
-                    <CommandEmpty className="py-10">
-                      <div className="flex flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground/79">
-                        <SearchIcon className="size-4 opacity-70" />
-                        <div>{m.sidebar.searchPalette.noMatches}</div>
-                      </div>
-                    </CommandEmpty>
-                  ) : null}
                 </CommandList>
+                {/* Status copy and banners live outside the listbox: assistive
+                    tech treats listbox children as options, so anything that is
+                    not selectable goes in this polite live region instead. */}
+                <CommandStatus className="p-0">
+                  {isBrowsing ? (
+                    unsupportedWindowsPath ? (
+                      <div className="py-10 text-center text-sm text-muted-foreground/79">
+                        {m.sidebar.searchPalette.windowsPathsUnsupported}
+                      </div>
+                    ) : (
+                      <>
+                        {!canBrowseUp && filteredBrowseEntries.length === 0 && !isBrowseFetching ? (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">
+                            {m.sidebar.searchPalette.noMatchingFolders}
+                          </div>
+                        ) : null}
+                        {willCreateMissingFolder ? (
+                          <div className="mx-3 mt-2 rounded-md border border-dashed border-[color:var(--color-border)] px-3 py-2 text-sm text-muted-foreground">
+                            {m.sidebar.searchPalette.createFolderPrefix}{" "}
+                            <span className="text-foreground">{trimmedQuery}</span>{" "}
+                            {m.sidebar.searchPalette.createFolderSuffix}
+                          </div>
+                        ) : null}
+                        {addProjectError ? (
+                          <div className="mx-3 mt-2 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                            {addProjectError}
+                          </div>
+                        ) : null}
+                      </>
+                    )
+                  ) : !hasSearchResults ? (
+                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center text-sm text-muted-foreground/79">
+                      <SearchIcon className="size-4 opacity-70" />
+                      <div>{m.sidebar.searchPalette.noMatches}</div>
+                    </div>
+                  ) : null}
+                </CommandStatus>
                 <div className="h-1.5" />
               </CommandPanel>
               <CommandFooter>
@@ -1124,15 +1125,15 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                   <>
                     <span>
                       {isAddingProject
-                        ? "Adding project..."
-                        : "Type a path, ↑↓ to navigate folders."}
+                        ? m.sidebar.searchPalette.addingProject
+                        : m.sidebar.searchPalette.browseHint}
                     </span>
                     <span>
                       {hasHighlightedFolderItem
-                        ? `Enter to open · ${submitModifierLabel}+Enter to add`
+                        ? m.sidebar.searchPalette.highlightedFolderHint(submitModifierLabel)
                         : hasHighlightedBrowseItem
-                          ? "Enter to go up"
-                          : "Enter to add project"}
+                          ? m.sidebar.searchPalette.goUpHint
+                          : m.sidebar.searchPalette.addProjectHint}
                     </span>
                   </>
                 ) : (
