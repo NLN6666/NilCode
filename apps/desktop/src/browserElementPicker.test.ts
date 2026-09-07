@@ -405,9 +405,9 @@ describe("BrowserElementPicker pick completion", () => {
     await flush();
 
     expect(fake.picked[0]?.screenshot?.mimeType).toBe("image/png");
-    expect(fake.calls.find((call) => call.method === "Page.captureScreenshot")?.params?.clip).toEqual(
-      { x: 0, y: 0, width: 10, height: 10, scale: 1 },
-    );
+    expect(
+      fake.calls.find((call) => call.method === "Page.captureScreenshot")?.params?.clip,
+    ).toEqual({ x: 0, y: 0, width: 10, height: 10, scale: 1 });
   });
 
   it.each([
@@ -427,9 +427,9 @@ describe("BrowserElementPicker pick completion", () => {
     });
     await flush();
 
-    expect(fake.calls.find((call) => call.method === "Page.captureScreenshot")?.params?.clip).toEqual(
-      { x: 0, y: 0, width: 10, height: 10, scale: 1 },
-    );
+    expect(
+      fake.calls.find((call) => call.method === "Page.captureScreenshot")?.params?.clip,
+    ).toEqual({ x: 0, y: 0, width: 10, height: 10, scale: 1 });
   });
 
   it("still delivers the element when the crop fails", async () => {

@@ -151,38 +151,42 @@ export function ComposerSlashStatusDialog(props: {
                 />
               ) : null}
             </div>
-            {contextWindow ? (
-              <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <div className="grid gap-3 text-sm sm:grid-cols-2">
+              {contextWindow ? (
+                <>
+                  <div>
+                    <p className="text-muted-foreground">{copy.used}</p>
+                    <p className="font-medium text-foreground">
+                      {formatContextWindowTokens(contextWindow.usedTokens)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">{copy.remaining}</p>
+                    <p className="font-medium text-foreground">
+                      {formatContextWindowTokens(contextWindow.remainingTokens)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">{copy.window}</p>
+                    <p className="font-medium text-foreground">
+                      {formatContextWindowTokens(contextWindow.maxTokens)}
+                    </p>
+                  </div>
+                </>
+              ) : (
                 <div>
-                  <p className="text-muted-foreground">{copy.used}</p>
-                  <p className="font-medium text-foreground">
-                    {formatContextWindowTokens(contextWindow.usedTokens)}
-                  </p>
+                  <p className="text-muted-foreground">{copy.noContextUsage}</p>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">{copy.remaining}</p>
-                  <p className="font-medium text-foreground">
-                    {formatContextWindowTokens(contextWindow.remainingTokens)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">{copy.window}</p>
-                  <p className="font-medium text-foreground">
-                    {formatContextWindowTokens(contextWindow.maxTokens)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">{copy.cost}</p>
-                  <p className="font-medium text-foreground">
-                    {cumulativeCostUsd !== null
-                      ? formatCostUsd(cumulativeCostUsd)
-                      : copy.costUnavailable}
-                  </p>
-                </div>
+              )}
+              <div>
+                <p className="text-muted-foreground">{copy.cost}</p>
+                <p className="font-medium text-foreground">
+                  {cumulativeCostUsd !== null
+                    ? formatCostUsd(cumulativeCostUsd)
+                    : copy.costUnavailable}
+                </p>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">{copy.noContextUsage}</p>
-            )}
+            </div>
           </div>
 
           <div className="space-y-2 rounded-lg border border-border/60 bg-card p-4">

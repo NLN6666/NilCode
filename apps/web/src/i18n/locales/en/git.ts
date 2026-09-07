@@ -299,4 +299,3 @@ export const git = {
     selectFile: "Select a file to view its diff.",
   },
 };
-

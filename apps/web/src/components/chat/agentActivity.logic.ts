@@ -159,9 +159,9 @@ export function deriveAgentActivityTimelineState(
     const displayEntry: WorkLogEntry = {
       ...latest,
       id: groupId,
-        createdAt: first.createdAt,
-        label: REASONING_TRACE_TITLE_KEY,
-        toolTitle: REASONING_TRACE_TITLE_KEY,
+      createdAt: first.createdAt,
+      label: REASONING_TRACE_TITLE_KEY,
+      toolTitle: REASONING_TRACE_TITLE_KEY,
       tone: "tool",
       ...(updateCount > 1 ? { reasoningUpdateCount: updateCount } : {}),
       ...(latestPreview ? { preview: latestPreview, detail: latestPreview } : {}),

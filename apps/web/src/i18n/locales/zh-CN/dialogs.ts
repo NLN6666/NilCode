@@ -113,6 +113,8 @@ export const dialogs: Messages["dialogs"] = {
     popoutHint: "看看有什么新变化",
     noReleaseNotes: "还没有发布说明 —— 下次更新后再来看看。",
     version: (version) => `版本 ${version}`,
+    popoutOpen: (version) => `打开 v${version} 的新变化`,
+    popoutBadge: (version) => `新版本 · v${version}`,
   },
 
   releaseHistory: {

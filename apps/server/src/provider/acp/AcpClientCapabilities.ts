@@ -46,7 +46,10 @@ function requestError(method: string, cause: unknown): AcpErrors.AcpRequestError
   });
 }
 
-function requireAbsolutePath(method: string, filePath: string): Effect.Effect<string, AcpErrors.AcpError> {
+function requireAbsolutePath(
+  method: string,
+  filePath: string,
+): Effect.Effect<string, AcpErrors.AcpError> {
   return nodePath.isAbsolute(filePath)
     ? Effect.succeed(filePath)
     : Effect.fail(requestError(method, "ACP requires an absolute file path."));
@@ -120,7 +123,14 @@ export const makeStandardAcpClientHandlers = Effect.fnUntraced(function* (
         if (params.line === undefined && params.limit === undefined) return { content };
         const lines = content.split(/(?<=\n)/u);
         const start = Math.max(0, (params.line ?? 1) - 1);
-        return { content: lines.slice(start, params.limit === null ? undefined : start + (params.limit ?? lines.length)).join("") };
+        return {
+          content: lines
+            .slice(
+              start,
+              params.limit === null ? undefined : start + (params.limit ?? lines.length),
+            )
+            .join(""),
+        };
       }),
     writeTextFile: (params) =>
       Effect.gen(function* () {
@@ -171,7 +181,9 @@ export const makeStandardAcpClientHandlers = Effect.fnUntraced(function* (
         terminals.set(terminalId, state);
         child.stdout.on("data", (chunk: Buffer) => retainTerminalOutput(state, chunk));
         child.stderr.on("data", (chunk: Buffer) => retainTerminalOutput(state, chunk));
-        child.once("error", (error) => retainTerminalOutput(state, Buffer.from(error.message, "utf8")));
+        child.once("error", (error) =>
+          retainTerminalOutput(state, Buffer.from(error.message, "utf8")),
+        );
         child.once("exit", (exitCode, signal) => {
           const status = { exitCode, signal } satisfies Acp.TerminalExitStatus;
           state.exitStatus = status;

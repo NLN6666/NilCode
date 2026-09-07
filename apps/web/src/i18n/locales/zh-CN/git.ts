@@ -278,4 +278,3 @@ export const git: Messages["git"] = {
     selectFile: "选择一个文件查看差异。",
   },
 };
-

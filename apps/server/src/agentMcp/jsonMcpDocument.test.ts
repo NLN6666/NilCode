@@ -106,7 +106,7 @@ describe("applyJsonMcpEnabled (Claude dialect)", () => {
   });
 });
 
-// OpenCode and Kilo invert the polarity: the key is `enabled` and lives under `mcp`, so
+// OpenCode inverts the polarity: the key is `enabled` and lives under `mcp`, so
 // switching a server off writes `false` where Claude writes `disabled: true`.
 describe("applyJsonMcpEnabled (OpenCode dialect)", () => {
   const OPENCODE_SAMPLE = `{

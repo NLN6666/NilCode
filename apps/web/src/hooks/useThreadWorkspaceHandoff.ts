@@ -14,7 +14,7 @@ import {
   type ProjectScriptRunResult,
 } from "../projectScripts";
 import { useStore } from "../store";
-import type { Project, ProjectScript, Thread } from "../types";
+import type { ProjectMetadata, ProjectScript, Thread } from "../types";
 
 /** Success toast for one handoff. Module scope: its ternaries live outside the caller's `try`. */
 function reportThreadHandoffSuccess(
@@ -30,7 +30,7 @@ function reportThreadHandoffSuccess(
 }
 
 export function useThreadWorkspaceHandoff(input: {
-  activeProject: Project | undefined;
+  activeProject: ProjectMetadata | undefined;
   activeThread: Thread | undefined;
   activeRootBranch: string | null;
   activeThreadAssociatedWorktree: {

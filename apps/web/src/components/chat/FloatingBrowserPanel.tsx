@@ -5,7 +5,6 @@
 
 import {
   type PointerEvent as ReactPointerEvent,
-  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -24,6 +23,7 @@ import {
   removePanelResizeOverlay,
 } from "../../lib/panelResize";
 import { cn } from "../../lib/utils";
+import { useMessages } from "../../i18n/context";
 import { IconButton } from "../ui/icon-button";
 import {
   clampFloatingBrowserPanelRect,
@@ -38,8 +38,7 @@ import {
   type FloatingBrowserPanelRect,
   type FloatingBrowserResizeEdge,
 } from "./floatingBrowserPanel.logic";
-import { LazyBrowserPanel } from "./ChatThreadSurfacePrimitives";
-import { PanelStateMessage } from "./PanelStateMessage";
+import { BrowserDockPane } from "./BrowserDockPane";
 
 interface FloatingBrowserPanelProps {
   threadId: ThreadId;
@@ -76,6 +75,7 @@ function hostSize(host: HTMLElement): FloatingBrowserPanelHostSize {
 }
 
 export function FloatingBrowserPanel(props: FloatingBrowserPanelProps) {
+  const copy = useMessages().browser.floating;
   const hostRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const activeInteractionCleanupRef = useRef<(() => void) | null>(null);
@@ -304,13 +304,12 @@ export function FloatingBrowserPanel(props: FloatingBrowserPanelProps) {
           data-floating-browser-content="true"
           className="absolute inset-0 min-h-0 min-w-0 overflow-hidden rounded-[inherit]"
         >
-          <Suspense fallback={<FloatingBrowserPanelFallback />}>
-            <LazyBrowserPanel
-              mode="floating"
-              threadId={props.threadId}
-              onClosePanel={props.onClose}
-            />
-          </Suspense>
+          <BrowserDockPane
+            mode="floating"
+            paneId="floating-browser"
+            threadId={props.threadId}
+            onClosePanel={props.onClose}
+          />
         </div>
         <div
           data-floating-browser-controls="true"
@@ -321,8 +320,8 @@ export function FloatingBrowserPanel(props: FloatingBrowserPanelProps) {
               type="button"
               variant="ghost"
               size="icon-xs"
-              label="Floating browser actions"
-              tooltip="Drag to move, click for actions"
+              label={copy.actions}
+              tooltip={copy.dragHint}
               tooltipSide="bottom"
               data-floating-browser-header="true"
               aria-expanded={controlsOpen}
@@ -341,8 +340,8 @@ export function FloatingBrowserPanel(props: FloatingBrowserPanelProps) {
                   type="button"
                   variant="ghost"
                   size="icon-xs"
-                  label="Open browser in sidebar"
-                  tooltip="Open browser in sidebar"
+                  label={copy.openInSidebar}
+                  tooltip={copy.openInSidebar}
                   tooltipSide="bottom"
                   className="size-6 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
                   onPointerDown={(event) => event.stopPropagation()}
@@ -358,8 +357,8 @@ export function FloatingBrowserPanel(props: FloatingBrowserPanelProps) {
                   type="button"
                   variant="ghost"
                   size="icon-xs"
-                  label="Close floating browser"
-                  tooltip="Close floating browser"
+                  label={copy.close}
+                  tooltip={copy.close}
                   tooltipSide="bottom"
                   className="size-6 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
                   onPointerDown={(event) => event.stopPropagation()}
@@ -387,8 +386,4 @@ export function FloatingBrowserPanel(props: FloatingBrowserPanelProps) {
       </div>
     </div>
   );
-}
-
-export function FloatingBrowserPanelFallback() {
-  return <PanelStateMessage>Loading browser...</PanelStateMessage>;
 }

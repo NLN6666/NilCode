@@ -51,13 +51,23 @@ describe("desktop hang watchdog child runtime", () => {
       runStartedAtMs: 1_000,
       executablePath: "C:\\Synara\\Synara.exe",
     });
-    listeners.get("message")?.({ type: "heartbeat", sentAtMs: 1_000, rendererPid: 456, backendPid: null });
+    listeners.get("message")?.({
+      type: "heartbeat",
+      sentAtMs: 1_000,
+      rendererPid: 456,
+      backendPid: null,
+    });
     now = 7_000;
     tick?.();
     await Promise.resolve();
 
     expect(sent).toContainEqual(
-      expect.objectContaining({ type: "capture-result", target: "main", pid: 123, result: "failed" }),
+      expect.objectContaining({
+        type: "capture-result",
+        target: "main",
+        pid: 123,
+        result: "failed",
+      }),
     );
 
     listeners.get("disconnect")?.();
@@ -81,7 +91,12 @@ describe("desktop hang watchdog child runtime", () => {
       exit: () => undefined,
       writeDump: async (request) => {
         requests.push(request);
-        return { metadataPath: "result.json", dumpPath: "result.dmp", captureResult: "captured" as const, error: null };
+        return {
+          metadataPath: "result.json",
+          dumpPath: "result.dmp",
+          captureResult: "captured" as const,
+          error: null,
+        };
       },
     });
 
@@ -139,9 +154,15 @@ describe("desktop hang watchdog child runtime", () => {
       runStartedAtMs: 1_000,
       executablePath: "C:\\Synara\\Synara.exe",
     });
-    listeners.get("message")?.({ type: "renderer-unresponsive", rendererPid: 456, sentAtMs: 1_000 });
+    listeners.get("message")?.({
+      type: "renderer-unresponsive",
+      rendererPid: 456,
+      sentAtMs: 1_000,
+    });
     await Promise.resolve();
 
-    expect(() => listeners.get("message")?.({ type: "renderer-responsive", rendererPid: 456 })).not.toThrow();
+    expect(() =>
+      listeners.get("message")?.({ type: "renderer-responsive", rendererPid: 456 }),
+    ).not.toThrow();
   });
 });

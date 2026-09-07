@@ -302,6 +302,13 @@ export const chat = {
     moreActions: "More actions",
     referenceInChat: "Reference in chat",
     askWhyChanged: "Ask why this changed",
+    reloadFile: "Reload file from disk",
+    copyPath: "Copy path",
+    copyContents: "Copy contents",
+    preview: "Preview",
+    previewHint: "Rendered preview — browse and toggle task lists",
+    readOnly: "Read-only",
+    unsavedChanges: "Unsaved changes",
   },
 
   /** Chat environment side panel and its collapsible sections. */
@@ -397,6 +404,11 @@ export const chat = {
     open: "Open",
     options: "Editor options",
     noEditors: "No installed editors found",
+    reviewChanges: (path: string) => `Review changes to ${path}`,
+    openFile: (path: string) => `Open ${path}`,
+    fileOptions: (path: string) => `Open ${path} options`,
+    copyAbsolutePath: "Copy absolute path",
+    copyRelativePath: "Copy relative path",
   },
 
   hydration: {
@@ -484,7 +496,39 @@ export const chat = {
     handOff: "Hand off",
     handoffTo: (provider: string) => `Handoff to ${provider}`,
   },
+  providerContextLifecycle: {
+    provider: "Provider",
+    nativeHistory: "Native history",
+    available: "Available",
+    unavailable: "Unavailable",
+    restart: "Restart",
+    yes: "Yes",
+    no: "No",
+    contextChange: "Context change",
+    recap: "Recap",
+    notSent: "Not sent",
+    preview: "Recap preview",
+    boundedPreview: "Showing a bounded preview of the recap sent to the model.",
+    reasons: {
+      "conversation-rebuilt": "Conversation rebuilt",
+      "fresh-session": "Fresh provider session",
+      "native-history-unavailable": "Native history unavailable",
+      "native-resume-failed": "Native resume failed",
+    },
+    recapCharacters: (count: number) => `${count.toLocaleString()} characters`,
+  },
+  usageStatus: {
+    signIn: "Sign in",
+    unsupported: "Unsupported",
+    unavailable: "Unavailable",
+    connected: "Connected",
+    noData: "No data",
+    unsupportedDetail: "Live usage is not available for this provider configuration.",
+    unavailableDetail: "Usage is currently unavailable.",
+    menuTitle: (provider: string) => `${provider} usage`,
+    summary: (provider: string, value: string) => `${provider} usage: ${value}`,
+    remaining: (label: string, value: string) => `${label} ${value} remaining`,
+  },
 };
 
 export type Chat = typeof chat;
-

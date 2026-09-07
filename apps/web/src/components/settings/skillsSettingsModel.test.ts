@@ -24,7 +24,8 @@ const NONE_DISABLED: DisabledSkillsByProvider = {
   antigravity: [],
   grok: [],
   droid: [],
-  kilo: [],
+  devin: [],
+  omp: [],
   opencode: [],
   pi: [],
 };
@@ -105,8 +106,8 @@ describe("buildSettingsSkillGroups", () => {
       "cursor",
       "grok",
       "droid",
-      "kilo",
       "opencode",
+      "devin",
     ]);
   });
 

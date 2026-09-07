@@ -61,9 +61,9 @@ export const ORIGIN_SECTION_ORDER = [
   "cursor",
   "grok",
   "factory",
-  "kilo",
   "opencode",
   "pi",
+  "devin",
   "agents",
   "project",
 ] as const;
@@ -96,9 +96,10 @@ const ORIGIN_OWNER_PROVIDER: Readonly<Record<string, ProviderKind>> = {
   // Factory Droid's folder is `~/.factory/skills`; discovery names the origin after the
   // directory, so the owner lookup has to bridge `factory` back to the `droid` kind.
   factory: "droid",
-  kilo: "kilo",
   opencode: "opencode",
   pi: "pi",
+  devin: "devin",
+  antigravity: "antigravity",
 };
 
 export function skillOriginInfo(

@@ -210,7 +210,7 @@ export async function sendSidechatPrompt(input: {
 
 export async function createSidechatThread(input: {
   api: NativeApi;
-  project: Project;
+  project: Pick<Project, "id">;
   sourceThread: Thread;
   selectedModelSelection: ModelSelection;
   initialPrompt?: string | undefined;

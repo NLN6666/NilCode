@@ -2,6 +2,7 @@
 // Purpose: Covers browser service terminal forwarding of selected output to the active composer.
 // Layer: Web chat component test
 
+import { ProjectId, ThreadId } from "@synara/contracts";
 import type { TerminalContextSelection } from "~/lib/terminalContext";
 import { SINGLE_CHAT_PANE_SCOPE_ID } from "~/lib/chatPaneScope";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -120,14 +121,16 @@ vi.mock("../ui/DisclosureChevron", () => ({
 }));
 
 const { BrowserPaneTerminalSplit } = await import("./BrowserPaneTerminalSplit");
-const { registerTerminalContextComposerTarget } = await import(
-  "~/lib/terminalContextComposerRegistry"
-);
+const { registerTerminalContextComposerTarget } =
+  await import("~/lib/terminalContextComposerRegistry");
 
 function renderSplit(): void {
   drawerHarness.props = undefined;
   renderToStaticMarkup(
-    <BrowserPaneTerminalSplit hostThreadId={"host-thread"} projectId={"project-1"}>
+    <BrowserPaneTerminalSplit
+      hostThreadId={ThreadId.makeUnsafe("host-thread")}
+      projectId={ProjectId.makeUnsafe("project-1")}
+    >
       <div>Browser preview</div>
     </BrowserPaneTerminalSplit>,
   );

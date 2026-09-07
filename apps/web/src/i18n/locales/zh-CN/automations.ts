@@ -207,8 +207,7 @@ export const automations: Automations = {
     continueThreadTitle: "继续一个已有会话",
     releaseThreadTitle: "释放当前会话？",
     continueThreadDetail: "每次运行都会在你选择的会话中追加一轮对话，并等待它进入空闲状态。",
-    releaseThreadDetail: (threadName) =>
-      `自动化将停止写入${threadName}；该会话本身会被保留。`,
+    releaseThreadDetail: (threadName) => `自动化将停止写入${threadName}；该会话本身会被保留。`,
     unnamedThread: "它的会话",
     pickThreadPlaceholder: "选择一个会话…",
   },

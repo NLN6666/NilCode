@@ -74,8 +74,7 @@ export function useTimelineRowOverlapGuard(): (element: HTMLElement | null) => (
         // each initial callback turns an otherwise cheap mount into O(visible
         // rows) forced geometry reads.
         return (
-          previousHeight !== undefined &&
-          Math.abs(nextHeight - previousHeight) > OVERLAP_EPSILON_PX
+          previousHeight !== undefined && Math.abs(nextHeight - previousHeight) > OVERLAP_EPSILON_PX
         );
       });
       if (changedEntries.length === 0) {

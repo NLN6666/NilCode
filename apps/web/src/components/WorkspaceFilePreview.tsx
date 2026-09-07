@@ -7,6 +7,7 @@
 
 import type {
   ProjectFileEncoding,
+  ProjectFileChangeEvent,
   ProjectFileLineEnding,
   ProjectReadFileResult,
 } from "@synara/contracts";
@@ -36,18 +37,27 @@ import {
 
 import { basenameOfPath } from "~/file-icons";
 import { useTheme } from "~/hooks/useTheme";
-import { getSelectionWithin, type ChatFileReference } from "~/lib/chatReferences";
+import { useProjectFileChangeSubscription } from "~/hooks/useProjectFileChangeSubscription";
+import {
+  getSelectionSnippetWithin,
+  getSelectionWithin,
+  type ChatFileReference,
+} from "~/lib/chatReferences";
 import { resolveDiffThemeName, type DiffThemeName } from "~/lib/diffRendering";
 import { type FileCommentSelection } from "~/lib/fileComments";
 import { showFileReferenceContextMenu } from "~/lib/fileReferenceContextMenu";
 import { PlusIcon } from "~/lib/icons";
 import { toggleMarkdownTaskMarker } from "~/lib/markdownTaskList";
+import { isRpcCapacityExceededError } from "~/lib/expensiveReadRetry";
 import {
   isLocalPreviewGrantUsable,
   projectLocalPreviewGrantQueryOptions,
+  projectQueryKeys,
   projectReadFileQueryOptions,
+  refetchFreshProjectFileQuery,
   projectResolveOutOfRootFileReferenceQueryOptions,
 } from "~/lib/projectReactQuery";
+import { gitQueryKeys } from "~/lib/gitReactQuery";
 import {
   MAX_SYNTAX_HIGHLIGHT_INPUT_CHARS,
   cacheSyntaxHighlightedHtml,
@@ -304,6 +314,8 @@ export interface WorkspaceFilePreviewProps {
   markdownPreviewDefault?: boolean;
   /** Enables guarded editing for complete, supported files inside the workspace. */
   editable?: boolean;
+  /** Keeps the file watcher bounded to a currently visible preview surface. */
+  liveRevalidationEnabled?: boolean;
   /** Shown when no file is selected yet. */
   emptyState?: ReactNode;
   onReferenceInChat?: ((reference: ChatFileReference) => void) | undefined;
@@ -350,15 +362,14 @@ function resolveFileEditBuffer(
   return !dirty && sourceChanged ? makeFileEditBuffer(document) : current;
 }
 
-function readFileSaveError(error: unknown): string {
-  return error instanceof Error && error.message.length > 0
-    ? error.message
-    : "Could not save this file.";
+function readFileSaveError(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.length > 0 ? error.message : fallback;
 }
 
 export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
   const previewCopy = useMessages().editor.filePreview;
   const lineCommentCopy = useMessages().chat.lineComment;
+  const liveRevalidationEnabled = props.liveRevalidationEnabled ?? true;
   const { resolvedTheme } = useTheme();
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
   const contentsRef = useRef<HTMLDivElement>(null);
@@ -389,6 +400,8 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
   const relocatedFullPath =
     relocation?.requestedKey === relocationRequestKey ? relocation.fullPath : null;
   const [binaryPreviewErrorKey, setBinaryPreviewErrorKey] = useState<string | null>(null);
+  const [binaryPreviewRevision, setBinaryPreviewRevision] = useState(0);
+  const [binaryPreviewReloading, setBinaryPreviewReloading] = useState(false);
   const filePath = relocatedFullPath ?? requestedFilePath;
   const markdownPreviewDefault = props.markdownPreviewDefault ?? false;
   const fileIsImage = filePath !== null && isSupportedLocalImagePath(filePath);
@@ -422,7 +435,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     fileNeedsLocalPreviewGrant && isLocalPreviewGrantUsable(localPreviewGrantQuery.data)
       ? (localPreviewGrantQuery.data?.grant ?? null)
       : null;
-  const binaryPreviewKey = `${props.workspaceRoot ?? ""}\0${filePath ?? ""}\0${localPreviewGrant ?? ""}`;
+  const binaryPreviewKey = `${props.workspaceRoot ?? ""}\0${filePath ?? ""}\0${localPreviewGrant ?? ""}\0${binaryPreviewRevision}`;
   const fileQuery = useQuery(
     projectReadFileQueryOptions({
       cwd: props.workspaceRoot,
@@ -431,12 +444,63 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
       // Images and PDFs are binary: they stream through the local-image HTTP
       // route instead of the text file-read RPC.
       enabled:
+        liveRevalidationEnabled &&
         filePath !== null &&
         !fileIsImage &&
         !fileIsPdf &&
         (fileNeedsLocalPreviewGrant ? localPreviewGrant !== null : props.workspaceRoot !== null),
     }),
   );
+  const resolvedWorkspaceRelativePath =
+    fileQuery.data && isWorkspaceRelativePathSafe(fileQuery.data.relativePath)
+      ? fileQuery.data.relativePath
+      : null;
+  const watchedWorkspaceRelativePath =
+    resolvedWorkspaceRelativePath ??
+    ((fileIsImage || fileIsPdf) &&
+    workspaceRoot &&
+    requestedFilePath &&
+    isWorkspaceRelativePathSafe(requestedFilePath)
+      ? requestedFilePath
+      : null);
+  const handleWatchedFileChange = useCallback(
+    (event: ProjectFileChangeEvent) => {
+      if (!workspaceRoot || !watchedWorkspaceRelativePath) return;
+      void refetchFreshProjectFileQuery(queryClient, {
+        cwd: workspaceRoot,
+        relativePath: requestedFilePath,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: gitQueryKeys.workingTreeDiffs(workspaceRoot),
+        refetchType: "none",
+      });
+      if (fileIsImage || fileIsPdf) {
+        setBinaryPreviewReloading(true);
+        setBinaryPreviewRevision((current) => current + 1);
+      }
+      if (event.type === "changed") {
+        setRelocation((current) =>
+          current?.requestedKey === relocationRequestKey ? null : current,
+        );
+        setBinaryPreviewErrorKey((current) => (current === relocationRequestKey ? null : current));
+      }
+    },
+    [
+      fileIsImage,
+      fileIsPdf,
+      queryClient,
+      relocationRequestKey,
+      requestedFilePath,
+      watchedWorkspaceRelativePath,
+      workspaceRoot,
+    ],
+  );
+  useProjectFileChangeSubscription({
+    cwd: workspaceRoot,
+    relativePath: watchedWorkspaceRelativePath,
+    enabled: liveRevalidationEnabled && watchedWorkspaceRelativePath !== null,
+    onChange: handleWatchedFileChange,
+  });
 
   // Out-of-root relocation kicks in only after the workspace-relative text
   // read or binary preview has actually failed. A reference the read RPC or
@@ -445,11 +509,15 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
   // workspace file invalidation restore that priority when the local file is
   // created later.
   const binaryPreviewFailed = binaryPreviewErrorKey === relocationRequestKey;
+  const fileReadFailedWithoutContents =
+    fileQuery.isError &&
+    fileQuery.data === undefined &&
+    !isRpcCapacityExceededError(fileQuery.error);
   const outOfRootResolutionEnabled =
     workspaceRoot !== null &&
     requestedFilePath !== null &&
     isWorkspaceRelativePathSafe(requestedFilePath) &&
-    (fileQuery.isError || binaryPreviewFailed || relocatedFullPath !== null);
+    (fileReadFailedWithoutContents || binaryPreviewFailed || relocatedFullPath !== null);
   const outOfRootResolutionQuery = useQuery(
     projectResolveOutOfRootFileReferenceQueryOptions({
       cwd: workspaceRoot,
@@ -483,9 +551,11 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     resolvedOutOfRootFullPath,
   ]);
   const handleBinaryPreviewReady = useCallback(() => {
+    setBinaryPreviewReloading(false);
     setBinaryPreviewErrorKey((current) => (current === relocationRequestKey ? null : current));
   }, [relocationRequestKey]);
   const handleBinaryPreviewError = useCallback(() => {
+    setBinaryPreviewReloading(false);
     setBinaryPreviewErrorKey(relocationRequestKey);
   }, [relocationRequestKey]);
 
@@ -516,6 +586,12 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     : null;
   const editBufferDirty =
     activeEditBuffer !== null && activeEditBuffer.contents !== activeEditBuffer.savedContents;
+  const editBufferExternallyChanged =
+    editBufferDirty &&
+    activeEditBuffer !== null &&
+    editableDocument !== null &&
+    (activeEditBuffer.version !== editableDocument.version ||
+      activeEditBuffer.savedContents !== editableDocument.contents);
   const displayedFileContents = activeEditBuffer?.contents ?? fileContents;
   const lineCount =
     displayedFileContents.length === 0 ? 0 : displayedFileContents.split("\n").length;
@@ -523,13 +599,13 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     !props.editable || showMarkdownPreview || fileQuery.data === undefined
       ? null
       : !fileIsWorkspaceRelative
-        ? "Only files inside the project can be edited."
+        ? previewCopy.outsideProjectReadOnly
         : fileQuery.data.truncated
-          ? "Large files are read-only."
+          ? previewCopy.largeFileReadOnly
           : fileQuery.data.lineEnding === "mixed"
-            ? "Files with mixed line endings are read-only to preserve their exact format."
+            ? previewCopy.mixedLineEndingsReadOnly
             : fileQuery.data.version === null || fileQuery.data.encoding === null
-              ? "This file format is read-only."
+              ? previewCopy.formatReadOnly
               : null;
 
   const handleEditBufferChange = (contents: string) => {
@@ -555,7 +631,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     if (!api) {
       setEditBuffer((current) => ({
         ...resolveFileEditBuffer(current, editableDocument),
-        error: "File saving is unavailable.",
+        error: previewCopy.savingUnavailable,
       }));
       return;
     }
@@ -579,6 +655,8 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
         lineEnding: activeEditBuffer.lineEnding,
       });
       const options = projectReadFileQueryOptions({ cwd: workspaceRoot, relativePath: filePath });
+      // A watcher read started before the save must not replace the saved snapshot.
+      await queryClient.cancelQueries({ queryKey: options.queryKey, exact: true });
       queryClient.setQueryData<ProjectReadFileResult>(options.queryKey, (current) =>
         current ? { ...current, contents: contentsToSave, version: result.version } : current,
       );
@@ -597,45 +675,65 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     } catch (error) {
       setEditBuffer((current) =>
         current?.key === documentKey
-          ? { ...current, saving: false, error: readFileSaveError(error) }
+          ? { ...current, saving: false, error: readFileSaveError(error, previewCopy.saveFailed) }
           : current,
       );
     }
   };
 
+  const handleFileReload = useCallback(() => {
+    if (!filePath) return;
+    if (fileIsImage || fileIsPdf) {
+      setBinaryPreviewReloading(true);
+      setBinaryPreviewRevision((current) => current + 1);
+      return;
+    }
+    void refetchFreshProjectFileQuery(queryClient, {
+      cwd: workspaceRoot,
+      relativePath: filePath,
+    });
+  }, [fileIsImage, fileIsPdf, filePath, queryClient, workspaceRoot]);
+
   const handleEditBufferReload = () => {
     if (!editableDocument || !filePath) return;
     const documentKey = editableDocument.key;
-    const options = projectReadFileQueryOptions({ cwd: workspaceRoot, relativePath: filePath });
-    void queryClient
-      .invalidateQueries({ queryKey: options.queryKey })
+    const queryKey = projectQueryKeys.readFile(workspaceRoot, filePath);
+    void refetchFreshProjectFileQuery(queryClient, {
+      cwd: workspaceRoot,
+      relativePath: filePath,
+    })
       .then(() => {
+        const queryState = queryClient.getQueryState(queryKey);
+        if (queryState?.error) throw queryState.error;
+        if (queryClient.getQueryData(queryKey) === undefined) {
+          throw new Error(previewCopy.reloadFailed);
+        }
         setEditBuffer((current) => (current?.key === documentKey ? null : current));
       })
       .catch((error: unknown) => {
         setEditBuffer((current) =>
-          current?.key === documentKey ? { ...current, error: readFileSaveError(error) } : current,
+          current?.key === documentKey
+            ? { ...current, error: readFileSaveError(error, previewCopy.saveFailed) }
+            : current,
         );
       });
   };
   // Highlight -> floating "Add to chat" -> reference that points at exactly what
-  // was selected, mirroring the transcript flow. This is offered only in the
-  // source view, where the DOM mirrors the file's lines/columns 1:1 so a
-  // selection resolves to an exact `line 12:5-12` span. The rendered-markdown
-  // view restructures the source (paragraphs, lists, headings), so a selection
-  // there cannot map back to an exact range — referencing a single word on a
-  // 3000-word line would pull in the whole line. The rendered view therefore
-  // stays read-only for references (browsing + task-list toggles only); use the
-  // Source toggle in the header to get a precise selection reference.
+  // was selected, mirroring the transcript flow. In the source view the DOM
+  // mirrors the file's lines/columns 1:1, so a selection resolves to an exact
+  // `line 12:5-12` span. The rendered-markdown view restructures the source
+  // (paragraphs, lists, headings), so a selection there cannot map back to a
+  // line range; it references the selected text verbatim instead, the same
+  // snippet shape the diff view uses.
   const readPreviewSelection = (container: HTMLElement): Omit<ChatFileReference, "path"> | null =>
-    showMarkdownPreview ? null : getSelectionWithin(container);
+    showMarkdownPreview ? getSelectionSnippetWithin(container) : getSelectionWithin(container);
   const commitPreviewSelection = (selection: Omit<ChatFileReference, "path">) => {
     if (filePath) {
       onReferenceInChat?.({ path: filePath, ...selection });
     }
   };
   const previewSelectionAction = useCodeSelectionAction({
-    enabled: Boolean(onReferenceInChat && filePath) && !showMarkdownPreview && !editableDocument,
+    enabled: Boolean(onReferenceInChat && filePath) && (showMarkdownPreview || !editableDocument),
     readSelection: readPreviewSelection,
     onCommit: commitPreviewSelection,
   });
@@ -656,10 +754,8 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
       onCommentInChat?.({ path: filePath, ...selection });
     }
   };
-  // Right-click references the selected line range in the source view,
-  // otherwise the whole file. The rendered-markdown view yields no selection
-  // (readPreviewSelection returns null there), so it always falls back to the
-  // whole-file reference.
+  // Right-click references the selection (line range in the source view,
+  // quoted snippet in the rendered-markdown view), otherwise the whole file.
   const handleContentsContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (!filePath) {
       return;
@@ -793,7 +889,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
           <p className="text-left text-[11px] text-destructive/85">
             {localPreviewGrantQuery.error instanceof Error
               ? localPreviewGrantQuery.error.message
-              : "Could not create local file preview grant."}
+              : previewCopy.previewGrantFailed}
           </p>
         </PanelStateMessage>
       );
@@ -818,6 +914,8 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
         filePath={filePath}
         cwd={props.workspaceRoot}
         previewGrant={localPreviewGrant}
+        cacheKey={binaryPreviewRevision}
+        onReload={handleFileReload}
         openInTarget={openInTarget}
         onPreviewReady={handleBinaryPreviewReady}
         onPreviewError={handleBinaryPreviewError}
@@ -827,6 +925,11 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
 
   const hoveredCommentLine = lineCommenting.hoveredLine;
   const activeCommentLine = lineCommenting.activeLine;
+  const hasFileContents = fileQuery.data !== undefined;
+  const fileReadError = fileQuery.error;
+  const fileReadCapacityError = isRpcCapacityExceededError(fileReadError);
+  const showFileReadErrorIndicator =
+    hasFileContents && fileReadError !== null && !activeEditBuffer?.error;
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[var(--color-background-surface)]">
@@ -842,6 +945,8 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
         truncated={fileQuery.data?.truncated ?? false}
         dirty={editBufferDirty}
         readOnlyReason={readOnlyReason}
+        reloading={fileIsImage || fileIsPdf ? binaryPreviewReloading : fileQuery.isFetching}
+        onReload={workspaceRoot && filePath ? handleFileReload : undefined}
       />
       {activeEditBuffer?.error ? (
         <div
@@ -854,8 +959,39 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
             className="shrink-0 rounded-md px-2 py-1 font-medium text-foreground/80 hover:bg-foreground/8"
             onClick={handleEditBufferReload}
           >
-            Reload from disk
+            {previewCopy.reloadFromDisk}
           </button>
+        </div>
+      ) : editBufferExternallyChanged ? (
+        <div
+          role="alert"
+          className="flex shrink-0 items-center gap-3 border-b border-amber-500/25 bg-amber-500/5 px-3 py-2 text-[11px] text-foreground/80"
+        >
+          <span className="min-w-0 flex-1">{previewCopy.externalChangePreserved}</span>
+          <button
+            type="button"
+            className="shrink-0 rounded-md px-2 py-1 font-medium text-foreground/80 hover:bg-foreground/8"
+            onClick={handleEditBufferReload}
+          >
+            {previewCopy.reloadFromDisk}
+          </button>
+        </div>
+      ) : showFileReadErrorIndicator ? (
+        <div
+          role={fileReadCapacityError ? "status" : "alert"}
+          className={
+            fileReadCapacityError
+              ? "flex shrink-0 items-center border-b border-border/60 px-3 py-2 text-[11px] text-muted-foreground"
+              : "flex shrink-0 items-center border-b border-destructive/25 bg-destructive/5 px-3 py-2 text-[11px] text-destructive"
+          }
+        >
+          {fileReadCapacityError
+            ? fileQuery.isFetching
+              ? previewCopy.refreshing
+              : previewCopy.refreshDelayed
+            : fileReadError instanceof Error
+              ? fileReadError.message
+              : previewCopy.refreshFailed}
         </div>
       ) : null}
       {locatingOutOfRootFile ? (
@@ -870,6 +1006,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
             src={filePath}
             cwd={props.workspaceRoot}
             previewGrant={localPreviewGrant}
+            cacheKey={binaryPreviewRevision}
             alt={basenameOfPath(filePath)}
             className="min-h-full"
             imageClassName="max-h-[calc(100vh-13rem)]"
@@ -879,16 +1016,18 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
         </div>
       ) : fileQuery.isLoading ? (
         <FilePreviewLoadingState />
-      ) : fileQuery.error ? (
+      ) : !hasFileContents && fileReadError ? (
         <PanelStateMessage density="compact" fill="flex" className="items-start justify-start p-3">
           <p className="text-left text-[11px] text-destructive/85">
-            {fileQuery.error instanceof Error ? fileQuery.error.message : "Could not read file."}
+            {fileReadError instanceof Error ? fileReadError.message : previewCopy.readFailed}
           </p>
         </PanelStateMessage>
+      ) : !hasFileContents ? (
+        <FilePreviewLoadingState />
       ) : activeEditBuffer && editableDocument && !showMarkdownPreview ? (
         <textarea
           className="editor-file-editor"
-          aria-label={`Edit ${filePath}`}
+          aria-label={previewCopy.editFile(filePath)}
           aria-busy={activeEditBuffer.saving}
           aria-invalid={activeEditBuffer.error ? "true" : undefined}
           value={activeEditBuffer.contents}

@@ -8,6 +8,7 @@ import {
   listWorkspaceDirectories,
   prewarmWorkspaceSearchIndex,
   resolveWorkspaceFileBySuffix,
+  resolveWorkspaceFileReferences,
   searchLocalEntries,
   searchWorkspaceContent,
   searchWorkspaceEntries,
@@ -60,6 +61,11 @@ export const WorkspaceEntriesLive = Layer.succeed(WorkspaceEntries, {
     Effect.tryPromise({
       try: () => resolveWorkspaceFileBySuffix(input),
       catch: (cause) => toWorkspaceEntriesError("resolve workspace file by suffix", cause),
+    }),
+  resolveFileReferences: (input) =>
+    Effect.tryPromise({
+      try: () => resolveWorkspaceFileReferences(input),
+      catch: (cause) => toWorkspaceEntriesError("resolve workspace file references", cause),
     }),
   invalidate: (cwd) => Effect.sync(() => clearWorkspaceIndexCache(cwd)),
 });

@@ -22,12 +22,16 @@ describe("HangWatchdogPolicy", () => {
       kind: "capture",
       target: { kind: "main" },
     });
-    expect(policy.tick(1_000 + DESKTOP_HANG_THRESHOLD_MS + DESKTOP_HANG_HEARTBEAT_INTERVAL_MS)).toEqual({
+    expect(
+      policy.tick(1_000 + DESKTOP_HANG_THRESHOLD_MS + DESKTOP_HANG_HEARTBEAT_INTERVAL_MS),
+    ).toEqual({
       kind: "wait",
     });
 
     policy.recordHeartbeat({ nowMs: 9_000, rendererPid: 42 });
-    expect(policy.tick(9_000 + DESKTOP_HANG_THRESHOLD_MS - DESKTOP_HANG_HEARTBEAT_INTERVAL_MS)).toEqual({
+    expect(
+      policy.tick(9_000 + DESKTOP_HANG_THRESHOLD_MS - DESKTOP_HANG_HEARTBEAT_INTERVAL_MS),
+    ).toEqual({
       kind: "wait",
     });
     expect(policy.tick(9_000 + DESKTOP_HANG_THRESHOLD_MS)).toMatchObject({
@@ -53,7 +57,9 @@ describe("HangWatchdogPolicy", () => {
       kind: "capture",
       target: { kind: "renderer", pid: 99 },
     });
-    expect(policy.rendererUnresponsive({ nowMs: 1_001, rendererPid: 99 })).toEqual({ kind: "wait" });
+    expect(policy.rendererUnresponsive({ nowMs: 1_001, rendererPid: 99 })).toEqual({
+      kind: "wait",
+    });
 
     policy.rendererResponsive(99);
     expect(policy.rendererUnresponsive({ nowMs: 1_002, rendererPid: 99 })).toMatchObject({
@@ -217,13 +223,19 @@ describe("DesktopHangWatchdogController", () => {
   });
 
   it("keeps the newest unresponsive state for a renderer while a control message is in flight", () => {
-    const sent: Array<{ message: { type: string; rendererPid?: number }; complete: (error: Error | null) => void }> = [];
+    const sent: Array<{
+      message: { type: string; rendererPid?: number };
+      complete: (error: Error | null) => void;
+    }> = [];
     const sentMessages: Array<{ type: string; rendererPid?: number }> = [];
     const child = {
       connected: true,
       once: () => undefined,
       on: () => undefined,
-      send: (message: { type: string; rendererPid?: number }, callback?: (error: Error | null) => void) => {
+      send: (
+        message: { type: string; rendererPid?: number },
+        callback?: (error: Error | null) => void,
+      ) => {
         sentMessages.push(message);
         sent.push({ message, complete: callback! });
         return true;
@@ -265,13 +277,19 @@ describe("DesktopHangWatchdogController", () => {
   });
 
   it("bounds saturated renderer controls while preserving the newest states, configure, and stop", () => {
-    const sent: Array<{ message: { type: string; rendererPid?: number }; complete: (error: Error | null) => void }> = [];
+    const sent: Array<{
+      message: { type: string; rendererPid?: number };
+      complete: (error: Error | null) => void;
+    }> = [];
     const sentMessages: Array<{ type: string; rendererPid?: number }> = [];
     const child = {
       connected: true,
       once: () => undefined,
       on: () => undefined,
-      send: (message: { type: string; rendererPid?: number }, callback?: (error: Error | null) => void) => {
+      send: (
+        message: { type: string; rendererPid?: number },
+        callback?: (error: Error | null) => void,
+      ) => {
         sentMessages.push(message);
         sent.push({ message, complete: callback! });
         return true;
@@ -310,13 +328,19 @@ describe("DesktopHangWatchdogController", () => {
     }
 
     expect(sentMessages).toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: "renderer-responsive", rendererPid: 32 })]),
+      expect.arrayContaining([
+        expect.objectContaining({ type: "renderer-responsive", rendererPid: 32 }),
+      ]),
     );
     expect(sentMessages).toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: "renderer-unresponsive", rendererPid: 33 })]),
+      expect.arrayContaining([
+        expect.objectContaining({ type: "renderer-unresponsive", rendererPid: 33 }),
+      ]),
     );
     expect(sentMessages).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: "renderer-unresponsive", rendererPid: 1 })]),
+      expect.arrayContaining([
+        expect.objectContaining({ type: "renderer-unresponsive", rendererPid: 1 }),
+      ]),
     );
 
     controller.stop();

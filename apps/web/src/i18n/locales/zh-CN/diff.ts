@@ -50,6 +50,7 @@ export const diff: Messages["diff"] = {
     referenceInChat: "在对话中引用",
     askWhyChanged: "询问为什么改动",
     copyPath: "复制路径",
+    reloadDiff: "重新加载差异",
   },
 
   fileTree: {

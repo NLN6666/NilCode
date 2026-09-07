@@ -2346,78 +2346,84 @@ export function BrowserPanel({
 
   if (!api && isLiveRuntime) {
     return (
-      <DiffPanelShell mode={mode} header={isFloatingMode ? null : header}>
-        <DiffPanelLoadingState label={browserCopy.status.unavailable} />
-      </DiffPanelShell>
+      <div className="contents" data-browser-panel="true">
+        <DiffPanelShell mode={mode} header={isFloatingMode ? null : header}>
+          <DiffPanelLoadingState label={browserCopy.status.unavailable} />
+        </DiffPanelShell>
+      </div>
     );
   }
 
   return (
-    <DiffPanelShell mode={mode} header={isFloatingMode ? null : header}>
-      <div className="flex min-h-0 flex-1 flex-col">
-        {!isFloatingMode ? (
-          <BrowserTabStrip
-            tabs={threadBrowserState?.tabs ?? []}
-            activeTabId={activeTabId}
-            status={browserChromeStatus}
-            agentControlLabel={
-              threadBrowserState?.agentControlActive ? browserCopy.agentControl : null
-            }
-            untitledLabel={browserCopy.untitledTab}
-            closeTabLabel={browserCopy.actions.closeTab}
-            newTabLabel={browserCopy.actions.newTab}
-            dragRegion={isElectron && mode !== "sheet"}
-            onSelectTab={(tabId) => void onSelectTab(tabId)}
-            onCloseTab={onCloseTab}
-            onCreateTab={onCreateTab}
-          />
-        ) : null}
-        <div className="relative min-h-0 flex-1 bg-transparent">
-          {!isLiveRuntime ? (
-            <BrowserRuntimePreview
-              title={activeTab?.title || browserCopy.sleeping}
-              detail={activeTab?.lastCommittedUrl ?? activeTab?.url ?? browserCopy.restoringCached}
-            />
-          ) : !workspaceReady ? (
-            <div className="absolute inset-0 z-10">
-              <DiffPanelLoadingState label={browserCopy.status.starting} />
-            </div>
-          ) : null}
-          {isLiveRuntime ? (
-            <div
-              ref={browserViewportRef}
-              data-floating-browser-viewport={isFloatingMode ? "true" : undefined}
-              className={cn(
-                "absolute overflow-hidden",
-                isFloatingMode ? "bg-transparent" : "bg-[#0d0d0d]",
-                isFloatingMode && "rounded-[10px] [clip-path:inset(0_round_10px)]",
-                "inset-0",
-              )}
+    <div className="contents" data-browser-panel="true">
+      <DiffPanelShell mode={mode} header={isFloatingMode ? null : header}>
+        <div className="flex min-h-0 flex-1 flex-col">
+          {!isFloatingMode ? (
+            <BrowserTabStrip
+              tabs={threadBrowserState?.tabs ?? []}
+              activeTabId={activeTabId}
+              status={browserChromeStatus}
+              agentControlLabel={
+                threadBrowserState?.agentControlActive ? browserCopy.agentControl : null
+              }
+              untitledLabel={browserCopy.untitledTab}
+              closeTabLabel={browserCopy.actions.closeTab}
+              newTabLabel={browserCopy.actions.newTab}
+              dragRegion={isElectron && mode !== "sheet"}
+              onSelectTab={(tabId) => void onSelectTab(tabId)}
+              onCloseTab={onCloseTab}
+              onCreateTab={onCreateTab}
             />
           ) : null}
-          {isLiveRuntime && browserPageError ? (
-            <BrowserRuntimeError message={browserPageError} onReload={onReloadActiveTab} />
-          ) : null}
-          {showLocalServersHome ? (
-            <BrowserLocalServersHome
-              activeTabId={activeTab?.id ?? null}
-              loading={localServersQuery.isLoading || localServersQuery.isFetching}
-              onNavigate={onOpenLocalServer}
-              onRefresh={() => void localServersQuery.refetch()}
-              servers={localServersQuery.data?.servers ?? []}
-            />
-          ) : null}
-          {isAnnotating && annotationBitmap ? (
-            <BrowserAnnotationOverlay
-              imageBitmap={annotationBitmap}
-              errorMessage={annotationError}
-              onCancel={exitInteractionMode}
-              onConfirm={onConfirmAnnotation}
-            />
-          ) : null}
+          <div className="relative min-h-0 flex-1 bg-transparent">
+            {!isLiveRuntime ? (
+              <BrowserRuntimePreview
+                title={activeTab?.title || browserCopy.sleeping}
+                detail={
+                  activeTab?.lastCommittedUrl ?? activeTab?.url ?? browserCopy.restoringCached
+                }
+              />
+            ) : !workspaceReady ? (
+              <div className="absolute inset-0 z-10">
+                <DiffPanelLoadingState label={browserCopy.status.starting} />
+              </div>
+            ) : null}
+            {isLiveRuntime ? (
+              <div
+                ref={browserViewportRef}
+                data-floating-browser-viewport={isFloatingMode ? "true" : undefined}
+                className={cn(
+                  "absolute overflow-hidden",
+                  isFloatingMode ? "bg-transparent" : "bg-[#0d0d0d]",
+                  isFloatingMode && "rounded-[10px] [clip-path:inset(0_round_10px)]",
+                  "inset-0",
+                )}
+              />
+            ) : null}
+            {isLiveRuntime && browserPageError ? (
+              <BrowserRuntimeError message={browserPageError} onReload={onReloadActiveTab} />
+            ) : null}
+            {showLocalServersHome ? (
+              <BrowserLocalServersHome
+                activeTabId={activeTab?.id ?? null}
+                loading={localServersQuery.isLoading || localServersQuery.isFetching}
+                onNavigate={onOpenLocalServer}
+                onRefresh={() => void localServersQuery.refetch()}
+                servers={localServersQuery.data?.servers ?? []}
+              />
+            ) : null}
+            {isAnnotating && annotationBitmap ? (
+              <BrowserAnnotationOverlay
+                imageBitmap={annotationBitmap}
+                errorMessage={annotationError}
+                onCancel={exitInteractionMode}
+                onConfirm={onConfirmAnnotation}
+              />
+            ) : null}
+          </div>
         </div>
-      </div>
-    </DiffPanelShell>
+      </DiffPanelShell>
+    </div>
   );
 }
 

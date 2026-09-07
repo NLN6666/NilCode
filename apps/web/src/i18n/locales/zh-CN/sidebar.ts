@@ -20,6 +20,12 @@ export const sidebar: Sidebar = {
     showMore: "显示更多",
     showLess: "收起",
     cancel: "取消",
+    customize: "自定义",
+    customizeSidebar: "自定义侧边栏",
+    done: "完成",
+    hideItem: (label) => `从侧边栏隐藏${label}`,
+    showItem: (label) => `在侧边栏显示${label}`,
+    reorderItem: (label) => `调整${label}的顺序`,
   },
 
   sort: {

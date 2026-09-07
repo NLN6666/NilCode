@@ -894,7 +894,12 @@ export function decodeGitHubReferenceSearchJson(
       rawCount: response.items.length,
       entries: response.items.flatMap((entry) => {
         try {
-          return [normalizeGitHubReferenceSearchItem(decodeRawGitHubReferenceSearchItem(entry), repository)];
+          return [
+            normalizeGitHubReferenceSearchItem(
+              decodeRawGitHubReferenceSearchItem(entry),
+              repository,
+            ),
+          ];
         } catch {
           return [];
         }
@@ -1628,7 +1633,9 @@ const makeGitHubCli = Effect.sync(() => {
       validateRepository(input.repository, "searchRepositoryReferences").pipe(
         Effect.flatMap((repository) => {
           const query = input.query.trim();
-          const searchQuery = [`repo:${repository}`, "is:open", ...(query ? [query] : [])].join(" ");
+          const searchQuery = [`repo:${repository}`, "is:open", ...(query ? [query] : [])].join(
+            " ",
+          );
           return execute({
             cwd: input.cwd,
             args: [
@@ -1653,12 +1660,7 @@ const makeGitHubCli = Effect.sync(() => {
         Effect.flatMap((repository) =>
           execute({
             cwd: input.cwd,
-            args: [
-              "api",
-              "--hostname",
-              GITHUB_HOST,
-              `repos/${repository}/issues/${input.number}`,
-            ],
+            args: ["api", "--hostname", GITHUB_HOST, `repos/${repository}/issues/${input.number}`],
           }),
         ),
         Effect.flatMap((result) =>

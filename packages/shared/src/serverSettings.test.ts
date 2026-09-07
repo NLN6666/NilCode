@@ -36,11 +36,6 @@ describe("providerStartOptionsFromServerSettings", () => {
           ...DEFAULT_SERVER_SETTINGS.providers.droid,
           binaryPath: "",
         },
-        kilo: {
-          ...DEFAULT_SERVER_SETTINGS.providers.kilo,
-          binaryPath: "",
-          serverUrl: "",
-        },
         opencode: {
           ...DEFAULT_SERVER_SETTINGS.providers.opencode,
           binaryPath: "",
@@ -54,6 +49,10 @@ describe("providerStartOptionsFromServerSettings", () => {
           ...DEFAULT_SERVER_SETTINGS.providers.pi,
           binaryPath: "",
           agentDir: "",
+        },
+        devin: {
+          ...DEFAULT_SERVER_SETTINGS.providers.devin,
+          binaryPath: "",
         },
       },
     };
@@ -74,10 +73,10 @@ describe("providerStartOptionsFromServerSettings", () => {
     expect(providerOptions.antigravity).toEqual({});
     expect(providerOptions.grok).toEqual({});
     expect(providerOptions.droid).toEqual({});
-    expect(providerOptions.kilo).toEqual({});
     expect(providerOptions.opencode).toEqual({ experimentalWebSockets: false });
     expect(providerOptions.omp).toEqual({});
     expect(providerOptions.pi).toEqual({});
+    expect(providerOptions.devin).toEqual({});
   });
 
   it("preserves configured launch settings", () => {
@@ -100,6 +99,10 @@ describe("providerStartOptionsFromServerSettings", () => {
           ...DEFAULT_SERVER_SETTINGS.providers.omp,
           binaryPath: "C:\\Tools\\OMP\\omp.exe",
         },
+        devin: {
+          ...DEFAULT_SERVER_SETTINGS.providers.devin,
+          binaryPath: "/custom/bin/devin",
+        },
       },
     };
 
@@ -115,5 +118,6 @@ describe("providerStartOptionsFromServerSettings", () => {
       experimentalWebSockets: true,
     });
     expect(providerOptions.omp).toEqual({ binaryPath: "C:\\Tools\\OMP\\omp.exe" });
+    expect(providerOptions.devin).toEqual({ binaryPath: "/custom/bin/devin" });
   });
 });

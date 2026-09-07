@@ -39,7 +39,11 @@ export interface HangWatchdogHeartbeat {
 export type HangWatchdogMessage =
   | HangWatchdogConfiguration
   | HangWatchdogHeartbeat
-  | { readonly type: "renderer-unresponsive"; readonly rendererPid: number; readonly sentAtMs: number }
+  | {
+      readonly type: "renderer-unresponsive";
+      readonly rendererPid: number;
+      readonly sentAtMs: number;
+    }
   | { readonly type: "renderer-responsive"; readonly rendererPid: number }
   | { readonly type: "stop" };
 
@@ -119,7 +123,10 @@ export class HangWatchdogPolicy {
   }
 }
 
-type ForkedWatchdog = Pick<ChildProcess, "connected" | "disconnect" | "kill" | "once" | "on" | "send">;
+type ForkedWatchdog = Pick<
+  ChildProcess,
+  "connected" | "disconnect" | "kill" | "once" | "on" | "send"
+>;
 
 export interface DesktopHangWatchdogControllerOptions {
   readonly enabled: boolean;
@@ -197,10 +204,16 @@ export class DesktopHangWatchdogController {
         this.handleChildFailure(child, "failed: " + error.message);
       });
       child.once("exit", (code, signal) => {
-        this.handleChildFailure(child, "exited code=" + (code ?? "null") + " signal=" + (signal ?? "null"));
+        this.handleChildFailure(
+          child,
+          "exited code=" + (code ?? "null") + " signal=" + (signal ?? "null"),
+        );
       });
       child.once("close", (code, signal) => {
-        this.handleChildFailure(child, "closed code=" + (code ?? "null") + " signal=" + (signal ?? "null"));
+        this.handleChildFailure(
+          child,
+          "closed code=" + (code ?? "null") + " signal=" + (signal ?? "null"),
+        );
       });
       child.once("disconnect", () => {
         this.handleChildFailure(child, "disconnected");
@@ -226,11 +239,16 @@ export class DesktopHangWatchdogController {
         );
       });
       this.send({ type: "configure", ...this.options.config });
-      this.heartbeatTimer = this.setIntervalFn(() => this.sendHeartbeat(), DESKTOP_HANG_HEARTBEAT_INTERVAL_MS);
+      this.heartbeatTimer = this.setIntervalFn(
+        () => this.sendHeartbeat(),
+        DESKTOP_HANG_HEARTBEAT_INTERVAL_MS,
+      );
       this.heartbeatTimer.unref?.();
       this.sendHeartbeat();
     } catch (error) {
-      this.options.log("hang watchdog start failed: " + (error instanceof Error ? error.message : String(error)));
+      this.options.log(
+        "hang watchdog start failed: " + (error instanceof Error ? error.message : String(error)),
+      );
       if (child && this.child === child) {
         this.handleChildFailure(child, "start setup failed");
       } else if (!this.stopping) {
@@ -272,7 +290,10 @@ export class DesktopHangWatchdogController {
       return;
     }
     this.stopPending = true;
-    this.stopTimer = this.setTimeoutFn(() => this.finishStop(child), DESKTOP_HANG_HEARTBEAT_INTERVAL_MS);
+    this.stopTimer = this.setTimeoutFn(
+      () => this.finishStop(child),
+      DESKTOP_HANG_HEARTBEAT_INTERVAL_MS,
+    );
     this.stopTimer.unref?.();
     this.send({ type: "stop" });
   }
@@ -302,7 +323,8 @@ export class DesktopHangWatchdogController {
       this.handleChildFailure(child, "IPC disconnected");
       return;
     }
-    const message = this.pendingControls.shift() ?? this.takePendingRendererState() ?? this.pendingHeartbeat;
+    const message =
+      this.pendingControls.shift() ?? this.takePendingRendererState() ?? this.pendingHeartbeat;
     if (!message) {
       if (this.stopPending) this.finishStop(child);
       return;
@@ -323,7 +345,9 @@ export class DesktopHangWatchdogController {
     } catch (error) {
       this.sendInFlight = false;
       if (!this.stopping) {
-        this.options.log("hang watchdog IPC failed: " + (error instanceof Error ? error.message : String(error)));
+        this.options.log(
+          "hang watchdog IPC failed: " + (error instanceof Error ? error.message : String(error)),
+        );
         this.handleChildFailure(child, "IPC threw");
       } else {
         this.finishStop(child);
@@ -333,7 +357,9 @@ export class DesktopHangWatchdogController {
 
   private enqueueControl(message: Exclude<HangWatchdogMessage, HangWatchdogHeartbeat>): void {
     if (message.type === "configure") {
-      const existing = this.pendingControls.findIndex((candidate) => candidate.type === "configure");
+      const existing = this.pendingControls.findIndex(
+        (candidate) => candidate.type === "configure",
+      );
       if (existing >= 0) this.pendingControls.splice(existing, 1);
       this.pendingControls.unshift(message);
     } else if (message.type === "stop") {
@@ -341,11 +367,16 @@ export class DesktopHangWatchdogController {
       this.pendingRendererStates.clear();
     } else {
       const refreshedExistingState = this.pendingRendererStates.delete(message.rendererPid);
-      if (!refreshedExistingState && this.pendingRendererStates.size >= MAX_PENDING_RENDERER_STATES) {
+      if (
+        !refreshedExistingState &&
+        this.pendingRendererStates.size >= MAX_PENDING_RENDERER_STATES
+      ) {
         const oldestRendererPid = this.pendingRendererStates.keys().next().value;
         if (oldestRendererPid !== undefined) {
           this.pendingRendererStates.delete(oldestRendererPid);
-          this.options.log("hang watchdog renderer state queue is full; evicting the oldest pending renderer state");
+          this.options.log(
+            "hang watchdog renderer state queue is full; evicting the oldest pending renderer state",
+          );
         }
       }
       this.pendingRendererStates.set(message.rendererPid, message);
@@ -414,7 +445,8 @@ export class DesktopHangWatchdogController {
 
   private watchdogEnvironment(): NodeJS.ProcessEnv {
     const env = this.options.env ?? process.env;
-    const actualSystemRoot = this.options.systemRoot?.trim() || env.SystemRoot?.trim() || env.SYSTEMROOT?.trim();
+    const actualSystemRoot =
+      this.options.systemRoot?.trim() || env.SystemRoot?.trim() || env.SYSTEMROOT?.trim();
     const childEnv: NodeJS.ProcessEnv = { ELECTRON_RUN_AS_NODE: "1" };
     if (actualSystemRoot) {
       childEnv.SystemRoot = resolveWindowsSystemRoot({ SystemRoot: actualSystemRoot });

@@ -13,24 +13,16 @@ import {
   type AgentGatewayCredentialsShape,
 } from "../../agentGateway/Services/AgentGatewayCredentials.ts";
 import * as AcpErrors from "../acp/AcpErrors.ts";
-import type {
-  AcpParsedSessionEvent,
-} from "../acp/AcpRuntimeModel.ts";
+import type { AcpParsedSessionEvent } from "../acp/AcpRuntimeModel.ts";
 import type {
   AcpSessionRuntimeShape,
   AcpSessionRuntimeStartResult,
 } from "../acp/AcpSessionRuntime.ts";
 import { OH_MY_PI_ACP_17_3_3_FIXTURE } from "../acp/fixtures/ohMyPiAcp17_3_3.ts";
 import type { OhMyPiAcpRuntimeInput } from "../acp/OhMyPiAcpSupport.ts";
-import {
-  OMP_EXTENSION_EVENTS,
-  OMP_EXTENSION_METHODS,
-} from "../omp/OmpExtensionProtocol.ts";
+import { OMP_EXTENSION_EVENTS, OMP_EXTENSION_METHODS } from "../omp/OmpExtensionProtocol.ts";
 import { OhMyPiAdapter } from "../Services/OhMyPiAdapter.ts";
-import {
-  makeOhMyPiAdapterLive,
-  unknownOmpExtensionNotificationMethod,
-} from "./OhMyPiAdapter.ts";
+import { makeOhMyPiAdapterLive, unknownOmpExtensionNotificationMethod } from "./OhMyPiAdapter.ts";
 
 type PermissionHandler = Parameters<AcpSessionRuntimeShape["handleRequestPermission"]>[0];
 type ElicitationHandler = Parameters<AcpSessionRuntimeShape["handleElicitation"]>[0];
@@ -145,27 +137,31 @@ function makeFakeRuntimeFactory(state: FakeRuntimeState) {
         handleExtRequest: () => Effect.void,
         handleExtNotification: (method, _schema, handler) =>
           Effect.sync(() => {
-            extensionNotifications.set(method, handler as (payload: unknown) => Effect.Effect<void, unknown>);
+            extensionNotifications.set(
+              method,
+              handler as (payload: unknown) => Effect.Effect<void, unknown>,
+            );
           }),
         start: () =>
           state.neverStart
             ? Effect.never
             : state.failStart
-            ? Effect.fail(
-                new AcpErrors.AcpRequestError({
-                  code: -32000,
-                  errorMessage: "resume failed",
-                }),
-              )
-            : Effect.succeed({
-                sessionId: input.resumeSessionId ?? "omp-session-new",
-                initializeResult:
-                  OH_MY_PI_ACP_17_3_3_FIXTURE.initializeResponse as unknown as Acp.InitializeResponse,
-                sessionSetupResult:
-                  OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse as unknown as Acp.NewSessionResponse,
-                modelConfigId: "model",
-                sessionSetupMethod: state.setupMethod ?? (input.resumeSessionId ? "resume" : "new"),
-              } satisfies AcpSessionRuntimeStartResult),
+              ? Effect.fail(
+                  new AcpErrors.AcpRequestError({
+                    code: -32000,
+                    errorMessage: "resume failed",
+                  }),
+                )
+              : Effect.succeed({
+                  sessionId: input.resumeSessionId ?? "omp-session-new",
+                  initializeResult:
+                    OH_MY_PI_ACP_17_3_3_FIXTURE.initializeResponse as unknown as Acp.InitializeResponse,
+                  sessionSetupResult:
+                    OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse as unknown as Acp.NewSessionResponse,
+                  modelConfigId: "model",
+                  sessionSetupMethod:
+                    state.setupMethod ?? (input.resumeSessionId ? "resume" : "new"),
+                } satisfies AcpSessionRuntimeStartResult),
         awaitExit: Deferred.await(exit),
         getEvents: () => Stream.fromPubSub(events),
         sessionUpdatesEnqueuedCount: Effect.sync(() => state.enqueued),
@@ -183,11 +179,13 @@ function makeFakeRuntimeFactory(state: FakeRuntimeState) {
             state.prompts += 1;
             if (state.promptEffect) yield* state.promptEffect();
             if (state.emitUnknownExtension) {
-              yield* (input.protocolLogging?.logger?.({
-                direction: "incoming",
-                stage: "decoded",
-                payload: { jsonrpc: "2.0", method: "_omp/fixture_notice", params: {} },
-              }) ?? Effect.void);
+              yield* (
+                input.protocolLogging?.logger?.({
+                  direction: "incoming",
+                  stage: "decoded",
+                  payload: { jsonrpc: "2.0", method: "_omp/fixture_notice", params: {} },
+                }) ?? Effect.void
+              );
             }
             for (let index = 0; index < (state.eventBurst ?? 0); index += 1) {
               state.enqueued += 1;
@@ -225,7 +223,9 @@ function makeFakeRuntimeFactory(state: FakeRuntimeState) {
         setConfigOption: (id, value) => {
           state.configurationCalls.push({ id, value });
           configOptions = configOptions.map((option) =>
-            option.id === id ? ({ ...option, currentValue: value } as Acp.SessionConfigOption) : option,
+            option.id === id
+              ? ({ ...option, currentValue: value } as Acp.SessionConfigOption)
+              : option,
           );
           return Effect.succeed({ configOptions });
         },
@@ -255,18 +255,68 @@ function makeFakeRuntimeFactory(state: FakeRuntimeState) {
                   supportedSchemaVersions: [1],
                   selectedSchemaVersion: 1,
                   features: {
-                    advisor: { available: true, enabled: true, observable: true, controllable: true, recoverable: true, methods: [], events: [] },
-                    autolearn: { available: true, enabled: true, observable: true, controllable: true, recoverable: true, methods: [], events: [] },
-                    memory: { available: true, enabled: true, observable: true, controllable: true, recoverable: true, methods: [], events: [] },
-                    launch: { available: true, enabled: true, observable: true, controllable: true, recoverable: true, methods: [], events: [] },
+                    advisor: {
+                      available: true,
+                      enabled: true,
+                      observable: true,
+                      controllable: true,
+                      recoverable: true,
+                      methods: [],
+                      events: [],
+                    },
+                    autolearn: {
+                      available: true,
+                      enabled: true,
+                      observable: true,
+                      controllable: true,
+                      recoverable: true,
+                      methods: [],
+                      events: [],
+                    },
+                    memory: {
+                      available: true,
+                      enabled: true,
+                      observable: true,
+                      controllable: true,
+                      recoverable: true,
+                      methods: [],
+                      events: [],
+                    },
+                    launch: {
+                      available: true,
+                      enabled: true,
+                      observable: true,
+                      controllable: true,
+                      recoverable: true,
+                      methods: [],
+                      events: [],
+                    },
                   },
                 }
               : method === OMP_EXTENSION_METHODS.advisorStatus
-                ? { enabled: true, active: true, grantedTools: ["bash"], toolRisk: "write-or-exec", inFlight: false }
+                ? {
+                    enabled: true,
+                    active: true,
+                    grantedTools: ["bash"],
+                    toolRisk: "write-or-exec",
+                    inFlight: false,
+                  }
                 : method === OMP_EXTENSION_METHODS.autolearnStatus
-                  ? { enabled: true, autoContinue: true, state: "idle", captureGeneration: 1, pending: false }
+                  ? {
+                      enabled: true,
+                      autoContinue: true,
+                      state: "idle",
+                      captureGeneration: 1,
+                      pending: false,
+                    }
                   : method === OMP_EXTENSION_METHODS.memoryStatus
-                    ? { backend: "local", active: true, writable: true, searchable: true, scope: "isolated-test" }
+                    ? {
+                        backend: "local",
+                        active: true,
+                        writable: true,
+                        searchable: true,
+                        scope: "isolated-test",
+                      }
                     : method === OMP_EXTENSION_METHODS.launchList
                       ? { authority: "omp", services: [service] }
                       : method === OMP_EXTENSION_METHODS.launchDescribe
@@ -277,15 +327,22 @@ function makeFakeRuntimeFactory(state: FakeRuntimeState) {
                             cwd: "C:/isolated/project",
                             restart: "no",
                           }
-                      : method === OMP_EXTENSION_METHODS.launchLogs
-                        ? { authority: "omp", text: "ready", cursor: 12, state: "ready", timedOut: false }
-                        : method === OMP_EXTENSION_METHODS.launchSend ||
-                            method === OMP_EXTENSION_METHODS.launchStop ||
-                            method === OMP_EXTENSION_METHODS.launchRestart
-                          ? { authority: "omp", service }
-                      : method === OMP_EXTENSION_METHODS.advisorDrain || method === OMP_EXTENSION_METHODS.autolearnDrain
-                        ? { settled: true }
-                        : {};
+                        : method === OMP_EXTENSION_METHODS.launchLogs
+                          ? {
+                              authority: "omp",
+                              text: "ready",
+                              cursor: 12,
+                              state: "ready",
+                              timedOut: false,
+                            }
+                          : method === OMP_EXTENSION_METHODS.launchSend ||
+                              method === OMP_EXTENSION_METHODS.launchStop ||
+                              method === OMP_EXTENSION_METHODS.launchRestart
+                            ? { authority: "omp", service }
+                            : method === OMP_EXTENSION_METHODS.advisorDrain ||
+                                method === OMP_EXTENSION_METHODS.autolearnDrain
+                              ? { settled: true }
+                              : {};
           return Effect.succeed(extensionEnvelope(data));
         },
         notify: () => Effect.void,
@@ -541,11 +598,9 @@ describe("OhMyPiAdapter", () => {
         }
         const inputEvent = eventLog.find((event) => event.type === "user-input.requested")!;
         if (inputEvent.requestId) {
-          yield* adapter.respondToUserInput(
-            "thread-omp-interactions",
-            inputEvent.requestId,
-            { answer: "yes" },
-          );
+          yield* adapter.respondToUserInput("thread-omp-interactions", inputEvent.requestId, {
+            answer: "yes",
+          });
         }
         while ((yield* adapter.readThread("thread-omp-interactions")).turns.length === 0) {
           yield* Effect.sleep(5);
@@ -809,9 +864,7 @@ describe("OhMyPiAdapter", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const adapter = yield* OhMyPiAdapter;
-        yield* Effect.forkScoped(
-          Stream.runForEach(adapter.streamEvents, () => Effect.sleep(1)),
-        );
+        yield* Effect.forkScoped(Stream.runForEach(adapter.streamEvents, () => Effect.sleep(1)));
         yield* Effect.yieldNow;
         yield* adapter.startSession({
           threadId: "thread-omp-burst",
@@ -870,7 +923,10 @@ describe("OhMyPiAdapter", () => {
         Effect.gen(function* () {
           const adapter = yield* OhMyPiAdapter;
           yield* adapter.listModels!({ provider: "omp", cwd: process.cwd() });
-          appendFileSync(binaryPath, process.platform === "win32" ? "rem changed\r\n" : "# changed\n");
+          appendFileSync(
+            binaryPath,
+            process.platform === "win32" ? "rem changed\r\n" : "# changed\n",
+          );
           yield* adapter.listCommands!({ provider: "omp", cwd: process.cwd() });
           expect(state.inputs).toHaveLength(2);
           expect(state.closed).toBe(2);
@@ -889,10 +945,7 @@ describe("OhMyPiAdapter", () => {
         Effect.gen(function* () {
           const adapter = yield* OhMyPiAdapter;
           yield* adapter.listModels!({ provider: "omp", cwd: process.cwd() });
-        }).pipe(
-          Effect.scoped,
-          Effect.provide(testLayer(state, {}, { discoveryTimeoutMs: 10 })),
-        ),
+        }).pipe(Effect.scoped, Effect.provide(testLayer(state, {}, { discoveryTimeoutMs: 10 }))),
       ),
     ).rejects.toMatchObject({ _tag: "ProviderAdapterRequestError" });
     expect(state.closed).toBe(1);
@@ -922,10 +975,7 @@ describe("OhMyPiAdapter", () => {
         yield* adapter.listCommands!({ provider: "omp", cwd: process.cwd() });
         expect(state.inputs).toHaveLength(2);
         expect(state.closed).toBe(2);
-      }).pipe(
-        Effect.scoped,
-        Effect.provide(testLayer(state, {}, { discoveryCacheMs: 1 })),
-      ),
+      }).pipe(Effect.scoped, Effect.provide(testLayer(state, {}, { discoveryCacheMs: 1 }))),
     );
   });
 });

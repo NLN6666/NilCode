@@ -23,7 +23,11 @@ describe.skipIf(process.platform !== "win32")("Windows MiniDumpWriteDump integra
   it("captures a same-integrity renderer-identity process with an MDMP header", async () => {
     const diagnosticsDir = fs.mkdtempSync(path.join(os.tmpdir(), "synara-hang-dump-integration-"));
     tempRoots.push(diagnosticsDir);
-    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", "--", "--type=renderer"], { stdio: "ignore" });
+    const child = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)", "--", "--type=renderer"],
+      { stdio: "ignore" },
+    );
     children.push(child);
     await new Promise<void>((resolve, reject) => {
       child.once("spawn", resolve);

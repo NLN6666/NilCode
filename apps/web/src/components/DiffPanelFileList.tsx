@@ -5,6 +5,7 @@
 import type { FileDiffMetadata } from "@pierre/diffs/react";
 import { isSupportedLocalImagePath } from "@synara/shared/localPreviewFiles";
 import { type MouseEvent as ReactMouseEvent } from "react";
+import { useCopyPathToClipboard } from "~/hooks/useCopyToClipboard";
 import { ChevronDownIcon, CopyIcon, EllipsisIcon, MessageCircleIcon } from "~/lib/icons";
 
 import { buildFileDiffRenderKey, resolveFileDiffPath } from "~/lib/diffRendering";
@@ -30,6 +31,8 @@ const DIFF_FILE_ACTIONS_MENU_ICON_CLASS_NAME = "size-3.5 shrink-0 text-muted-for
 // it do not toggle the file collapse state.
 function DiffFileHeaderActionsMenu(props: { filePath: string; chatActions: DiffFileChatActions }) {
   const copy = useMessages().diff;
+  const copyPathToClipboard = useCopyPathToClipboard();
+
   return (
     <Menu>
       <MenuTrigger
@@ -62,11 +65,7 @@ function DiffFileHeaderActionsMenu(props: { filePath: string; chatActions: DiffF
           <MessageCircleIcon className={DIFF_FILE_ACTIONS_MENU_ICON_CLASS_NAME} />
           <span>{copy.actions.askWhyChanged}</span>
         </MenuItem>
-        <MenuItem
-          onClick={() => {
-            void navigator.clipboard?.writeText(props.filePath);
-          }}
-        >
+        <MenuItem onClick={() => copyPathToClipboard(props.filePath)}>
           <CopyIcon className={DIFF_FILE_ACTIONS_MENU_ICON_CLASS_NAME} />
           <span>{copy.actions.copyPath}</span>
         </MenuItem>

@@ -67,6 +67,26 @@ import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE } from "./types";
 const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
 const DraftThreadEntryPointSchema = Schema.Literals(["chat", "terminal"]);
 
+function normalizePersistedModelSelectionMap(
+  value: unknown,
+): Partial<Record<ProviderKind, ModelSelection>> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+  const result: Partial<Record<ProviderKind, ModelSelection>> = {};
+  for (const [legacyProvider, rawSelection] of Object.entries(value)) {
+    const selection = normalizeModelSelection(rawSelection, {
+      provider: legacyProvider,
+      model:
+        rawSelection !== null && typeof rawSelection === "object" && !Array.isArray(rawSelection)
+          ? (rawSelection as Record<string, unknown>).model
+          : undefined,
+    });
+    if (selection && !(legacyProvider === "kilo" && result.opencode !== undefined)) {
+      result[selection.provider] = selection;
+    }
+  }
+  return result;
+}
+
 function cloneBrowserAnnotation(annotation: BrowserAnnotationDraft): BrowserAnnotationDraft {
   return {
     ...annotation,
@@ -999,9 +1019,9 @@ function normalizePersistedDraftsByThreadId(
       typeof draftCandidate.modelSelectionByProvider === "object"
     ) {
       // v3 format
-      modelSelectionByProvider = draftCandidate.modelSelectionByProvider as Partial<
-        Record<ProviderKind, ModelSelection>
-      >;
+      modelSelectionByProvider = normalizePersistedModelSelectionMap(
+        draftCandidate.modelSelectionByProvider,
+      );
       activeProvider = normalizeProviderKind(draftCandidate.activeProvider);
     } else {
       // v2 or legacy format: migrate
@@ -1400,18 +1420,9 @@ export function normalizeCurrentPersistedComposerDraftStoreState(
     normalizedPersistedState.stickyModelSelectionByProvider &&
     typeof normalizedPersistedState.stickyModelSelectionByProvider === "object"
   ) {
-    // Persisted entries predate the current option names (Claude's window moved
-    // from `contextWindow` to `autoCompactWindow`), so run each through the same
-    // normalizer a live selection goes through and drop anything that no longer
-    // resolves onto the provider it is filed under.
-    for (const [provider, selection] of Object.entries(
-      normalizedPersistedState.stickyModelSelectionByProvider as Record<string, unknown>,
-    )) {
-      const normalized = normalizeModelSelection(selection);
-      if (normalized && normalized.provider === provider) {
-        stickyModelSelectionByProvider[normalized.provider] = normalized;
-      }
-    }
+    stickyModelSelectionByProvider = normalizePersistedModelSelectionMap(
+      normalizedPersistedState.stickyModelSelectionByProvider,
+    );
     stickyActiveProvider = normalizeProviderKind(normalizedPersistedState.stickyActiveProvider);
   } else {
     // Legacy migration path

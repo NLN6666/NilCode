@@ -18,9 +18,8 @@ import {
 
 const fixtureInitialize =
   OH_MY_PI_ACP_17_3_3_FIXTURE.initializeResponse as unknown as Acp.InitializeResponse;
-const fixtureConfigOptions =
-  OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse
-    .configOptions as unknown as ReadonlyArray<Acp.SessionConfigOption>;
+const fixtureConfigOptions = OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse
+  .configOptions as unknown as ReadonlyArray<Acp.SessionConfigOption>;
 const fixtureModes = OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse
   .modes as unknown as Acp.SessionModeState;
 
@@ -95,7 +94,9 @@ describe("applyOhMyPiAcpSessionConfiguration", () => {
         setConfigOption: (configId: string, value: string | boolean) => {
           calls.push({ kind: "config", id: configId, value });
           options = options.map((option) =>
-            option.id === configId ? ({ ...option, currentValue: value } as Acp.SessionConfigOption) : option,
+            option.id === configId
+              ? ({ ...option, currentValue: value } as Acp.SessionConfigOption)
+              : option,
           );
           return Effect.succeed({ configOptions: options });
         },

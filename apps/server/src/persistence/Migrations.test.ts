@@ -14,6 +14,8 @@ import DurableProviderCommandDeliveryMigration from "./Migrations/064_DurablePro
 import ProjectionThreadsGatewayProvenanceMigration from "./Migrations/071_ProjectionThreadsGatewayProvenance.ts";
 import ProjectPullRequestPinsMigration from "./Migrations/069_ProjectPullRequestPins.ts";
 import SpacesMigration from "./Migrations/079_Spaces.ts";
+import BrowserSharingMigration from "./Migrations/100_ProjectionProjectsBrowserSharing.ts";
+import AdvisorEnabledMigration from "./Migrations/101_ProjectionThreadsAdvisorEnabled.ts";
 
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
 
@@ -298,12 +300,15 @@ managedAttachmentsLegacyLayer("managed attachment migration after private migrat
         [94, "ProjectionThreadsGoal"],
         [95, "ProjectionThreadsGoalTiming"],
         [96, "ProjectionThreadsGoalAchievements"],
-        [97, "ProjectionProjectsBrowserSharing"],
-        [98, "ProjectionThreadsAdvisorEnabled"],
+        [97, "ProjectionThreadsSidechatLifecycle"],
+        [98, "MigrateKiloToOpenCode"],
+        [99, "InvalidateProjectionThreadsCursor"],
+        [100, "ProjectionProjectsBrowserSharing"],
+        [101, "ProjectionThreadsAdvisorEnabled"],
       ]);
 
       const tracker = yield* trackerRows(sql);
-      assert.deepStrictEqual(tracker.slice(-44), [
+      assert.deepStrictEqual(tracker.slice(-47), [
         { migration_id: 55, name: "ManagedAttachments" },
         { migration_id: 56, name: "CommandReceiptFingerprints" },
         { migration_id: 57, name: "ThreadScopedProjectionMessageIdentity" },
@@ -346,8 +351,11 @@ managedAttachmentsLegacyLayer("managed attachment migration after private migrat
         { migration_id: 94, name: "ProjectionThreadsGoal" },
         { migration_id: 95, name: "ProjectionThreadsGoalTiming" },
         { migration_id: 96, name: "ProjectionThreadsGoalAchievements" },
-        { migration_id: 97, name: "ProjectionProjectsBrowserSharing" },
-        { migration_id: 98, name: "ProjectionThreadsAdvisorEnabled" },
+        { migration_id: 97, name: "ProjectionThreadsSidechatLifecycle" },
+        { migration_id: 98, name: "MigrateKiloToOpenCode" },
+        { migration_id: 99, name: "InvalidateProjectionThreadsCursor" },
+        { migration_id: 100, name: "ProjectionProjectsBrowserSharing" },
+        { migration_id: 101, name: "ProjectionThreadsAdvisorEnabled" },
       ]);
       const preserved = yield* sql<{ readonly count: number }>`
         SELECT COUNT(*) AS count FROM orchestration_consumer_state
@@ -436,8 +444,11 @@ agentGatewayRetentionLegacyLayer(
           [94, "ProjectionThreadsGoal"],
           [95, "ProjectionThreadsGoalTiming"],
           [96, "ProjectionThreadsGoalAchievements"],
-          [97, "ProjectionProjectsBrowserSharing"],
-          [98, "ProjectionThreadsAdvisorEnabled"],
+          [97, "ProjectionThreadsSidechatLifecycle"],
+          [98, "MigrateKiloToOpenCode"],
+          [99, "InvalidateProjectionThreadsCursor"],
+          [100, "ProjectionProjectsBrowserSharing"],
+          [101, "ProjectionThreadsAdvisorEnabled"],
         ]);
 
         const columns = yield* sql<{ readonly name: string }>`
@@ -529,13 +540,16 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
         [94, "ProjectionThreadsGoal"],
         [95, "ProjectionThreadsGoalTiming"],
         [96, "ProjectionThreadsGoalAchievements"],
-        [97, "ProjectionProjectsBrowserSharing"],
-        [98, "ProjectionThreadsAdvisorEnabled"],
+        [97, "ProjectionThreadsSidechatLifecycle"],
+        [98, "MigrateKiloToOpenCode"],
+        [99, "InvalidateProjectionThreadsCursor"],
+        [100, "ProjectionProjectsBrowserSharing"],
+        [101, "ProjectionThreadsAdvisorEnabled"],
       ]);
 
       const tracker = yield* trackerRows(sql);
       assert.deepStrictEqual(
-        tracker.slice(-28).map((row) => [row.migration_id, row.name]),
+        tracker.slice(-31).map((row) => [row.migration_id, row.name]),
         [
           [71, "ProjectionThreadsGatewayProvenance"],
           [72, "AgentGatewayOperationRetention"],
@@ -563,8 +577,11 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
           [94, "ProjectionThreadsGoal"],
           [95, "ProjectionThreadsGoalTiming"],
           [96, "ProjectionThreadsGoalAchievements"],
-          [97, "ProjectionProjectsBrowserSharing"],
-          [98, "ProjectionThreadsAdvisorEnabled"],
+          [97, "ProjectionThreadsSidechatLifecycle"],
+          [98, "MigrateKiloToOpenCode"],
+          [99, "InvalidateProjectionThreadsCursor"],
+          [100, "ProjectionProjectsBrowserSharing"],
+          [101, "ProjectionThreadsAdvisorEnabled"],
         ],
       );
 
@@ -651,13 +668,16 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
         [94, "ProjectionThreadsGoal"],
         [95, "ProjectionThreadsGoalTiming"],
         [96, "ProjectionThreadsGoalAchievements"],
-        [97, "ProjectionProjectsBrowserSharing"],
-        [98, "ProjectionThreadsAdvisorEnabled"],
+        [97, "ProjectionThreadsSidechatLifecycle"],
+        [98, "MigrateKiloToOpenCode"],
+        [99, "InvalidateProjectionThreadsCursor"],
+        [100, "ProjectionProjectsBrowserSharing"],
+        [101, "ProjectionThreadsAdvisorEnabled"],
       ]);
 
       const tracker = yield* trackerRows(sql);
       assert.deepStrictEqual(
-        tracker.slice(-24).map((row) => [row.migration_id, row.name]),
+        tracker.slice(-27).map((row) => [row.migration_id, row.name]),
         [
           [75, "ExternalMcpActiveCapacity"],
           [76, "ExternalMcpHardening"],
@@ -681,8 +701,11 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
           [94, "ProjectionThreadsGoal"],
           [95, "ProjectionThreadsGoalTiming"],
           [96, "ProjectionThreadsGoalAchievements"],
-          [97, "ProjectionProjectsBrowserSharing"],
-          [98, "ProjectionThreadsAdvisorEnabled"],
+          [97, "ProjectionThreadsSidechatLifecycle"],
+          [98, "MigrateKiloToOpenCode"],
+          [99, "InvalidateProjectionThreadsCursor"],
+          [100, "ProjectionProjectsBrowserSharing"],
+          [101, "ProjectionThreadsAdvisorEnabled"],
         ],
       );
       const preservedSpaces = yield* sql<{ readonly spaceId: string }>`
@@ -987,6 +1010,66 @@ divergedBeyondAliasLayer("tracker that diverges beyond a known alias", (it) => {
         rows.map((row) => [row.migration_id, row.name]),
         migrationEntries.map(([id, name]) => [id, name]),
       );
+    }),
+  );
+});
+
+const forkUpgradeLayer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
+forkUpgradeLayer("v0.7.3 dev migration upgrade", (it) => {
+  it.effect("upgrades the v0.7.3 dev suffix without skipping upstream data migrations", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 96 });
+      yield* BrowserSharingMigration;
+      yield* AdvisorEnabledMigration;
+      yield* sql`
+        INSERT INTO effect_sql_migrations (migration_id, name) VALUES
+          (97, 'ProjectionProjectsBrowserSharing'),
+          (98, 'ProjectionThreadsAdvisorEnabled')
+      `;
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id, title, workspace_root, scripts_json, created_at, updated_at, browser_sharing
+        ) VALUES (
+          'fork-project', 'Fork project', '/repo', '[]',
+          '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'shared'
+        )
+      `;
+      yield* sql`
+        INSERT INTO projection_threads (
+          thread_id, project_id, title, created_at, updated_at,
+          model_selection_json, advisor_enabled
+        ) VALUES (
+          'fork-thread', 'fork-project', 'Keep this conversation',
+          '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z',
+          '{"provider":"kilo","model":"kilo/kilo-auto/free"}', 0
+        )
+      `;
+
+      const executed = yield* runMigrations();
+      assert.deepStrictEqual(
+        executed.map(([id]) => id),
+        [97, 98, 99, 100, 101],
+      );
+      const columns = yield* projectionThreadsColumnNames(sql);
+      assert.include(columns, "sidechat_source_thread_id");
+      const [thread] = yield* sql<{
+        readonly title: string;
+        readonly advisor_enabled: number;
+        readonly model_selection_json: string;
+      }>`SELECT title, advisor_enabled, model_selection_json FROM projection_threads WHERE thread_id = 'fork-thread'`;
+      assert.strictEqual(thread?.title, "Keep this conversation");
+      assert.strictEqual(thread?.advisor_enabled, 0);
+      assert.strictEqual(JSON.parse(thread!.model_selection_json).provider, "opencode");
+      const [project] = yield* sql<{ readonly browser_sharing: string }>`
+        SELECT browser_sharing FROM projection_projects WHERE project_id = 'fork-project'
+      `;
+      assert.strictEqual(project?.browser_sharing, "shared");
+      assert.deepStrictEqual(
+        (yield* trackerRows(sql)).map((row) => [row.migration_id, row.name]),
+        migrationEntries.map(([id, name]) => [id, name]),
+      );
+      assert.deepStrictEqual(yield* runMigrations(), []);
     }),
   );
 });

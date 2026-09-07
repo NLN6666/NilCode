@@ -44,7 +44,8 @@ export const settings = {
       },
       defaultProvider: {
         title: "Default provider",
-        description: "Choose the provider used for new chats.",
+        description:
+          "Provider used for new chats until you pick a model. New chats then reuse your most recent model and options.",
         ariaLabel: "Default provider",
         resetLabel: "default provider",
       },
@@ -314,6 +315,13 @@ export const settings = {
       description: "Ask before closing a terminal tab and clearing its history.",
       resetLabel: "terminal close confirmation",
       ariaLabel: "Confirm terminal tab close",
+    },
+    autoOpenDevicePane: {
+      title: "Automatically open simulator",
+      description:
+        "Open the iOS Simulator pane when an agent uses a device. Turn this off to use Simulator.app without the mirrored pane reopening. You can still open the pane manually.",
+      resetLabel: "automatically open simulator",
+      ariaLabel: "Automatically open simulator",
     },
   },
   advanced: {
@@ -689,9 +697,9 @@ export const settings = {
     picker: {
       title: "Provider picker",
       visible: {
-        title: "Visible providers",
+        title: "Available CLIs",
         description:
-          "Drag providers into your preferred picker order and hide the ones you don't use. The provider you're currently using on a thread always stays visible.",
+          "Show or hide installed providers in the picker and drag them into your preferred order. Hiding a provider does not disable its server activity.",
         resetLabel: "provider picker",
       },
       hiddenCount: (count: number) => `${count} ${pluralize(count, "provider")} hidden`,
@@ -701,6 +709,11 @@ export const settings = {
       showInPicker: (name: string) => `Show ${name} in the provider picker`,
       checkingCli: (name: string) => `Checking ${name} CLI availability`,
       cliNotInstalled: (name: string) => `${name} CLI is not installed`,
+      checking: "Checking installed CLIs",
+      noneInstalled: "No CLIs detected",
+      shownCount: (shown: number, total: number) => `${shown} of ${total} installed shown`,
+      installedCount: (count: number, customOrder: boolean) =>
+        `${count} installed${customOrder ? " · custom order" : ""}`,
     },
     tools: {
       title: "Provider tools",
@@ -772,6 +785,7 @@ export const settings = {
       hooks: "Hooks",
       headless: "Headless",
       quickstart: "Quickstart",
+      commands: "Commands",
     },
     // One entry per install field, keyed by its settings key. `binaryHint` descriptions name the
     // executable; the schema marks which word to render as inline code so the styling survives
@@ -802,17 +816,6 @@ export const settings = {
       },
       grokBinaryPath: { label: "Grok binary path", placeholder: "Grok binary path" },
       droidBinaryPath: { label: "Droid binary path", placeholder: "droid" },
-      kiloBinaryPath: { label: "Kilo binary path", placeholder: "Kilo binary path" },
-      kiloServerUrl: {
-        label: "Kilo server URL",
-        placeholder: "http://127.0.0.1:4096",
-        description: "Optional existing Kilo server URL. Leave blank to spawn a local server.",
-      },
-      kiloServerPassword: {
-        label: "Kilo server password",
-        placeholder: "Kilo server password",
-        description: "Optional password for an externally managed Kilo server.",
-      },
       openCodeBinaryPath: { label: "OpenCode binary path", placeholder: "OpenCode binary path" },
       openCodeServerUrl: {
         label: "OpenCode server URL",
@@ -839,6 +842,21 @@ export const settings = {
         placeholder: "Pi agent directory",
         description: "Optional custom Pi agent directory for auth, models, skills, and commands.",
       },
+      devinBinaryPath: { label: "Devin binary path", placeholder: "devin" },
+    },
+    devinAuthHint: "Authenticate with devin auth login or set WINDSURF_API_KEY.",
+    activity: {
+      title: "Provider activity",
+      enabledTitle: "Enabled providers",
+      description:
+        "Disabling a provider stops background checks, discovery, updates, and new turns. Existing threads stay visible and resume after re-enabling it; running turns are not interrupted.",
+      saving: "Saving provider activity",
+      enabledCount: (count: number, total: number) => `${count} of ${total} enabled`,
+      resetLabel: "enabled providers",
+      allowed: "Background activity allowed",
+      disabled: "Disabled on the server",
+      enable: (name: string) => `Enable ${name}`,
+      disable: (name: string) => `Disable ${name}`,
     },
   },
   notifications: {

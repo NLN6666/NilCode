@@ -18,8 +18,8 @@ const CATALOG_TTL_MS = 6 * 60 * 60 * 1000;
 /**
  * Synara provider → models.dev provider id.
  *
- * Deliberately partial. Router/aggregator runtimes (cursor, droid, kilo,
- * opencode, pi, antigravity) are omitted: their model set is whatever their CLI
+ * Deliberately partial. Router/aggregator runtimes (cursor, droid, devin,
+ * opencode, omp, pi, antigravity) are omitted: their model set is whatever their CLI
  * reports, and a generic catalog would offer slugs the CLI cannot actually
  * start a session with — worse than a missing model.
  */

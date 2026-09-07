@@ -363,14 +363,14 @@ function formatProviderLabel(provider: ProviderKind): string {
       return "Claude";
     case "cursor":
       return "Cursor";
+    case "devin":
+      return "Devin";
     case "antigravity":
       return "Antigravity";
     case "grok":
       return "Grok";
     case "droid":
       return "Droid";
-    case "kilo":
-      return "Kilo";
     case "opencode":
       return "OpenCode";
     case "omp":

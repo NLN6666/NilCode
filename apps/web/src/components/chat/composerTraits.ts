@@ -110,7 +110,7 @@ export function composerEffortOptionId(
   if (primarySelectDescriptorId) {
     return primarySelectDescriptorId;
   }
-  if (provider === "kilo" || provider === "opencode") {
+  if (provider === "opencode") {
     return "variant";
   }
   if (provider === "omp" || provider === "pi") {

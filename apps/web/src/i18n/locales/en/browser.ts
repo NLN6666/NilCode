@@ -124,4 +124,10 @@ export const browser = {
       elementReadFailed: "Couldn't read that page element.",
     },
   },
+  floating: {
+    actions: "Floating browser actions",
+    dragHint: "Drag to move, click for actions",
+    openInSidebar: "Open browser in sidebar",
+    close: "Close floating browser",
+  },
 };

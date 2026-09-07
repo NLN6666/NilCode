@@ -104,4 +104,10 @@ export const browser: Messages["browser"] = {
       elementReadFailed: "无法读取该页面元素。",
     },
   },
+  floating: {
+    actions: "浮动浏览器操作",
+    dragHint: "拖动以移动，点击以显示操作",
+    openInSidebar: "在侧栏中打开浏览器",
+    close: "关闭浮动浏览器",
+  },
 };

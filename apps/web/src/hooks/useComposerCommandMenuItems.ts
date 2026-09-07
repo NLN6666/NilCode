@@ -48,10 +48,7 @@ import type { Messages } from "~/i18n/locales/en";
 import type { ComposerCommandItem } from "../components/chat/ComposerCommandMenu";
 import type { ProviderModelOption } from "../providerModelOptions";
 import { compareProvidersByOrder } from "../providerOrdering";
-import type {
-  ComposerThreadMentionProjectSource,
-  ComposerThreadMentionSource,
-} from "../types";
+import type { ComposerThreadMentionProjectSource, ComposerThreadMentionSource } from "../types";
 
 type ComposerPluginSuggestion = {
   plugin: ProviderPluginDescriptor;

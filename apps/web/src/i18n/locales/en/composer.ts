@@ -97,8 +97,6 @@ export const composer = {
       clear: "Clear",
       compact: "Compact Context",
       model: "Model",
-      pullRequest: "Pull request",
-      issue: "Issue",
       fast: "Fast Mode",
       plan: "Plan Mode",
       debug: "Debug Mode",
@@ -143,6 +141,8 @@ export const composer = {
       mcpServer: "MCP server",
       mcpTool: "MCP tool",
       model: "Model",
+      pullRequest: "Pull request",
+      issue: "Issue",
     },
 
     loading: {
@@ -351,4 +351,3 @@ export const composer = {
     close: "Close",
   },
 };
-

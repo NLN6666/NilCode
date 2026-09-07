@@ -149,7 +149,12 @@ export function GitCommitDialog({
               />
             ) : null}
             <span className="min-w-0 flex-1 truncate text-muted-foreground">
-              {summarizeSelection(allFiles.length, selectedFiles.length, allSelected, copy.commitDialog)}
+              {summarizeSelection(
+                allFiles.length,
+                selectedFiles.length,
+                allSelected,
+                copy.commitDialog,
+              )}
             </span>
             <DiffStat
               className="shrink-0 font-mono text-xs"

@@ -24,6 +24,7 @@
 ### Task 1: Exclude subagent threads from `@` references
 
 **Files:**
+
 - Modify: `apps/web/src/storeSelectors.ts`
 - Test: `apps/web/src/storeSelectors.test.ts`
 - Modify: `apps/server/src/provider/threadMentionContext.ts`
@@ -34,10 +35,12 @@
 - [ ] Add a selector test with literal top-level/child IDs:
 
 ```ts
-const sources = selector(stateWithThreads([
-  { id: "root", parentThreadId: null },
-  { id: "child", parentThreadId: "root" },
-]));
+const sources = selector(
+  stateWithThreads([
+    { id: "root", parentThreadId: null },
+    { id: "child", parentThreadId: "root" },
+  ]),
+);
 expect(sources.map(({ id }) => id)).toEqual(["root"]);
 ```
 
@@ -50,6 +53,7 @@ expect(sources.map(({ id }) => id)).toEqual(["root"]);
 ### Task 2: Define and normalize the GitHub reference domain
 
 **Files:**
+
 - Create: `packages/contracts/src/githubReferences.ts`
 - Modify: `packages/contracts/src/index.ts`, `packages/contracts/src/ws.ts`, `packages/contracts/src/rpc.ts`
 - Test: `packages/contracts/src/githubReferences.test.ts`
@@ -86,6 +90,7 @@ getIssueDetail(input: { cwd: string; repository: string; number: number }): Effe
 ### Task 3: Add project-scoped service and RPC handlers
 
 **Files:**
+
 - Create: `apps/server/src/githubReferences/Services/GitHubReferenceService.ts`
 - Create: `apps/server/src/githubReferences/Layers/GitHubReferenceService.ts`
 - Test: `apps/server/src/githubReferences/Layers/GitHubReferenceService.test.ts`
@@ -97,8 +102,12 @@ getIssueDetail(input: { cwd: string; repository: string; number: number }): Effe
 
 ```ts
 interface GitHubReferenceServiceShape {
-  search(input: GitHubReferencesSearchInput): Effect.Effect<GitHubReferencesSearchResult, GitHubReferencesUnavailableError>;
-  detail(input: GitHubReferenceDetailInput): Effect.Effect<GitHubReferenceDetailResult, GitHubReferencesUnavailableError>;
+  search(
+    input: GitHubReferencesSearchInput,
+  ): Effect.Effect<GitHubReferencesSearchResult, GitHubReferencesUnavailableError>;
+  detail(
+    input: GitHubReferenceDetailInput,
+  ): Effect.Effect<GitHubReferenceDetailResult, GitHubReferencesUnavailableError>;
 }
 ```
 
@@ -111,6 +120,7 @@ interface GitHubReferenceServiceShape {
 ### Task 4: Add `#` trigger, menu, and editor node
 
 **Files:**
+
 - Modify/Test: `apps/web/src/composer-logic.ts`, `apps/web/src/composer-logic.test.ts`
 - Create/Test: `apps/web/src/lib/githubComposerReferences.ts`, `apps/web/src/lib/githubComposerReferences.test.ts`
 - Modify/Test: `apps/web/src/components/composer-nodes/index.tsx`, `apps/web/src/composer-editor-mentions.ts`, `apps/web/src/composer-editor-mentions.test.ts`, `apps/web/src/components/ComposerPromptEditor.tsx`
@@ -123,7 +133,12 @@ interface GitHubReferenceServiceShape {
 - [ ] Add trigger table tests with literal expectations:
 
 ```ts
-expect(detectComposerTrigger("fix #12", 7)).toMatchObject({ kind: "github-reference", query: "12", rangeStart: 4, rangeEnd: 7 });
+expect(detectComposerTrigger("fix #12", 7)).toMatchObject({
+  kind: "github-reference",
+  query: "12",
+  rangeStart: 4,
+  rangeEnd: 7,
+});
 expect(detectComposerTrigger("https://x/#12", 13)).toBeNull();
 expect(detectComposerTrigger("# heading", 9)).toBeNull();
 ```
@@ -145,6 +160,7 @@ filterPromptGitHubReferences(prompt: string, references: readonly GitHubReferenc
 ### Task 5: Wire search, payloads, and bounded context
 
 **Files:**
+
 - Modify: `apps/web/src/components/ChatView.tsx`, `apps/web/src/lib/gitReactQuery.ts`, focused ChatView tests.
 - Create/Test: `apps/server/src/provider/githubReferenceContext.ts`, `apps/server/src/provider/githubReferenceContext.test.ts`
 - Modify: provider dispatch/steer paths and turn contracts/projection fields carrying `githubReferences`.

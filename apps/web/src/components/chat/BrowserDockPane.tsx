@@ -32,6 +32,7 @@ import { PanelStateMessage } from "./PanelStateMessage";
 
 export function BrowserDockPane(props: {
   threadId: ThreadId;
+  mode?: "sidebar" | "floating";
   /** Distinguishes two panes on the same thread; any id stable for the pane's lifetime works. */
   paneId: string;
   onClosePanel: () => void;
@@ -85,7 +86,7 @@ export function BrowserDockPane(props: {
   return (
     <Suspense fallback={<PanelStateMessage>{paneCopy.loadingBrowser}</PanelStateMessage>}>
       <LazyBrowserPanel
-        mode="sidebar"
+        mode={props.mode ?? "sidebar"}
         threadId={props.threadId}
         browserSurfaceId={browserSurfaceId}
         onClosePanel={props.onClosePanel}

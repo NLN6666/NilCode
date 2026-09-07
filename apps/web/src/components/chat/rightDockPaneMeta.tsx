@@ -1,11 +1,13 @@
 // FILE: rightDockPaneMeta.tsx
 // Purpose: Shared semantic metadata (icon + label) for right-dock pane kinds.
 // Layer: Chat right-dock UI primitives
-// Exports: per-kind meta map, ordered add-menu kinds, and pane label/icon resolvers.
+// Exports: per-kind meta map, launcher items, and pane label/icon resolvers.
 
 import type { ReactNode } from "react";
 
 import type { Messages } from "~/i18n/locales/en";
+import { resolveSubagentPresentationForThread } from "~/lib/subagentPresentation";
+import { basenameOfPath } from "~/file-icons";
 import type { LucideIcon } from "~/lib/icons";
 import {
   DeviceMobileIcon,
@@ -16,13 +18,14 @@ import {
   GitPullRequestIcon,
   GlobeIcon,
   InfoIcon,
-  MessageCircleIcon,
   ServerIcon,
+  SidechatIcon,
   TerminalIcon,
 } from "~/lib/icons";
 import { type RightDockPane, type RightDockPaneKind } from "~/rightDockStore.logic";
 import { CHAT_SURFACE_CHIP_ICON_CLASS_NAME, SurfaceChipIcon } from "./chatHeaderControls";
 import { FileEntryIcon } from "./FileEntryIcon";
+import { pullRequestPaneTabLabel } from "../pullRequest/pullRequestDetail.logic";
 
 export interface RightDockPaneMeta {
   label: string;
@@ -46,7 +49,7 @@ const RIGHT_DOCK_PANE_ICONS: Record<RightDockPaneKind, LucideIcon> = {
   explorer: FoldersIcon,
   file: FileIcon,
   terminal: TerminalIcon,
-  sidechat: MessageCircleIcon,
+  sidechat: SidechatIcon,
   git: GitCommitIcon,
   pullRequest: GitPullRequestIcon,
   services: ServerIcon,
@@ -151,6 +154,35 @@ export function resolveRightDockPaneLabel(
   overrides?: Record<string, string | undefined>,
 ): string {
   return overrides?.[pane.id] ?? getRightDockPaneMeta(pane.kind, labels).label;
+}
+
+export function buildRightDockPaneLabelOverrides(
+  panes: readonly RightDockPane[],
+  threadSummaries: readonly (Parameters<
+    typeof resolveSubagentPresentationForThread
+  >[0]["thread"] & { title: string })[],
+): Record<string, string | undefined> | undefined {
+  const summaryByThreadId = new Map(threadSummaries.map((thread) => [thread.id, thread] as const));
+  const overrides: Record<string, string | undefined> = {};
+
+  for (const pane of panes) {
+    if (pane.kind === "file" && pane.filePath) {
+      overrides[pane.id] = basenameOfPath(pane.filePath);
+    } else if (pane.kind === "pullRequest" && pane.pullRequestNumber !== null) {
+      overrides[pane.id] = pullRequestPaneTabLabel(pane.pullRequestNumber);
+    } else if (pane.kind === "sidechat" && pane.threadId) {
+      const thread = summaryByThreadId.get(pane.threadId);
+      const presentation = thread?.parentThreadId
+        ? resolveSubagentPresentationForThread({ thread })
+        : null;
+      const title = presentation?.fullLabel || thread?.title.trim();
+      if (title) {
+        overrides[pane.id] = title;
+      }
+    }
+  }
+
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
 }
 
 // Resolves a tab glyph: file panes show the per-file-type icon (matching the

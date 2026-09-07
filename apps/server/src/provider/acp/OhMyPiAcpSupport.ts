@@ -181,7 +181,8 @@ export function applyOhMyPiAcpSessionConfiguration<E>(input: {
       const requestedMode =
         input.interactionMode === "plan" ? OH_MY_PI_PLAN_MODE_ID : OH_MY_PI_DEFAULT_MODE_ID;
       const modeState = yield* input.runtime.getModeState;
-      const supported = modeState?.availableModes.some((mode) => mode.id === requestedMode) === true;
+      const supported =
+        modeState?.availableModes.some((mode) => mode.id === requestedMode) === true;
       if (!supported) {
         return yield* invalidConfiguration(
           input.interactionMode === "plan"
@@ -270,14 +271,16 @@ export function discoverOhMyPiAcpModels(
 
   const restore = Effect.suspend(() => {
     if (!originalModel) return Effect.void;
-    return runtime.setConfigOption(modelConfigId, originalModel).pipe(
-      Effect.andThen(
-        originalThinking
-          ? runtime.setConfigOption(thinkingConfigId, originalThinking).pipe(Effect.asVoid)
-          : Effect.void,
-      ),
-      Effect.ignore,
-    );
+    return runtime
+      .setConfigOption(modelConfigId, originalModel)
+      .pipe(
+        Effect.andThen(
+          originalThinking
+            ? runtime.setConfigOption(thinkingConfigId, originalThinking).pipe(Effect.asVoid)
+            : Effect.void,
+        ),
+        Effect.ignore,
+      );
   });
 
   return Effect.gen(function* () {
@@ -297,7 +300,8 @@ export function discoverOhMyPiAcpModels(
     }
 
     modelConfigId = modelConfig.id;
-    originalModel = typeof modelConfig.currentValue === "string" ? modelConfig.currentValue : undefined;
+    originalModel =
+      typeof modelConfig.currentValue === "string" ? modelConfig.currentValue : undefined;
     const initialThinking = findSelectConfig(initialOptions, {
       id: OH_MY_PI_THINKING_CONFIG_ID,
       category: "thought_level",

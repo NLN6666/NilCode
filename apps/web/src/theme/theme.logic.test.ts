@@ -342,9 +342,7 @@ describe("buildThemeCssVariables", () => {
     expect(windowsDesktop.variables["--app-context-menu-backdrop-filter"]).toBe("none");
     expect(windowsDesktop.variables["--app-context-menu-surface"]).toBe("var(--popover)");
 
-    expect(windowsBrowser.variables["--composer-glass-filter"]).toBe(
-      "blur(40px) saturate(150%)",
-    );
+    expect(windowsBrowser.variables["--composer-glass-filter"]).toBe("blur(40px) saturate(150%)");
     expect(windowsBrowser.variables["--composer-glass-opacity"]).toBe("55%");
     expect(windowsBrowser.variables["--app-context-menu-backdrop-filter"]).toBe("blur(24px)");
   });

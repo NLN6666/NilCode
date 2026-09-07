@@ -11,6 +11,7 @@ import * as Net from "node:net";
 import * as Tls from "node:tls";
 
 import {
+  assertExactLoopbackIpAddress,
   assertJsonWithinLimits,
   assertOutboundUrlAllowed,
   assertPublicIpAddress,
@@ -56,6 +57,8 @@ export interface OutboundHttpPolicy {
   readonly maxConcurrent: number;
   readonly maxQueued: number;
   readonly requirePublicAddress?: boolean;
+  /** Permits HTTP only for localhost, 127.0.0.1, or ::1. */
+  readonly allowLoopbackHttp?: boolean;
 }
 
 export interface OutboundHttpRequest {
@@ -267,19 +270,29 @@ function requestHeaders(headers: Headers): Record<string, string> {
 async function resolvePinnedAddress(
   url: URL,
   requirePublicAddress: boolean,
+  allowLoopbackHttp: boolean,
   signal: AbortSignal,
 ): Promise<{ readonly address: string; readonly family: 4 | 6 }> {
   if (signal.aborted) throw abortedError(signal.reason);
-  const literalFamily = Net.isIP(url.hostname);
+  const hostname =
+    url.hostname.startsWith("[") && url.hostname.endsWith("]")
+      ? url.hostname.slice(1, -1)
+      : url.hostname;
+  const requireLoopbackAddress = allowLoopbackHttp && url.protocol === "http:";
+  const assertAddressAllowed = (address: string) => {
+    if (requireLoopbackAddress) assertExactLoopbackIpAddress(address);
+    else if (requirePublicAddress) assertPublicIpAddress(address);
+  };
+  const literalFamily = Net.isIP(hostname);
   if (literalFamily === 4 || literalFamily === 6) {
-    if (requirePublicAddress) assertPublicIpAddress(url.hostname);
-    return { address: url.hostname, family: literalFamily };
+    assertAddressAllowed(hostname);
+    return { address: hostname, family: literalFamily };
   }
 
   let addresses: ReadonlyArray<{ readonly address: string; readonly family: 4 | 6 }>;
   try {
     addresses = (await Promise.race([
-      Dns.lookup(url.hostname, { all: true, verbatim: true }),
+      Dns.lookup(hostname, { all: true, verbatim: true }),
       new Promise<never>((_resolve, reject) => {
         signal.addEventListener("abort", () => reject(abortedError(signal.reason)), {
           once: true,
@@ -293,9 +306,7 @@ async function resolvePinnedAddress(
   if (addresses.length === 0) {
     throw new OutboundHttpError("dns", "Outbound destination DNS lookup returned no addresses.");
   }
-  if (requirePublicAddress) {
-    for (const result of addresses) assertPublicIpAddress(result.address);
-  }
+  for (const result of addresses) assertAddressAllowed(result.address);
   const selected = addresses[0];
   if (!selected) {
     throw new OutboundHttpError("dns", "Outbound destination DNS lookup returned no addresses.");
@@ -393,7 +404,7 @@ async function connectThroughProxy(input: {
   readonly target: URL;
   readonly signal: AbortSignal;
 }): Promise<Net.Socket> {
-  const pinnedProxy = await resolvePinnedAddress(input.proxyUrl, false, input.signal).catch(
+  const pinnedProxy = await resolvePinnedAddress(input.proxyUrl, false, false, input.signal).catch(
     (cause: unknown) => {
       if (cause instanceof OutboundHttpError && cause.code === "aborted") throw cause;
       throw new OutboundHttpError(
@@ -511,6 +522,7 @@ async function requestHop(input: {
   readonly body?: Uint8Array;
   readonly maxResponseBytes: number;
   readonly requirePublicAddress: boolean;
+  readonly allowLoopbackHttp: boolean;
   readonly proxy?: OutboundProxyConfig;
   readonly signal: AbortSignal;
 }): Promise<OutboundHttpResponse> {
@@ -528,7 +540,12 @@ async function requestHop(input: {
     ? { agent: createTunnelAgent(tunnel, input.url) }
     : {
         lookup: createPinnedLookup(
-          await resolvePinnedAddress(input.url, input.requirePublicAddress, input.signal),
+          await resolvePinnedAddress(
+            input.url,
+            input.requirePublicAddress,
+            input.allowLoopbackHttp,
+            input.signal,
+          ),
         ),
       };
 
@@ -638,8 +655,16 @@ function isRedirectStatus(status: number): boolean {
 export class OutboundHttpClient {
   async request(input: OutboundHttpRequest): Promise<OutboundHttpResponse> {
     const policy = input.policy;
-    const allowedOrigins = policy.allowedOrigins.map(normalizeOutboundOrigin);
-    let url = assertOutboundUrlAllowed({ url: input.url, allowedOrigins });
+    const allowLoopbackHttp = policy.allowLoopbackHttp === true;
+    const originOptions = allowLoopbackHttp ? { allowLoopbackHttp: true } : {};
+    const allowedOrigins = policy.allowedOrigins.map((origin) =>
+      normalizeOutboundOrigin(origin, originOptions),
+    );
+    let url = assertOutboundUrlAllowed({
+      url: input.url,
+      allowedOrigins,
+      ...originOptions,
+    });
     let method = input.method ?? "GET";
     let body = bodyBytes(input.body);
     if ((body?.byteLength ?? 0) > policy.maxRequestBytes) {
@@ -665,7 +690,10 @@ export class OutboundHttpClient {
             // whether the request went direct or through a stalled proxy, and
             // that distinction is the whole diagnosis.
             `Outbound request exceeded its ${policy.timeoutMs}ms deadline (proxy: ${
-              resolveProxyForTarget(url)?.url.href ?? "none"
+              (allowLoopbackHttp && url.protocol === "http:"
+                ? undefined
+                : resolveProxyForTarget(url)
+              )?.url.href ?? "none"
             }).`,
           ),
         ),
@@ -680,7 +708,8 @@ export class OutboundHttpClient {
       releaseService = await serviceAdmission(policy).acquire(controller.signal);
       for (let redirects = 0; ; redirects += 1) {
         // Resolved per hop: a redirect may cross into a NO_PROXY host.
-        const proxy = resolveProxyForTarget(url);
+        const proxy =
+          allowLoopbackHttp && url.protocol === "http:" ? undefined : resolveProxyForTarget(url);
         const response = await requestHop({
           url,
           method,
@@ -689,6 +718,7 @@ export class OutboundHttpClient {
           maxResponseBytes: policy.maxResponseBytes,
           requirePublicAddress: policy.requirePublicAddress ?? true,
           ...(proxy ? { proxy } : {}),
+          allowLoopbackHttp,
           signal: controller.signal,
         });
         if (!isRedirectStatus(response.status)) return response;
@@ -708,8 +738,15 @@ export class OutboundHttpClient {
         const nextUrl = assertOutboundUrlAllowed({
           url: new URL(location, url),
           allowedOrigins,
+          ...originOptions,
         });
         if (nextUrl.origin !== url.origin) {
+          if (allowLoopbackHttp) {
+            throw new OutboundHttpError(
+              "invalid-redirect",
+              "Loopback HTTP redirects must remain on the original origin.",
+            );
+          }
           headers = stripOutboundSensitiveHeaders(headers);
         }
         if (response.status === 303) {

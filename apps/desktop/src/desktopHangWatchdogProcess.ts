@@ -108,7 +108,9 @@ export function createDesktopHangWatchdogRuntime(
         policy.recordHeartbeat({ nowMs: now(), rendererPid });
         return;
       case "renderer-unresponsive":
-        capture(policy.rendererUnresponsive({ nowMs: now(), rendererPid: typedMessage.rendererPid }));
+        capture(
+          policy.rendererUnresponsive({ nowMs: now(), rendererPid: typedMessage.rendererPid }),
+        );
         return;
       case "renderer-responsive":
         policy.rendererResponsive(typedMessage.rendererPid);
@@ -146,7 +148,11 @@ export function createDesktopHangWatchdogRuntime(
   };
 }
 
-if (process.env.ELECTRON_RUN_AS_NODE === "1" && typeof process.send === "function" && process.connected) {
+if (
+  process.env.ELECTRON_RUN_AS_NODE === "1" &&
+  typeof process.send === "function" &&
+  process.connected
+) {
   createDesktopHangWatchdogRuntime({
     parent: {
       get connected() {

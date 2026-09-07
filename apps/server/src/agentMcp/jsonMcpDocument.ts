@@ -1,10 +1,10 @@
 // FILE: jsonMcpDocument.ts
 // Purpose: Surgically flip the on/off flag of one entry in a JSON(C) MCP config, leaving every
 //          other byte untouched. Shared by every agent whose config is JSON: Claude, Factory
-//          Droid, Antigravity, OpenCode and Kilo.
+//          Droid, Antigravity and OpenCode.
 // Layer: Agent MCP config editing (pure string in, string out)
 // Exports: JsonMcpDialect, CLAUDE_JSON_MCP_DIALECT, DROID_JSON_MCP_DIALECT,
-//          ANTIGRAVITY_JSON_MCP_DIALECT, OPENCODE_JSON_MCP_DIALECT, KILO_JSON_MCP_DIALECT,
+//          ANTIGRAVITY_JSON_MCP_DIALECT, OPENCODE_JSON_MCP_DIALECT,
 //          applyJsonMcpEnabled
 
 import { applyEdits, modify } from "jsonc-parser";
@@ -48,17 +48,12 @@ export const OPENCODE_JSON_MCP_DIALECT: JsonMcpDialect = {
   offValue: false,
 };
 
-export const KILO_JSON_MCP_DIALECT: JsonMcpDialect = {
-  ...OPENCODE_JSON_MCP_DIALECT,
-  label: "Kilo",
-};
-
 /**
  * Places an inserted property on its own line, indented like the sibling above it.
  *
  * `modify` is deliberately called without `formattingOptions`, because supplying them makes
  * `jsonc-parser` reformat the *whole containing object* — an inline `"command": ["npx", "-y"]`
- * comes back exploded across four lines. OpenCode and Kilo write every server's argv that way,
+ * comes back exploded across four lines. OpenCode writes every server's argv that way,
  * so the default would rewrite parts of the file the user never touched. Without them the edit
  * is byte-minimal but arrives as `…],"enabled": false`, so the one inserted fragment is spaced
  * here instead.

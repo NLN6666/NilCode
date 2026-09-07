@@ -49,7 +49,6 @@ import { useMessages } from "~/i18n/context";
 const ULTRATHINK_PROMPT_PREFIX = "Ultrathink:\n";
 
 function defaultAgentForProvider(provider: ProviderKind): string | null {
-  if (provider === "kilo") return "code";
   if (provider === "opencode") return "build";
   return null;
 }
@@ -58,7 +57,7 @@ function getAgentOptions(
   provider: ProviderKind,
   runtimeAgents: ReadonlyArray<ProviderAgentDescriptor> | null | undefined,
 ): ReadonlyArray<ProviderAgentDescriptor> {
-  if (provider !== "kilo" && provider !== "opencode") return [];
+  if (provider !== "opencode") return [];
   return runtimeAgents ?? [];
 }
 
@@ -133,7 +132,7 @@ export function resolveTraitsTriggerSummary(options: {
   const selectedAgent = getSelectedAgentValue(options.provider, options.modelOptions);
   const agentLabel = findAgentLabel(agentOptions, selectedAgent);
   // Agent name stands in as the primary label for agent-driven providers
-  // (kilo/opencode) that expose no effort/thinking controls.
+  // (opencode) that expose no effort/thinking controls.
   const resolvedPrimaryLabel = primaryLabel ?? agentLabel;
   const showsFastBadge = showsComposerFastModeBadge(selection) && !isFastOnlyControl;
   const summaryText = [resolvedPrimaryLabel, showsFastBadge ? "Fast" : null, contextWindowLabel]
@@ -405,7 +404,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
         <>
           {hasPriorEffortSection ? <MenuDivider /> : null}
           <TraitRadioSection
-            label={provider === "kilo" || provider === "opencode" ? copy.variant : copy.effort}
+            label={provider === "opencode" ? copy.variant : copy.effort}
             labelTrailing={
               showsFastModeEffortToggle ? (
                 <FastModeToggle
@@ -455,7 +454,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
         <>
           {hasVisibleControls ? <MenuDivider /> : null}
           <TraitRadioSection
-            label={provider === "kilo" ? "Mode" : "Agent"}
+            label="Agent"
             value={selectedAgent ?? defaultAgent ?? ""}
             options={agentOptions.map((agent) => ({
               value: agent.name,

@@ -112,8 +112,11 @@ import Migration0093 from "./Migrations/093_BackfillMaxIterationsDisabledReason.
 import Migration0094 from "./Migrations/094_ProjectionThreadsGoal.ts";
 import Migration0095 from "./Migrations/095_ProjectionThreadsGoalTiming.ts";
 import Migration0096 from "./Migrations/096_ProjectionThreadsGoalAchievements.ts";
-import Migration0097 from "./Migrations/097_ProjectionProjectsBrowserSharing.ts";
-import Migration0098 from "./Migrations/098_ProjectionThreadsAdvisorEnabled.ts";
+import Migration0097 from "./Migrations/097_ProjectionThreadsSidechatLifecycle.ts";
+import Migration0098 from "./Migrations/098_MigrateKiloToOpenCode.ts";
+import Migration0099 from "./Migrations/099_InvalidateProjectionThreadsCursor.ts";
+import Migration0100 from "./Migrations/100_ProjectionProjectsBrowserSharing.ts";
+import Migration0101 from "./Migrations/101_ProjectionThreadsAdvisorEnabled.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -225,8 +228,11 @@ export const migrationEntries = [
   [94, "ProjectionThreadsGoal", Migration0094],
   [95, "ProjectionThreadsGoalTiming", Migration0095],
   [96, "ProjectionThreadsGoalAchievements", Migration0096],
-  [97, "ProjectionProjectsBrowserSharing", Migration0097],
-  [98, "ProjectionThreadsAdvisorEnabled", Migration0098],
+  [97, "ProjectionThreadsSidechatLifecycle", Migration0097],
+  [98, "MigrateKiloToOpenCode", Migration0098],
+  [99, "InvalidateProjectionThreadsCursor", Migration0099],
+  [100, "ProjectionProjectsBrowserSharing", Migration0100],
+  [101, "ProjectionThreadsAdvisorEnabled", Migration0101],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>
@@ -257,6 +263,25 @@ const LATEST_MIGRATION_ID = Math.max(...migrationEntries.map(([id]) => id));
 const canonicalMigrationNamesById: ReadonlyMap<number, string> = new Map(
   migrationEntries.map(([id, name]) => [id, name] as const),
 );
+
+const IMPORTED_SCHEMA_RECONCILIATION_MIGRATION_ID = 32;
+
+export function planLegacyMigration32Rename(
+  recordedNamesById: ReadonlyMap<number, string>,
+): string | null {
+  const canonicalName = canonicalMigrationNamesById.get(
+    IMPORTED_SCHEMA_RECONCILIATION_MIGRATION_ID,
+  );
+  if (canonicalName === undefined) return null;
+
+  const hasCanonicalPrefix = migrationEntries
+    .filter(([id]) => id < IMPORTED_SCHEMA_RECONCILIATION_MIGRATION_ID)
+    .every(([id, name]) => recordedNamesById.get(id) === name);
+  const recordedName = recordedNamesById.get(IMPORTED_SCHEMA_RECONCILIATION_MIGRATION_ID);
+  return hasCanonicalPrefix && recordedName !== undefined && recordedName !== canonicalName
+    ? canonicalName
+    : null;
+}
 
 /**
  * First canonical entry whose name is not recorded at the same ID, considering
@@ -315,21 +340,33 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
   {
     // The dev branch briefly recorded this at 88 before the v0.7.2 upstream
     // merge canonicalized the shared 88-96 range (both branches had appended
-    // migrations there) and moved this fork-only migration to 97. The
-    // migration content is unchanged, only its ID moved.
+    // migrations there). Its current slot follows the released upstream range.
     historicalId: 88,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 97,
+    currentId: 100,
     historicalSlotRequiresRerun: false,
   },
   {
     // Same v0.7.2 merge: this fork-only migration briefly recorded at 91
-    // moved to 98 for the same reason as the ProjectionProjectsBrowserSharing
-    // alias above.
+    // moved for the same reason as the ProjectionProjectsBrowserSharing alias.
     historicalId: 91,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 98,
+    currentId: 101,
     historicalSlotRequiresRerun: false,
+  },
+  {
+    // v0.7.3 dev used 97/98 for fork state. The upstream sidechat and Kilo
+    // migrations now occupying those slots have never run on that database.
+    historicalId: 97,
+    historicalName: "ProjectionProjectsBrowserSharing",
+    currentId: 100,
+    historicalSlotRequiresRerun: true,
+  },
+  {
+    historicalId: 98,
+    historicalName: "ProjectionThreadsAdvisorEnabled",
+    currentId: 101,
+    historicalSlotRequiresRerun: true,
   },
 ];
 
@@ -425,19 +462,12 @@ export const reconcileMigrationLineage = Effect.gen(function* () {
   const recordedNamesBeforeCanonicalization = new Map(
     recorded.map((row) => [row.migration_id, row.name]),
   );
-  const hasCanonicalPrefixThrough31 = migrationEntries
-    .filter(([id]) => id < 32)
-    .every(([id, name]) => recordedNamesBeforeCanonicalization.get(id) === name);
-  const migration32Name = recordedNamesBeforeCanonicalization.get(32);
-  if (
-    hasCanonicalPrefixThrough31 &&
-    migration32Name !== undefined &&
-    migration32Name !== "ReconcileImportedSchemaLineage"
-  ) {
+  const migration32Rename = planLegacyMigration32Rename(recordedNamesBeforeCanonicalization);
+  if (migration32Rename !== null) {
     yield* sql`
       UPDATE effect_sql_migrations
-      SET name = 'ReconcileImportedSchemaLineage'
-      WHERE migration_id = 32
+      SET name = ${migration32Rename}
+      WHERE migration_id = ${IMPORTED_SCHEMA_RECONCILIATION_MIGRATION_ID}
     `;
     recorded = yield* sql<{ readonly migration_id: number; readonly name: string }>`
       SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id ASC

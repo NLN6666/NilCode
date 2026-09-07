@@ -4,6 +4,7 @@
 // Exports: TimelineWorkEntryRow, EditedFileRowContent, prefersCompactWorkEntryRow
 
 import { ADVISOR_ACTIVITY_KIND, type TurnId } from "@synara/contracts";
+import { PROVIDER_DESCRIPTORS } from "@synara/shared/providerMetadata";
 import {
   createElement,
   memo,
@@ -25,10 +26,12 @@ import {
   CheckIcon,
   CircleAlertIcon,
   CircleQuestionIcon,
+  ContextCompactionIcon,
   EyeIcon,
   GitHubIcon,
   GlobeIcon,
   HammerIcon,
+  HistoryIcon,
   type LucideIcon,
   McpIcon,
   PencilIcon,
@@ -243,8 +246,14 @@ function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   // Advisor notes are observations, not work the agent did. The eye keeps them
   // from reading as another completed step in the transcript.
   if (workEntry.activityKind === ADVISOR_ACTIVITY_KIND) return EyeIcon;
+  if (workEntry.activityKind === "context-compaction") return ContextCompactionIcon;
   // "Moved to background" notices read as a tray drop, not a warning check.
   if (workEntry.nativeEventType === "background_tasks_changed") return BackgroundTrayIcon;
+  if (workEntry.providerContextLifecycle) {
+    return workEntry.providerContextLifecycle.nativeHistory === "unavailable"
+      ? CircleAlertIcon
+      : HistoryIcon;
+  }
 
   if (workEntry.requestKind === "command") return commandWorkEntryIcon(workEntry);
   if (workEntry.requestKind === "file-read") return SearchIcon;
@@ -572,6 +581,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
     ? () => onOpenAgentActivity?.(workEntry.id)
     : undefined;
   const hasToolDetails = Boolean(workEntry.toolDetails);
+  const providerContextLifecycle = workEntry.providerContextLifecycle;
   // File-read rows open the referenced file in the in-app viewer when the
   // hosting surface provides an opener (right-dock file pane / editor pane).
   const opener = useWorkspaceFileOpener();
@@ -619,7 +629,11 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
   const canOpenReadFile = readFilePath !== null;
   const canOpenToolDetails =
     !canOpenAgentActivity &&
-    Boolean(workEntry.toolDetails || (workEntry.liveActivity && !canOpenReadFile));
+    Boolean(
+      providerContextLifecycle ||
+      workEntry.toolDetails ||
+      (workEntry.liveActivity && !canOpenReadFile),
+    );
   const openReadFile = readFilePath
     ? () => openWorkspaceFileReference(opener, readFilePath)
     : undefined;
@@ -784,6 +798,11 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
               <ToolDetailsDisclosure
                 details={workEntry.toolDetails}
                 activity={workEntry.liveActivity}
+                detailContent={
+                  providerContextLifecycle ? (
+                    <ProviderContextLifecycleDetails info={providerContextLifecycle} />
+                  ) : undefined
+                }
                 compact={compact}
                 timestampFormat={timestampFormat}
                 tooltip={toolRowTooltipContent(rawCommand, displayText, displayText, rowCopy)}
@@ -912,12 +931,57 @@ function AgentActivityOpenSurface(props: {
   return <ToolRowTooltip content={props.tooltip}>{surface}</ToolRowTooltip>;
 }
 
+function ProviderContextLifecycleDetails(props: {
+  info: NonNullable<TimelineWorkEntry["providerContextLifecycle"]>;
+}) {
+  const copy = useMessages().chat.providerContextLifecycle;
+  const { info } = props;
+  const provider =
+    PROVIDER_DESCRIPTORS.find((descriptor) => descriptor.kind === info.provider)?.displayName ??
+    info.provider;
+  return (
+    <div className="space-y-3" data-provider-context-lifecycle-details="true">
+      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-lg border border-border/45 bg-background/60 px-3 py-2.5 text-[11px]">
+        <dt className="text-muted-foreground/56">{copy.provider}</dt>
+        <dd className="text-foreground/84">{provider}</dd>
+        <dt className="text-muted-foreground/56">{copy.nativeHistory}</dt>
+        <dd className="text-foreground/84">
+          {info.nativeHistory === "available" ? copy.available : copy.unavailable}
+        </dd>
+        <dt className="text-muted-foreground/56">{copy.restart}</dt>
+        <dd className="text-foreground/84">{info.sessionRestarted ? copy.yes : copy.no}</dd>
+        <dt className="text-muted-foreground/56">{copy.contextChange}</dt>
+        <dd className="text-foreground/84">{copy.reasons[info.restartReason]}</dd>
+        <dt className="text-muted-foreground/56">{copy.recap}</dt>
+        <dd className="text-foreground/84">
+          {info.recapInjected ? copy.recapCharacters(info.recapCharacters) : copy.notSent}
+        </dd>
+      </dl>
+      {info.recapPreview ? (
+        <section className="space-y-2">
+          <h3 className="text-[11px] font-medium text-muted-foreground/56">{copy.preview}</h3>
+          <pre
+            className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/45 bg-background/60 px-3 py-2.5 font-chat-code text-[11px] leading-relaxed text-foreground/84"
+            data-session-context-recap-preview="true"
+          >
+            {info.recapPreview}
+          </pre>
+          {info.recapPreviewTruncated ? (
+            <p className="text-[10px] text-muted-foreground/56">{copy.boundedPreview}</p>
+          ) : null}
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function ToolDetailsDisclosure(props: {
   children: ReactNode;
   compact: boolean;
   dataFileChangeRow?: boolean | undefined;
   details?: TimelineWorkEntry["toolDetails"] | undefined;
   activity?: TimelineWorkEntry["liveActivity"] | undefined;
+  detailContent?: ReactNode;
   summaryClassName?: string | undefined;
   timestampFormat: TimestampFormat;
   tooltip?: ReactNode;
@@ -1009,11 +1073,13 @@ function ToolDetailsDisclosure(props: {
             }}
           />
           <div className="min-w-0 flex-1" data-tool-details-inline="true">
-            <ToolCallDetailsContent
-              details={props.details}
-              activity={props.activity}
-              timestampFormat={props.timestampFormat}
-            />
+            {props.detailContent ?? (
+              <ToolCallDetailsContent
+                details={props.details}
+                activity={props.activity}
+                timestampFormat={props.timestampFormat}
+              />
+            )}
           </div>
         </DisclosureRegion>
       ) : null}

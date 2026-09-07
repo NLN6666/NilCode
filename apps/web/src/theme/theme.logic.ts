@@ -761,9 +761,7 @@ export function buildThemeCssVariables(
     // surfaces in both graphics modes without changing browser or macOS rendering.
     "--app-composer-picker-backdrop-filter": material === "translucent" ? "blur(32px)" : "none",
     "--app-composer-picker-surface": composerPickerMenuSurface,
-    "--app-context-menu-backdrop-filter": windowsDesktopUsesLowCostEffects
-      ? "none"
-      : "blur(24px)",
+    "--app-context-menu-backdrop-filter": windowsDesktopUsesLowCostEffects ? "none" : "blur(24px)",
     "--app-context-menu-surface": windowsDesktopUsesLowCostEffects
       ? "var(--popover)"
       : "color-mix(in srgb, var(--popover) 90%, transparent)",

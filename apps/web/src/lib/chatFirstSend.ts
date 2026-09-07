@@ -1,7 +1,7 @@
 import { DEFAULT_MODEL_BY_PROVIDER, type ModelSelection } from "@synara/contracts";
 import { workspaceRootsEqual } from "@synara/shared/threadWorkspace";
 
-import type { Project } from "../types";
+import type { Project, ProjectMetadata } from "../types";
 import { buildChatWorkspaceFolderPath } from "./chatWorkspaceFolders";
 
 export interface FirstSendProjectTarget {
@@ -25,7 +25,7 @@ export type FirstSendTargetResolution =
   | { kind: "existing-project"; target: FirstSendProjectTarget }
   | { kind: "create-project"; creation: FirstSendProjectCreation };
 
-function buildProjectTarget(project: Project): FirstSendProjectTarget {
+function buildProjectTarget(project: ProjectMetadata): FirstSendProjectTarget {
   return {
     targetProjectId: project.id,
     targetProjectKind: project.kind,
@@ -40,9 +40,10 @@ function buildProjectTitleFromWorkspaceRoot(workspaceRoot: string): string {
 }
 
 export function resolveFirstSendTarget(input: {
-  activeProject: Project;
+  activeProject: ProjectMetadata;
   chatWorkspaceRoot: string | null;
   createdAt: Date;
+  defaultModelSelection?: ModelSelection;
   isFirstMessage: boolean;
   isHomeChatContainer: boolean;
   isStudioContainer: boolean;
@@ -51,6 +52,12 @@ export function resolveFirstSendTarget(input: {
   title: string;
   titleSeed: string;
 }): FirstSendTargetResolution {
+  const createDefaultModelSelection =
+    input.defaultModelSelection ??
+    ({
+      provider: "codex",
+      model: DEFAULT_MODEL_BY_PROVIDER.codex,
+    } satisfies ModelSelection);
   const {
     activeProject,
     chatWorkspaceRoot,
@@ -102,10 +109,7 @@ export function resolveFirstSendTarget(input: {
         title,
         kind: "chat",
         createWorkspaceRootIfMissing: true,
-        defaultModelSelection: {
-          provider: "codex",
-          model: DEFAULT_MODEL_BY_PROVIDER.codex,
-        },
+        defaultModelSelection: createDefaultModelSelection,
       },
     };
   }
@@ -128,10 +132,7 @@ export function resolveFirstSendTarget(input: {
       title: buildProjectTitleFromWorkspaceRoot(selectedWorkspaceRoot),
       kind: "project",
       createWorkspaceRootIfMissing: false,
-      defaultModelSelection: {
-        provider: "codex",
-        model: DEFAULT_MODEL_BY_PROVIDER.codex,
-      },
+      defaultModelSelection: createDefaultModelSelection,
     },
   };
 }

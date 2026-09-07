@@ -42,7 +42,9 @@ describe("providerOrdering", () => {
     expect(isProviderKind("omp")).toBe(true);
     expect(normalizeProviderOrder(["pi", "codex"])[0]).toBe("pi");
     expect(normalizeHiddenProviders(["bogus", "pi", "pi"])).toEqual(["pi"]);
-    expect(Math.abs(DEFAULT_PROVIDER_ORDER.indexOf("omp") - DEFAULT_PROVIDER_ORDER.indexOf("pi"))).toBe(1);
+    expect(
+      Math.abs(DEFAULT_PROVIDER_ORDER.indexOf("omp") - DEFAULT_PROVIDER_ORDER.indexOf("pi")),
+    ).toBe(1);
   });
 });
 

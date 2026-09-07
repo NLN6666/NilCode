@@ -56,8 +56,12 @@ describe("Windows hang dumps", () => {
       targetKind: "renderer",
     });
 
-    expect(invocation.executable).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
-    expect(invocation.args).toEqual(expect.arrayContaining(["-NoProfile", "-NonInteractive", "-EncodedCommand"]));
+    expect(invocation.executable).toBe(
+      "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    );
+    expect(invocation.args).toEqual(
+      expect.arrayContaining(["-NoProfile", "-NonInteractive", "-EncodedCommand"]),
+    );
     expect(Buffer.from(invocation.args.at(-1)!, "base64").toString("utf16le")).toContain(
       "MiniDumpWriteDump",
     );
@@ -65,7 +69,9 @@ describe("Windows hang dumps", () => {
     expect(script).toContain("Win32_Process");
     expect(script).toContain("$ProgressPreference = 'SilentlyContinue'");
     expect(script).toContain("([DateTime]$target.CreationDate).ToUniversalTime()");
-    expect(JSON.parse(Buffer.from(invocation.env.SYNARA_HANG_DUMP_REQUEST!, "base64").toString("utf8"))).toMatchObject({
+    expect(
+      JSON.parse(Buffer.from(invocation.env.SYNARA_HANG_DUMP_REQUEST!, "base64").toString("utf8")),
+    ).toMatchObject({
       executablePath: "C:\\Synara\\Synara.exe",
       runStartedAtMs: 1_000,
       targetKind: "renderer",
@@ -86,14 +92,20 @@ describe("Windows hang dumps", () => {
     expect(result.captureResult).toBe("captured");
     expect(fs.existsSync(result.dumpPath!)).toBe(true);
     expect(fs.existsSync(result.dumpPath + ".tmp")).toBe(false);
-    const metadata = JSON.parse(fs.readFileSync(result.metadataPath, "utf8")) as Record<string, unknown>;
+    const metadata = JSON.parse(fs.readFileSync(result.metadataPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
     expect(metadata).toMatchObject({ runId: "run-123", target: { kind: "main", pid: 1234 } });
     expect(Object.keys(metadata)).not.toContain("env");
   });
 
   it("keeps failure metadata when the target is invalid or PowerShell times out", async () => {
     const diagnosticsDir = makeTempDir();
-    const invalid = await writeWindowsHangDump({ ...request(diagnosticsDir), target: { kind: "main", pid: 0 } });
+    const invalid = await writeWindowsHangDump({
+      ...request(diagnosticsDir),
+      target: { kind: "main", pid: 0 },
+    });
     expect(invalid.captureResult).toBe("failed");
     expect(fs.existsSync(invalid.metadataPath)).toBe(true);
 
@@ -111,10 +123,15 @@ describe("Windows hang dumps", () => {
     const diagnosticsDir = makeTempDir();
     let powerShellCalls = 0;
     const result = await writeWindowsHangDump(
-      { ...request(diagnosticsDir), executablePath: "C:\\Synara\\Synara.exe", runStartedAtMs: 1_000 },
+      {
+        ...request(diagnosticsDir),
+        executablePath: "C:\\Synara\\Synara.exe",
+        runStartedAtMs: 1_000,
+      },
       {
         isProcessAlive: () => true,
-        validateTargetIdentity: () => "Target executable identity does not match the current application run.",
+        validateTargetIdentity: () =>
+          "Target executable identity does not match the current application run.",
         runPowerShell: async () => {
           powerShellCalls += 1;
           return { ok: true, stderr: "" };
@@ -197,8 +214,14 @@ describe("Windows hang dumps", () => {
 
   it("removes only expired owned temporary files during retention", () => {
     const diagnosticsDir = makeTempDir();
-    const expired = path.join(diagnosticsDir, "synara-hang-old.dmp.00000000-0000-0000-0000-000000000000.tmp");
-    const recent = path.join(diagnosticsDir, "synara-hang-new.json.00000000-0000-0000-0000-000000000000.tmp");
+    const expired = path.join(
+      diagnosticsDir,
+      "synara-hang-old.dmp.00000000-0000-0000-0000-000000000000.tmp",
+    );
+    const recent = path.join(
+      diagnosticsDir,
+      "synara-hang-new.json.00000000-0000-0000-0000-000000000000.tmp",
+    );
     const unrelated = path.join(diagnosticsDir, "other.tmp");
     fs.writeFileSync(expired, "old");
     fs.writeFileSync(recent, "new");

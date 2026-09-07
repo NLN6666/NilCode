@@ -26,7 +26,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type MouseEvent, type ReactNode, useCallback, useMemo, useState } from "react";
+import { type MouseEvent, type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 
 import type { AppSettings, AppSettingsBinding } from "~/appSettings";
 import { useProviderStatusesForLocalConfig } from "~/hooks/useProviderStatusesForLocalConfig";
@@ -78,20 +78,17 @@ type ProviderInstallTextKey =
   | "codexHomePath"
   | "cursorBinaryPath"
   | "cursorApiEndpoint"
+  | "devinBinaryPath"
   | "antigravityBinaryPath"
   | "grokBinaryPath"
   | "droidBinaryPath"
-  | "kiloBinaryPath"
-  | "kiloServerUrl"
   | "openCodeBinaryPath"
   | "openCodeServerUrl"
   | "ompBinaryPath"
   | "piBinaryPath"
   | "piAgentDir";
-type ProviderInstallPasswordKey = "kiloServerPassword" | "openCodeServerPassword";
-type ProviderInstallPasswordConfiguredKey =
-  | "kiloServerPasswordConfigured"
-  | "openCodeServerPasswordConfigured";
+type ProviderInstallPasswordKey = "openCodeServerPassword";
+type ProviderInstallPasswordConfiguredKey = "openCodeServerPasswordConfigured";
 type ProviderInstallBooleanKey = "openCodeExperimentalWebSockets";
 
 type ProvidersCopy = Messages["settings"]["providers"];
@@ -273,28 +270,24 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
     ],
   },
   {
-    provider: "kilo",
+    provider: "devin",
     docs: [
-      { labelKey: "install", href: "https://kilo.ai/docs/cli" },
-      { labelKey: "update", href: "https://kilo.ai/docs/cli" },
-      { labelKey: "config", href: "https://kilo.ai/docs/cli#configuration" },
+      { labelKey: "install", href: "https://docs.devin.ai/cli" },
+      { labelKey: "commands", href: "https://docs.devin.ai/cli/reference/commands" },
+      { labelKey: "config", href: "https://docs.devin.ai/cli/reference/configuration/config-file" },
     ],
     fields: [
       {
         kind: "text",
-        settingsKey: "kiloBinaryPath",
-        copy: (c) => ({ ...c.fields.kiloBinaryPath, description: binaryHint(c, "kilo") }),
-      },
-      {
-        kind: "text",
-        settingsKey: "kiloServerUrl",
-        copy: (c) => c.fields.kiloServerUrl,
-      },
-      {
-        kind: "password",
-        settingsKey: "kiloServerPassword",
-        configuredKey: "kiloServerPasswordConfigured",
-        copy: (c) => c.fields.kiloServerPassword,
+        settingsKey: "devinBinaryPath",
+        copy: (c) => ({
+          ...c.fields.devinBinaryPath,
+          description: (
+            <>
+              {binaryHint(c, "devin")} {withInlineCode(c.devinAuthHint, "devin auth login")}
+            </>
+          ),
+        }),
       },
     ],
   },
@@ -424,13 +417,13 @@ export function createProviderInstallResetPatch(defaults: AppSettings): Partial<
   ) as Partial<AppSettings>;
 }
 
-function setProviderHidden(
+function setProviderListMembership(
   current: ReadonlyArray<ProviderKind>,
   provider: ProviderKind,
-  hidden: boolean,
+  included: boolean,
 ): ProviderKind[] {
   const withoutTarget = current.filter((entry) => entry !== provider);
-  return hidden ? [...withoutTarget, provider] : withoutTarget;
+  return included ? [...withoutTarget, provider] : withoutTarget;
 }
 
 function isProviderPickerProviderEnabled(
@@ -724,17 +717,20 @@ function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus
       <div className="space-y-1 text-muted-foreground">
         <div>{copy.sharedHome}</div>
         <div>
-          {copy.memoryEffective}: <span className="text-foreground">{projection.memoryBackend}</span>{" "}
-          · {projection.memorySource === "user-config" ? copy.memoryUser : copy.memoryFallback}
+          {copy.memoryEffective}:{" "}
+          <span className="text-foreground">{projection.memoryBackend}</span> ·{" "}
+          {projection.memorySource === "user-config" ? copy.memoryUser : copy.memoryFallback}
         </div>
         {projection.advisorModelRole ? (
           <div>
-            {copy.advisorRole}: <code className="text-foreground">{projection.advisorModelRole}</code>
+            {copy.advisorRole}:{" "}
+            <code className="text-foreground">{projection.advisorModelRole}</code>
           </div>
         ) : null}
         <div>{copy.autoLearnCost}</div>
         <div>
-          {copy.overlay}: <code className="break-all text-foreground">{projection.overlayPath}</code>
+          {copy.overlay}:{" "}
+          <code className="break-all text-foreground">{projection.overlayPath}</code>
         </div>
       </div>
       {projection.advisorWarning ? (
@@ -746,15 +742,18 @@ function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus
         <div className="space-y-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2.5 py-2 text-muted-foreground">
           <div className="font-medium text-foreground">{copy.typedLive}</div>
           <div>
-            {copy.runtimeVersion}: <span className="text-foreground">{runtime.ompVersion ?? "—"}</span>
+            {copy.runtimeVersion}:{" "}
+            <span className="text-foreground">{runtime.ompVersion ?? "—"}</span>
             {" · "}
             {copy.runtimeSessions}: <span className="text-foreground">{runtime.sessionCount}</span>
           </div>
           {runtime.advisor ? (
             <div>
-              {copy.advisorLive}: <span className="text-foreground">{runtime.advisor.active ? "active" : "idle"}</span>
+              {copy.advisorLive}:{" "}
+              <span className="text-foreground">{runtime.advisor.active ? "active" : "idle"}</span>
               {" · "}
-              {copy.advisorRisk}: <span className="text-foreground">{runtime.advisor.toolRisk}</span>
+              {copy.advisorRisk}:{" "}
+              <span className="text-foreground">{runtime.advisor.toolRisk}</span>
               {runtime.advisor.inFlight ? " · in flight" : ""}
               {runtime.advisor.drain
                 ? ` · drain ${runtime.advisor.drain.settled ? "settled" : "degraded"}${runtime.advisor.drain.error ? `: ${runtime.advisor.drain.error}` : ""}`
@@ -763,7 +762,8 @@ function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus
           ) : null}
           {runtime.autolearn ? (
             <div>
-              {copy.autoLearnLive}: <span className="text-foreground">{runtime.autolearn.state}</span>
+              {copy.autoLearnLive}:{" "}
+              <span className="text-foreground">{runtime.autolearn.state}</span>
               {` · generation ${runtime.autolearn.captureGeneration}`}
               {runtime.autolearn.pending ? " · pending" : ""}
               {runtime.autolearn.drain
@@ -945,12 +945,14 @@ function ProviderToolRow(props: {
 export type ProvidersSettingsPanelProps = AppSettingsBinding & {
   readonly active: boolean;
   readonly resetEpoch: number;
+  readonly updateSettingsAndWait: (patch: Partial<AppSettings>) => Promise<void>;
 };
 
 export function ProvidersSettingsPanel({
   settings,
   defaults,
   updateSettings,
+  updateSettingsAndWait,
   active,
   resetEpoch,
 }: ProvidersSettingsPanelProps) {
@@ -966,11 +968,18 @@ export function ProvidersSettingsPanel({
   const [updatingProviders, setUpdatingProviders] = useState<ReadonlySet<ProviderKind>>(
     () => new Set(),
   );
+  const providerEnablementMutationInFlightRef = useRef(false);
+  const [providerEnablementMutationPending, setProviderEnablementMutationPending] = useState(false);
   const hiddenProviderSet = useMemo(
     () => new Set<ProviderKind>(settings.hiddenProviders),
     [settings.hiddenProviders],
   );
   const hiddenProviderCount = hiddenProviderSet.size;
+  const disabledProviderSet = useMemo(
+    () => new Set<ProviderKind>(settings.disabledProviders),
+    [settings.disabledProviders],
+  );
+  const enabledProviderCount = PROVIDER_VISIBILITY_OPTIONS.length - disabledProviderSet.size;
   const providerVisibilityOptionsByProvider = useMemo(
     () => new Map(PROVIDER_VISIBILITY_OPTIONS.map((option) => [option.provider, option])),
     [],
@@ -1025,6 +1034,21 @@ export function ProvidersSettingsPanel({
   );
   const outdatedProviderCount = outdatedProviderStatuses.length;
   const installSettingsDirty = isProviderInstallSettingsDirty(settings, defaults);
+
+  const updateProviderEnablement = useCallback(
+    async (disabledProviders: ProviderKind[]) => {
+      if (providerEnablementMutationInFlightRef.current) return;
+      providerEnablementMutationInFlightRef.current = true;
+      setProviderEnablementMutationPending(true);
+      try {
+        await updateSettingsAndWait({ disabledProviders });
+      } finally {
+        providerEnablementMutationInFlightRef.current = false;
+        setProviderEnablementMutationPending(false);
+      }
+    },
+    [updateSettingsAndWait],
+  );
 
   useSettingsRestoreSignal(resetEpoch, () => {
     setOpenInstallProviders(createClosedProviderInstallDisclosureState());
@@ -1100,25 +1124,101 @@ export function ProvidersSettingsPanel({
 
   return (
     <div className="space-y-6">
-      <SettingsSection title="Provider picker">
+      <SettingsSection title={m.settings.providers.activity.title}>
         <SettingsRow
-          title="Available CLIs"
-          description="Installed providers appear in the picker. Turn off any you don't want to see, and drag them into your preferred order."
+          title={m.settings.providers.activity.enabledTitle}
+          description={m.settings.providers.activity.description}
+          status={
+            providerEnablementMutationPending
+              ? m.settings.providers.activity.saving
+              : m.settings.providers.activity.enabledCount(
+                  enabledProviderCount,
+                  PROVIDER_VISIBILITY_OPTIONS.length,
+                )
+          }
+          resetAction={
+            disabledProviderSet.size > 0 && !providerEnablementMutationPending ? (
+              <SettingResetButton
+                label={m.settings.providers.activity.resetLabel}
+                onClick={() => void updateProviderEnablement([...defaults.disabledProviders])}
+              />
+            ) : null
+          }
+        >
+          <div
+            className={cn(
+              "mt-4",
+              SETTINGS_INSET_LIST_CLASS_NAME,
+              SETTINGS_STACKED_ROWS_DIVIDER_CLASS_NAME,
+            )}
+          >
+            {orderedProviderVisibilityOptions.map((option) => {
+              const enabled = !disabledProviderSet.has(option.provider);
+              return (
+                <SettingsListRow
+                  key={option.provider}
+                  title={
+                    <span className="flex items-center gap-2">
+                      <ProviderIcon provider={option.provider} className="size-4 shrink-0" />
+                      <span>{option.title}</span>
+                    </span>
+                  }
+                  description={
+                    enabled
+                      ? m.settings.providers.activity.allowed
+                      : m.settings.providers.activity.disabled
+                  }
+                  actions={
+                    <Switch
+                      checked={enabled}
+                      disabled={!serverSettingsQuery.data || providerEnablementMutationPending}
+                      onCheckedChange={(checked) =>
+                        void updateProviderEnablement(
+                          setProviderListMembership(
+                            settings.disabledProviders,
+                            option.provider,
+                            !Boolean(checked),
+                          ),
+                        )
+                      }
+                      aria-label={
+                        enabled
+                          ? m.settings.providers.activity.disable(option.title)
+                          : m.settings.providers.activity.enable(option.title)
+                      }
+                    />
+                  }
+                />
+              );
+            })}
+          </div>
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection title={m.settings.providers.picker.title}>
+        <SettingsRow
+          title={m.settings.providers.picker.visible.title}
+          anchorKey="providers:visible-providers"
+          description={m.settings.providers.picker.visible.description}
           status={
             serverConfigQuery.isPending || hasPendingProviderStatuses
-              ? "Checking installed CLIs"
+              ? m.settings.providers.picker.checking
               : availableProviderCount === 0
-                ? "No CLIs detected"
+                ? m.settings.providers.picker.noneInstalled
                 : visibleAvailableProviderCount < availableProviderCount
-                  ? `${visibleAvailableProviderCount} of ${availableProviderCount} installed shown`
-                  : isProviderOrderDirty
-                    ? `${availableProviderCount} installed · custom order`
-                    : `${availableProviderCount} installed`
+                  ? m.settings.providers.picker.shownCount(
+                      visibleAvailableProviderCount,
+                      availableProviderCount,
+                    )
+                  : m.settings.providers.picker.installedCount(
+                      availableProviderCount,
+                      isProviderOrderDirty,
+                    )
           }
           resetAction={
             hiddenProviderCount > 0 || isProviderOrderDirty ? (
               <SettingResetButton
-                label="provider picker"
+                label={m.settings.providers.picker.visible.resetLabel}
                 onClick={() =>
                   updateSettings({
                     hiddenProviders: defaults.hiddenProviders,
@@ -1149,7 +1249,7 @@ export function ProvidersSettingsPanel({
                     isHidden={hiddenProviderSet.has(option.provider)}
                     onHiddenChange={(hidden) =>
                       updateSettings({
-                        hiddenProviders: setProviderHidden(
+                        hiddenProviders: setProviderListMembership(
                           settings.hiddenProviders,
                           option.provider,
                           hidden,
@@ -1246,67 +1346,6 @@ export function ProvidersSettingsPanel({
           </SettingsRow>
         </SettingsSection>
       </div>
-
-      <SettingsSection title={m.settings.providers.picker.title}>
-        <SettingsRow
-          title={m.settings.providers.picker.visible.title}
-          anchorKey="providers:visible-providers"
-          description={m.settings.providers.picker.visible.description}
-          status={
-            hiddenProviderCount > 0
-              ? m.settings.providers.picker.hiddenCount(hiddenProviderCount)
-              : isProviderOrderDirty
-                ? m.settings.providers.picker.customOrder
-                : m.settings.providers.picker.allVisible
-          }
-          resetAction={
-            hiddenProviderCount > 0 || isProviderOrderDirty ? (
-              <SettingResetButton
-                label={m.settings.providers.picker.visible.resetLabel}
-                onClick={() =>
-                  updateSettings({
-                    hiddenProviders: defaults.hiddenProviders,
-                    providerOrder: defaults.providerOrder,
-                  })
-                }
-              />
-            ) : null
-          }
-        >
-          <DndContext
-            sensors={providerVisibilitySensors}
-            collisionDetection={closestCenter}
-            modifiers={[restrictToVerticalAxis]}
-            onDragEnd={handleProviderOrderDragEnd}
-          >
-            <SortableContext
-              items={orderedProviderVisibilityOptions.map((option) => option.provider)}
-              strategy={verticalListSortingStrategy}
-            >
-              <div className="mt-4 space-y-2">
-                {orderedProviderVisibilityOptions.map((option) => (
-                  <SortableProviderVisibilityRow
-                    key={option.provider}
-                    option={option}
-                    providerStatus={providerStatusByProvider.get(option.provider)}
-                    statusReconciled={providerStatusesReconciled}
-                    isHidden={hiddenProviderSet.has(option.provider)}
-                    onHiddenChange={(hidden) =>
-                      updateSettings({
-                        hiddenProviders: setProviderHidden(
-                          settings.hiddenProviders,
-                          option.provider,
-                          hidden,
-                        ),
-                      })
-                    }
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-        </SettingsRow>
-      </SettingsSection>
 
       <div>
         <SettingsSection title={m.settings.providers.tools.title}>

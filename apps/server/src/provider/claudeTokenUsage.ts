@@ -5,9 +5,11 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ThreadTokenUsageSnapshot } from "@synara/contracts";
 import {
+  getClaudeContextWindowSuffix,
   getDefaultAutoCompactWindow,
   getModelCapabilities,
   hasAutoCompactWindowOption,
+  stripClaudeContextWindowSuffix,
   trimOrNull,
 } from "@synara/shared/model";
 
@@ -18,6 +20,12 @@ export const CLAUDE_CONTEXT_WINDOW_MAX_TOKENS = {
   "200k": 200_000,
   "1m": 1_000_000,
 } as const;
+
+function claudeContextWindowTokensForOption(value: string | null): number | undefined {
+  return value !== null && Object.hasOwn(CLAUDE_CONTEXT_WINDOW_MAX_TOKENS, value)
+    ? CLAUDE_CONTEXT_WINDOW_MAX_TOKENS[value as keyof typeof CLAUDE_CONTEXT_WINDOW_MAX_TOKENS]
+    : undefined;
+}
 
 const CLAUDE_DEFAULT_CONTEXT_WINDOW_TOKENS = 200_000;
 const CLAUDE_CONTEXT_WARNING_RATIO = 0.8;
@@ -93,10 +101,6 @@ export function withClaudeModelContextWindow(
 ): ThreadTokenUsageSnapshot {
   const tokens = positiveFiniteNumber(contextWindowTokens);
   return tokens === undefined ? usage : { ...usage, contextWindowTokens: tokens };
-}
-
-export function stripClaudeContextWindowSuffix(apiModelId: string): string {
-  return apiModelId.replace(/\[[^\]]+\]$/u, "");
 }
 
 export function normalizeClaudeTokenUsage(
@@ -176,22 +180,19 @@ export function resolveClaudeApiModelIdContextWindowMaxTokens(
   }
   const slug = stripClaudeContextWindowSuffix(apiModelId);
   const caps = getModelCapabilities("claudeAgent", slug);
-  // models.dev leads: a model released after this build shipped has no local
-  // entry at all, and a window revised mid-generation would otherwise stay
-  // wrong until the next release. The built-in table remains the offline
-  // baseline for a cold cache or an unreachable catalog.
   const capacity =
     positiveFiniteNumber(readCachedCloudModelContextWindow("claudeAgent", slug)) ??
     positiveFiniteNumber(caps.contextWindowTokens);
+  const qualifiedWindow = claudeContextWindowTokensForOption(
+    getClaudeContextWindowSuffix(apiModelId),
+  );
+  if (qualifiedWindow !== undefined) {
+    return capacity === undefined ? qualifiedWindow : Math.min(capacity, qualifiedWindow);
+  }
   if (capacity === undefined) {
     return undefined;
   }
-  // The catalogued capacity is the model's *extended* window, which Claude Code
-  // only serves under the `[1m]` model id. Addressed by its plain slug the very
-  // same model runs at the standard 200k window, so reporting 1M here would
-  // present a 200k session as five times larger than it is.
-  const runsExtendedWindow = /1m/iu.test(apiModelId.slice(slug.length));
-  return !runsExtendedWindow && hasAutoCompactWindowOption(caps, "1m")
+  return hasAutoCompactWindowOption(caps, "1m")
     ? Math.min(capacity, CLAUDE_CONTEXT_WINDOW_MAX_TOKENS["200k"])
     : capacity;
 }
@@ -201,22 +202,17 @@ export function resolveSelectedClaudeAutoCompactWindow(
   selectedAutoCompactWindow: string | null | undefined,
 ): number | undefined {
   const caps = getModelCapabilities("claudeAgent", model);
-  const resolvedAutoCompactWindow =
-    trimOrNull(selectedAutoCompactWindow) ?? getDefaultAutoCompactWindow(caps) ?? null;
+  const selected = trimOrNull(selectedAutoCompactWindow);
+  // Only an explicit override is pinned; the model-native window is left to
+  // Claude Code's own resolution (server tuning, settings.json, env override).
   if (
-    !resolvedAutoCompactWindow ||
-    !hasAutoCompactWindowOption(caps, resolvedAutoCompactWindow) ||
-    !Object.prototype.hasOwnProperty.call(
-      CLAUDE_CONTEXT_WINDOW_MAX_TOKENS,
-      resolvedAutoCompactWindow,
-    )
+    !selected ||
+    selected === getDefaultAutoCompactWindow(caps) ||
+    !hasAutoCompactWindowOption(caps, selected)
   ) {
     return undefined;
   }
-
-  return CLAUDE_CONTEXT_WINDOW_MAX_TOKENS[
-    resolvedAutoCompactWindow as keyof typeof CLAUDE_CONTEXT_WINDOW_MAX_TOKENS
-  ];
+  return claudeContextWindowTokensForOption(selected);
 }
 
 export function resolveEffectiveClaudeContextWindow(input: {

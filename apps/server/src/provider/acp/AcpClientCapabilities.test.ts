@@ -16,7 +16,9 @@ describe("standard ACP client capabilities", () => {
     const handlers = await Effect.runPromise(makeStandardAcpClientHandlers(scope));
 
     await expect(
-      Effect.runPromise(handlers.readTextFile({ sessionId: "s", path: filePath, line: 2, limit: 1 })),
+      Effect.runPromise(
+        handlers.readTextFile({ sessionId: "s", path: filePath, line: 2, limit: 1 }),
+      ),
     ).resolves.toEqual({ content: "two\n" });
     await Effect.runPromise(
       handlers.writeTextFile({ sessionId: "s", path: filePath, content: "updated" }),
@@ -45,14 +47,18 @@ describe("standard ACP client capabilities", () => {
       ),
     ).resolves.toMatchObject({ exitCode: 0 });
     await expect(
-      Effect.runPromise(handlers.terminalOutput({ sessionId: "s", terminalId: created.terminalId })),
+      Effect.runPromise(
+        handlers.terminalOutput({ sessionId: "s", terminalId: created.terminalId }),
+      ),
     ).resolves.toEqual(expect.objectContaining({ output: "56789", truncated: true }));
     await Effect.runPromise(
       handlers.terminalRelease({ sessionId: "s", terminalId: created.terminalId }),
     );
     await expect(
       Effect.runPromise(
-        handlers.terminalOutput({ sessionId: "s", terminalId: created.terminalId }).pipe(Effect.flip),
+        handlers
+          .terminalOutput({ sessionId: "s", terminalId: created.terminalId })
+          .pipe(Effect.flip),
       ),
     ).resolves.toMatchObject({ message: expect.stringContaining("Unknown terminal id") });
 

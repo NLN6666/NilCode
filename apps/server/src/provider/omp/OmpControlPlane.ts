@@ -57,7 +57,9 @@ export function getOmpRuntimeStatus(): OmpProviderRuntimeStatus | undefined {
       ? {
           launch: {
             authority: "omp",
-            services: [...new Map(services.map((service) => [service.serviceId, service])).values()],
+            services: [
+              ...new Map(services.map((service) => [service.serviceId, service])).values(),
+            ],
           },
         }
       : {}),
@@ -173,7 +175,9 @@ function resolveMemoryBackend(
     return { backend: configured, source: "user-config" };
   }
   if (configured === "hindsight") {
-    const apiUrl = nonEmptyString(env.HINDSIGHT_API_URL) ?? nonEmptyString(nestedValue(config, "hindsight", "apiUrl"));
+    const apiUrl =
+      nonEmptyString(env.HINDSIGHT_API_URL) ??
+      nonEmptyString(nestedValue(config, "hindsight", "apiUrl"));
     if (apiUrl) return { backend: "hindsight", source: "user-config" };
   }
   return { backend: "local", source: "synara-fallback" };
@@ -190,8 +194,8 @@ export function buildOmpControlPlanePlan(input: {
   const advisorRole = parseModelRole(modelRoles.advisor);
   const advisorWarning = advisorRole
     ? parsed.warning
-    : parsed.warning ??
-      "OMP Advisor is enabled, but modelRoles.advisor is missing or invalid. Configure that role and retry; Synara will not guess a current-model fallback.";
+    : (parsed.warning ??
+      "OMP Advisor is enabled, but modelRoles.advisor is missing or invalid. Configure that role and retry; Synara will not guess a current-model fallback.");
 
   const lines = [
     "launch:",
@@ -260,10 +264,12 @@ async function readFirstExisting(paths: ReadonlyArray<string>): Promise<string |
   return null;
 }
 
-export async function inspectOmpControlPlane(input: {
-  readonly homeDir?: string;
-  readonly env?: NodeJS.ProcessEnv;
-} = {}): Promise<OmpControlPlanePlan> {
+export async function inspectOmpControlPlane(
+  input: {
+    readonly homeDir?: string;
+    readonly env?: NodeJS.ProcessEnv;
+  } = {},
+): Promise<OmpControlPlanePlan> {
   const paths = resolveOmpControlPlanePaths(input.homeDir);
   const globalConfigText = await readFirstExisting(paths.globalConfigPaths);
   const plan = buildOmpControlPlanePlan({
@@ -303,10 +309,12 @@ async function writeOverlayAtomically(path: string, content: string): Promise<bo
   }
 }
 
-export async function prepareOmpControlPlane(input: {
-  readonly homeDir?: string;
-  readonly env?: NodeJS.ProcessEnv;
-} = {}): Promise<PreparedOmpControlPlane> {
+export async function prepareOmpControlPlane(
+  input: {
+    readonly homeDir?: string;
+    readonly env?: NodeJS.ProcessEnv;
+  } = {},
+): Promise<PreparedOmpControlPlane> {
   const plan = await inspectOmpControlPlane(input);
   const overlayWritten = await writeOverlayAtomically(plan.overlayPath, plan.overlayContent);
   return { ...plan, overlayWritten };
@@ -345,7 +353,9 @@ export async function waitForOmpTurnSettle(input: {
   readonly signal?: AbortSignal;
 }): Promise<OmpTurnSettleResult> {
   const now = input.now ?? Date.now;
-  const sleep = input.sleep ?? ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  const sleep =
+    input.sleep ??
+    ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
   const startedAt = now();
   let quietSince: number | undefined;
   let quietActivityVersion: number | undefined;

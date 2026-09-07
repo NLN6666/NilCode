@@ -18,6 +18,12 @@ export const sidebar = {
     showMore: "Show more",
     showLess: "Show less",
     cancel: "Cancel",
+    customize: "Customize",
+    customizeSidebar: "Customize sidebar",
+    done: "Done",
+    hideItem: (label: string) => `Hide ${label} from the sidebar`,
+    showItem: (label: string) => `Show ${label} in the sidebar`,
+    reorderItem: (label: string) => `Reorder ${label}`,
   },
 
   sort: {

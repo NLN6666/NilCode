@@ -92,16 +92,16 @@ STOP：无法取得或安全修改 OMP 源码；官方架构无法从真实 owne
 
 ## 6. TDD seams 与矩阵
 
-| Seam | Red/green 行为 |
-| --- | --- |
-| ACP extension wire | capability v1 decode；method-not-found/timeout/malformed/unknown version degrade；notification schema 与有界 frame |
-| control-plane state | generation/sequence dedupe；stale resume/new 拒绝；redaction；typed error；feature matrix |
-| Advisor | typed status/note/drain；severity/delivery/correlation；write/exec risk；现有 activity/card 来源标识 |
-| Auto-Learn | started/completed/failed/cancelled；deadline/cancel drain；fallback settle不假称完成 |
-| Memory | status/stats/diagnose；enqueue；confirmation challenge；共享 profile destructive guard |
-| Launch | list/describe/logs/send/stop/restart；bounded cursor；lifecycle；OMP authority；不进 daemon broker |
-| lifecycle | stopSession/stopAll/server stop/crash/resume/load 幂等、无 stale、无无限等待 |
-| Web | live typed、degraded stock fallback、scope/backend/queue/error、authority/source、危险确认 |
+| Seam                | Red/green 行为                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| ACP extension wire  | capability v1 decode；method-not-found/timeout/malformed/unknown version degrade；notification schema 与有界 frame |
+| control-plane state | generation/sequence dedupe；stale resume/new 拒绝；redaction；typed error；feature matrix                          |
+| Advisor             | typed status/note/drain；severity/delivery/correlation；write/exec risk；现有 activity/card 来源标识               |
+| Auto-Learn          | started/completed/failed/cancelled；deadline/cancel drain；fallback settle不假称完成                               |
+| Memory              | status/stats/diagnose；enqueue；confirmation challenge；共享 profile destructive guard                             |
+| Launch              | list/describe/logs/send/stop/restart；bounded cursor；lifecycle；OMP authority；不进 daemon broker                 |
+| lifecycle           | stopSession/stopAll/server stop/crash/resume/load 幂等、无 stale、无无限等待                                       |
+| Web                 | live typed、degraded stock fallback、scope/backend/queue/error、authority/source、危险确认                         |
 
 NilCode 只用 `bun run test` 的 focused 命令。`bun fmt`、`bun lint`、`bun typecheck` 未授权，最终必须标 `NOT RUN`。
 
@@ -114,24 +114,24 @@ NilCode 只用 `bun run test` 的 focused 命令。`bun fmt`、`bun lint`、`bun
 
 ## 8. 验收台账
 
-| 项目 | 状态 | 证据 |
-| --- | --- | --- |
-| W0 官方 current/release/binary | DONE | current `ad318c7` / release 17.3.3；stock 17.3.2 无 typed API |
-| OMP checkout/base/remote | DONE | `D:/Codes/oh-my-pi-phase3` / official remote / `ad318c7` |
-| 协议 v1 schemas + negotiation | DONE | 同一 ACP connection；strict v1 + additive fields；unknown major fail closed |
-| Advisor typed + projection | DONE | real blocker note seq=2；drain seq=4；Synara Advisor source=OMP |
-| Auto-Learn typed + projection | DONE | real started/completed + typed drain/status |
-| Memory typed + projection | DONE | status/stats/diagnose + isolated enqueue/clear challenge |
-| Launch typed + projection | DONE | isolated full lifecycle + bounded logs；Services authority=OMP |
-| stock fallback/version drift | DONE | 17.3.2 method-not-found -> Phase 2 configured-only |
-| fake/fixture focused tests | DONE | OMP/NilCode protocol, control-plane, contracts, Web projection suites |
-| patched OMP focused tests/build | DONE WITH LIMIT | TS build + official cached 17.3.3 native addon；formal native build metadata stalled |
-| isolated real dual-end validation | DONE | raw ACP probes + isolated Synara browser/server projection |
-| root/descendant cleanup | DONE | temp removed；58919/8891 listeners=0；patched OMP processes=0 |
-| one independent review | DONE | 双仓只读 review；1 个 queue-full/drain truthful P1 |
-| one consolidated fix | DONE | per-generation dropped backpressure + red→green regression |
-| fresh verification + diff check | DONE | OMP 33/33 + types/build；NilCode 58+1+11+3 + 3 builds；两仓 diff check |
-| heavyweight gates | NOT RUN (UNAUTHORIZED) | `bun fmt` / `bun lint` / `bun typecheck` |
+| 项目                              | 状态                   | 证据                                                                                 |
+| --------------------------------- | ---------------------- | ------------------------------------------------------------------------------------ |
+| W0 官方 current/release/binary    | DONE                   | current `ad318c7` / release 17.3.3；stock 17.3.2 无 typed API                        |
+| OMP checkout/base/remote          | DONE                   | `D:/Codes/oh-my-pi-phase3` / official remote / `ad318c7`                             |
+| 协议 v1 schemas + negotiation     | DONE                   | 同一 ACP connection；strict v1 + additive fields；unknown major fail closed          |
+| Advisor typed + projection        | DONE                   | real blocker note seq=2；drain seq=4；Synara Advisor source=OMP                      |
+| Auto-Learn typed + projection     | DONE                   | real started/completed + typed drain/status                                          |
+| Memory typed + projection         | DONE                   | status/stats/diagnose + isolated enqueue/clear challenge                             |
+| Launch typed + projection         | DONE                   | isolated full lifecycle + bounded logs；Services authority=OMP                       |
+| stock fallback/version drift      | DONE                   | 17.3.2 method-not-found -> Phase 2 configured-only                                   |
+| fake/fixture focused tests        | DONE                   | OMP/NilCode protocol, control-plane, contracts, Web projection suites                |
+| patched OMP focused tests/build   | DONE WITH LIMIT        | TS build + official cached 17.3.3 native addon；formal native build metadata stalled |
+| isolated real dual-end validation | DONE                   | raw ACP probes + isolated Synara browser/server projection                           |
+| root/descendant cleanup           | DONE                   | temp removed；58919/8891 listeners=0；patched OMP processes=0                        |
+| one independent review            | DONE                   | 双仓只读 review；1 个 queue-full/drain truthful P1                                   |
+| one consolidated fix              | DONE                   | per-generation dropped backpressure + red→green regression                           |
+| fresh verification + diff check   | DONE                   | OMP 33/33 + types/build；NilCode 58+1+11+3 + 3 builds；两仓 diff check               |
+| heavyweight gates                 | NOT RUN (UNAUTHORIZED) | `bun fmt` / `bun lint` / `bun typecheck`                                             |
 
 ## 9. 提交与发布边界
 

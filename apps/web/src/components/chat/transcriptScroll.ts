@@ -1,6 +1,35 @@
 import { type LegendListRef } from "@legendapp/list/react";
 import { type RefObject } from "react";
 
+export type TranscriptScrollTarget = Pick<LegendListRef, "scrollToEnd">;
+export type TranscriptScrollCancellationTarget = Pick<
+  LegendListRef,
+  "getScrollableNode" | "scrollToOffset"
+>;
+
+/** Stop an in-flight native smooth scroll without changing the visible offset. */
+export function stopTranscriptScrollAtCurrentOffset(
+  target: TranscriptScrollCancellationTarget,
+): Promise<void> {
+  const scrollNode = target.getScrollableNode();
+  const offset = scrollNode.scrollTop;
+  scrollNode.scrollTo({ top: offset, behavior: "auto" });
+  return target.scrollToOffset({ offset, animated: false });
+}
+
+/** Settle a requested jump after list measurement, unless its owner cancelled it. */
+export async function scrollTranscriptToSettledEnd(input: {
+  readonly target: TranscriptScrollTarget;
+  readonly isCurrent: () => boolean;
+  readonly beforeFinalScroll?: () => void;
+}): Promise<boolean> {
+  await input.target.scrollToEnd({ animated: true });
+  if (!input.isCurrent()) return false;
+  input.beforeFinalScroll?.();
+  await input.target.scrollToEnd({ animated: false });
+  return input.isCurrent();
+}
+
 /**
  * The element that actually scrolls the transcript, resolved through the list
  * handle. Module-level and taking the ref object (never a `.current` read at the

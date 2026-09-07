@@ -89,6 +89,7 @@ import {
   AutomationApprovalBanner,
   AutomationModelPicker,
   automationIntervalPresetOptions,
+  automationTargetThreads,
   canCancelAutomationRun,
   datetimeLocalFromIso,
   formatRelativeTime,
@@ -398,7 +399,7 @@ function AutomationDetailView() {
   // Mode changes: switching to heartbeat must patch {mode, targetThreadId} atomically
   // (the server refuses a heartbeat without a target), and leaving a mode that holds a
   // thread deserves a confirm — the automation stops writing to it, the thread stays.
-  const projectThreads = threads.filter((thread) => thread.projectId === definition.projectId);
+  const projectThreads = automationTargetThreads(threads, definition.projectId);
   const requestModeChange = (nextMode: AutomationDefinition["mode"]) => {
     if (nextMode === definition.mode) return;
     if (nextMode === "heartbeat") {
@@ -571,12 +572,12 @@ function AutomationDetailView() {
                   }
                   title={
                     pendingProposal
-                        ? copy.runBlocked.pendingProposal
-                        : stoppedAfterFailures
-                          ? copy.runBlocked.reEnable
-                          : approvalGaps.runBlockingWarnings.length > 0
-                            ? copy.runBlocked.needsApproval
-                            : undefined
+                      ? copy.runBlocked.pendingProposal
+                      : stoppedAfterFailures
+                        ? copy.runBlocked.reEnable
+                        : approvalGaps.runBlockingWarnings.length > 0
+                          ? copy.runBlocked.needsApproval
+                          : undefined
                   }
                   onClick={() => runNowMutation.mutate(definition)}
                 >
@@ -892,8 +893,7 @@ function AutomationDetailView() {
                           value: "heartbeat",
                           label: copy.mode.heartbeat,
                           disabled: projectThreads.length === 0,
-                          title:
-                            projectThreads.length === 0 ? copy.dialog.noThreads : undefined,
+                          title: projectThreads.length === 0 ? copy.dialog.noThreads : undefined,
                         },
                       ]}
                       disabled={!editable}
@@ -1055,9 +1055,7 @@ function AutomationDetailView() {
         }}
         anchor={worktreeAnchorRef}
         title={pendingWorktreeWarning?.title ?? copy.riskConfirm.localCheckoutTitle}
-        detail={
-          pendingWorktreeWarning?.detail ?? copy.riskConfirm.localCheckoutDetail
-        }
+        detail={pendingWorktreeWarning?.detail ?? copy.riskConfirm.localCheckoutDetail}
         confirmLabel={
           pendingWorktreeChange
             ? copy.riskConfirm.switchTo(worktreeModeLabel(pendingWorktreeChange, copy.worktreeMode))
@@ -1080,9 +1078,7 @@ function AutomationDetailView() {
           pendingModeChange?.mode === "heartbeat"
             ? copy.riskConfirm.continueThreadDetail
             : copy.riskConfirm.releaseThreadDetail(
-                continuedThreadTitle
-                  ? `“${continuedThreadTitle}”`
-                  : copy.riskConfirm.unnamedThread,
+                continuedThreadTitle ? `“${continuedThreadTitle}”` : copy.riskConfirm.unnamedThread,
               )
         }
         confirmLabel={

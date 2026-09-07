@@ -8,12 +8,12 @@ import { Effect, Layer } from "effect";
 
 import { GitHubCliError } from "../../git/Errors";
 import { GitCore } from "../../git/Services/GitCore";
-import {
-  GitHubCli,
-  type GitHubCliShape,
-} from "../../git/Services/GitHubCli";
+import { GitHubCli, type GitHubCliShape } from "../../git/Services/GitHubCli";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery";
-import { resolveGitHubRepositories, type GitHubRepositoryInventory } from "../../pullRequests/repositoryResolution";
+import {
+  resolveGitHubRepositories,
+  type GitHubRepositoryInventory,
+} from "../../pullRequests/repositoryResolution";
 import {
   GitHubReferenceService,
   type GitHubReferenceServiceShape,
@@ -74,9 +74,9 @@ export function makeGitHubReferenceService(
       Effect.flatMap((projects) => {
         const project = projects.find((candidate) => candidate.id === projectId);
         return project
-          ? dependencies.resolveRepositories(project).pipe(
-              Effect.map((inventory) => ({ project, inventory })),
-            )
+          ? dependencies
+              .resolveRepositories(project)
+              .pipe(Effect.map((inventory) => ({ project, inventory })))
           : Effect.fail(
               unavailable("repository-unavailable", "The selected project is not available."),
             );
@@ -195,11 +195,13 @@ export const GitHubReferenceServiceLive = Layer.effect(
     return makeGitHubReferenceService({
       github,
       listProjects: () =>
-        projection.getShellSnapshot().pipe(
-          Effect.map((snapshot) =>
-            snapshot.projects.map((project) => ({ ...project, deletedAt: null })),
+        projection
+          .getShellSnapshot()
+          .pipe(
+            Effect.map((snapshot) =>
+              snapshot.projects.map((project) => ({ ...project, deletedAt: null })),
+            ),
           ),
-        ),
       resolveRepositories: (project) => resolveGitHubRepositories(git, project.workspaceRoot),
     });
   }),

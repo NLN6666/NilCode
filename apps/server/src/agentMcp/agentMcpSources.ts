@@ -20,7 +20,6 @@ import {
   CLAUDE_JSON_MCP_DIALECT,
   DROID_JSON_MCP_DIALECT,
   type JsonMcpDialect,
-  KILO_JSON_MCP_DIALECT,
   OPENCODE_JSON_MCP_DIALECT,
 } from "./jsonMcpDocument";
 import {
@@ -30,7 +29,6 @@ import {
   parseCodexMcpServerConnections,
   parseDroidMcpServerConnections,
   parseGrokMcpServerConnections,
-  parseKiloMcpServerConnections,
   parseOpenCodeMcpServerConnections,
 } from "./mcpConfigParser";
 
@@ -46,7 +44,7 @@ export interface AgentMcpSourceSpec {
   readonly apply: (text: string, name: string, enabled: boolean) => string;
 }
 
-/** `$XDG_CONFIG_HOME`, or `~/.config` — where OpenCode and Kilo both keep their config. */
+/** `$XDG_CONFIG_HOME`, or `~/.config` — where OpenCode keeps its config. */
 function xdgConfigHome(input: AgentMcpConfigPathInput): string {
   const configured = (input.env ?? process.env)["XDG_CONFIG_HOME"]?.trim();
   return configured && configured.length > 0 ? configured : join(home(input), ".config");
@@ -97,12 +95,6 @@ export const AGENT_MCP_SOURCE_SPECS: Record<AgentMcpProvider, AgentMcpSourceSpec
     resolveConfigPath: (input) => join(xdgConfigHome(input), "opencode", "opencode.json"),
     parse: parseOpenCodeMcpServerConnections,
     apply: jsonApply(OPENCODE_JSON_MCP_DIALECT),
-  },
-  kilo: {
-    provider: "kilo",
-    resolveConfigPath: (input) => join(xdgConfigHome(input), "kilo", "kilo.jsonc"),
-    parse: parseKiloMcpServerConnections,
-    apply: jsonApply(KILO_JSON_MCP_DIALECT),
   },
 };
 

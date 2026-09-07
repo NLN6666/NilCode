@@ -59,11 +59,14 @@ export const pullRequests = {
     mergeStackTitle: (count: number) =>
       `Merge ${count} ${count === 1 ? "pull request" : "pull requests"}?`,
     mergeStack: "Merge stack",
-    mergeStackDescription: (number: number, baseBranch: string, method: string, retargets: boolean) =>
+    mergeStackDescription: (
+      number: number,
+      baseBranch: string,
+      method: string,
+      retargets: boolean,
+    ) =>
       `This will atomically merge every open pull request through #${number} into ${baseBranch} using ${method}.${
-        retargets
-          ? " Pull requests above it will remain open and GitHub will retarget them."
-          : ""
+        retargets ? " Pull requests above it will remain open and GitHub will retarget them." : ""
       }`,
   },
 

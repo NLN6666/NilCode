@@ -32,8 +32,8 @@ async function mountMenu(props?: {
       advisorOverride={props?.advisorOverride ?? null}
       onAddAttachments={onAddAttachments}
       onToggleFastMode={onToggleFastMode}
-        onInteractionModeChange={onInteractionModeChange}
-        onSetAdvisorOverride={onSetAdvisorOverride}
+      onInteractionModeChange={onInteractionModeChange}
+      onSetAdvisorOverride={onSetAdvisorOverride}
     />,
     { container: host },
   );

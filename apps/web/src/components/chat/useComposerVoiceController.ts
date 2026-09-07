@@ -6,7 +6,7 @@
 import { type ProviderKind, type ServerProviderStatus, type ThreadId } from "@synara/contracts";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import type { Project } from "../../types";
+import type { ProjectMetadata } from "../../types";
 import {
   formatVoiceRecordingDuration,
   isVoiceRecordingCancelledError,
@@ -35,7 +35,7 @@ interface ComposerVoiceGuardDetails {
 }
 
 export interface UseComposerVoiceControllerOptions {
-  activeProject: Project | undefined;
+  activeProject: ProjectMetadata | undefined;
   activeThreadId: ThreadId | null;
   threadId: ThreadId;
   selectedProvider: ProviderKind;

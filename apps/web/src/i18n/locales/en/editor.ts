@@ -34,6 +34,23 @@ export const editor = {
     selectFromExplorer: "Select a file from the explorer.",
     commentOnLine: (line: number) => `Comment on line ${line}`,
     comment: "Comment",
+    externalChangePreserved: "This file changed on disk. Your unsaved edits are preserved.",
+    reloadFromDisk: "Reload from disk",
+    refreshing: "Refreshing file...",
+    refreshDelayed: "File refresh delayed.",
+    refreshFailed: "Could not refresh file.",
+    reloadFailed: "Could not reload this file from disk.",
+    saveFailed: "Could not save this file.",
+    savingUnavailable: "File saving is unavailable.",
+    outsideProjectReadOnly: "Only files inside the project can be edited.",
+    largeFileReadOnly: "Large files are read-only.",
+    mixedLineEndingsReadOnly:
+      "Files with mixed line endings are read-only to preserve their exact format.",
+    formatReadOnly: "This file format is read-only.",
+    previewGrantFailed: "Could not create local file preview grant.",
+    readFailed: "Could not read file.",
+    editFile: (path: string) => `Edit ${path}`,
+    lineCount: (count: number) => `${count} lines`,
   },
 
   image: {

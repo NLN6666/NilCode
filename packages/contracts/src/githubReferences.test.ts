@@ -47,9 +47,7 @@ describe("GitHub reference search contracts", () => {
       query: "auth",
       limit: 20,
     });
-    expect(() =>
-      decodeSearchInput({ projectId: "project-1", query: "auth", limit: 21 }),
-    ).toThrow();
+    expect(() => decodeSearchInput({ projectId: "project-1", query: "auth", limit: 21 })).toThrow();
 
     expect(
       decodeSearchResult({

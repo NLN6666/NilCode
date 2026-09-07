@@ -16,7 +16,6 @@ describe("composerEffortOptionId", () => {
     expect(composerEffortOptionId("codex")).toBe("reasoningEffort");
     expect(composerEffortOptionId("claudeAgent")).toBe("effort");
     expect(composerEffortOptionId("pi")).toBe("thinkingLevel");
-    expect(composerEffortOptionId("kilo")).toBe("variant");
     expect(composerEffortOptionId("opencode")).toBe("variant");
     expect(composerEffortOptionId("cursor")).toBe("reasoningEffort");
     expect(composerEffortOptionId("antigravity")).toBe("reasoningEffort");

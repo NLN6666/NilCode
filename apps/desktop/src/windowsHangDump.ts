@@ -68,7 +68,11 @@ function isPositivePid(pid: number): boolean {
 }
 
 function safeErrorSummary(value: unknown): string {
-  return String(value).replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 512);
+  return String(value)
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 512);
 }
 
 function assertOwnedIncidentId(incidentId: string): void {
@@ -95,13 +99,21 @@ function verifyDiagnosticsRoot(rootReference: string, expectedRealPath?: string)
   }
   const realPath = fs.realpathSync(reference);
   const realStats = fs.lstatSync(realPath);
-  if (!realStats.isDirectory() || realStats.isSymbolicLink() || (expectedRealPath && realPath !== expectedRealPath)) {
+  if (
+    !realStats.isDirectory() ||
+    realStats.isSymbolicLink() ||
+    (expectedRealPath && realPath !== expectedRealPath)
+  ) {
     throw new Error("Hang diagnostics directory changed while capturing.");
   }
   return realPath;
 }
 
-function resolveVerifiedOwnedPath(rootReference: string, expectedRealPath: string, filename: string): string {
+function resolveVerifiedOwnedPath(
+  rootReference: string,
+  expectedRealPath: string,
+  filename: string,
+): string {
   const diagnosticsDir = verifyDiagnosticsRoot(rootReference, expectedRealPath);
   const candidate = resolveContainedPath(diagnosticsDir, filename);
   if (fs.existsSync(candidate) && !fs.lstatSync(candidate).isFile()) {
@@ -115,7 +127,7 @@ function dumpScript(): string {
     "$ErrorActionPreference = 'Stop'",
     "$ProgressPreference = 'SilentlyContinue'",
     "$request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:SYNARA_HANG_DUMP_REQUEST)) | ConvertFrom-Json",
-    "$target = Get-CimInstance Win32_Process -Filter \"ProcessId = $($request.pid)\"",
+    '$target = Get-CimInstance Win32_Process -Filter "ProcessId = $($request.pid)"',
     "if ($null -eq $target) { throw 'Target process no longer exists.' }",
     "if ([string]::IsNullOrWhiteSpace($target.ExecutablePath) -or -not ($target.ExecutablePath -ieq $request.executablePath)) { throw 'Target executable identity does not match the current application run.' }",
     "$createdAt = ([DateTime]$target.CreationDate).ToUniversalTime()",
@@ -126,24 +138,24 @@ function dumpScript(): string {
     "using System;",
     "using System.Runtime.InteropServices;",
     "public static class SynaraMiniDump {",
-    "  [DllImport(\"Dbghelp.dll\", SetLastError = true)]",
+    '  [DllImport("Dbghelp.dll", SetLastError = true)]',
     "  public static extern bool MiniDumpWriteDump(IntPtr process, uint processId, IntPtr fileHandle, uint dumpType, IntPtr exceptionParam, IntPtr userStreamParam, IntPtr callbackParam);",
-    "  [DllImport(\"kernel32.dll\", SetLastError = true)]",
+    '  [DllImport("kernel32.dll", SetLastError = true)]',
     "  public static extern IntPtr OpenProcess(uint access, bool inheritHandle, uint processId);",
-    "  [DllImport(\"kernel32.dll\", SetLastError = true)]",
+    '  [DllImport("kernel32.dll", SetLastError = true)]',
     "  public static extern bool CloseHandle(IntPtr handle);",
     "}",
     "'@",
     "$access = 0x0010 -bor 0x0400",
     "$process = [SynaraMiniDump]::OpenProcess($access, $false, [uint32]$request.pid)",
-    "if ($process -eq [IntPtr]::Zero) { throw \"OpenProcess failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())\" }",
+    'if ($process -eq [IntPtr]::Zero) { throw "OpenProcess failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())" }',
     "try {",
     "  $flags = [uint32]0x1160",
     "  if ($request.mode -eq 'full') { $flags = $flags -bor [uint32]0x2 }",
     "  $stream = [IO.File]::Open($request.dumpPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)",
     "  try {",
     "    if (-not [SynaraMiniDump]::MiniDumpWriteDump($process, [uint32]$request.pid, $stream.SafeFileHandle.DangerousGetHandle(), $flags, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero)) {",
-    "      throw \"MiniDumpWriteDump failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())\"",
+    '      throw "MiniDumpWriteDump failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"',
     "    }",
     "  } finally { $stream.Dispose() }",
     "} finally { [void][SynaraMiniDump]::CloseHandle($process) }",
@@ -174,7 +186,13 @@ export function buildPowerShellDumpInvocation(input: {
     "utf8",
   ).toString("base64");
   return {
-    executable: path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+    executable: path.win32.join(
+      systemRoot,
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe",
+    ),
     args: [
       "-NoLogo",
       "-NoProfile",
@@ -239,11 +257,18 @@ async function defaultRunPowerShell(input: {
     child.stderr?.on("data", (chunk: Buffer) => {
       const next = Buffer.concat([stderr, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
       stderr =
-        next.byteLength > MAX_POWERSHELL_OUTPUT_BYTES ? next.subarray(next.byteLength - MAX_POWERSHELL_OUTPUT_BYTES) : next;
+        next.byteLength > MAX_POWERSHELL_OUTPUT_BYTES
+          ? next.subarray(next.byteLength - MAX_POWERSHELL_OUTPUT_BYTES)
+          : next;
     });
     child.once("error", (error) => settle(false, error));
     child.once("close", (code) =>
-      settle(code === 0, stderr.byteLength > 0 ? stderr.toString("utf8") : "PowerShell exited with code " + (code ?? "null") + "."),
+      settle(
+        code === 0,
+        stderr.byteLength > 0
+          ? stderr.toString("utf8")
+          : "PowerShell exited with code " + (code ?? "null") + ".",
+      ),
     );
     timeout = setTimeout(() => {
       child.kill();
@@ -272,7 +297,11 @@ function writeJsonAtomically(
   return filePath;
 }
 
-function validRegularOwnedFile(rootReference: string, diagnosticsDir: string, filename: string): string | null {
+function validRegularOwnedFile(
+  rootReference: string,
+  diagnosticsDir: string,
+  filename: string,
+): string | null {
   if (!HANG_FILE_PATTERN.test(filename)) return null;
   try {
     const candidate = resolveVerifiedOwnedPath(rootReference, diagnosticsDir, filename);
@@ -322,7 +351,9 @@ export function pruneHangDiagnostics(diagnosticsDir: string, retain = 3): void {
   for (const [, group] of staleGroups) {
     for (const filePath of group.files) {
       try {
-        fs.unlinkSync(resolveVerifiedOwnedPath(rootReference, diagnosticsDir, path.basename(filePath)));
+        fs.unlinkSync(
+          resolveVerifiedOwnedPath(rootReference, diagnosticsDir, path.basename(filePath)),
+        );
       } catch {
         // Retention must never make diagnostics fatal.
       }
@@ -346,7 +377,11 @@ export async function writeWindowsHangDump(
     fs.mkdirSync(request.diagnosticsDir, { recursive: true });
     diagnosticsDir = verifyDiagnosticsRoot(request.diagnosticsDir);
     const baseName = HANG_DIAGNOSTIC_PREFIX + request.incidentId;
-    metadataPath = resolveVerifiedOwnedPath(request.diagnosticsDir, diagnosticsDir, baseName + ".json");
+    metadataPath = resolveVerifiedOwnedPath(
+      request.diagnosticsDir,
+      diagnosticsDir,
+      baseName + ".json",
+    );
     dumpPath = resolveVerifiedOwnedPath(request.diagnosticsDir, diagnosticsDir, baseName + ".dmp");
   } catch (error) {
     return {
@@ -389,9 +424,16 @@ export async function writeWindowsHangDump(
         diagnosticsDir,
         path.basename(dumpPath) + "." + randomUUID() + ".tmp",
       );
-      fs.rmSync(resolveVerifiedOwnedPath(request.diagnosticsDir, diagnosticsDir, path.basename(dumpTemporaryPath)), {
-        force: true,
-      });
+      fs.rmSync(
+        resolveVerifiedOwnedPath(
+          request.diagnosticsDir,
+          diagnosticsDir,
+          path.basename(dumpTemporaryPath),
+        ),
+        {
+          force: true,
+        },
+      );
       const outcome = await (dependencies.runPowerShell ?? defaultRunPowerShell)({
         pid: request.target.pid,
         dumpPath: dumpTemporaryPath,
@@ -403,8 +445,20 @@ export async function writeWindowsHangDump(
       if (!outcome.ok) {
         failure = outcome.stderr || "MiniDumpWriteDump failed.";
       } else if (
-        !fs.existsSync(resolveVerifiedOwnedPath(request.diagnosticsDir, diagnosticsDir, path.basename(dumpTemporaryPath))) ||
-        fs.statSync(resolveVerifiedOwnedPath(request.diagnosticsDir, diagnosticsDir, path.basename(dumpTemporaryPath))).size === 0
+        !fs.existsSync(
+          resolveVerifiedOwnedPath(
+            request.diagnosticsDir,
+            diagnosticsDir,
+            path.basename(dumpTemporaryPath),
+          ),
+        ) ||
+        fs.statSync(
+          resolveVerifiedOwnedPath(
+            request.diagnosticsDir,
+            diagnosticsDir,
+            path.basename(dumpTemporaryPath),
+          ),
+        ).size === 0
       ) {
         failure = "MiniDumpWriteDump completed without a non-empty dump.";
       } else {
@@ -417,9 +471,16 @@ export async function writeWindowsHangDump(
     } finally {
       if (!captured && dumpTemporaryPath) {
         try {
-          fs.rmSync(resolveVerifiedOwnedPath(request.diagnosticsDir, diagnosticsDir, path.basename(dumpTemporaryPath)), {
-            force: true,
-          });
+          fs.rmSync(
+            resolveVerifiedOwnedPath(
+              request.diagnosticsDir,
+              diagnosticsDir,
+              path.basename(dumpTemporaryPath),
+            ),
+            {
+              force: true,
+            },
+          );
         } catch {
           // Cleanup is best effort; diagnostics must never reject the caller.
         }
@@ -440,14 +501,21 @@ export async function writeWindowsHangDump(
     lastHeartbeatAtMs: request.lastHeartbeatAtMs,
     detectedAtMs: request.detectedAtMs,
     detectionDelayMs:
-      request.lastHeartbeatAtMs === null ? null : Math.max(0, request.detectedAtMs - request.lastHeartbeatAtMs),
+      request.lastHeartbeatAtMs === null
+        ? null
+        : Math.max(0, request.detectedAtMs - request.lastHeartbeatAtMs),
     dumpMode: request.mode,
     dumpMayContainSensitiveMemory: request.mode === "full",
     captureResult: captured ? "captured" : "failed",
     error: captured ? null : safeErrorSummary(failure ?? "Unknown dump failure."),
   };
   try {
-    metadataPath = writeJsonAtomically(request.diagnosticsDir, diagnosticsDir, path.basename(metadataPath), metadata);
+    metadataPath = writeJsonAtomically(
+      request.diagnosticsDir,
+      diagnosticsDir,
+      path.basename(metadataPath),
+      metadata,
+    );
     pruneHangDiagnostics(diagnosticsDir);
   } catch (error) {
     return {

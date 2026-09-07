@@ -30,6 +30,7 @@ export function DockThreadPane(props: {
 
   return (
     <DeferredChatView
+      hideHeader
       threadId={threadId}
       paneScopeId={dockSidechatPaneScopeId(props.paneId)}
       deferMount={false}

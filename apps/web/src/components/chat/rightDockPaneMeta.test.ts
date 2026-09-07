@@ -1,14 +1,32 @@
 import { describe, expect, it } from "vitest";
 
 import { en } from "~/i18n/locales/en";
-import { getRightDockPaneMeta, resolveRightDockLauncherItems } from "./rightDockPaneMeta";
+import type { ThreadId } from "@synara/contracts";
+import { type RightDockPane } from "~/rightDockStore.logic";
+import {
+  buildRightDockPaneLabelOverrides,
+  getRightDockPaneMeta,
+  resolveRightDockPaneLabel,
+  resolveRightDockLauncherItems,
+} from "./rightDockPaneMeta";
+
+function makePane(
+  input: Partial<RightDockPane> & Pick<RightDockPane, "id" | "kind">,
+): RightDockPane {
+  return {
+    threadId: null,
+    diffTurnId: null,
+    diffFilePath: null,
+    filePath: null,
+    pullRequestProjectId: null,
+    pullRequestRepository: null,
+    pullRequestNumber: null,
+    pullRequestInitialTab: null,
+    ...input,
+  };
+}
 
 describe("getRightDockPaneMeta", () => {
-  it("labels a pane from the active catalog", () => {
-    const labels = en.chat.panes.kinds;
-    expect(getRightDockPaneMeta("explorer", labels).label).toBe("Explorer");
-  });
-
   it("falls back to a neutral label for a kind the catalog does not know", () => {
     const labels = en.chat.panes.kinds;
     // Stale persisted dock state can name a kind that no longer exists.
@@ -136,5 +154,39 @@ describe("resolveRightDockLauncherItems", () => {
         hasReview: false,
       }).map(({ kind }) => kind),
     ).not.toContain("device");
+  });
+});
+
+describe("buildRightDockPaneLabelOverrides", () => {
+  it("uses the embedded sidechat thread title for its hidden-header tab", () => {
+    const pane = makePane({
+      id: "sidechat:thread-child",
+      kind: "sidechat",
+      threadId: "thread-child" as ThreadId,
+    });
+
+    const overrides = buildRightDockPaneLabelOverrides(
+      [pane],
+      [{ id: "thread-child", title: "Investigate the parser" }],
+    );
+
+    expect(resolveRightDockPaneLabel(pane, en.chat.panes.kinds, overrides)).toBe(
+      "Investigate the parser",
+    );
+  });
+
+  it("keeps the generic sidechat label until the child thread is hydrated", () => {
+    const pane = makePane({
+      id: "sidechat:thread-child",
+      kind: "sidechat",
+      threadId: "thread-child" as ThreadId,
+    });
+
+    const overrides = buildRightDockPaneLabelOverrides([pane], []);
+
+    expect(overrides).toBeUndefined();
+    expect(resolveRightDockPaneLabel(pane, en.chat.panes.kinds, overrides)).toBe(
+      en.chat.panes.kinds.sidechat,
+    );
   });
 });

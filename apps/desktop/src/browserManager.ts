@@ -604,6 +604,10 @@ export class DesktopBrowserManager {
     }
   }
 
+  isWebMcpCompatibilityAllowed(webContentsId: number): boolean {
+    return this.sessionPolicy.isWebMcpCompatibilityAllowed(webContentsId);
+  }
+
   subscribe(listener: BrowserStateListener): () => void {
     this.listeners.add(listener);
     return () => {

@@ -1,9 +1,7 @@
 import type { ProjectScript, ServerLocalServerProcess } from "@synara/contracts";
 
 function localServerListensOnPort(server: ServerLocalServerProcess, port: number): boolean {
-  return (
-    server.ports.includes(port) || server.addresses.some((address) => address.port === port)
-  );
+  return server.ports.includes(port) || server.addresses.some((address) => address.port === port);
 }
 
 export function localServerMatchesProjectScript(input: {

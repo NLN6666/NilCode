@@ -52,6 +52,7 @@ export const diff = {
     referenceInChat: "Reference in chat",
     askWhyChanged: "Ask why this changed",
     copyPath: "Copy path",
+    reloadDiff: "Reload diff",
   },
 
   fileTree: {

@@ -34,7 +34,7 @@ export const settings: Settings = {
       },
       defaultProvider: {
         title: "默认提供商",
-        description: "选择用于新对话的提供商。",
+        description: "在选择模型前，新对话使用此默认提供商；之后新对话会沿用最近使用的模型和选项。",
         ariaLabel: "默认提供商",
         resetLabel: "默认提供商",
       },
@@ -178,8 +178,7 @@ export const settings: Settings = {
     customTitleBar: {
       title: "使用自定义标题栏",
       description: "用 Synara 的无边框界面和窗口控件替代系统标题栏。重启后生效。",
-      restartDescription:
-        "重启 Synara 以应用更改。部分 Linux 窗口管理器使用系统标题栏时效果更好。",
+      restartDescription: "重启 Synara 以应用更改。部分 Linux 窗口管理器使用系统标题栏时效果更好。",
       status: "需要重启",
       resetLabel: "自定义标题栏",
       ariaLabel: "使用自定义标题栏",
@@ -296,6 +295,13 @@ export const settings: Settings = {
       description: "关闭终端标签页并清除其历史前先询问。",
       resetLabel: "终端关闭确认",
       ariaLabel: "确认关闭终端标签页",
+    },
+    autoOpenDevicePane: {
+      title: "自动打开模拟器",
+      description:
+        "代理使用设备时打开 iOS 模拟器面板。关闭后可使用 Simulator.app，而不会重新打开镜像面板；你仍可手动打开面板。",
+      resetLabel: "自动打开模拟器",
+      ariaLabel: "自动打开模拟器",
     },
   },
   advanced: {
@@ -644,9 +650,9 @@ export const settings: Settings = {
     picker: {
       title: "提供商选择器",
       visible: {
-        title: "可见提供商",
+        title: "可用 CLI",
         description:
-          "拖动排出你偏好的选择器顺序，并隐藏用不到的提供商。当前会话正在使用的提供商始终可见。",
+          "显示或隐藏已安装的提供商，并拖动调整选择器顺序。隐藏提供商不会禁用其服务器活动。",
         resetLabel: "提供商选择器",
       },
       hiddenCount: (count) => `已隐藏 ${count} 个提供商`,
@@ -656,6 +662,11 @@ export const settings: Settings = {
       showInPicker: (name) => `在提供商选择器中显示 ${name}`,
       checkingCli: (name) => `正在检测 ${name} CLI 是否可用`,
       cliNotInstalled: (name) => `${name} CLI 未安装`,
+      checking: "正在检测已安装的 CLI",
+      noneInstalled: "未检测到 CLI",
+      shownCount: (shown, total) => `显示已安装的 ${shown}/${total} 个`,
+      installedCount: (count, customOrder) =>
+        `已安装 ${count} 个${customOrder ? " · 自定义顺序" : ""}`,
     },
     tools: {
       title: "提供商工具",
@@ -724,6 +735,7 @@ export const settings: Settings = {
       hooks: "钩子",
       headless: "无头模式",
       quickstart: "快速开始",
+      commands: "命令",
     },
     binaryHint: (binary) => `留空则使用 PATH 中的 ${binary}。`,
     cursorBinaryHint: (binary) =>
@@ -751,17 +763,6 @@ export const settings: Settings = {
       },
       grokBinaryPath: { label: "Grok 可执行文件路径", placeholder: "Grok 可执行文件路径" },
       droidBinaryPath: { label: "Droid 可执行文件路径", placeholder: "droid" },
-      kiloBinaryPath: { label: "Kilo 可执行文件路径", placeholder: "Kilo 可执行文件路径" },
-      kiloServerUrl: {
-        label: "Kilo 服务器地址",
-        placeholder: "http://127.0.0.1:4096",
-        description: "可选的现有 Kilo 服务器地址。留空则启动本地服务器。",
-      },
-      kiloServerPassword: {
-        label: "Kilo 服务器密码",
-        placeholder: "Kilo 服务器密码",
-        description: "外部托管的 Kilo 服务器可选密码。",
-      },
       openCodeBinaryPath: {
         label: "OpenCode 可执行文件路径",
         placeholder: "OpenCode 可执行文件路径",
@@ -790,6 +791,21 @@ export const settings: Settings = {
         placeholder: "Pi 代理目录",
         description: "可选的自定义 Pi 代理目录，用于认证、模型、技能和命令。",
       },
+      devinBinaryPath: { label: "Devin 可执行文件路径", placeholder: "devin" },
+    },
+    devinAuthHint: "请运行 devin auth login 进行身份验证，或设置 WINDSURF_API_KEY。",
+    activity: {
+      title: "提供商活动",
+      enabledTitle: "已启用提供商",
+      description:
+        "禁用后将停止后台检查、发现、更新及新回合。现有会话仍然可见，重新启用后可继续；正在运行的回合不会中断。",
+      saving: "正在保存提供商活动设置",
+      enabledCount: (count, total) => `已启用 ${count}/${total}`,
+      resetLabel: "已启用提供商",
+      allowed: "允许后台活动",
+      disabled: "服务器已禁用",
+      enable: (name) => `启用 ${name}`,
+      disable: (name) => `禁用 ${name}`,
     },
   },
   notifications: {

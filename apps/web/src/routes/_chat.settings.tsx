@@ -175,7 +175,8 @@ function SettingsRouteView() {
     systemUiFont,
     setSystemUiFont,
   } = useTheme();
-  const { settings, defaults, updateSettings, resetSettings } = useAppSettings();
+  const { settings, defaults, updateSettings, updateSettingsAndWait, resetSettings } =
+    useAppSettings();
   const m = useMessages();
   const desktopTopBarTrafficLightGutterClassName = useDesktopTopBarTrafficLightGutterClassName();
   const [releaseHistoryOpen, setReleaseHistoryOpen] = useState(false);
@@ -252,6 +253,11 @@ function SettingsRouteView() {
   const isInstallSettingsDirty = isProviderInstallSettingsDirty(settings, defaults);
   const hiddenProviderCount = new Set(settings.hiddenProviders).size;
   const isProviderOrderDirty = !sameProviderOrder(settings.providerOrder, defaults.providerOrder);
+  const isProviderActivityDirty =
+    settings.disabledProviders.length !== defaults.disabledProviders.length ||
+    settings.disabledProviders.some(
+      (provider, index) => provider !== defaults.disabledProviders[index],
+    );
 
   // Deep links and sidebar search targets all resolve to stable DOM ids in the active panel.
   useEffect(() => {
@@ -303,6 +309,9 @@ function SettingsRouteView() {
       ? ["Assistant output"]
       : []),
     ...(settings.followUpBehavior !== defaults.followUpBehavior ? ["Follow-up behavior"] : []),
+    ...(settings.autoOpenDevicePane !== defaults.autoOpenDevicePane
+      ? [m.settings.behavior.autoOpenDevicePane.title]
+      : []),
     ...(settings.enableAppSnap !== defaults.enableAppSnap ? ["AppSnap"] : []),
     ...(!sameAppSnapShortcut(settings.appSnapShortcut, defaults.appSnapShortcut)
       ? ["AppSnap shortcut"]
@@ -331,13 +340,13 @@ function SettingsRouteView() {
     settings.customAntigravityModels.length > 0 ||
     settings.customGrokModels.length > 0 ||
     settings.customDroidModels.length > 0 ||
-    settings.customKiloModels.length > 0 ||
     settings.customOpenCodeModels.length > 0 ||
     settings.customOmpModels.length > 0 ||
     settings.customPiModels.length > 0
       ? ["Custom models"]
       : []),
     ...(isInstallSettingsDirty ? ["Provider installs"] : []),
+    ...(isProviderActivityDirty ? ["Provider activity"] : []),
     ...(hiddenProviderCount > 0 ? ["Provider visibility"] : []),
     ...(isProviderOrderDirty ? ["Provider order"] : []),
   ];
@@ -361,7 +370,7 @@ function SettingsRouteView() {
 
     setTheme("system");
     resetAllThemes();
-    resetSettings();
+    await resetSettings();
     setResetEpoch((current) => current + 1);
   }
 
@@ -1140,6 +1149,11 @@ function SettingsRouteView() {
           anchorKey: "behavior:assistant-output",
           ...m.settings.behavior.assistantOutput,
         })}
+
+        {renderBooleanSettingRow({
+          settingKey: "autoOpenDevicePane",
+          ...m.settings.behavior.autoOpenDevicePane,
+        })}
       </SettingsSection>
 
       <SettingsSection title={m.settings.behavior.review}>
@@ -1291,6 +1305,7 @@ function SettingsRouteView() {
                   settings={settings}
                   defaults={defaults}
                   updateSettings={updateSettings}
+                  updateSettingsAndWait={updateSettingsAndWait}
                   resetEpoch={resetEpoch}
                 />
                 <AgentMcpSettingsPanel active={activeSection === "mcpServers"} />

@@ -65,20 +65,18 @@ export const OpenCodeServerProviderSettings = Schema.Struct({
 });
 export type OpenCodeServerProviderSettings = typeof OpenCodeServerProviderSettings.Type;
 
-export const KiloServerProviderSettings = Schema.Struct({
-  ...ProviderSettingsBase,
-  binaryPath: StringSetting.pipe(Schema.withDecodingDefault(() => "kilo")),
-  serverUrl: StringSetting.pipe(Schema.withDecodingDefault(() => "")),
-  serverPasswordConfigured: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
-});
-export type KiloServerProviderSettings = typeof KiloServerProviderSettings.Type;
-
 export const PiServerProviderSettings = Schema.Struct({
   ...ProviderSettingsBase,
   binaryPath: StringSetting.pipe(Schema.withDecodingDefault(() => "pi")),
   agentDir: StringSetting.pipe(Schema.withDecodingDefault(() => "")),
 });
 export type PiServerProviderSettings = typeof PiServerProviderSettings.Type;
+
+export const DevinServerProviderSettings = Schema.Struct({
+  ...ProviderSettingsBase,
+  binaryPath: StringSetting.pipe(Schema.withDecodingDefault(() => "devin")),
+});
+export type DevinServerProviderSettings = typeof DevinServerProviderSettings.Type;
 
 export const OmpServerProviderSettings = Schema.Struct({
   ...ProviderSettingsBase,
@@ -105,7 +103,7 @@ export const DisabledSkillsByProvider = Schema.Struct({
   antigravity: DisabledSkillNames,
   grok: DisabledSkillNames,
   droid: DisabledSkillNames,
-  kilo: DisabledSkillNames,
+  devin: DisabledSkillNames,
   opencode: DisabledSkillNames,
   omp: DisabledSkillNames,
   pi: DisabledSkillNames,
@@ -152,10 +150,10 @@ export const ServerSettings = Schema.Struct({
     codex: CodexServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     claudeAgent: ClaudeServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     cursor: CursorServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+    devin: DevinServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     antigravity: AntigravityServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     grok: GrokServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     droid: DroidServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
-    kilo: KiloServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     opencode: OpenCodeServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     omp: OmpServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     pi: PiServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
@@ -218,13 +216,6 @@ export const ServerSettingsPatch = Schema.Struct({
       antigravity: Schema.optionalKey(Schema.Struct(ProviderSettingsBasePatch)),
       grok: Schema.optionalKey(Schema.Struct(ProviderSettingsBasePatch)),
       droid: Schema.optionalKey(Schema.Struct(ProviderSettingsBasePatch)),
-      kilo: Schema.optionalKey(
-        Schema.Struct({
-          ...ProviderSettingsBasePatch,
-          serverUrl: Schema.optionalKey(StringSetting),
-          serverPassword: Schema.optionalKey(StringSetting),
-        }),
-      ),
       opencode: Schema.optionalKey(
         Schema.Struct({
           ...ProviderSettingsBasePatch,
@@ -241,6 +232,7 @@ export const ServerSettingsPatch = Schema.Struct({
           agentDir: Schema.optionalKey(StringSetting),
         }),
       ),
+      devin: Schema.optionalKey(Schema.Struct(ProviderSettingsBasePatch)),
     }),
   ),
   skills: Schema.optionalKey(
@@ -255,7 +247,7 @@ export const ServerSettingsPatch = Schema.Struct({
           antigravity: Schema.optionalKey(DisabledSkillNamesPatch),
           grok: Schema.optionalKey(DisabledSkillNamesPatch),
           droid: Schema.optionalKey(DisabledSkillNamesPatch),
-          kilo: Schema.optionalKey(DisabledSkillNamesPatch),
+          devin: Schema.optionalKey(DisabledSkillNamesPatch),
           opencode: Schema.optionalKey(DisabledSkillNamesPatch),
           omp: Schema.optionalKey(DisabledSkillNamesPatch),
           pi: Schema.optionalKey(DisabledSkillNamesPatch),

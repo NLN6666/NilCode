@@ -28,9 +28,9 @@ export const SKILL_HOME_ORIGIN_ORDER = [
   "cursor",
   "grok",
   "factory",
-  "kilo",
   "opencode",
   "pi",
+  "devin",
   "agents",
 ] as const;
 export type SkillHomeOrigin = (typeof SKILL_HOME_ORIGIN_ORDER)[number];
@@ -40,7 +40,7 @@ export type SkillOrigin = SkillHomeOrigin | "project";
 
 /**
  * The folders each agent actually reads, native folder first. Cross-provider entries are
- * deliberate and reflect real CLI behavior (Grok and Kilo read Claude's folder, Droid and
+ * deliberate and reflect real CLI behavior (Grok and OpenCode read Claude's folder, Droid and
  * Cursor read several) — they are not a Synara convenience. Anything absent from a
  * provider's list is invisible to it, so adding an entry here claims that the agent will
  * genuinely load skills from that folder.
@@ -52,10 +52,10 @@ export const PROVIDER_SKILL_ORIGINS = {
   antigravity: ["agents"],
   grok: ["grok", "claude", "agents"],
   droid: ["factory", "agents", "claude", "codex"],
-  kilo: ["kilo", "agents", "claude"],
   opencode: ["opencode", "claude", "agents"],
   omp: [],
   pi: ["pi", "agents"],
+  devin: ["devin", "claude", "agents"],
 } as const satisfies Record<ProviderKind, readonly SkillHomeOrigin[]>;
 
 /**

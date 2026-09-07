@@ -6,7 +6,7 @@
 //          those differences are declared as dialects over one shared reader.
 // Layer: Agent MCP config reading
 // Exports: <PROVIDER>_AGENT_MCP_PROVIDER constants, GROK_DISABLED_LIST_KEY, McpServerConnection,
-//          parse{Codex,Claude,Droid,Antigravity,Grok,OpenCode,Kilo}McpServerConnections,
+//          parse{Codex,Claude,Droid,Antigravity,Grok,OpenCode}McpServerConnections,
 //          redactMcpServerConnection, mcpConnectionStringRecord, hashMcpServerConnection
 
 import type { AgentMcpProvider, AgentMcpServerDescriptor } from "@synara/contracts";
@@ -21,7 +21,6 @@ export const DROID_AGENT_MCP_PROVIDER = "droid" as const;
 export const ANTIGRAVITY_AGENT_MCP_PROVIDER = "antigravity" as const;
 export const GROK_AGENT_MCP_PROVIDER = "grok" as const;
 export const OPENCODE_AGENT_MCP_PROVIDER = "opencode" as const;
-export const KILO_AGENT_MCP_PROVIDER = "kilo" as const;
 
 /** Top-level Grok array listing servers switched off by `grok mcp disable`. */
 export const GROK_DISABLED_LIST_KEY = "disabled_mcp_servers";
@@ -90,7 +89,7 @@ interface McpConfigDialect {
    */
   readonly urlKeys: ReadonlyArray<string>;
   /**
-   * How the launch command is stored. OpenCode and Kilo put the whole argv in `command`
+   * How the launch command is stored. OpenCode puts the whole argv in `command`
    * (`["npx", "-y", "pkg"]`); everyone else splits it into `command` plus `args`.
    */
   readonly commandStyle: "argv" | "split";
@@ -164,11 +163,6 @@ const OPENCODE_DIALECT: McpConfigDialect = {
   isEnabled: enabledUnlessFalse,
 };
 
-const KILO_DIALECT: McpConfigDialect = {
-  ...OPENCODE_DIALECT,
-  provider: KILO_AGENT_MCP_PROVIDER,
-};
-
 function readTransport(
   entry: Record<string, unknown>,
   dialect: McpConfigDialect,
@@ -227,7 +221,7 @@ function parseJsonDocument(text: string): Record<string, unknown> {
 }
 
 /**
- * Kilo's config is `.jsonc` and OpenCode's tolerates the same relaxations, so both go through
+ * OpenCode's config tolerates JSONC relaxations, so it goes through
  * `jsonc-parser` — the parser their own editors use, and the one the write path already edits
  * with, so a file that reads here is a file that can be written back.
  *
@@ -289,11 +283,6 @@ export function parseOpenCodeMcpServerConnections(
   text: string,
 ): ReadonlyArray<McpServerConnection> {
   return readConnections(parseJsoncDocument(text), OPENCODE_DIALECT);
-}
-
-/** Reads the `mcp` object of a Kilo `kilo.jsonc`, which shares OpenCode's config schema. */
-export function parseKiloMcpServerConnections(text: string): ReadonlyArray<McpServerConnection> {
-  return readConnections(parseJsoncDocument(text), KILO_DIALECT);
 }
 
 /**

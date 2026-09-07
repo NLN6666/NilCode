@@ -651,3 +651,14 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 红灯稳定为 source lock root `ENOENT`、overlay link 仍悬空；修复在每次 Codex process env 准备时先 materialize source 共享目录，再遍历并校验 overlay 条目，随后同一测试转绿。
 - 聚焦验证：`buildCodexProcessEnv` 测试 11/11 通过；未运行 `bun fmt`、`bun lint`、`bun typecheck`（当前对话未显式授权 heavyweight checks）。
 - `codexAppServerManager.test.ts` 全文件为 130 passed / 1 failed / 2 skipped；失败项是既有 `re-probes when a PATH-resolved codex is replaced behind the same bare name`。按唯一标签 stash 本轮全部改动后在原始 HEAD 单跑仍稳定失败，确认与 writer-lock 修复无关；随后按捕获 SHA 恢复并只删除该临时 stash。
+
+## 2026-09-07 main 0.8.3 合入 dev 的集成与验证陷阱
+
+- 合并来源为 `8599826d75d9932e69c301f2441f585da8f211e2`，合并前 dev 为 `c2ae0514e11971cec96ec689c75b9153b59c44c5`；保留 `backup/dev-premerge-2026-09-07`。比较失败名称集合，而不是只比较失败数量；分别建立合并前与上游原版的独立依赖安装作为对照。
+- 数据库保留上游 97–99，将 fork 浏览器共享和 Advisor 迁移移至 100–101，并兼容旧 88/91 和 97/98 tracker。上游 99 的测试用当前 projection repository 写入旧数据库，因此必须先补齐历史 fork 列，不能改动已经发布的迁移。隔离构建启动后实际读取 SQLite，确认 97–101 的名称与顺序正确。
+- 自动合并留下了重复 Provider 选择器、设置搜索字符串/函数混用，以及滚动所有权缺口。恢复无 wheel 的向上滚动检测，并移除 `transcriptFollowsTail` 对 LegendList 初始化滚动的动态控制后，滚动聚焦 3 项和活动聚焦 2 项浏览器测试通过。保留上游显式 detached 状态，不恢复旧的并行滚动控制循环。
+- Claude 1M 用例必须显式选择 `autoCompactWindow: "1m"`，不能因目录列出 1M 就假设普通模型 ID 自带 1M。保留 fork 的后缀与窗口预算逻辑；累计 token 测试只检查会计语义，不再固定无关的默认窗口或完整 payload 字段集合。
+- Antigravity 的假 ChildProcess 没有真实 PID；旧测试在发出 close 后只等 25ms，偶尔会调用上游新增的真实进程退出验证。沿用已有 `completeProcessTeardown` 注入到不测试进程终止的用例，保留专门的终止失败测试。Provider、迁移和刷新聚焦测试最终 253/253，Codex 策略聚焦 2/2。
+- Web 全量为 4782 passed / 1 failed，唯一失败是动态导入 ChatMarkdown 的超时；该文件独立运行 35/35。服务端广域首轮 2987 passed / 52 failed：6 个合并相关失败修复后，其余 46 个失败名称分别在合并前或上游原版复现。shared 的 1 个失败、desktop 的 21 个失败也分别由合并前或上游 Windows 对照复现。不能称全仓测试全绿。
+- 最终 `bun fmt`、`bun lint` 通过；`bun typecheck --continue` 为 5/7 workspace 通过，CLI 和 desktop 仍有合并前已有类型问题。强制无缓存生产构建 4/4 通过；隔离 Node 服务启动及中文设置搜索、单一 Provider 选择器、OMP/Devin 展示、主题预览与实时查找均已实际验证。报告保存在 `D:/Codes/NilCode-merge-evidence-20260907`，未运行真实模型回合或替换已安装应用。
+- Playwright 更新后要求尚未安装的 headless-shell 1234；改用已安装 Chrome 的隔离 profile，并固定 `en-US` 运行英文浏览器断言，不额外下载浏览器。Windows 临时 worktree 的 `.git`/`gitdir` 指针被写为反斜杠，导致 Git 把 `.git` 当作 worktree 根；仅修正本轮临时指针为正斜杠后正常清理。生成文件的 CRLF/stat 噪声须先确认空 diff，再刷新其索引，不能使用强制删除掩盖未知改动。

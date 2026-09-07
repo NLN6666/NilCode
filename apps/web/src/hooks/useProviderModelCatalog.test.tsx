@@ -17,7 +17,13 @@ import { useProviderModelCatalog } from "./useProviderModelCatalog";
 const mocks = vi.hoisted(() => ({
   useAppSettings: vi.fn(),
   useQuery: vi.fn(),
+  useEffect: vi.fn(),
 }));
+
+vi.mock("react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react")>();
+  return { ...actual, useEffect: mocks.useEffect };
+});
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
@@ -38,9 +44,11 @@ interface QueryResultLike {
   readonly data?: {
     readonly agents?: ReadonlyArray<{ name: string; displayName: string }>;
     readonly cached?: boolean;
+    readonly error?: string;
     readonly models?: ReadonlyArray<ProviderModelDescriptor>;
     readonly source?: string;
   };
+  readonly error?: unknown;
   readonly isFetching: boolean;
   readonly isLoading: boolean;
   readonly isPlaceholderData: boolean;
@@ -64,16 +72,16 @@ const SETTINGS = {
   customClaudeModels: [],
   customCodexModels: [],
   customCursorModels: ["cursor-custom"],
+  customDevinModels: [],
   customDroidModels: [],
   customGrokModels: [],
-  customKiloModels: [],
   customOpenCodeModels: [],
   customOmpModels: [],
   customPiModels: [],
   droidBinaryPath: "",
+  devinBinaryPath: "",
   grokBinaryPath: "",
   hiddenProviders: [],
-  kiloBinaryPath: "",
   openCodeBinaryPath: "",
   ompBinaryPath: "",
   piAgentDir: "",
@@ -82,12 +90,13 @@ const SETTINGS = {
 
 function readCatalogRenders(
   input: Parameters<typeof useProviderModelCatalog>[0],
+  nextInput = input,
 ): ProviderModelCatalog[] {
   const results: ProviderModelCatalog[] = [];
 
   function Probe() {
     const [renderIndex, setRenderIndex] = useState(0);
-    results.push(useProviderModelCatalog(input));
+    results.push(useProviderModelCatalog(renderIndex === 0 ? input : nextInput));
     if (renderIndex === 0) {
       setRenderIndex(1);
     }
@@ -116,6 +125,7 @@ function readModelQueryEnabled(provider: ProviderKind): boolean | undefined {
 }
 
 beforeEach(() => {
+  mocks.useEffect.mockClear();
   modelQueries.clear();
   agentQueries.clear();
   cloudModelQueries.clear();
@@ -242,14 +252,36 @@ describe("useProviderModelCatalog", () => {
     readCatalogRenders({
       selectedProvider: "codex",
       discoveryEnabled: true,
-      prefetchProviders: ["codex", "kilo", "opencode"],
+      prefetchProviders: ["codex", "opencode"],
     });
 
     expect(readModelQueryEnabled("codex")).toBe(true);
-    expect(readModelQueryEnabled("kilo")).toBe(true);
     expect(readModelQueryEnabled("opencode")).toBe(true);
     expect(readModelQueryEnabled("cursor")).toBe(false);
     expect(readModelQueryEnabled("antigravity")).toBe(false);
+  });
+
+  it("warms droid discovery only when a surface explicitly prefetches it", () => {
+    readCatalogRenders({
+      selectedProvider: "codex",
+      discoveryEnabled: true,
+      prefetchProviders: ["codex", "droid", "opencode"],
+    });
+    expect(readModelQueryEnabled("droid")).toBe(true);
+
+    mocks.useQuery.mockClear();
+    readCatalogRenders({ selectedProvider: "codex", discoveryEnabled: true });
+    expect(readModelQueryEnabled("droid")).toBe(false);
+  });
+
+  it("keeps droid cold when the surface is inactive even if it prefetches droid", () => {
+    readCatalogRenders({
+      selectedProvider: "opencode",
+      discoveryEnabled: false,
+      prefetchProviders: ["codex", "droid", "opencode"],
+    });
+
+    expect(readModelQueryEnabled("droid")).toBe(false);
   });
 
   it("merges a settled runtime catalog with custom models without reporting loading", () => {
@@ -288,12 +320,12 @@ describe("useProviderModelCatalog", () => {
           {
             slug: "anthropic/claude-sonnet-4-5",
             name: "Claude Sonnet 4.5",
-            options: [
+            optionDescriptors: [
               {
                 id: "thinkingLevel",
                 label: "Thinking",
                 type: "select",
-                options: [{ value: "adaptive", label: "Adaptive" }],
+                options: [{ id: "adaptive", label: "Adaptive" }],
               },
             ],
           },
@@ -318,5 +350,44 @@ describe("useProviderModelCatalog", () => {
     ]);
     expect(catalog?.runtimeModelsByProvider.omp).toHaveLength(1);
     expect(catalog?.selectedProviderRuntimeModelDiscoveryPending).toBe(false);
+  });
+
+  it("surfaces devin discovery errors even when the result falls back to devin.static", () => {
+    modelQueries.set("devin", {
+      data: {
+        models: [],
+        source: "devin.static",
+        cached: false,
+        error: "Devin CLI failed",
+      },
+      isFetching: false,
+      isLoading: false,
+      isPlaceholderData: false,
+    });
+
+    const catalog = readCatalogRenders({
+      selectedProvider: "codex",
+      discoveryEnabled: true,
+    }).at(-1);
+
+    expect(catalog?.discoveryErrorsByProvider.devin).toBe("Devin CLI failed");
+  });
+
+  it("surfaces a rejected discovery after retries are exhausted", () => {
+    modelQueries.set("opencode", {
+      error: new Error("OpenCode model discovery temporarily unavailable"),
+      isFetching: false,
+      isLoading: false,
+      isPlaceholderData: false,
+    });
+
+    const catalog = readCatalogRenders({
+      selectedProvider: "opencode",
+      discoveryEnabled: true,
+    }).at(-1);
+
+    expect(catalog?.discoveryErrorsByProvider.opencode).toBe(
+      "OpenCode model discovery temporarily unavailable",
+    );
   });
 });

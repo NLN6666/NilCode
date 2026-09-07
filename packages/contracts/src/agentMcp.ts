@@ -15,9 +15,8 @@ import { TrimmedNonEmptyString } from "./baseSchemas";
  * | `antigravity` | `~/.gemini/antigravity/mcp_config.json`  | `mcpServers.x.disabled`               |
  * | `grok`        | `~/.grok/config.toml`                    | `enabled` + `disabled_mcp_servers[]`  |
  * | `opencode`    | `~/.config/opencode/opencode.json`       | `mcp.x.enabled`                       |
- * | `kilo`        | `~/.config/kilo/kilo.jsonc`              | `mcp.x.enabled`                       |
  *
- * The remaining two are excluded for cause, not for lack of effort:
+ * Other providers need a supported, surgically editable config before inclusion:
  * - **Cursor** declares servers in `~/.cursor/mcp.json` but keeps the on/off state in the
  *   editor's own UI state, not the file — there is no key to write, so a toggle here would
  *   silently do nothing.
@@ -31,7 +30,6 @@ export const AgentMcpProvider = Schema.Literals([
   "antigravity",
   "grok",
   "opencode",
-  "kilo",
 ]);
 export type AgentMcpProvider = typeof AgentMcpProvider.Type;
 

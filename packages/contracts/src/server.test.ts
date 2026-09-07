@@ -52,7 +52,12 @@ describe("OMP provider policy status", () => {
       launch: { configured: true, observability: "acp-tool-activity-only" },
       advisor: { configured: true, state: "configured", observability: "transcript-only" },
       memory: { backend: "local", source: "user-config", observability: "ordinary-tools-only" },
-      autoLearn: { configured: true, autoContinue: true, experimental: true, observability: "bounded-settle-only" },
+      autoLearn: {
+        configured: true,
+        autoContinue: true,
+        experimental: true,
+        observability: "bounded-settle-only",
+      },
       typedObservability: "phase-3-required",
       runtime: {
         mode: "typed",
@@ -71,16 +76,18 @@ describe("OMP provider policy status", () => {
         },
         launch: {
           authority: "omp",
-          services: [{
-            serviceId: "service-1",
-            name: "fixture",
-            state: "ready",
-            restartCount: 0,
-            outputBytes: 12,
-            owner: "omp-session-1",
-            persist: false,
-            detached: false,
-          }],
+          services: [
+            {
+              serviceId: "service-1",
+              name: "fixture",
+              state: "ready",
+              restartCount: 0,
+              outputBytes: 12,
+              owner: "omp-session-1",
+              persist: false,
+              detached: false,
+            },
+          ],
         },
       },
     });

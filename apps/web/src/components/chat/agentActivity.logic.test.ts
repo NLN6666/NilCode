@@ -352,4 +352,3 @@ describe("unmapped provider events", () => {
     expect(formatAgentActivityEntryTitle(entry)).toEqual({ kind: "text", text: "Done" });
   });
 });
-

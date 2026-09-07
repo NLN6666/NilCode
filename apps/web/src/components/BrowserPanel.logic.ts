@@ -380,9 +380,7 @@ export function isBrowserElementPickInScope(
     readonly activeTabId: string | null;
   },
 ): boolean {
-  return (
-    event.threadId === input.browserSurfaceId && event.selection.tabId === input.activeTabId
-  );
+  return event.threadId === input.browserSurfaceId && event.selection.tabId === input.activeTabId;
 }
 
 const SAFE_RESOLVED_BROWSER_ANNOTATION_COLOR =

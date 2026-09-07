@@ -304,6 +304,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     keywords: "Show token-by-token output while a response is in progress. streaming 助手输出 流式",
   },
   {
+    id: "behavior:auto-open-simulator",
+    section: "behavior",
+    title: (m) => m.settings.behavior.autoOpenDevicePane.title,
+    keywords:
+      "Disable automatic iOS Simulator device pane opening. Use Simulator.app without the mirrored panel reopening. background launch",
+  },
+  {
     id: "behavior:diff-line-wrapping",
     section: "behavior",
     title: (m) => m.settings.behavior.diffLineWrapping.title,

@@ -22,11 +22,10 @@ import { useDaemonStore } from "../../daemonStore";
 import type { DiffRouteSearch } from "../../diffRouteSearch";
 import { stripDiffSearchParams } from "../../diffRouteSearch";
 import { readEditorViewState, storeEditorViewState } from "../../editorViewState";
-import { basenameOfPath } from "../../file-icons";
 import { useBrowserPanelDesktopBridge } from "../../hooks/useBrowserPanelDesktopBridge";
 import { useDockPaneRuntimeActivation } from "../../hooks/useDockPaneRuntimeActivation";
 import { useHandleNewThread } from "../../hooks/useHandleNewThread";
-import { useDeviceEventBridge } from "../../hooks/useDeviceEventBridge";
+import { useDevicePaneOpenRequests } from "../../hooks/useDeviceEventBridge";
 import { useDeviceSupport } from "../../hooks/useDeviceSupport";
 import { useRepoDiffTotals } from "../../hooks/useRepoDiffTotals";
 import {
@@ -99,7 +98,11 @@ import { DockThreadPane } from "./DockThreadPane";
 import { BrowserPaneTerminalSplit } from "./BrowserPaneTerminalSplit";
 import { BrowserDockPane } from "./BrowserDockPane";
 import { RightDock } from "./RightDock";
-import { getRightDockPaneMeta, resolveRightDockLauncherItems } from "./rightDockPaneMeta";
+import {
+  buildRightDockPaneLabelOverrides,
+  getRightDockPaneMeta,
+  resolveRightDockLauncherItems,
+} from "./rightDockPaneMeta";
 import {
   CHAT_BACKGROUND_CLASS_NAME,
   CHAT_MAIN_CONTENT_SURFACE_CLASS_NAME,
@@ -111,10 +114,7 @@ import {
   useFloatingBrowserRequestStore,
 } from "./floatingBrowserRequestStore";
 import { routeSingleDevicePaneOpenRequest } from "./devicePaneOpenRequest";
-import {
-  pullRequestDetailInputFromPane,
-  pullRequestPaneTabLabel,
-} from "../pullRequest/pullRequestDetail.logic";
+import { pullRequestDetailInputFromPane } from "../pullRequest/pullRequestDetail.logic";
 import { usePullRequestPaneStateIcon } from "../pullRequest/usePullRequestPaneStateIcon";
 import { RouteInsetSurface } from "../RouteInsetSurface";
 import { SidebarInset } from "../ui/sidebar";
@@ -224,10 +224,7 @@ export function SingleChatSurface(props: {
   const sharedBrowserProjectId =
     activeProject?.browserSharing === "shared" ? activeProject.id : null;
   const sharedBrowserVisible = useRightDockStore(
-    useMemo(
-      () => selectSharedBrowserVisibility(sharedBrowserProjectId),
-      [sharedBrowserProjectId],
-    ),
+    useMemo(() => selectSharedBrowserVisibility(sharedBrowserProjectId), [sharedBrowserProjectId]),
   );
   const threadWorkspaceMetadata = useStore(
     useMemo(() => createThreadWorkspaceMetadataSelector(props.threadId), [props.threadId]),
@@ -741,27 +738,21 @@ export function SingleChatSurface(props: {
     },
   });
 
-  useDeviceEventBridge({
-    onOpenPaneRequested: hasDeviceSupport
-      ? (event) => {
-          routeSingleDevicePaneOpenRequest({
-            currentThreadId: props.threadId,
-            requestedThreadId: event.threadId,
-            requestImmediateDeviceHydration: () => requestImmediateDockHydration("device"),
-            openDevicePane: (threadId) => {
-              syncSharedBrowserVisibility(false);
-              openPane(threadId, { kind: "device" });
-            },
-            navigateToThread: (threadId) => {
-              void navigate({
-                to: "/$threadId",
-                params: { threadId },
-                replace: true,
-              });
-            },
-          });
-        }
-      : null,
+  useDevicePaneOpenRequests({
+    onOpenPaneRequested:
+      hasDeviceSupport && appSettings.autoOpenDevicePane
+        ? (event) => {
+            routeSingleDevicePaneOpenRequest({
+              currentThreadId: props.threadId,
+              requestedThreadId: event.threadId,
+              requestImmediateDeviceHydration: () => requestImmediateDockHydration("device"),
+              openDevicePane: (threadId) => {
+                if (threadId === props.threadId) syncSharedBrowserVisibility(false);
+                openPane(threadId, { kind: "device" });
+              },
+            });
+          }
+        : null,
   });
 
   const excludedThreadIds = new Set<ThreadId>([props.threadId]);
@@ -870,50 +861,28 @@ export function SingleChatSurface(props: {
       });
     });
   };
-  const hasSidechatPane = dockState.panes.some((pane) => pane.kind === "sidechat");
-  const hasNamedFilePane = dockState.panes.some(
-    (pane) => pane.kind === "file" && pane.filePath !== null,
+  const paneLabelOverrides = useMemo(
+    () => buildRightDockPaneLabelOverrides(dockState.panes, threadSummaries),
+    [dockState.panes, threadSummaries],
   );
-  const hasNumberedPullRequestPane = dockState.panes.some(
-    (pane) => pane.kind === "pullRequest" && pane.pullRequestNumber !== null,
-  );
-  let paneLabelOverrides: Record<string, string | undefined> | undefined;
-  let embeddedThreadIconOverrides: Record<string, ReactNode | undefined> | undefined;
-  if (hasSidechatPane || hasNamedFilePane || hasNumberedPullRequestPane) {
-    const summaryByThreadId = hasSidechatPane
-      ? new Map(threadSummaries.map((summary) => [summary.id, summary]))
-      : null;
-    const overrides: Record<string, string | undefined> = {};
-    const iconOverrides: Record<string, ReactNode | undefined> = {};
+  const embeddedThreadIconOverrides = useMemo(() => {
+    const summaries = new Map(threadSummaries.map((thread) => [thread.id, thread]));
+    const icons: Record<string, ReactNode | undefined> = {};
     for (const pane of dockState.panes) {
-      if (pane.kind === "sidechat" && pane.threadId) {
-        const summary = summaryByThreadId?.get(pane.threadId);
-        // Subagents ride the same embedded-thread pane kind, so give their tab the
-        // identity the sidebar row used — "Nickname [role]" plus the agent accent
-        // dot — instead of the generic side-chat label and bubble glyph.
-        const subagentPresentation = summary?.parentThreadId
-          ? resolveSubagentPresentationForThread({ thread: summary })
-          : null;
-        overrides[pane.id] =
-          subagentPresentation?.fullLabel || summary?.title || paneCopy.kinds.sidechat;
-        if (subagentPresentation) {
-          iconOverrides[pane.id] = (
-            <span
-              aria-hidden="true"
-              className="size-[7px] shrink-0 rounded-full"
-              style={{ backgroundColor: subagentPresentation.accentColor }}
-            />
-          );
-        }
-      } else if (pane.kind === "file" && pane.filePath) {
-        overrides[pane.id] = basenameOfPath(pane.filePath);
-      } else if (pane.kind === "pullRequest" && pane.pullRequestNumber !== null) {
-        overrides[pane.id] = pullRequestPaneTabLabel(pane.pullRequestNumber);
-      }
+      if (pane.kind !== "sidechat" || !pane.threadId) continue;
+      const thread = summaries.get(pane.threadId);
+      if (!thread?.parentThreadId) continue;
+      const presentation = resolveSubagentPresentationForThread({ thread });
+      icons[pane.id] = (
+        <span
+          aria-hidden="true"
+          className="size-[7px] shrink-0 rounded-full"
+          style={{ backgroundColor: presentation.accentColor }}
+        />
+      );
     }
-    paneLabelOverrides = overrides;
-    embeddedThreadIconOverrides = iconOverrides;
-  }
+    return Object.keys(icons).length > 0 ? icons : undefined;
+  }, [dockState.panes, threadSummaries]);
 
   // The pull request pane is a singleton, so at most one tab needs the live state glyph.
   const pullRequestPane = dockState.panes.find(
@@ -1071,6 +1040,7 @@ export function SingleChatSurface(props: {
             <DockExplorerPane
               threadId={props.threadId}
               workspaceRoot={workspaceRoot}
+              isVisible={context.isVisible}
               onReferenceInChat={handleReferenceInChat}
               onAskWhyInChat={handleAskWhyInChat}
               onCommentInChat={handleCommentInChat}
@@ -1083,6 +1053,7 @@ export function SingleChatSurface(props: {
             <DockFilePane
               workspaceRoot={workspaceRoot}
               filePath={pane.filePath}
+              isVisible={context.isVisible}
               onReferenceInChat={handleReferenceInChat}
               onAskWhyInChat={handleAskWhyInChat}
               onCommentInChat={handleCommentInChat}

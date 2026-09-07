@@ -115,6 +115,8 @@ export const dialogs = {
     popoutHint: "Find out what’s new",
     noReleaseNotes: "No release notes yet — check back after the next update.",
     version: (version: string) => `Version ${version}`,
+    popoutOpen: (version: string) => `Open what’s new in v${version}`,
+    popoutBadge: (version: string) => `New · v${version}`,
   },
 
   releaseHistory: {

@@ -31,7 +31,6 @@ const PROVIDER_LABELS: Record<AgentMcpProvider, string> = {
   antigravity: PROVIDER_DISPLAY_NAMES.antigravity,
   grok: PROVIDER_DISPLAY_NAMES.grok,
   opencode: PROVIDER_DISPLAY_NAMES.opencode,
-  kilo: PROVIDER_DISPLAY_NAMES.kilo,
 };
 
 /**

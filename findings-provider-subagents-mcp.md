@@ -10,33 +10,33 @@
 
 ### 子代理（B）
 
-| Provider | 磁盘格式 | 结论 |
-|---|---|---|
-| codex | `~/.codex/agents/*.toml` | 已有 |
-| claudeAgent | `~/.claude/agents/**/*.md` + 插件目录 | 已有 |
-| **cursor** | `~/.cursor/agents/*.md` + `.cursor/agents/*.md`，frontmatter `name`/`description`/`model` | **新增** |
-| **droid** | `~/.factory/droids/*.md` + `.factory/droids/*.md`，官方明说"只扫顶层" | **新增** |
-| **grok** | `~/.grok/agents/*.md` + `.grok/agents/*.md`，另有 `~/.grok/bundled/agents/*.md` 内置三个 | **新增** |
-| opencode | 配置里的 `agent` 段 + `agents/*.md` | 跳过：`OpenCodeAdapter.listAgents` 已经从运行时 inventory 拿，比扫盘权威 |
-| kilo | 同 opencode（同一个 adapter，`OpenCodeCompatibleProvider`） | 跳过：同上 |
-| antigravity | 无 | 跳过：本机 `~/.antigravity` 只有 `extensions` |
-| pi | npm 扩展包 `pi-subagents` | 跳过：无稳定磁盘格式 |
+| Provider    | 磁盘格式                                                                                  | 结论                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| codex       | `~/.codex/agents/*.toml`                                                                  | 已有                                                                     |
+| claudeAgent | `~/.claude/agents/**/*.md` + 插件目录                                                     | 已有                                                                     |
+| **cursor**  | `~/.cursor/agents/*.md` + `.cursor/agents/*.md`，frontmatter `name`/`description`/`model` | **新增**                                                                 |
+| **droid**   | `~/.factory/droids/*.md` + `.factory/droids/*.md`，官方明说"只扫顶层"                     | **新增**                                                                 |
+| **grok**    | `~/.grok/agents/*.md` + `.grok/agents/*.md`，另有 `~/.grok/bundled/agents/*.md` 内置三个  | **新增**                                                                 |
+| opencode    | 配置里的 `agent` 段 + `agents/*.md`                                                       | 跳过：`OpenCodeAdapter.listAgents` 已经从运行时 inventory 拿，比扫盘权威 |
+| kilo        | 同 opencode（同一个 adapter，`OpenCodeCompatibleProvider`）                               | 跳过：同上                                                               |
+| antigravity | 无                                                                                        | 跳过：本机 `~/.antigravity` 只有 `extensions`                            |
+| pi          | npm 扩展包 `pi-subagents`                                                                 | 跳过：无稳定磁盘格式                                                     |
 
 **踩坑：`~/.pi/agent` 不是 agents 目录。** 它是 Pi 的安装根目录（内含 `bin`/`extensions`/`npm`/`sessions`/`skills`）。仅凭目录名会误判成子代理目录。
 
 ### MCP（C）
 
-| Provider | 配置文件 | 开关字段 | 结论 |
-|---|---|---|---|
-| codex | `CODEX_HOME/config.toml` | `[mcp_servers.x] enabled` | 已有 |
-| claudeAgent | `~/.claude.json` | `mcpServers.x.disabled` | 已有 |
-| **droid** | `~/.factory/mcp.json` | `mcpServers.x.disabled` | **新增**，与 Claude 完全同构 |
-| **antigravity** | `~/.gemini/antigravity/mcp_config.json` | `mcpServers.x.disabled` | **新增**，带 BOM，且 `serverUrl` 与 `url` 混用 |
-| **grok** | `~/.grok/config.toml` | `enabled` **且** 顶层 `disabled_mcp_servers[]` | **新增**，双开关 |
-| **opencode** | `~/.config/opencode/opencode.json` | `mcp.x.enabled`（正极性） | **新增** |
-| **kilo** | `~/.config/kilo/kilo.jsonc` | 同 opencode | **新增**，Kilo 是 OpenCode 的 fork，schema 一致 |
-| cursor | `~/.cursor/mcp.json` | **没有** | 排除：开关只存在于编辑器 UI 状态，写文件不会生效 |
-| pi | 经 `pi-mcp-adapter` npm 扩展 | — | 排除：没有可读写的配置文件 |
+| Provider        | 配置文件                                | 开关字段                                       | 结论                                             |
+| --------------- | --------------------------------------- | ---------------------------------------------- | ------------------------------------------------ |
+| codex           | `CODEX_HOME/config.toml`                | `[mcp_servers.x] enabled`                      | 已有                                             |
+| claudeAgent     | `~/.claude.json`                        | `mcpServers.x.disabled`                        | 已有                                             |
+| **droid**       | `~/.factory/mcp.json`                   | `mcpServers.x.disabled`                        | **新增**，与 Claude 完全同构                     |
+| **antigravity** | `~/.gemini/antigravity/mcp_config.json` | `mcpServers.x.disabled`                        | **新增**，带 BOM，且 `serverUrl` 与 `url` 混用   |
+| **grok**        | `~/.grok/config.toml`                   | `enabled` **且** 顶层 `disabled_mcp_servers[]` | **新增**，双开关                                 |
+| **opencode**    | `~/.config/opencode/opencode.json`      | `mcp.x.enabled`（正极性）                      | **新增**                                         |
+| **kilo**        | `~/.config/kilo/kilo.jsonc`             | 同 opencode                                    | **新增**，Kilo 是 OpenCode 的 fork，schema 一致  |
+| cursor          | `~/.cursor/mcp.json`                    | **没有**                                       | 排除：开关只存在于编辑器 UI 状态，写文件不会生效 |
+| pi              | 经 `pi-mcp-adapter` npm 扩展            | —                                              | 排除：没有可读写的配置文件                       |
 
 **Cursor 是唯一"看起来能做但实际不能"的一家**：文件格式和 Claude 一模一样，很容易照抄一份然后交付一个点了没反应的开关。官方文档明确说开关在 Customize 侧栏。
 

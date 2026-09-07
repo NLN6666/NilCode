@@ -205,16 +205,16 @@ export function PullRequestDetailPanel({
         action,
         ...(method ? { mergeMethod: method } : {}),
       })
-        .then((result) => {
-          const title =
-            action === "merge" && result.mergeOutcome === "enqueued"
-              ? detail?.stack
-                ? copy.toast.stackEnqueued
-                : copy.toast.enqueued
-              : action === "merge" && detail?.stack
-                ? copy.toast.stackMerged
-                : actionSuccessLabels(copy.toast)[action];
-          toastManager.add({ type: "success", title });
+      .then((result) => {
+        const title =
+          action === "merge" && result.mergeOutcome === "enqueued"
+            ? detail?.stack
+              ? copy.toast.stackEnqueued
+              : copy.toast.enqueued
+            : action === "merge" && detail?.stack
+              ? copy.toast.stackMerged
+              : actionSuccessLabels(copy.toast)[action];
+        toastManager.add({ type: "success", title });
       })
       .catch((error: unknown) => {
         toastManager.add({
@@ -516,18 +516,20 @@ export function PullRequestDetailPanel({
                       />
                     }
                   >
-                      {detail.stack && stackAssessment ? (
-                        <>
-                          <span>{copy.actions.mergeStack}</span>
-                          <span className="rounded-full bg-primary-foreground/16 px-1.5 text-[10px] tabular-nums">
-                            {stackAssessment.mergeTargetCount}
-                          </span>
-                        </>
-                      ) : (
-                        copy.actions.merge
-                      )}
-                    </TooltipTrigger>
-                    <TooltipPopup side="bottom">{mergeBlocker ?? copy.actions.mergeBlocked}</TooltipPopup>
+                    {detail.stack && stackAssessment ? (
+                      <>
+                        <span>{copy.actions.mergeStack}</span>
+                        <span className="rounded-full bg-primary-foreground/16 px-1.5 text-[10px] tabular-nums">
+                          {stackAssessment.mergeTargetCount}
+                        </span>
+                      </>
+                    ) : (
+                      copy.actions.merge
+                    )}
+                  </TooltipTrigger>
+                  <TooltipPopup side="bottom">
+                    {mergeBlocker ?? copy.actions.mergeBlocked}
+                  </TooltipPopup>
                 </Tooltip>
               ) : detail.state === "open" && !detail.isDraft && allowedMethods.length > 0 ? (
                 // One pill, no method chevron beside it: a split button's label can never sit
@@ -544,14 +546,14 @@ export function PullRequestDetailPanel({
                   {pendingAction === "merge" ? (
                     <>
                       <LoaderIcon className="size-3.5 animate-spin" />
-                        {detail.stack ? copy.actions.mergingStack : copy.actions.merging}
-                      </>
-                    ) : detail.stack && stackAssessment ? (
-                      <>
-                        <span>{copy.actions.mergeStack}</span>
-                        <span className="rounded-full bg-primary-foreground/16 px-1.5 text-[10px] tabular-nums">
-                          {stackAssessment.mergeTargetCount}
-                        </span>
+                      {detail.stack ? copy.actions.mergingStack : copy.actions.merging}
+                    </>
+                  ) : detail.stack && stackAssessment ? (
+                    <>
+                      <span>{copy.actions.mergeStack}</span>
+                      <span className="rounded-full bg-primary-foreground/16 px-1.5 text-[10px] tabular-nums">
+                        {stackAssessment.mergeTargetCount}
+                      </span>
                     </>
                   ) : (
                     copy.actions.merge
@@ -623,23 +625,23 @@ export function PullRequestDetailPanel({
         <AlertDialogPopup>
           <AlertDialogHeader>
             <AlertDialogTitle>
-                {confirmAction === "merge"
-                  ? detail?.stack
-                    ? copy.confirm.mergeStackTitle(stackMergeTargetCount)
-                    : copy.confirm.mergeTitle
-                  : copy.confirm.closeTitle}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {confirmAction === "merge"
-                  ? detail?.stack
-                    ? copy.confirm.mergeStackDescription(
-                        input.number,
-                        detail.stack.baseBranch,
-                        selectedMergeMethod,
-                        detail.stack.position < detail.stack.size,
-                      )
-                    : copy.confirm.mergeDescription(input.number, selectedMergeMethod)
-                  : copy.confirm.closeDescription(input.number)}
+              {confirmAction === "merge"
+                ? detail?.stack
+                  ? copy.confirm.mergeStackTitle(stackMergeTargetCount)
+                  : copy.confirm.mergeTitle
+                : copy.confirm.closeTitle}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction === "merge"
+                ? detail?.stack
+                  ? copy.confirm.mergeStackDescription(
+                      input.number,
+                      detail.stack.baseBranch,
+                      selectedMergeMethod,
+                      detail.stack.position < detail.stack.size,
+                    )
+                  : copy.confirm.mergeDescription(input.number, selectedMergeMethod)
+                : copy.confirm.closeDescription(input.number)}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -657,11 +659,11 @@ export function PullRequestDetailPanel({
                 if (action === "close") void runAction("close");
               }}
             >
-                {confirmAction === "merge"
-                  ? detail?.stack
-                    ? copy.confirm.mergeStack
-                    : copy.confirm.merge
-                  : copy.confirm.close}
+              {confirmAction === "merge"
+                ? detail?.stack
+                  ? copy.confirm.mergeStack
+                  : copy.confirm.merge
+                : copy.confirm.close}
             </Button>
           </AlertDialogFooter>
         </AlertDialogPopup>

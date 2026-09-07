@@ -7,13 +7,11 @@ import {
   extractTrailingFileComments,
   FILE_COMMENT_TEXT_MAX_CHARS,
   serializeFileCommentLabel,
-  formatFileCommentPreview,
   serializeFileCommentRange,
   formatFileCommentTitleSeed,
   getFileCommentValidationError,
   normalizeFileCommentSelection,
   normalizeFileCommentText,
-  stripTrailingFileComments,
   type FileCommentSelection,
 } from "./fileComments";
 
@@ -84,15 +82,12 @@ describe("fileComments", () => {
     expect(createFileCommentDraft(makeSelection({ text: "  " }))).toBeNull();
   });
 
-  it("formats ranges, labels, previews, and title seeds", () => {
+  it("serializes ranges and labels and formats title seeds", () => {
     expect(serializeFileCommentRange({ startLine: 5, endLine: 5 })).toBe("line 5");
     expect(serializeFileCommentRange({ startLine: 3, endLine: 7 })).toBe("lines 3-7");
     expect(serializeFileCommentLabel({ path: "a/b.ts", startLine: 3, endLine: 7 })).toBe(
       "a/b.ts lines 3-7",
     );
-    expect(formatFileCommentPreview("first line\nsecond line")).toBe("first line");
-    expect(formatFileCommentPreview("   ")).toBe("Comment");
-    expect(formatFileCommentPreview("x".repeat(60))).toMatch(/…$/);
     expect(formatFileCommentTitleSeed(1)).toBe("File comment");
     expect(formatFileCommentTitleSeed(2)).toBe("File comments");
   });
@@ -156,7 +151,6 @@ describe("fileComments", () => {
       promptText: "No comments here",
       comments: [],
     });
-    expect(stripTrailingFileComments("No comments here")).toBe("No comments here");
   });
 
   it("round-trips append -> extract for multi-line comment text", () => {

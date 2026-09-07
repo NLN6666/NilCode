@@ -46,7 +46,7 @@ describe("AdvisorServerSettings", () => {
   // a steer is turned into "interrupt the turn and requeue" by the decider,
   // which is destructive rather than advisory. Encoding that in the schema makes
   // the unsupported configuration unrepresentable instead of a runtime check.
-  it.each(["cursor", "antigravity", "grok", "droid", "kilo", "opencode", "pi"])(
+  it.each(["cursor", "antigravity", "grok", "droid", "devin", "opencode", "omp", "pi"])(
     "rejects %s, which cannot steer a live turn",
     (provider) => {
       expect(() =>

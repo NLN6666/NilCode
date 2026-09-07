@@ -9,11 +9,9 @@ describe("applyDesktopGraphicsPolicy", () => {
   it("leaves hardware acceleration enabled by default on Windows", () => {
     const disableHardwareAcceleration = vi.fn();
 
-    const result = applyDesktopGraphicsPolicy(
-      { disableHardwareAcceleration },
-      "win32",
-      ["Synara.exe"],
-    );
+    const result = applyDesktopGraphicsPolicy({ disableHardwareAcceleration }, "win32", [
+      "Synara.exe",
+    ]);
 
     expect(disableHardwareAcceleration).not.toHaveBeenCalled();
     expect(result).toEqual({
@@ -25,11 +23,10 @@ describe("applyDesktopGraphicsPolicy", () => {
   it("allows users to explicitly disable hardware acceleration on Windows", () => {
     const disableHardwareAcceleration = vi.fn();
 
-    const result = applyDesktopGraphicsPolicy(
-      { disableHardwareAcceleration },
-      "win32",
-      ["Synara.exe", DISABLE_HARDWARE_ACCELERATION_FLAG],
-    );
+    const result = applyDesktopGraphicsPolicy({ disableHardwareAcceleration }, "win32", [
+      "Synara.exe",
+      DISABLE_HARDWARE_ACCELERATION_FLAG,
+    ]);
 
     expect(disableHardwareAcceleration).toHaveBeenCalledOnce();
     expect(result).toEqual({
@@ -41,11 +38,10 @@ describe("applyDesktopGraphicsPolicy", () => {
   it("requires an exact disable flag match", () => {
     const disableHardwareAcceleration = vi.fn();
 
-    applyDesktopGraphicsPolicy(
-      { disableHardwareAcceleration },
-      "win32",
-      ["Synara.exe", `${DISABLE_HARDWARE_ACCELERATION_FLAG}=true`],
-    );
+    applyDesktopGraphicsPolicy({ disableHardwareAcceleration }, "win32", [
+      "Synara.exe",
+      `${DISABLE_HARDWARE_ACCELERATION_FLAG}=true`,
+    ]);
 
     expect(disableHardwareAcceleration).not.toHaveBeenCalled();
   });
@@ -53,11 +49,10 @@ describe("applyDesktopGraphicsPolicy", () => {
   it("treats the former enable flag as the Windows default", () => {
     const disableHardwareAcceleration = vi.fn();
 
-    const result = applyDesktopGraphicsPolicy(
-      { disableHardwareAcceleration },
-      "win32",
-      ["Synara.exe", "--enable-hardware-acceleration"],
-    );
+    const result = applyDesktopGraphicsPolicy({ disableHardwareAcceleration }, "win32", [
+      "Synara.exe",
+      "--enable-hardware-acceleration",
+    ]);
 
     expect(disableHardwareAcceleration).not.toHaveBeenCalled();
     expect(result).toEqual({
@@ -71,11 +66,10 @@ describe("applyDesktopGraphicsPolicy", () => {
     (platform) => {
       const disableHardwareAcceleration = vi.fn();
 
-      const result = applyDesktopGraphicsPolicy(
-        { disableHardwareAcceleration },
-        platform,
-        ["Synara", DISABLE_HARDWARE_ACCELERATION_FLAG],
-      );
+      const result = applyDesktopGraphicsPolicy({ disableHardwareAcceleration }, platform, [
+        "Synara",
+        DISABLE_HARDWARE_ACCELERATION_FLAG,
+      ]);
 
       expect(disableHardwareAcceleration).not.toHaveBeenCalled();
       expect(result).toEqual({

@@ -54,7 +54,6 @@ describe("shouldProbeAgentMcpTools", () => {
       "antigravity",
       "grok",
       "opencode",
-      "kilo",
     ];
 
     for (const provider of managed) {

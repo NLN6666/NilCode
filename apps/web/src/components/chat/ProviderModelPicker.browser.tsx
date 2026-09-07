@@ -33,14 +33,6 @@ const MODEL_OPTIONS_BY_PROVIDER = {
     },
     { slug: "custom:GPT-5.6-Luna-0", name: "Custom GPT-5.6 Luna" },
   ],
-  kilo: [
-    {
-      slug: "kilo/kilo-auto/free",
-      name: "Kilo Auto Free",
-      upstreamProviderId: "kilo",
-      upstreamProviderName: "Kilo",
-    },
-  ],
   opencode: [
     {
       slug: "opencode/nemotron-3-super-free",
@@ -61,6 +53,14 @@ const MODEL_OPTIONS_BY_PROVIDER = {
       name: "Claude Sonnet 4.5",
       upstreamProviderId: "anthropic",
       upstreamProviderName: "Anthropic",
+    },
+  ],
+  devin: [
+    {
+      slug: "devin/swe-1.7",
+      name: "SWE 1.7",
+      upstreamProviderId: "devin",
+      upstreamProviderName: "Devin",
     },
   ],
   pi: [
