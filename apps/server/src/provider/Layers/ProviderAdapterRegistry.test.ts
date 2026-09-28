@@ -15,10 +15,15 @@ import { GrokAdapter, GrokAdapterShape } from "../Services/GrokAdapter.ts";
 import { OpenCodeAdapter, OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
 import { OhMyPiAdapter, OhMyPiAdapterShape } from "../Services/OhMyPiAdapter.ts";
 import { PiAdapter, PiAdapterShape } from "../Services/PiAdapter.ts";
+import { OmpAdapter, OmpAdapterShape } from "../Services/OmpAdapter.ts";
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
-import { ProviderAdapterRegistryLive } from "./ProviderAdapterRegistry.ts";
+import {
+  makeProviderAdapterRegistryLive,
+  ProviderAdapterRegistryLive,
+} from "./ProviderAdapterRegistry.ts";
 import { ProviderUnsupportedError } from "../Errors.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { SERVER_DESKTOP_FLAVOR } from "../../betaFeatureGate.ts";
 
 const fakeCodexAdapter: CodexAdapterShape = {
   provider: "codex",
@@ -159,10 +164,14 @@ const fakeDevinAdapter: DevinAdapterShape = {
   stopAll: vi.fn(),
   streamEvents: Stream.empty,
 };
-
 const fakeOhMyPiAdapter: OhMyPiAdapterShape = {
   ...fakePiAdapter,
   provider: "omp",
+};
+const fakeOmpAdapter: OmpAdapterShape = {
+  ...fakePiAdapter,
+  provider: "omp",
+  capabilities: { sessionModelSwitch: "restart-session" },
 };
 
 const fakeAntigravityAdapter: AntigravityAdapterShape = {
@@ -182,10 +191,15 @@ const fakeAntigravityAdapter: AntigravityAdapterShape = {
   streamEvents: Stream.empty,
 };
 
-const registryLayer = (codexAdapter = fakeCodexAdapter) =>
+const registryLayer = (
+  codexAdapter = fakeCodexAdapter,
+  flavor: typeof SERVER_DESKTOP_FLAVOR = SERVER_DESKTOP_FLAVOR,
+) =>
   Layer.mergeAll(
     Layer.provide(
-      ProviderAdapterRegistryLive,
+      flavor === SERVER_DESKTOP_FLAVOR
+        ? ProviderAdapterRegistryLive
+        : makeProviderAdapterRegistryLive(flavor),
       Layer.mergeAll(
         Layer.succeed(CodexAdapter, codexAdapter),
         Layer.succeed(ClaudeAdapter, fakeClaudeAdapter),
@@ -196,6 +210,7 @@ const registryLayer = (codexAdapter = fakeCodexAdapter) =>
         Layer.succeed(DroidAdapter, fakeDroidAdapter),
         Layer.succeed(OpenCodeAdapter, fakeOpenCodeAdapter),
         Layer.succeed(OhMyPiAdapter, fakeOhMyPiAdapter),
+        Layer.succeed(OmpAdapter, fakeOmpAdapter),
         Layer.succeed(PiAdapter, fakePiAdapter),
       ),
     ),
@@ -203,6 +218,29 @@ const registryLayer = (codexAdapter = fakeCodexAdapter) =>
   );
 
 const layer = it.layer(registryLayer());
+
+for (const [flavor, expectedSwitch] of [
+  ["production", "in-session"],
+  ["development", "in-session"],
+  ["unknown", "in-session"],
+  ["canary", "in-session"],
+  ["cua", "in-session"],
+  ["beta", "restart-session"],
+] as const) {
+  it.effect(
+    `${flavor} exposes exactly one OMP implementation with its own session semantics`,
+    () =>
+      Effect.gen(function* () {
+        const registry = yield* ProviderAdapterRegistry;
+        const omp = yield* registry.getByProvider("omp");
+        assert.equal(omp.capabilities.sessionModelSwitch, expectedSwitch);
+        assert.equal(
+          (yield* registry.listProviders()).filter((provider) => provider === "omp").length,
+          1,
+        );
+      }).pipe(Effect.provide(registryLayer(fakeCodexAdapter, flavor))),
+  );
+}
 
 layer("ProviderAdapterRegistryLive", (it) => {
   it.effect("resolves a registered provider adapter", () =>
@@ -226,7 +264,10 @@ layer("ProviderAdapterRegistryLive", (it) => {
       assert.equal(grok, fakeGrokAdapter);
       assert.equal(droid, fakeDroidAdapter);
       assert.equal(opencode, fakeOpenCodeAdapter);
-      assert.equal(omp, fakeOhMyPiAdapter);
+      assert.equal(
+        omp,
+        SERVER_DESKTOP_FLAVOR === "beta" ? fakeOmpAdapter : fakeOhMyPiAdapter,
+      );
       assert.equal(pi, fakePiAdapter);
 
       const providers = yield* registry.listProviders();

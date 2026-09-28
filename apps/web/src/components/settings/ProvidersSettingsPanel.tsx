@@ -8,7 +8,7 @@ import {
   type ServerProviderStatus,
   type ServerSettings,
 } from "@synara/contracts";
-import { PROVIDER_DESCRIPTORS } from "@synara/shared/providerMetadata";
+import { isBetaFeatureOn, VISIBLE_PROVIDER_DESCRIPTORS } from "../../betaFeatures";
 import {
   closestCenter,
   DndContext,
@@ -30,6 +30,7 @@ import { type MouseEvent, type ReactNode, useCallback, useMemo, useRef, useState
 
 import type { AppSettings, AppSettingsBinding } from "~/appSettings";
 import { useProviderStatusesForLocalConfig } from "~/hooks/useProviderStatusesForLocalConfig";
+import { useRefreshProviderStatusesNow } from "~/hooks/useProviderStatusRefresh";
 import { useMessages } from "../../i18n/context";
 import type { Messages } from "../../i18n/locales/en";
 import { CentralIcon } from "~/lib/central-icons";
@@ -86,12 +87,28 @@ type ProviderInstallTextKey =
   | "openCodeServerUrl"
   | "ompBinaryPath"
   | "piBinaryPath"
-  | "piAgentDir";
+  | "piAgentDir"
+  | "ompAgentDir";
 type ProviderInstallPasswordKey = "openCodeServerPassword";
 type ProviderInstallPasswordConfiguredKey = "openCodeServerPasswordConfigured";
-type ProviderInstallBooleanKey = "openCodeExperimentalWebSockets";
+type ProviderInstallBooleanKey = "claudeEnableArtifacts" | "openCodeExperimentalWebSockets";
 
 type ProvidersCopy = Messages["settings"]["providers"];
+
+function providerSetupLabel(
+  status: ServerProviderStatus | undefined,
+  reconciled: boolean,
+  disabled: boolean,
+  copy: ProvidersCopy["activity"]["setupStatus"],
+): string {
+  if (disabled) return copy.disabled;
+  if (!reconciled || !status) return copy.checking;
+  if (!status.available) return copy.unavailable;
+  if (status.authStatus === "unauthenticated") return copy.needsSignIn;
+  if (status.status !== "ready") return copy.needsAttention;
+  if (status.authStatus === "unknown") return copy.unverifiedSignIn;
+  return copy.connected;
+}
 
 type ProviderInstallFieldCopy = {
   readonly label: string;
@@ -152,11 +169,11 @@ type ProviderInstallSettings = {
   readonly fields: readonly ProviderInstallField[];
 };
 
-const PROVIDER_VISIBILITY_OPTIONS: ReadonlyArray<{ provider: ProviderKind; title: string }> =
-  PROVIDER_DESCRIPTORS.map((descriptor) => ({
-    provider: descriptor.kind,
-    title: descriptor.displayName,
-  }));
+const PROVIDER_VISIBILITY_OPTIONS = VISIBLE_PROVIDER_DESCRIPTORS.map((descriptor) => ({
+  provider: descriptor.kind,
+  title: descriptor.displayName,
+  setupDocsHref: descriptor.setupDocsHref,
+}));
 
 const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
   {
@@ -194,6 +211,11 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
         kind: "text",
         settingsKey: "claudeBinaryPath",
         copy: (c) => ({ ...c.fields.claudeBinaryPath, description: binaryHint(c, "claude") }),
+      },
+      {
+        kind: "boolean",
+        settingsKey: "claudeEnableArtifacts",
+        copy: (c) => c.fields.claudeEnableArtifacts,
       },
     ],
   },
@@ -337,6 +359,11 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
         settingsKey: "ompBinaryPath",
         copy: (c) => ({ ...c.fields.ompBinaryPath, description: binaryHint(c, "omp") }),
       },
+      {
+        kind: "text",
+        settingsKey: "ompAgentDir",
+        copy: (c) => c.fields.ompAgentDir,
+      },
     ],
   },
   {
@@ -360,6 +387,12 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
     ],
   },
 ];
+
+// Beta-only providers (OMP on Stable) keep their stored install fields but
+// their install row is hidden.
+const VISIBLE_PROVIDER_INSTALL_SETTINGS = PROVIDER_INSTALL_SETTINGS.filter((config) =>
+  isBetaFeatureOn(config.provider),
+);
 
 function isProviderInstallFieldDirty(
   field: ProviderInstallField,
@@ -437,6 +470,7 @@ function SortableProviderVisibilityRow(props: {
   option: { provider: ProviderKind; title: string };
   providerStatus: ServerProviderStatus | undefined;
   statusReconciled: boolean;
+  isDisabled: boolean;
   isHidden: boolean;
   onHiddenChange: (hidden: boolean) => void;
 }) {
@@ -481,9 +515,16 @@ function SortableProviderVisibilityRow(props: {
         </button>
         <ProviderIcon provider={props.option.provider} className="size-4 shrink-0" />
         <span className="min-w-0">
-          <span className="block truncate text-sm text-foreground">{props.option.title}</span>
-          <span className="block text-[11px] text-muted-foreground">
-            {isChecking ? "Checking" : isAvailable ? "Installed" : "CLI not installed"}
+          <span className="block truncate text-ui-lg leading-snug text-foreground">
+            {props.option.title}
+          </span>
+          <span className="block text-ui-sm text-muted-foreground">
+            {providerSetupLabel(
+              props.providerStatus,
+              props.statusReconciled,
+              props.isDisabled,
+              m.settings.providers.activity.setupStatus,
+            )}
           </span>
         </span>
       </div>
@@ -860,7 +901,7 @@ function ProviderToolRow(props: {
             type="button"
             className="flex min-w-0 flex-1 items-center gap-2 text-left"
           >
-            <span className="min-w-0 flex-1 text-sm font-medium text-foreground">{title}</span>
+            <span className="min-w-0 flex-1 text-ui-lg font-medium text-foreground">{title}</span>
             {isDirty ? (
               <span className="shrink-0 text-[11px] text-muted-foreground">
                 {m.settings.providers.tools.custom}
@@ -869,7 +910,7 @@ function ProviderToolRow(props: {
             {providerUpdateLabel ? (
               <span
                 className={cn(
-                  "shrink-0 text-[11px]",
+                  "shrink-0 text-ui-sm",
                   updateAdvisory?.status === "behind_latest"
                     ? "text-foreground"
                     : "text-muted-foreground",
@@ -898,7 +939,7 @@ function ProviderToolRow(props: {
             <div className="space-y-3">
               <ProviderDocsLinks docs={props.config.docs} />
               {showProviderUpdateStatus && updateAdvisory?.status === "behind_latest" ? (
-                <div className="text-xs text-muted-foreground">
+                <div className="text-ui leading-snug text-muted-foreground">
                   {updateAdvisory.canUpdate && updateAdvisory.updateCommand ? (
                     <>
                       <span>{m.settings.providers.tools.command}</span>
@@ -911,7 +952,7 @@ function ProviderToolRow(props: {
               ) : null}
               {showSelfManagedUpdate && props.providerStatus ? (
                 <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0 text-xs text-muted-foreground">
+                  <div className="min-w-0 text-ui leading-snug text-muted-foreground">
                     {title} manages its own releases, so Synara cannot tell whether a newer version
                     exists. Run the update to be sure.
                   </div>
@@ -960,6 +1001,9 @@ export function ProvidersSettingsPanel({
   const queryClient = useQueryClient();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const localProviderStatuses = useProviderStatusesForLocalConfig();
+  const refreshProviderStatuses = useRefreshProviderStatusesNow();
+  const [refreshingProviders, setRefreshingProviders] = useState(false);
+  const refreshProvidersInFlightRef = useRef(false);
   const providerStatusesReconciled = hasReconciledServerProviderStatuses(queryClient);
   const serverSettingsQuery = useQuery(serverSettingsQueryOptions());
   const [openInstallProviders, setOpenInstallProviders] = useState<Record<ProviderKind, boolean>>(
@@ -974,12 +1018,16 @@ export function ProvidersSettingsPanel({
     () => new Set<ProviderKind>(settings.hiddenProviders),
     [settings.hiddenProviders],
   );
-  const hiddenProviderCount = hiddenProviderSet.size;
+  const hiddenProviderCount = PROVIDER_VISIBILITY_OPTIONS.filter((option) =>
+    hiddenProviderSet.has(option.provider),
+  ).length;
   const disabledProviderSet = useMemo(
     () => new Set<ProviderKind>(settings.disabledProviders),
     [settings.disabledProviders],
   );
-  const enabledProviderCount = PROVIDER_VISIBILITY_OPTIONS.length - disabledProviderSet.size;
+  const enabledProviderCount = PROVIDER_VISIBILITY_OPTIONS.filter(
+    (option) => !disabledProviderSet.has(option.provider),
+  ).length;
   const providerVisibilityOptionsByProvider = useMemo(
     () => new Map(PROVIDER_VISIBILITY_OPTIONS.map((option) => [option.provider, option])),
     [],
@@ -1122,12 +1170,37 @@ export function ProvidersSettingsPanel({
 
   if (!active) return null;
 
+  const refreshProviders = async () => {
+    if (refreshProvidersInFlightRef.current) return;
+    refreshProvidersInFlightRef.current = true;
+    setRefreshingProviders(true);
+    try {
+      await refreshProviderStatuses();
+    } finally {
+      refreshProvidersInFlightRef.current = false;
+      setRefreshingProviders(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <SettingsSection title={m.settings.providers.activity.title}>
         <SettingsRow
           title={m.settings.providers.activity.enabledTitle}
           description={m.settings.providers.activity.description}
+          control={
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={refreshingProviders}
+              onClick={() => void refreshProviders()}
+            >
+              {refreshingProviders ? <Loader2Icon className="size-3.5 animate-spin" /> : null}
+              {refreshingProviders
+                ? m.settings.providers.activity.checkingSetup
+                : m.settings.providers.activity.refreshStatus}
+            </Button>
+          }
           status={
             providerEnablementMutationPending
               ? m.settings.providers.activity.saving
@@ -1154,6 +1227,7 @@ export function ProvidersSettingsPanel({
           >
             {orderedProviderVisibilityOptions.map((option) => {
               const enabled = !disabledProviderSet.has(option.provider);
+              const providerStatus = providerStatusByProvider.get(option.provider);
               return (
                 <SettingsListRow
                   key={option.provider}
@@ -1164,29 +1238,50 @@ export function ProvidersSettingsPanel({
                     </span>
                   }
                   description={
-                    enabled
-                      ? m.settings.providers.activity.allowed
-                      : m.settings.providers.activity.disabled
+                    <>
+                      <span className="block">
+                        {providerSetupLabel(
+                          providerStatus,
+                          providerStatusesReconciled,
+                          !enabled,
+                          m.settings.providers.activity.setupStatus,
+                        )}
+                      </span>
+                      {enabled &&
+                      providerStatusesReconciled &&
+                      providerStatus?.message &&
+                      (providerStatus.status !== "ready" ||
+                        providerStatus.authStatus !== "authenticated") ? (
+                        <span className="mt-1 block">{providerStatus.message}</span>
+                      ) : null}
+                    </>
                   }
                   actions={
-                    <Switch
-                      checked={enabled}
-                      disabled={!serverSettingsQuery.data || providerEnablementMutationPending}
-                      onCheckedChange={(checked) =>
-                        void updateProviderEnablement(
-                          setProviderListMembership(
-                            settings.disabledProviders,
-                            option.provider,
-                            !Boolean(checked),
-                          ),
-                        )
-                      }
-                      aria-label={
-                        enabled
-                          ? m.settings.providers.activity.disable(option.title)
-                          : m.settings.providers.activity.enable(option.title)
-                      }
-                    />
+                    <>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        render={<a href={option.setupDocsHref} target="_blank" rel="noreferrer" />}
+                        aria-label={m.settings.providers.activity.setupGuide(option.title)}
+                      >
+                        {m.settings.providers.activity.setupGuideLabel}
+                        <ExternalLinkIcon className="size-3" />
+                      </Button>
+                      <Switch
+                        checked={enabled}
+                        disabled={!serverSettingsQuery.data || providerEnablementMutationPending}
+                        onCheckedChange={(checked) =>
+                          void updateProviderEnablement(
+                            setProviderListMembership(
+                              settings.disabledProviders,
+                              option.provider,
+                              !Boolean(checked),
+                            ),
+                          )
+                        }
+                        aria-label={`${enabled ? "Disable" : "Enable"} ${option.title}`}
+                      />
+                    </>
                   }
                 />
               );
@@ -1246,6 +1341,7 @@ export function ProvidersSettingsPanel({
                     option={option}
                     providerStatus={providerStatusByProvider.get(option.provider)}
                     statusReconciled={providerStatusesReconciled}
+                    isDisabled={disabledProviderSet.has(option.provider)}
                     isHidden={hiddenProviderSet.has(option.provider)}
                     onHiddenChange={(hidden) =>
                       updateSettings({
@@ -1372,7 +1468,7 @@ export function ProvidersSettingsPanel({
           >
             <div className="mt-4">
               <div className={SETTINGS_INSET_LIST_CLASS_NAME}>
-                {PROVIDER_INSTALL_SETTINGS.map((config) => (
+                {VISIBLE_PROVIDER_INSTALL_SETTINGS.map((config) => (
                   <ProviderToolRow
                     key={config.provider}
                     config={config}

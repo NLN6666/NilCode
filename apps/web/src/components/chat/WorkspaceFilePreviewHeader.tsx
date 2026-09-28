@@ -307,7 +307,7 @@ export const WorkspaceFilePreviewHeader = function WorkspaceFilePreviewHeader(
         </span>
       ) : props.readOnlyReason ? (
         <span
-          className="hidden max-w-32 shrink-0 truncate text-[10px] text-muted-foreground/70 @sm/header-actions:inline"
+          className="hidden max-w-32 shrink-0 truncate text-ui-xs text-muted-foreground/70 @sm/header-actions:inline"
           title={props.readOnlyReason}
         >
           {copy.readOnly}
@@ -315,7 +315,7 @@ export const WorkspaceFilePreviewHeader = function WorkspaceFilePreviewHeader(
       ) : null}
 
       {props.saveState ? (
-        <span role="status" className="shrink-0 text-[11px] text-muted-foreground">
+        <span role="status" className="shrink-0 text-ui-sm text-muted-foreground">
           {props.saveState}
         </span>
       ) : null}
@@ -325,7 +325,7 @@ export const WorkspaceFilePreviewHeader = function WorkspaceFilePreviewHeader(
             type="button"
             onClick={props.onSave}
             disabled={!props.dirty || props.saveState === "Saving..."}
-            className="rounded-md px-2 py-1 text-[11px] disabled:opacity-50"
+            className="rounded-md px-2 py-1 text-ui-sm disabled:opacity-50"
           >
             Save
           </button>

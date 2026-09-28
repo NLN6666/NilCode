@@ -1,4 +1,18 @@
-import type { OrchestrationThreadActivity, ThreadTokenUsageSnapshot } from "@synara/contracts";
+import {
+  ClaudeCacheObservation,
+  type ProviderKind,
+  type OrchestrationThreadActivity,
+  type ThreadTokenUsageSnapshot,
+} from "@synara/contracts";
+import { normalizeModelSlug, stripClaudeContextWindowSuffix } from "@synara/shared/model";
+import { Schema } from "effect";
+
+const decodeClaudeCacheObservation = Schema.decodeUnknownOption(ClaudeCacheObservation);
+
+function readClaudeCacheObservation(value: unknown): ClaudeCacheObservation | null {
+  const decoded = decodeClaudeCacheObservation(value);
+  return decoded._tag === "Some" ? decoded.value : null;
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
@@ -75,6 +89,11 @@ function deriveLatestUsageContextWindowState(
     if (!activity) {
       continue;
     }
+    // A new configuration starts a new reporting epoch. Old usage cannot
+    // establish the effective threshold of a resumed or switched session.
+    if (activity.kind === "context-window.configured") {
+      return { snapshot: null, invalidatedByCompaction: false };
+    }
     if (isCompletedContextCompaction(activity)) {
       return { snapshot: null, invalidatedByCompaction: true };
     }
@@ -105,6 +124,7 @@ function deriveLatestUsageContextWindowState(
 
     return {
       snapshot: {
+        claudeCache: readClaudeCacheObservation(payload?.claudeCache),
         usedTokens,
         usedPercent: payloadUsedPercent,
         // Older Claude totals counted completed content blocks repeatedly.
@@ -140,90 +160,51 @@ function deriveLatestUsageContextWindowState(
   return { snapshot: null, invalidatedByCompaction: false };
 }
 
-// Use the configured session window as the source of truth for the meter denominator.
-function deriveLatestConfiguredContextWindowMaxTokens(
+// Configuration identifies the applied target, never the runtime denominator.
+export function deriveAppliedContextWindowSelection(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
-): number | null {
-  for (let index = activities.length - 1; index >= 0; index -= 1) {
-    const activity = activities[index];
-    if (!activity || activity.kind !== "context-window.configured") {
-      continue;
-    }
-
-    const payload = asRecord(activity.payload);
-    const maxTokens = asFiniteNumber(payload?.maxTokens);
-    return maxTokens !== null && maxTokens > 0 ? maxTokens : null;
-  }
-
-  return null;
+): string | null {
+  const activity = activities.findLast((item) => item.kind === "context-window.configured");
+  const payload = asRecord(activity?.payload);
+  if (payload?.cleared === true) return "auto";
+  const maxTokens = asFiniteNumber(payload?.maxTokens);
+  return (
+    Object.entries(KNOWN_CONTEXT_WINDOW_MAX_TOKENS).find(
+      ([, tokens]) => tokens === maxTokens,
+    )?.[0] ?? null
+  );
 }
 
 export function deriveLatestContextWindowState(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): ContextWindowState {
-  const usageState = deriveLatestUsageContextWindowState(activities);
-  if (usageState.invalidatedByCompaction) {
-    return usageState;
+  const state = deriveLatestUsageContextWindowState(activities);
+  const usage = state.snapshot;
+  if (usage === null) return state;
+
+  // A configured window identifies the effective session capacity, whereas Claude
+  // reports usedPercent against its smaller auto-compact threshold. Only override
+  // when the runtime also supplied a reliable token count and denominator.
+  const configured = activities.findLast((item) => item.kind === "context-window.configured");
+  const configuredMaxTokens = asFiniteNumber(asRecord(configured?.payload)?.maxTokens);
+  if (
+    configuredMaxTokens === null ||
+    configuredMaxTokens <= 0 ||
+    usage.maxTokens === null ||
+    usage.maxTokens === configuredMaxTokens
+  ) {
+    return state;
   }
-
-  const usageSnapshot = usageState.snapshot;
-  const configuredMaxTokens = deriveLatestConfiguredContextWindowMaxTokens(activities);
-
-  if (usageSnapshot === null && configuredMaxTokens === null) {
-    return usageState;
-  }
-
-  const usedTokens = usageSnapshot?.usedTokens ?? 0;
-  const maxTokens = configuredMaxTokens ?? usageSnapshot?.maxTokens ?? null;
-  // The runtime's `usedPercent` is computed against *its* `maxTokens` (Claude
-  // reports the auto-compact threshold, e.g. 167k inside a 200k window). Reusing
-  // it while the meter denominator is the configured session window would print
-  // a ratio that contradicts the "used/max" pair right next to it, so only trust
-  // it when both agree on the denominator.
-  const percentMatchesDenominator =
-    usageSnapshot?.maxTokens === null ||
-    usageSnapshot?.maxTokens === undefined ||
-    usageSnapshot.maxTokens === maxTokens;
-  const usedPercentage =
-    (percentMatchesDenominator ? usageSnapshot?.usedPercent : null) ??
-    (maxTokens !== null && maxTokens > 0 ? Math.min(100, (usedTokens / maxTokens) * 100) : null);
-  const hasReliableTokenUsage =
-    usageSnapshot === null ||
-    usageSnapshot.usedTokens > 0 ||
-    usageSnapshot.usedPercent === null ||
-    usageSnapshot.maxTokens !== null;
-  const remainingTokens =
-    maxTokens !== null && hasReliableTokenUsage
-      ? Math.max(0, Math.round(maxTokens - usedTokens))
-      : null;
-  const remainingPercentage = usedPercentage !== null ? Math.max(0, 100 - usedPercentage) : null;
-
+  const usedPercentage = Math.min(100, (usage.usedTokens / configuredMaxTokens) * 100);
   return {
+    ...state,
     snapshot: {
-      usedTokens,
-      usedPercent: usageSnapshot?.usedPercent ?? null,
-      totalProcessedTokens: usageSnapshot?.totalProcessedTokens ?? null,
-      tokenAccountingVersion: usageSnapshot?.tokenAccountingVersion ?? null,
-      maxTokens,
-      contextWindowTokens: usageSnapshot?.contextWindowTokens ?? null,
-      remainingTokens,
+      ...usage,
+      maxTokens: configuredMaxTokens,
       usedPercentage,
-      remainingPercentage,
-      inputTokens: usageSnapshot?.inputTokens ?? null,
-      cachedInputTokens: usageSnapshot?.cachedInputTokens ?? null,
-      outputTokens: usageSnapshot?.outputTokens ?? null,
-      reasoningOutputTokens: usageSnapshot?.reasoningOutputTokens ?? null,
-      lastUsedTokens: usageSnapshot?.lastUsedTokens ?? null,
-      lastInputTokens: usageSnapshot?.lastInputTokens ?? null,
-      lastCachedInputTokens: usageSnapshot?.lastCachedInputTokens ?? null,
-      lastOutputTokens: usageSnapshot?.lastOutputTokens ?? null,
-      lastReasoningOutputTokens: usageSnapshot?.lastReasoningOutputTokens ?? null,
-      toolUses: usageSnapshot?.toolUses ?? null,
-      durationMs: usageSnapshot?.durationMs ?? null,
-      compactsAutomatically: usageSnapshot?.compactsAutomatically ?? false,
-      updatedAt: usageSnapshot?.updatedAt ?? activities[activities.length - 1]?.createdAt ?? "",
+      remainingTokens: Math.max(0, Math.round(configuredMaxTokens - usage.usedTokens)),
+      remainingPercentage: Math.max(0, 100 - usedPercentage),
     },
-    invalidatedByCompaction: false,
   };
 }
 
@@ -242,6 +223,7 @@ export function deriveSelectedContextWindowSnapshot(
   }
 
   return {
+    claudeCache: null,
     usedTokens: 0,
     usedPercent: null,
     totalProcessedTokens: null,
@@ -323,7 +305,7 @@ export function deriveCumulativeCostUsd(
   return foundTurnDelta ? turnDeltaTotal : null;
 }
 
-export function formatContextWindowSelectionLabel(value: string | null | undefined): string | null {
+function formatContextWindowSelectionLabel(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -331,6 +313,7 @@ export function formatContextWindowSelectionLabel(value: string | null | undefin
   if (!normalized) {
     return null;
   }
+  if (normalized === "auto") return "Auto";
   if (normalized === "1m") {
     return "1M";
   }
@@ -361,13 +344,17 @@ export function inferContextWindowSelectionValue(
 
 export function deriveContextWindowSelectionStatus(input: {
   activeSnapshot: ContextWindowSnapshot | null;
+  appliedValue?: string | null;
   selectedValue: string | null | undefined;
 }): ContextWindowSelectionStatus {
-  const activeValue = inferContextWindowSelectionValue(input.activeSnapshot?.maxTokens ?? null);
+  const activeValue =
+    input.appliedValue === undefined
+      ? inferContextWindowSelectionValue(input.activeSnapshot?.maxTokens ?? null)
+      : input.appliedValue;
   const selectedValue = input.selectedValue?.trim().toLowerCase() ?? null;
   const activeLabel =
     formatContextWindowSelectionLabel(activeValue) ??
-    (input.activeSnapshot?.maxTokens != null
+    (input.appliedValue === undefined && input.activeSnapshot?.maxTokens != null
       ? formatContextWindowTokens(input.activeSnapshot.maxTokens)
       : null);
   const selectedLabel = formatContextWindowSelectionLabel(selectedValue);
@@ -381,6 +368,29 @@ export function deriveContextWindowSelectionStatus(input: {
     selectedLabel,
     pendingSelectedLabel,
   };
+}
+
+// Budget is runtime evidence; the configured mode remains a separate target.
+export function deriveComposerContextWindowLabel(input: {
+  provider: ProviderKind;
+  model: string;
+  snapshot: ContextWindowSnapshot | null;
+  status: ContextWindowSelectionStatus;
+}): string | null {
+  if (input.provider !== "claudeAgent") return null;
+  const observedModel = input.snapshot?.claudeCache?.model;
+  const sameModel =
+    observedModel !== undefined &&
+    stripClaudeContextWindowSuffix(normalizeModelSlug(observedModel, "claudeAgent") ?? "") ===
+      stripClaudeContextWindowSuffix(normalizeModelSlug(input.model, "claudeAgent") ?? "");
+  const budget = sameModel
+    ? formatContextWindowSelectionLabel(inferContextWindowSelectionValue(input.snapshot?.maxTokens))
+    : null;
+  const { selectedLabel, activeLabel, pendingSelectedLabel } = input.status;
+  const pending = pendingSelectedLabel ?? (!sameModel ? selectedLabel : null);
+  if (budget) return pending ? `(${budget} · ${pending} next)` : `(${budget})`;
+  if (selectedLabel === null || (selectedLabel === "Auto" && !pendingSelectedLabel)) return null;
+  return `(${selectedLabel} ${pending || activeLabel === null ? "next" : "target"})`;
 }
 
 export function formatCostUsd(value: number): string {

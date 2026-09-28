@@ -18,8 +18,8 @@ import {
   normalizeAntigravityModelOptions,
   normalizeClaudeModelOptions,
   normalizeCursorModelOptions,
+  normalizeOmpModelOptions,
   normalizeOpenCodeModelOptions,
-  normalizeOhMyPiModelOptions,
   normalizePiModelOptions,
   resolveDevinModelVariant,
   resolveLabeledOptionValue,
@@ -143,12 +143,6 @@ export function getComposerProviderState(input: ComposerProviderStateInput): Com
       normalizedOptions = normalizePiModelOptions(providerOptions);
       break;
     }
-    case "omp": {
-      const providerOptions = modelOptions?.omp;
-      rawEffort = trimOrNull(providerOptions?.thinkingLevel);
-      normalizedOptions = normalizeOhMyPiModelOptions(providerOptions);
-      break;
-    }
     case "devin": {
       const providerOptions = modelOptions?.devin;
       rawEffort = trimOrNull(providerOptions?.reasoningEffort);
@@ -197,6 +191,12 @@ export function getComposerProviderState(input: ComposerProviderStateInput): Com
           : {}),
       };
       normalizedOptions = Object.keys(nextOptions).length > 0 ? nextOptions : undefined;
+      break;
+    }
+    case "omp": {
+      const providerOptions = modelOptions?.omp;
+      rawEffort = trimOrNull(providerOptions?.thinkingLevel);
+      normalizedOptions = normalizeOmpModelOptions(providerOptions);
       break;
     }
   }

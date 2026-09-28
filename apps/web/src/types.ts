@@ -12,6 +12,7 @@ import type {
   OrchestrationThreadPullRequest,
   OrchestrationProposedPlanId,
   PinnedMessage,
+  PendingClaudeCacheReview,
   ThreadGoalAchievement,
   OrchestrationSessionStatus,
   OrchestrationThreadActivity,
@@ -34,6 +35,7 @@ import type {
   ThreadCreationSource,
   ThreadEnvironmentMode,
 } from "@synara/contracts";
+import type { ProjectAppearance } from "./lib/projectAppearance";
 
 export type SessionPhase = "disconnected" | "connecting" | "ready" | "running";
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
@@ -112,6 +114,7 @@ export interface ChatMessage {
   text: string;
   /** Slices of streamed assistant text between row-making provider events. */
   textSegments?: OrchestrationMessageTextSegment[];
+  asyncUserInput?: import("@synara/contracts").AsyncUserInput;
   attachments?: ChatAttachment[];
   skills?: ProviderSkillReference[];
   mentions?: ProviderMentionReference[];
@@ -120,6 +123,7 @@ export interface ChatMessage {
   startsNewTurn?: boolean;
   turnId?: TurnId | null;
   createdAt: string;
+  updatedAt?: string;
   completedAt?: string | undefined;
   streaming: boolean;
   source?: OrchestrationMessageSource;
@@ -188,6 +192,8 @@ export interface Project {
   remoteName: string;
   folderName: string;
   localName: string | null;
+  /** Local look in the sidebar and rail; missing or null is the default folder. */
+  appearance?: ProjectAppearance | null;
   cwd: string;
   defaultModelSelection: ModelSelection | null;
   expanded: boolean;
@@ -283,8 +289,12 @@ export interface Thread extends ThreadWorkspaceState {
   sidechatLastActivityAt?: string | null;
   sidechatExpiredAt?: string | null;
   handoff?: ThreadHandoff | null;
+  claudeCacheReview?: PendingClaudeCacheReview | null;
+  /** Client projection cursor shared by shell and detail cache-review updates. */
+  claudeCacheReviewSequence?: number;
   lastKnownPr?: OrchestrationThreadPullRequest | null;
   latestUserMessageAt?: string | null;
+  latestHumanMessageAt?: string | null;
   hasPendingApprovals?: boolean;
   hasPendingUserInput?: boolean;
   hasActionableProposedPlan?: boolean;
@@ -328,8 +338,11 @@ export interface ThreadShell extends ThreadWorkspaceState {
   sidechatLastActivityAt?: string | null;
   sidechatExpiredAt?: string | null;
   handoff?: ThreadHandoff | null;
+  claudeCacheReview?: PendingClaudeCacheReview | null;
+  claudeCacheReviewSequence?: number;
   lastKnownPr?: OrchestrationThreadPullRequest | null;
   latestUserMessageAt?: string | null;
+  latestHumanMessageAt?: string | null;
   hasPendingApprovals?: boolean;
   hasPendingUserInput?: boolean;
   hasActionableProposedPlan?: boolean;
@@ -369,6 +382,7 @@ export interface SidebarThreadSummary {
   subagentNickname?: string | null;
   subagentRole?: string | null;
   latestUserMessageAt: string | null;
+  latestHumanMessageAt?: string | null;
   hasPendingApprovals: boolean;
   hasPendingUserInput: boolean;
   hasActionableProposedPlan: boolean;

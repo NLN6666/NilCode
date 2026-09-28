@@ -24,6 +24,7 @@ import {
   selectProfileModelUsage,
   selectProfileTopProvider,
 } from "../profile/profileSelectors";
+import { ProfileUsageCoverage } from "../profile/ProfileUsageCoverage";
 import { ShareDialog } from "../profile/ShareDialog";
 import { EditProfileDialog } from "../profile/EditProfileDialog";
 import { useProfileHandle } from "../profile/useProfileHandle";
@@ -35,6 +36,8 @@ import {
   formatCompact,
   formatDays,
   formatNumber,
+  formatProviderLabel,
+
   toDisplayName,
 } from "../profile/profileFormatting";
 
@@ -117,10 +120,10 @@ function ProfileContent({
         />
         <div className="flex flex-col items-center gap-1.5">
           <h2 className="text-2xl font-semibold tracking-tight">{name}</h2>
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-ui leading-snug text-muted-foreground">
             <span>{handle}</span>
             <span aria-hidden>·</span>
-            <span className="rounded-full border px-1.5 py-px text-xs text-muted-foreground">
+            <span className="rounded-full border px-1.5 py-px text-ui leading-snug text-muted-foreground">
               Synara
             </span>
           </div>
@@ -154,7 +157,7 @@ function ProfileContent({
       {/* Heatmap */}
       {stats.providerModels.some((entry) => entry.provider === "claudeAgent") ||
       tokenStats?.providers.includes("claudeAgent") ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-ui leading-snug text-muted-foreground">
           Claude token totals use verifiable records. Older history and unfinished turns may be
           incomplete.
         </p>
@@ -187,7 +190,9 @@ function ProfileContent({
               value={
                 topProvider.provider
                   ? `${formatProviderLabel(topProvider.provider)}${
-                      topProvider.percent !== null ? ` · ${topProvider.percent}%` : ""
+                      topProvider.percent !== null
+                        ? ` · ${m.settings.profile.providerUsageBasis(topProvider.percent, topProvider.metric)}`
+                        : ""
                     }`
                   : m.settings.profile.noValue
               }
@@ -222,6 +227,7 @@ function ProfileContent({
               value={formatNumber(stats.activity.totalThreads)}
             />
           </dl>
+          <ProfileUsageCoverage unavailableProviders={topProvider.unavailableProviders} />
         </section>
 
         <section className="flex flex-col gap-3">
@@ -240,7 +246,7 @@ function ProfileContent({
                         className="size-3"
                       />
                     </span>
-                    <span className="truncate text-sm">{skill.displayName}</span>
+                    <span className="truncate text-ui leading-snug">{skill.displayName}</span>
                   </span>
                   <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
                     {m.settings.profile.runs(formatNumber(skill.runCount))}
@@ -256,7 +262,10 @@ function ProfileContent({
 
       {/* Model usage */}
       <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium">{m.settings.profile.modelUsage}</h3>
+        <h3 className="text-ui-lg font-medium">{m.settings.profile.modelUsage}</h3>
+        <p className="text-ui leading-snug text-muted-foreground">
+          {m.settings.profile.modelUsageBasis(modelUsage.metric)}
+        </p>
         {modelUsage.entries.length > 0 ? (
           <ul className="grid grid-cols-1 gap-x-12 gap-y-3 sm:grid-cols-2">
             {modelUsage.entries.slice(0, 6).map((entry) => (
@@ -271,6 +280,7 @@ function ProfileContent({
         ) : (
           <p className="text-sm text-muted-foreground">{m.settings.profile.noModelActivity}</p>
         )}
+        <ProfileUsageCoverage unavailableProviders={modelUsage.unavailableProviders} />
       </section>
 
       <ShareDialog
@@ -316,9 +326,11 @@ function StatTile({ label, value }: { label: string; value: string | null }) {
       {value === null ? (
         <Skeleton className="h-4 w-12" />
       ) : (
-        <span className="text-sm font-normal tabular-nums text-foreground">{value}</span>
+        <span className="text-ui-lg leading-snug font-normal tabular-nums text-foreground">
+          {value}
+        </span>
       )}
-      <span className="text-sm font-normal text-muted-foreground">{label}</span>
+      <span className="text-ui leading-snug font-normal text-muted-foreground">{label}</span>
     </div>
   );
 }
@@ -326,8 +338,8 @@ function StatTile({ label, value }: { label: string; value: string | null }) {
 function InsightRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <dt className="shrink-0 text-sm text-muted-foreground">{label}</dt>
-      <dd className="truncate text-sm font-normal tabular-nums" title={value}>
+      <dt className="shrink-0 text-ui leading-snug text-muted-foreground">{label}</dt>
+      <dd className="truncate text-ui leading-snug font-normal tabular-nums" title={value}>
         {value}
       </dd>
     </div>
@@ -362,30 +374,6 @@ function formatMostWorkedProjectLabel(
   );
 }
 
-function formatProviderLabel(provider: ProviderKind): string {
-  switch (provider) {
-    case "codex":
-      return "Codex";
-    case "claudeAgent":
-      return "Claude";
-    case "cursor":
-      return "Cursor";
-    case "devin":
-      return "Devin";
-    case "antigravity":
-      return "Antigravity";
-    case "grok":
-      return "Grok";
-    case "droid":
-      return "Droid";
-    case "opencode":
-      return "OpenCode";
-    case "omp":
-      return "Oh My Pi";
-    case "pi":
-      return "Pi";
-  }
-}
 
 function ModelUsageRow({
   provider,
@@ -398,7 +386,7 @@ function ModelUsageRow({
 }) {
   return (
     <li className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-3 text-sm">
+      <div className="flex items-center justify-between gap-3 text-ui leading-snug">
         <span className="flex min-w-0 items-center gap-2">
           {provider !== "unknown" ? (
             <ProviderIcon provider={provider} className="size-3.5 shrink-0" />

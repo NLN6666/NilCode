@@ -36,11 +36,15 @@ import { QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Throttler } from "@tanstack/react-pacer";
 
 import { APP_DISPLAY_NAME, APP_VERSION } from "../branding";
+import { isBetaFeatureOn } from "../betaFeatures";
 import { DesktopWindowControls } from "../components/DesktopWindowControls";
 import { RunningChatsQuitCoordinator } from "../components/RunningChatsQuitCoordinator";
 import { AppSnapCoordinator } from "../components/AppSnapCoordinator";
 import { AppSnapWelcomeDialog } from "../components/AppSnapWelcomeDialog";
+import { BetaWelcomeDialog } from "../components/BetaWelcomeDialog";
 import { useOnboarding } from "../onboarding/useOnboarding";
+import { ProjectImportAnnouncementDialog } from "../projectImport/ProjectImportAnnouncementDialog";
+import { useProjectImportDialogStore } from "../projectImport/projectImportDialogStore";
 import { SafariAccessOnboarding } from "../components/SafariAccessOnboarding";
 import { QueuedComposerDrainCoordinator } from "../components/QueuedComposerDrainCoordinator";
 import { FeedbackDialog } from "../components/FeedbackDialog";
@@ -143,6 +147,7 @@ import {
   runEmptyRouteRestoreRefresh,
 } from "../routeRestoreRefreshCoordinator";
 import { useDiffRouteSearch } from "../hooks/useDiffRouteSearch";
+import { useComputerEventBridge } from "../hooks/useComputerEventBridge";
 import { useDeviceEventBridge } from "../hooks/useDeviceEventBridge";
 import {
   PROVIDER_AUTH_REFRESH_MIN_INTERVAL_MS,
@@ -154,8 +159,16 @@ import { useRightDockStore } from "../rightDockStore";
 import { resolveVisibleDockSidechatThreadIds } from "../rightDockStore.logic";
 import { arraysShallowEqual } from "../storeNormalization";
 import { providerModelDiscoveryInvalidationFingerprint } from "../lib/providerDiscoveryInvalidation";
-import { providerDiscoveryQueryKeys } from "../lib/providerDiscoveryReactQuery";
-import { didProviderEnablementChange, useAppSettings } from "../appSettings";
+import {
+  providerDiscoveryQueryKeys,
+  providerModelsQueryOptions,
+} from "../lib/providerDiscoveryReactQuery";
+import {
+  didProviderCommandDiscoverySettingsChange,
+  didProviderEnablementChange,
+  useAppSettings,
+} from "../appSettings";
+
 import { getNavigatorPlatform } from "../lib/utils";
 import {
   getNotifiableProviderUpdateStatuses,
@@ -317,12 +330,20 @@ function RootRouteView() {
             <EventRouter />
             <EditorDirtyRouteGuard />
             <ProviderStatusRefreshCoordinator />
+            <ProviderModelDiscoveryWarmer />
             <GlobalShortcutsDialog />
+            <BrowserVaultDialog />
             <GlobalFeedbackDialog />
             <GlobalWhatsNewSurface />
             <TaskCompletionNotifications />
             <QueuedComposerDrainCoordinator />
-            <AppSnapWelcomeDialog />
+            <SafariAccessOnboarding>
+              <AppSnapWelcomeDialog />
+              <BetaWelcomeDialog />
+            </SafariAccessOnboarding>
+            <GlobalOnboardingDialog />
+            <ProjectImportAnnouncementDialog />
+            <GlobalProjectImportDialog />
             <AppSnapCoordinator />
             <DesktopProjectBootstrap />
             <Outlet />
@@ -369,7 +390,7 @@ function TransportCompatibilityView({ issue }: { issue: WsCompatibilityError }) 
         <div className="absolute inset-0 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--background)_90%,var(--color-black))_0%,var(--background)_55%)]" />
       </div>
       <section className="relative w-full max-w-xl rounded-2xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-8">
-        <p className="text-[11px] font-semibold text-muted-foreground">{APP_DISPLAY_NAME}</p>
+        <p className="text-ui-sm font-semibold text-muted-foreground">{APP_DISPLAY_NAME}</p>
         <h1 className="mt-3 text-2xl font-semibold sm:text-3xl">{title}</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{issue.message}</p>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{guidance}</p>
@@ -452,6 +473,37 @@ function ProviderStatusRefreshCoordinator() {
       liveVersionCheckCompleted={providerUpdateRefreshEnabled && liveVersionCheckCompleted}
     />
   );
+}
+
+function ProviderModelDiscoveryWarmer() {
+  // OMP is the only provider with no static model fallback whose catalog also
+  // takes ~3s to fetch (`omp models --json` cold-start), so it is the lone
+  // provider that doesn't render instantly when the model picker opens. Warm it
+  // at app startup — ahead of the picker opening — so the catalog is ready by
+  // the time the user browses to OMP. The server caches that catalog globally
+  // (keyed by binary path + agent dir), so any warm primes it for every later
+  // query; `modelRoles` merge a per-cwd project layer, so the picker's own
+  // cwd-scoped query key then only pays for the config reads on top.
+  const { settings } = useAppSettings();
+  const queryClient = useQueryClient();
+  const ompHidden = !isBetaFeatureOn("omp") || settings.hiddenProviders.includes("omp");
+  const ompBinaryPath = settings.ompBinaryPath;
+  const ompAgentDir = settings.ompAgentDir;
+  useEffect(() => {
+    if (ompHidden) return;
+    // Build options from the two primitive fields the omp query reads:
+    // `settings` is rebuilt every render, so depending on it would re-fire the
+    // query (and its retry chain against a failing binary) on every render.
+    void queryClient.prefetchQuery(
+      providerModelsQueryOptions({
+        provider: "omp",
+        binaryPath: ompBinaryPath || null,
+        agentDir: ompAgentDir || null,
+        priority: "background",
+      }),
+    );
+  }, [queryClient, ompHidden, ompBinaryPath, ompAgentDir]);
+  return null;
 }
 
 // Extracted to module scope so its run-always cleanup can stay a try/finally: the
@@ -833,6 +885,26 @@ function GlobalOnboardingDialog() {
   );
 }
 
+const ProjectImportDialog = lazy(() =>
+  import("../projectImport/ProjectImportDialog").then((module) => ({
+    default: module.ProjectImportDialog,
+  })),
+);
+
+function GlobalProjectImportDialog() {
+  const isOpen = useProjectImportDialogStore((store) => store.isOpen);
+  const [hasOpened, setHasOpened] = useState(false);
+  useEffect(() => {
+    if (isOpen) setHasOpened(true);
+  }, [isOpen]);
+  if (!isOpen && !hasOpened) return null;
+  return (
+    <Suspense fallback={null}>
+      <ProjectImportDialog />
+    </Suspense>
+  );
+}
+
 function GlobalWhatsNewSurface() {
   // Single mount point per app session. The hook owns the "popout visible" and
   // "dialog open" booleans and the seen-marker persistence; this component is
@@ -1132,6 +1204,7 @@ function releaseOrphanedThreadDetail(input: {
 
 function EventRouter() {
   useDeviceEventBridge();
+  useComputerEventBridge();
   const syncServerShellSnapshot = useStore((store) => store.syncServerShellSnapshot);
   const syncServerThreadDetailHotPath = useStore((store) => store.syncServerThreadDetailHotPath);
   const applyShellEvent = useStore((store) => store.applyShellEvent);
@@ -1962,7 +2035,7 @@ function EventRouter() {
         // turn, the resync belongs to the turn that requested it, and the new turn must
         // still get its own.
         const catchupEntryBeforeApply = resolveThreadCatchupBackoff(threadId);
-        syncServerThreadDetailHotPath(snapshot.thread);
+        syncServerThreadDetailHotPath(snapshot.thread, snapshot.snapshotSequence);
         reconcilePromotedDraftFromThreadDetail(snapshot.thread);
         flushThreadBuffer(threadId, snapshot.snapshotSequence);
         projectionConfirmed = true;
@@ -2127,7 +2200,7 @@ function EventRouter() {
           clearThreadDetailResumeCursor(threadId);
           return;
         }
-        syncServerThreadDetailHotPath(item.snapshot.thread);
+        syncServerThreadDetailHotPath(item.snapshot.thread, item.snapshot.snapshotSequence);
         // The projection can discard a tombstoned snapshot (deleted thread or
         // project) instead of applying it; committing the cursor or the stream
         // fence first would leave resume bookkeeping vouching for detail that
@@ -2413,6 +2486,9 @@ function EventRouter() {
       if (didProviderEnablementChange(previousSettings, payload.settings)) {
         void queryClient.invalidateQueries({ queryKey: providerDiscoveryQueryKeys.all });
         void invalidateProviderUsageQueries(queryClient);
+      } else if (didProviderCommandDiscoverySettingsChange(previousSettings, payload.settings)) {
+        // Another window toggled it; the local patch path already invalidates its own.
+        void queryClient.invalidateQueries({ queryKey: providerDiscoveryQueryKeys.all });
       }
       void queryClient.invalidateQueries({
         queryKey: serverSettingsQueryOptions().queryKey,

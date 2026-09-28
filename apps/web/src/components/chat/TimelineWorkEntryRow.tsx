@@ -22,11 +22,13 @@ import type { TimestampFormat } from "../../appSettings";
 import {
   ArrowUpCircleIcon,
   BackgroundTrayIcon,
+  BookOpenIcon,
   BotIcon,
   CheckIcon,
   CircleAlertIcon,
   CircleQuestionIcon,
   ContextCompactionIcon,
+  ComputerUseIcon,
   EyeIcon,
   GitHubIcon,
   GlobeIcon,
@@ -42,6 +44,7 @@ import {
   ZapIcon,
 } from "~/lib/icons";
 import { describeLinkChip } from "~/lib/linkChips";
+import { computerToolName, describeComputerToolCall } from "~/lib/computerToolPresentation";
 import { cn } from "~/lib/utils";
 
 import { isFileChangeWorkLogEntry, type WorkLogEntry } from "../../session-logic";
@@ -50,9 +53,12 @@ import {
   isAgentActivityWorkEntry,
   isCodexActivityStatusWorkEntry,
   isReasoningTraceTitleKey,
+  isPlainRuntimeNoticeWorkEntry,
   isReasoningUpdateWorkEntry,
 } from "./agentActivity.logic";
 import { AutomationCreatedCard } from "./AutomationCreatedCard";
+import { ConnectedComputerSetupRequiredCard } from "./ComputerSetupRequiredCard";
+import { ComputerControlDeniedCard } from "./ComputerControlDeniedCard";
 import ChatMarkdown from "../ChatMarkdown";
 import { DiffStatLabel } from "./DiffStatLabel";
 import { type ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -74,6 +80,7 @@ import {
   deriveFriendlyCommandTarget,
   deriveSynaraMcpToolTitle,
   extractWebFetchUrl,
+  isGenericToolTitle,
   isSynaraBrowserToolCall,
   normalizeToolTextForComparison,
   resolveCommandVisualKind,
@@ -130,8 +137,9 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
       className: "text-muted-foreground/50",
     };
   }
+  // Generic tool calls with no recognizable kind read as "consulted something".
   return {
-    icon: ZapIcon,
+    icon: BookOpenIcon,
     className: "text-muted-foreground/45",
   };
 }
@@ -258,6 +266,7 @@ function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   if (workEntry.requestKind === "command") return commandWorkEntryIcon(workEntry);
   if (workEntry.requestKind === "file-read") return SearchIcon;
   if (workEntry.requestKind === "file-change") return PencilIcon;
+  if (workEntry.requestKind === "tool") return McpIcon;
 
   if (workEntry.itemType === "command_execution" || workEntry.command) {
     return commandWorkEntryIcon(workEntry);
@@ -293,11 +302,19 @@ export function renderWorkEntryIcon(Icon: LucideIcon, className: string): ReactE
 // over the kind-derived entry icon. Shared with the collapsed tool-group summary
 // row, which borrows its first entry's icon.
 export function workEntryLeftIcon(workEntry: TimelineWorkEntry): LucideIcon {
+  if (isComputerWorkEntry(workEntry)) return ComputerUseIcon;
   if (isGitHubMcpToolCall(workEntry)) return GitHubIcon;
   if (isSynaraBrowserWorkEntry(workEntry)) return GlobeIcon;
   if (isSynaraToolCall(workEntry)) return SynaraToolIcon;
   if (workEntry.itemType === "mcp_tool_call") return McpIcon;
   return workEntryIcon(workEntry);
+}
+
+function isComputerWorkEntry(workEntry: TimelineWorkEntry): boolean {
+  return (
+    computerToolName(workEntry.toolName) !== null ||
+    /^Computer Use:/i.test(workEntry.toolTitle ?? "")
+  );
 }
 
 function isGitHubMcpToolCall(workEntry: TimelineWorkEntry): boolean {
@@ -376,6 +393,13 @@ function toolWorkEntryHeading(workEntry: TimelineWorkEntry, reasoningTraceTitle:
   if (isReasoningTraceTitleKey(workEntry.toolTitle ?? workEntry.label)) {
     return reasoningTraceTitle;
   }
+  if (computerToolName(workEntry.toolName)) {
+    const title = normalizeCompactToolLabel(workEntry.toolTitle ?? "");
+    if (title && !isGenericToolTitle(title) && !computerToolName(title)) {
+      return capitalizePhrase(title);
+    }
+    return describeComputerToolCall({ toolName: workEntry.toolName, args: undefined })!.summary;
+  }
   // Task progress is semantic copy, not a tool lifecycle status. Preserve the
   // trailing "completed" instead of passing it through the compact tool-label
   // normalizer, which intentionally strips lifecycle suffixes.
@@ -419,6 +443,48 @@ function combineWorkEntryDisplayText(heading: string, preview: string | null): s
     : `${heading} ${preview}`;
 }
 
+// One sentence per row, live or settled: the tool's own verb plus what it acted
+// on ("Searched for foo in src"). Lifecycle state is never spelled out here —
+// the verb already carries the tense and `liveActivityMetaText` covers the rest.
+// Shared with the live tool-group line, which wears its newest call's sentence.
+function workEntryDisplayParts(
+  workEntry: TimelineWorkEntry,
+  rowCopy: WorkCopy,
+  activityCopy: ActivityCopy,
+): {
+  heading: string;
+  preview: string | null;
+  displayText: string;
+} {
+  const webFetchUrl = extractWebFetchUrl(workEntry);
+  const heading = toolWorkEntryHeading(workEntry, activityCopy.titles.reasoningTrace);
+  const rawPreview = workEntryPreview(workEntry, rowCopy);
+  const preview =
+    !isGitHubMcpToolCall(workEntry) &&
+    (isSynaraBrowserWorkEntry(workEntry) || isSynaraToolCall(workEntry))
+      ? sanitizeSynaraMcpToolPreview({
+          preview: rawPreview,
+          heading,
+          status: toolWorkEntryStatus(workEntry),
+        })
+      : rawPreview;
+  const displayText = webFetchUrl
+    ? describeLinkChip(webFetchUrl).label
+    : isReasoningUpdateWorkEntry(workEntry)
+      ? (reasoningTraceDisplayText(workEntry, preview, activityCopy) ??
+        combineWorkEntryDisplayText(heading, preview))
+      : combineWorkEntryDisplayText(heading, preview);
+  return { heading, preview, displayText };
+}
+
+export function workEntryDisplayText(
+  workEntry: TimelineWorkEntry,
+  rowCopy: WorkCopy,
+  activityCopy: ActivityCopy,
+): string {
+  return workEntryDisplayParts(workEntry, rowCopy, activityCopy).displayText;
+}
+
 function isFileChangeWorkEntry(workEntry: TimelineWorkEntry): boolean {
   return isFileChangeWorkLogEntry(workEntry);
 }
@@ -433,7 +499,7 @@ function commandTooltipContent(command: string, displayText: string, copy: WorkC
         </div>
         <div className="space-y-0.5">
           <div className="text-muted-foreground/70">{copy.rawCall}</div>
-          <code className="block whitespace-pre-wrap break-words font-chat-code text-[11px] text-foreground/92">
+          <code className="block whitespace-pre-wrap break-words font-chat-code text-chat-code text-foreground/92">
             {command}
           </code>
         </div>
@@ -487,6 +553,8 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
   onOpenTurnDiff?: (turnId: TurnId, filePath?: string) => void;
   onOpenAgentActivity?: (activityId: string) => void;
   onOpenAutomation?: (automationId: string) => void;
+  computerControlEnabled?: boolean;
+  onEnableComputerControl?: () => void;
   timestampFormat: TimestampFormat;
 }) {
   const messages = useMessages();
@@ -507,12 +575,15 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
     onOpenTurnDiff,
     onOpenAgentActivity,
     onOpenAutomation,
+    computerControlEnabled,
+    onEnableComputerControl,
     timestampFormat,
   } = props;
   const textFontSizePx = textFontSizePxProp ?? chatMetaFontSizePx;
   const density = densityProp ?? "default";
   const compact = density === "compact";
   const isCodexStatusRow = isCodexActivityStatusWorkEntry(workEntry);
+  const isPlainRuntimeNoticeRow = isPlainRuntimeNoticeWorkEntry(workEntry);
   const EntryIcon = workEntryIcon(workEntry);
   // Web-fetch tool calls surface the target site (favicon + URL) instead of the raw
   // `WebFetch: {json}` arguments, reusing the same link-chip icon/label path as
@@ -521,6 +592,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
   // Standard tool rows keep one discoverable left glyph. Codex status rows
   // deliberately skip it and reuse only the shared tool-label typography.
   const isGitHubToolRow = isGitHubMcpToolCall(workEntry);
+  const isComputerToolRow = isComputerWorkEntry(workEntry);
   const isSynaraBrowserToolRow = !isGitHubToolRow && isSynaraBrowserWorkEntry(workEntry);
   const isSynaraToolRow =
     !isGitHubToolRow && !isSynaraBrowserToolRow && isSynaraToolCall(workEntry);
@@ -532,7 +604,9 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
   const LeftIcon = workEntryLeftIcon(workEntry);
   const leftIconKind = webFetchUrl
     ? "web-fetch"
-    : isGitHubToolRow || EntryIcon === GitHubIcon
+    : isComputerToolRow
+      ? "computer"
+      : isGitHubToolRow || EntryIcon === GitHubIcon
       ? "github"
       : isSynaraBrowserToolRow
         ? "browser"
@@ -541,25 +615,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
           : isMcpToolRow
             ? "mcp"
             : undefined;
-  const heading = toolWorkEntryHeading(workEntry, activityCopy.titles.reasoningTrace);
-  const rawPreview = workEntryPreview(workEntry, rowCopy);
-  const preview =
-    isSynaraBrowserToolRow || isSynaraToolRow
-      ? sanitizeSynaraMcpToolPreview({
-          preview: rawPreview,
-          heading,
-          status: toolWorkEntryStatus(workEntry),
-        })
-      : rawPreview;
-  // One sentence per row, live or settled: the tool's own verb plus what it acted
-  // on ("Searched for foo in src"). Lifecycle state is never spelled out here —
-  // the verb already carries the tense and `liveActivityMetaText` covers the rest.
-  const displayText = webFetchUrl
-    ? describeLinkChip(webFetchUrl).label
-    : isReasoningUpdateWorkEntry(workEntry)
-      ? (reasoningTraceDisplayText(workEntry, preview, activityCopy) ??
-        combineWorkEntryDisplayText(heading, preview))
-      : combineWorkEntryDisplayText(heading, preview);
+  const { heading, preview, displayText } = workEntryDisplayParts(workEntry, rowCopy, activityCopy);
   // While a reasoning trace streams the row shows the trace itself in a
   // fixed-height region; once it settles it collapses back to the summary line.
   const streamingReasoningText =
@@ -601,6 +657,33 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
         subagent: workEntry.itemType === "collab_agent_tool_call",
       })
     : null;
+
+  // A computer-control denial renders as an actionable card (enable + retry)
+  // instead of a buried tool-error line. Kept after the hooks above so the
+  // early return never changes hook order.
+  if (workEntry.computerSetupRequired) {
+    return (
+      <ConnectedComputerSetupRequiredCard
+        {...workEntry.computerSetupRequired}
+        textFontSizePx={textFontSizePx}
+        metaFontSizePx={chatMetaFontSizePx}
+      />
+    );
+  }
+
+  const computerControlDenied = workEntry.computerControlDenied;
+  if (computerControlDenied) {
+    return (
+      <div className={cn(compact ? "py-0.5" : "py-1")}>
+        <ComputerControlDeniedCard
+          {...(computerControlEnabled !== undefined ? { computerControlEnabled } : {})}
+          textFontSizePx={textFontSizePx}
+          metaFontSizePx={chatMetaFontSizePx}
+          {...(onEnableComputerControl ? { onEnable: onEnableComputerControl } : {})}
+        />
+      </div>
+    );
+  }
 
   // A created-automation row renders as its own card instead of a tool-call line.
   // Kept after the hooks above so the early return never changes hook order.
@@ -718,7 +801,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
         (() => {
           const rowContentChildren = (
             <>
-              {!isCodexStatusRow ? (
+              {!isCodexStatusRow && !isPlainRuntimeNoticeRow ? (
                 <span
                   className={cn(
                     "flex shrink-0 items-center justify-center",
@@ -782,7 +865,9 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
                       // Match the leading icon's tone so the row reads as one muted unit, and
                       // brighten the whole row to foreground on hover/focus instead of a fill.
                       WORK_ROW_MUTED_HOVER_TONE["tool-row"],
+                      isPlainRuntimeNoticeRow && "italic",
                     )}
+                    data-runtime-notice-row={isPlainRuntimeNoticeRow ? "true" : undefined}
                     data-codex-status-row={isCodexStatusRow ? "true" : undefined}
                     style={{ fontSize: `${rowFontSizePx}px` }}
                   >
@@ -963,7 +1048,7 @@ function ProviderContextLifecycleDetails(props: {
         <section className="space-y-2">
           <h3 className="text-[11px] font-medium text-muted-foreground/56">{copy.preview}</h3>
           <pre
-            className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/45 bg-background/60 px-3 py-2.5 font-chat-code text-[11px] leading-relaxed text-foreground/84"
+            className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/45 bg-background/60 px-3 py-2.5 font-chat-code text-chat-code leading-relaxed text-foreground/84"
             data-session-context-recap-preview="true"
           >
             {info.recapPreview}

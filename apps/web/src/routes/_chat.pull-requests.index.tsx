@@ -412,7 +412,7 @@ function PullRequestsRouteView() {
                   <span aria-hidden className="text-muted-foreground/50">
                     ·
                   </span>
-                  <span className="truncate text-xs text-muted-foreground">
+                  <span className="truncate text-ui leading-snug text-muted-foreground">
                     {scopedProjectName}
                   </span>
                 </>

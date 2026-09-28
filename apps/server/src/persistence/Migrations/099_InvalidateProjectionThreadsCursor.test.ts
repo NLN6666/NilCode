@@ -28,10 +28,13 @@ import {
 } from "../../orchestration/Services/ProjectionPipeline.ts";
 import { runMigrations } from "../Migrations.ts";
 import * as NodeSqliteClient from "../NodeSqliteClient.ts";
-import BrowserSharingMigration from "./104_ProjectionProjectsBrowserSharing.ts";
-import AdvisorEnabledMigration from "./105_ProjectionThreadsAdvisorEnabled.ts";
+import BrowserSharingMigration from "./109_ProjectionProjectsBrowserSharing.ts";
+import AdvisorEnabledMigration from "./110_ProjectionThreadsAdvisorEnabled.ts";
 import messageTextChunkSchema from "./100_MessageTextChunks.ts";
+import asyncUserInputSchema from "./105_AsyncUserInput.ts";
 import messageTurnBoundarySchema from "./102_ProjectionThreadMessagesTurnBoundary.ts";
+import claudeCacheReviewSchema from "./104_ProjectionThreadsClaudeCacheReview.ts";
+import humanMessageSchema from "./107_ProjectionThreadsHumanMessage.ts";
 
 const testLayer = OrchestrationProjectionPipelineLive.pipe(
   Layer.provideMerge(OrchestrationEventStoreLive),
@@ -73,6 +76,9 @@ it.layer(Layer.fresh(testLayer))("099_InvalidateProjectionThreadsCursor", (it) =
         // Install them without changing the migration-99 tracker state under test.
         yield* messageTextChunkSchema;
         yield* messageTurnBoundarySchema;
+        yield* asyncUserInputSchema;
+        yield* claudeCacheReviewSchema;
+        yield* humanMessageSchema;
 
         const threadId = ThreadId.makeUnsafe("thread-099");
         const projectId = ProjectId.makeUnsafe("project-099");

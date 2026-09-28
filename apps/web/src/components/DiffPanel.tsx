@@ -136,7 +136,7 @@ function EditorDiffOptionsCountBadge(props: { count: number | undefined }) {
     return null;
   }
   return (
-    <span className="ml-auto rounded-full bg-muted px-1.5 text-[10px] font-medium text-muted-foreground tabular-nums">
+    <span className="ml-auto rounded-full bg-muted px-1.5 text-ui-xs font-medium text-muted-foreground tabular-nums">
       {props.count}
     </span>
   );
@@ -1518,6 +1518,7 @@ export default function DiffPanel({
               isLoading={activeReviewIsLoading}
               hasNoChanges={activeReviewHasNoChanges}
               error={activeReviewError}
+              refreshStatus={diffViewKind === "turn" ? checkpointDiffDisplay.refreshStatus : null}
               viewKind={diffViewKind}
               loadingLabel={
                 diffViewKind === "repo"

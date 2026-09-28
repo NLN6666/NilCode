@@ -161,7 +161,7 @@ export function TerminalSearch({ searchAddon, isOpen, onClose }: TerminalSearchP
               : "text-muted-foreground hover:bg-muted-foreground/20 hover:text-foreground",
           )}
         >
-          <span className="text-[10px] font-bold leading-none">Aa</span>
+          <span className="text-ui-xs font-bold leading-none">Aa</span>
         </IconButton>
         <IconButton
           onClick={() => handleSearch("previous")}

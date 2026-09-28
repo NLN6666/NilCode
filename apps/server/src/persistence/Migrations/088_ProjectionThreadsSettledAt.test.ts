@@ -22,7 +22,7 @@ describe("088_ProjectionThreadsSettledAt", () => {
     }).pipe(Effect.provide(NodeSqliteClient.layerMemory())),
   );
 
-  it.effect("propagates schema failures and leaves migration 89 retryable", () =>
+  it.effect("propagates schema failures and leaves migration 88 retryable", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* runMigrations({ toMigrationInclusive: 87 });

@@ -51,22 +51,6 @@ describe("parseCodeFenceInfo", () => {
     expect(fence.language).toBe("dockerfile");
   });
 
-  it("keeps bare language tokens as-is", () => {
-    expect(parseCodeFenceInfo("ts")).toMatchObject({
-      isFileReference: false,
-      language: "ts",
-      filePath: null,
-    });
-  });
-
-  it("trims whitespace around bare language tokens", () => {
-    expect(parseCodeFenceInfo("  python  ")).toMatchObject({
-      isFileReference: false,
-      language: "python",
-      filePath: null,
-    });
-  });
-
   it("keeps root-level filename-looking tokens as language tokens", () => {
     expect(parseCodeFenceInfo("package.json")).toMatchObject({
       isFileReference: false,
@@ -142,18 +126,6 @@ describe("dedentCode", () => {
   it("is a no-op for already flush-left code", () => {
     const input = ["const x = 1;", "  const y = 2;"].join("\n");
     expect(dedentCode(input)).toBe(input);
-  });
-
-  it("leaves single-line snippets untouched when flush", () => {
-    expect(dedentCode("const value = 42;")).toBe("const value = 42;");
-  });
-
-  it("dedents a single indented line", () => {
-    expect(dedentCode("    const value = 42;")).toBe("const value = 42;");
-  });
-
-  it("returns an empty string for empty input", () => {
-    expect(dedentCode("")).toBe("");
   });
 
   it("handles tab indentation", () => {

@@ -151,7 +151,7 @@ function WorkflowAgentDetail({
       className="mb-1 ml-[14px] space-y-1.5 rounded-md border border-border/40 bg-muted/20 px-2 py-1.5"
     >
       <div className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/70">
+        <span className="min-w-0 flex-1 truncate text-ui-sm text-muted-foreground/70">
           {identityLine}
         </span>
         {threadId ? (
@@ -159,7 +159,7 @@ function WorkflowAgentDetail({
             type="button"
             variant="ghost"
             size="xs"
-            className="h-5 shrink-0 px-1.5 text-[10px] text-muted-foreground/70"
+            className="h-5 shrink-0 px-1.5 text-ui-xs text-muted-foreground/70"
             onClick={() => onOpenThread(threadId)}
           >
             {copy.openThread}
@@ -167,7 +167,7 @@ function WorkflowAgentDetail({
         ) : null}
       </div>
       {statsLine ? (
-        <div className="text-[11px] tabular-nums text-muted-foreground/55">{statsLine}</div>
+        <div className="text-ui-sm tabular-nums text-muted-foreground/55">{statsLine}</div>
       ) : null}
       {agent.promptPreview ? (
         <div>
@@ -183,12 +183,12 @@ function WorkflowAgentDetail({
             </span>
           </button>
           {promptOpen ? null : (
-            <div className="line-clamp-2 whitespace-pre-wrap font-mono text-[11px] leading-4 text-muted-foreground/65">
+            <div className="line-clamp-2 whitespace-pre-wrap font-mono text-ui-sm leading-4 text-muted-foreground/65">
               {agent.promptPreview}
             </div>
           )}
           <DisclosureRegion open={promptOpen}>
-            <div className="whitespace-pre-wrap font-mono text-[11px] leading-4 text-muted-foreground/65">
+            <div className="whitespace-pre-wrap font-mono text-ui-sm leading-4 text-muted-foreground/65">
               {agent.promptPreview}
             </div>
           </DisclosureRegion>
@@ -237,29 +237,29 @@ function WorkflowAgentRowView({
             subagentStatusDotClassName(agent.statusKind),
           )}
         />
-        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground/85">
+        <span className="min-w-0 flex-1 truncate text-ui font-medium text-foreground/85">
           {agent.description}
           {agent.subagentType ? (
-            <span className="ml-1 text-[11px] font-normal text-muted-foreground/55">
+            <span className="ml-1 text-ui-sm font-normal text-muted-foreground/55">
               ({agent.subagentType})
             </span>
           ) : null}
           {agent.modelLabel ? (
-            <span className="ml-1.5 text-[11px] font-normal text-muted-foreground/45">
+            <span className="ml-1.5 text-ui-sm font-normal text-muted-foreground/45">
               {agent.modelLabel}
             </span>
           ) : null}
           {agent.effortLabel ? (
-            <span className="ml-1 text-[11px] font-normal text-muted-foreground/35">
+            <span className="ml-1 text-ui-sm font-normal text-muted-foreground/35">
               {agent.effortLabel}
             </span>
           ) : null}
         </span>
         {meta ? (
-          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">{meta}</span>
+          <span className="shrink-0 text-ui-sm tabular-nums text-muted-foreground/60">{meta}</span>
         ) : null}
         <span
-          className={cn("shrink-0 text-[11px]", subagentStatusTextToneClassName(agent.statusKind))}
+          className={cn("shrink-0 text-ui-sm", subagentStatusTextToneClassName(agent.statusKind))}
         >
           {agent.statusLabel}
         </span>
@@ -461,7 +461,7 @@ export function WorkflowRunCard({
                   type="button"
                   data-testid="workflow-phase-rail-item"
                   className={cn(
-                    "flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] transition-colors",
+                    "flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-ui-sm transition-colors",
                     phase.title === selectedPhaseTitle
                       ? "bg-[var(--color-background-button-secondary)] text-foreground/85"
                       : "text-muted-foreground/60 hover:bg-[var(--color-background-button-secondary-hover)] hover:text-foreground/70",
@@ -490,7 +490,7 @@ export function WorkflowRunCard({
               visibleGroups.length > 0 ? (
                 visibleGroups.map(({ phase, agents }) => (
                   <div key={phase.title}>
-                    <div className="pt-1 text-[10px] font-medium text-muted-foreground/50">
+                    <div className="pt-1 text-ui-xs font-medium text-muted-foreground/50">
                       {phase.title}
                     </div>
                     {agents.map((agent) => (
@@ -530,7 +530,7 @@ export function WorkflowRunCard({
             >
               <span className="shrink-0 text-[11px] text-muted-foreground/50">{copy.saved}</span>
               <span
-                className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground/45"
+                className="min-w-0 flex-1 truncate text-ui-sm text-muted-foreground/45"
                 title={savedLine}
               >
                 {workflowRun.runId ?? workflowRun.scriptPath}

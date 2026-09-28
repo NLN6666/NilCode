@@ -239,7 +239,7 @@ function WorkspaceDirectory(props: {
 
   if (query.error) {
     return (
-      <p className="px-3 py-2 text-[11px] text-destructive/80">
+      <p className="px-3 py-2 text-ui-sm text-destructive/80">
         {query.error instanceof Error ? query.error.message : "Could not load directory."}
       </p>
     );
@@ -423,7 +423,7 @@ function WorkspaceSearchResultRow(props: {
       <div className="flex min-w-0 flex-1 items-baseline gap-1.5 overflow-hidden">
         <span className="shrink-0 truncate font-medium">{name}</span>
         {dir ? (
-          <span className="min-w-0 truncate text-[11px] text-muted-foreground/55">{dir}</span>
+          <span className="min-w-0 truncate text-ui-sm text-muted-foreground/55">{dir}</span>
         ) : null}
       </div>
     </button>

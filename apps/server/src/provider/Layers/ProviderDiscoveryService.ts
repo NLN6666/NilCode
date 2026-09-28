@@ -13,10 +13,11 @@ import {
   ProviderReadPluginInput,
   type ProviderSkillDescriptor,
 } from "@synara/contracts";
-import { Effect, Layer, Option, Schema, SchemaIssue } from "effect";
+import { Effect, Exit, Layer, Option, Queue, Schema, SchemaIssue } from "effect";
 
+import { isServerBetaFeatureEnabled } from "../../betaFeatureGate.ts";
 import { ServerConfig } from "../../config.ts";
-import { ServerSettingsService } from "../../serverSettings.ts";
+import { gateBetaOnlyProviders, ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderValidationError } from "../Errors.ts";
 import type { ProviderDiscoveryError } from "../Services/ProviderDiscoveryService.ts";
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
@@ -25,9 +26,15 @@ import {
   type ProviderDiscoveryServiceShape,
 } from "../Services/ProviderDiscoveryService.ts";
 import {
+  type PersistedModelCatalogEntryInput,
   makeProviderModelDiscoveryCache,
   providerModelDiscoveryCacheKey,
 } from "../providerModelDiscoveryCache.ts";
+import {
+  readProviderModelCatalogCache,
+  resolveProviderModelCatalogCachePath,
+  writeProviderModelCatalogCache,
+} from "../providerModelCatalogCache.ts";
 import {
   discoverSkillsCatalog,
   filterDisabledSkills,
@@ -95,16 +102,74 @@ const make = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig;
   const serverSettings = yield* ServerSettingsService;
   // One catalog cache for every provider: adapters that spawn a CLI/ACP process
-  // per listModels call (cursor, grok, antigravity, opencode, pi) get the same
-  // stale-while-revalidate, single-flight, and failure-replay behaviour that
-  // codex/claude implement privately.
-  const modelDiscoveryCache = makeProviderModelDiscoveryCache<ProviderDiscoveryError>();
+  // per listModels call share stale-while-revalidate, single-flight, and
+  // failure-replay behaviour with adapters that reuse a running process.
+  // Snapshots persist to stateDir so a restart reopens the picker with
+  // last-known models instead of a fresh discovery wait.
+  const catalogCachePath = resolveProviderModelCatalogCachePath({
+    stateDir: serverConfig.stateDir,
+  });
+  const persistedCatalogs = yield* readProviderModelCatalogCache(catalogCachePath);
+  // Writes serialize through a queue so concurrent cache mutations can't race
+  // the atomic file write.
+  const catalogWriteQueue =
+    yield* Queue.unbounded<ReadonlyArray<PersistedModelCatalogEntryInput>>();
+  const writeCatalogSnapshot = (entries: ReadonlyArray<PersistedModelCatalogEntryInput>) =>
+    writeProviderModelCatalogCache({ filePath: catalogCachePath, entries }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("failed to persist provider model catalogs", {
+          path: catalogCachePath,
+          issues: cause.toString(),
+        }),
+      ),
+    );
+  // Registered before the writer fiber: finalizers run LIFO, so at scope close
+  // the writer is interrupted first and this then drains anything still queued.
+  // The newest snapshot always reaches disk even on shutdown.
+  yield* Effect.addFinalizer(() =>
+    Effect.suspend(() => {
+      // Queue.takeAll would block on an empty queue; takeUnsafe drains
+      // synchronously so the newest queued snapshot wins.
+      let latest: ReadonlyArray<PersistedModelCatalogEntryInput> | undefined;
+      for (
+        let taken = Queue.takeUnsafe(catalogWriteQueue);
+        taken !== undefined;
+        taken = Queue.takeUnsafe(catalogWriteQueue)
+      ) {
+        if (Exit.isSuccess(taken)) latest = taken.value;
+      }
+      return latest === undefined ? Effect.void : writeCatalogSnapshot(latest);
+    }),
+  );
+  yield* Effect.forkScoped(
+    Effect.forever(
+      Effect.flatMap(Queue.take(catalogWriteQueue), (first) => {
+        // Coalesce bursts: each queued item is a full snapshot, so drain to the
+        // newest before writing (e.g. several providers discovered at boot).
+        let latest = first;
+        for (
+          let taken = Queue.takeUnsafe(catalogWriteQueue);
+          taken !== undefined;
+          taken = Queue.takeUnsafe(catalogWriteQueue)
+        ) {
+          if (Exit.isSuccess(taken)) latest = taken.value;
+        }
+        return writeCatalogSnapshot(latest);
+      }),
+    ),
+  );
+  const modelDiscoveryCache = makeProviderModelDiscoveryCache<ProviderDiscoveryError>({
+    persistedCatalogs,
+    onCatalogsChanged: (entries) => {
+      Queue.offerUnsafe(catalogWriteQueue, entries);
+    },
+  });
   const providerIsEnabled = Effect.fn("providerIsEnabled")(function* (
     provider: ProviderGetComposerCapabilitiesInput["provider"],
   ) {
     return yield* serverSettings.getSettings.pipe(
       Effect.map((settings) => settings.providers[provider].enabled),
-      Effect.orElseSucceed(() => true),
+      Effect.orElseSucceed(() => isServerBetaFeatureEnabled(provider)),
     );
   });
 
@@ -167,6 +232,7 @@ const make = Effect.gen(function* () {
           synaraBaseDir: serverConfig.baseDir,
           provider: parsed.provider,
           ...(parsed.forceReload !== undefined ? { forceReload: parsed.forceReload } : {}),
+          ...(parsed.agentDir !== undefined ? { agentDir: parsed.agentDir } : undefined),
         }),
       ).pipe(
         Effect.catchCause((cause) =>
@@ -181,7 +247,7 @@ const make = Effect.gen(function* () {
         catalog: catalogSkills,
       });
       const settings = yield* serverSettings.getSettings.pipe(
-        Effect.orElseSucceed(() => DEFAULT_SERVER_SETTINGS),
+        Effect.orElseSucceed(() => gateBetaOnlyProviders(DEFAULT_SERVER_SETTINGS)),
       );
       return {
         // Opt-outs are per provider: silencing a skill for Codex leaves the
@@ -214,7 +280,18 @@ const make = Effect.gen(function* () {
           cached: false,
         };
       }
-      return yield* adapter.listCommands(parsed);
+      if (parsed.provider !== "claudeAgent") {
+        return yield* adapter.listCommands(parsed);
+      }
+      // Server-owned like the session start options, so discovery lists the
+      // same commands a new Claude session will actually have.
+      const settings = yield* serverSettings.getSettings.pipe(
+        Effect.orElseSucceed(() => gateBetaOnlyProviders(DEFAULT_SERVER_SETTINGS)),
+      );
+      return yield* adapter.listCommands({
+        ...parsed,
+        enableArtifacts: settings.providers.claudeAgent.enableArtifacts,
+      });
     });
 
   const listPlugins: ProviderDiscoveryServiceShape["listPlugins"] = (input) =>
@@ -294,14 +371,19 @@ const make = Effect.gen(function* () {
         };
       }
       const listModelsFromAdapter = adapter.listModels;
+      const discover = Effect.suspend(() => listModelsFromAdapter(parsed)).pipe(
+        Effect.flatMap((result) =>
+          isolateMalformedModelDescriptors({ provider: parsed.provider, result }),
+        ),
+      );
+      // OMP's native adapter owns its binary/profile-aware discovery cache.
+      // A second shared cache would hide native refreshes and profile changes.
+      if (parsed.provider === "omp") {
+        return yield* discover;
+      }
       return yield* modelDiscoveryCache.lookup(
         providerModelDiscoveryCacheKey(parsed),
-        // Suspend so the adapter is only touched when the cache actually misses.
-        Effect.suspend(() => listModelsFromAdapter(parsed)).pipe(
-          Effect.flatMap((result) =>
-            isolateMalformedModelDescriptors({ provider: parsed.provider, result }),
-          ),
-        ),
+        discover,
         parsed.forceReload,
       );
     });

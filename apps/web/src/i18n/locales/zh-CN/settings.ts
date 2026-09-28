@@ -16,6 +16,12 @@ export const settings: Settings = {
     codexMcpServers: "Codex MCP 服务器",
     claudeMcpServers: "Claude MCP 服务器",
     externalMcpIntegrations: "外部 MCP 集成",
+    archiveWorktree: "归档时删除工作树",
+    sidebarLayout: "侧边栏布局",
+    computerStatus: "电脑状态",
+    computerPreview: "电脑画面预览",
+    computerControl: "电脑控制",
+    computerCursorColors: "光标颜色",
   },
   controls: {
     resetTooltip: "重置为默认值",
@@ -55,6 +61,13 @@ export const settings: Settings = {
         local: "本地",
         worktree: "新建工作树",
       },
+      archiveWorktree: {
+        title: "归档时删除工作树",
+        description:
+          "归档的撤销时限结束后，仅在任务已停止且没有其他任务使用时删除干净的工作树。对应分支仍可用于恢复。",
+        resetLabel: "归档时删除工作树",
+        ariaLabel: "归档时删除工作树",
+      },
       welcomeTour: {
         title: "欢迎导览",
         description: "重新体验首次使用引导：功能介绍、提供商选择、外观设置和创建第一个项目。",
@@ -63,6 +76,13 @@ export const settings: Settings = {
     },
     sidebarOrganization: {
       title: "侧边栏组织",
+      layout: {
+        title: "侧边栏布局",
+        description: "经典布局保留单列侧边栏；导航栏布局在左侧加入固定图标标签，旁边显示项目和会话面板。",
+        resetLabel: "侧边栏布局",
+        ariaLabel: "侧边栏布局",
+        options: { classic: "经典", rail: "导航栏" },
+      },
       projectOrder: {
         title: "项目排序",
         description: "控制项目在主侧边栏中的排列方式。",
@@ -508,6 +528,14 @@ export const settings: Settings = {
     deletedDescription: "已归档的会话已被永久移除。",
     deleteFailedTitle: "无法删除会话",
     deleteFailedDescription: "无法删除该会话。",
+    count: (count) => `${count} 个已归档会话`,
+    deleteAll: "全部删除",
+    deleteAllConfirm: (count) =>
+      `要永久删除全部 ${count} 个已归档会话吗？\n\n这将永久移除这些会话及其对话历史。`,
+    deleteAllSuccessTitle: "已删除已归档会话",
+    deleteAllSuccessDescription: (count) => `已永久移除 ${count} 个已归档会话。`,
+    deleteAllFailedTitle: "无法删除全部已归档会话",
+    deleteAllFailedDescription: "无法删除这些会话。",
   },
   integrations: {
     connect: {
@@ -763,6 +791,11 @@ export const settings: Settings = {
         description: "可选的自定义 Codex 主目录与配置目录。",
       },
       claudeBinaryPath: { label: "Claude 可执行文件路径", placeholder: "Claude 可执行文件路径" },
+      claudeEnableArtifacts: {
+        label: "Artifacts、/design 和 /slides",
+        description:
+          "Claude Code 默认关闭嵌入式会话中的 Artifacts。启用后，/design 和 /slides 可发布到 claude.ai。需要已登录 Pro、Max、Team 或 Enterprise 账号，且仅影响新会话。",
+      },
       cursorBinaryPath: {
         label: "Cursor 可执行文件路径",
         placeholder: "Cursor Agent 或 Cursor CLI 路径",
@@ -800,6 +833,11 @@ export const settings: Settings = {
         label: "Oh My Pi 可执行文件路径",
         placeholder: "Oh My Pi 可执行文件路径",
       },
+      ompAgentDir: {
+        label: "Oh My Pi 代理目录",
+        placeholder: "Oh My Pi 代理目录",
+        description: "可选的自定义 Oh My Pi 代理目录，用于认证、模型、技能和命令。",
+      },
       piBinaryPath: { label: "Pi 可执行文件路径", placeholder: "Pi 可执行文件路径" },
       piAgentDir: {
         label: "Pi 代理目录",
@@ -814,6 +852,19 @@ export const settings: Settings = {
       enabledTitle: "已启用提供商",
       description:
         "禁用后将停止后台检查、发现、更新及新回合。现有会话仍然可见，重新启用后可继续；正在运行的回合不会中断。",
+      checkingSetup: "正在检查配置",
+      refreshStatus: "刷新状态",
+      setupGuideLabel: "配置指南",
+      setupGuide: (name) => `${name} 配置指南`,
+      setupStatus: {
+        disabled: "已禁用 · 启用后才能检查配置",
+        checking: "正在检查配置",
+        unavailable: "不可用",
+        needsSignIn: "需要登录",
+        needsAttention: "需要处理",
+        unverifiedSignIn: "已安装 · 未验证登录状态",
+        connected: "已连接",
+      },
       saving: "正在保存提供商活动设置",
       enabledCount: (count, total) => `已启用 ${count}/${total}`,
       resetLabel: "已启用提供商",
@@ -917,6 +968,26 @@ export const settings: Settings = {
           "在「系统设置 → 隐私与安全性」中把这两项权限授予 Synara，然后回到这里重新检查。macOS 可能要求更改后重启应用。",
       },
       recheck: "重新检查权限",
+      rechecking: "正在重新检查…",
+      grant: "授予权限",
+      hideSteps: "隐藏步骤",
+      grantedTitle: "权限已授予",
+      grantedDescription: (pane, feature) => `${pane} 已可供${feature}使用。`,
+      unchangedTitle: "权限未变化",
+      unchangedDescription: "点击权限旁边的“授予权限”，按步骤完成设置。",
+      checkFailedTitle: "无法检查权限",
+      checkFailedDescription: "权限检查失败。",
+      guide: {
+        openSettings: (pane) => `打开“${pane}”设置`,
+        listedApp: (app) =>
+          `如果列表中已有这个 ${app} 应用，请打开开关。否则，请从浮动引导窗口将应用拖入列表，或使用“+”添加当前安装的应用，然后打开开关。`,
+        macAuth: "完成 macOS 身份验证。如果系统要求退出并重新打开应用，请先重启，再回来检查。",
+        watching: "正在等待权限变更；此页面会自动更新。",
+        granted: "权限已授予。",
+        stillDenied:
+          "更新或重新构建后仍被拒绝？请从列表中移除此应用，再将当前应用添加回来。完成 macOS 身份验证；若系统要求退出并重新打开，请重启应用。",
+        restart: (app) => `重新启动 ${app}`,
+      },
       labels: {
         granted: "已授予",
         denied: "已拒绝",
@@ -955,6 +1026,10 @@ export const settings: Settings = {
     mostUsedPlugins: "最常用插件",
     noSkills: "尚未使用任何技能或代理。",
     modelUsage: "模型用量",
+    modelUsageBasis: (metric) =>
+      `按${metric === "tokens" ? "已统计的 token" : "回合数"}计算的占比。`,
+    providerUsageBasis: (percent, metric) =>
+      `占${metric === "tokens" ? "已统计 token" : "回合数"}的 ${percent}%`,
     noModelActivity: "尚无模型活动。",
     noValue: "—",
     runs: (count) => `运行 ${count} 次`,
@@ -1067,6 +1142,53 @@ export const settings: Settings = {
     command: "命令",
     keybinding: "按键绑定",
     noMatches: (query) => `没有匹配“${query}”的快捷键。`,
+  },
+  computer: {
+    availability: {
+      reconnectingTitle: "正在重新连接桌面",
+      reconnectingNote: "桌面后端连接中断，正在重新连接。",
+      checkingTitle: "正在检查电脑可用性",
+      checkingDescription: "正在等待桌面后端。",
+      grantedTitle: "所需权限均已授予",
+      grantedDescription: "智能体下次使用电脑时，Synara 会连接桌面。",
+      uncheckedTitle: "尚未检查电脑访问权限",
+      uncheckedDescription: "点击“设置”检查 Synara 是否可以查看和操作桌面。",
+      captureTitle: "无法截取屏幕",
+      captureDescription: "桌面输入已连接，但 Synara 无法截图。点击“设置”检查访问权限。",
+      connectedTitle: "已连接桌面",
+      connectedDescription: "Synara 可以通过电脑工具查看和操作桌面。",
+      unavailableTitle: "电脑控制不可用",
+      unsupportedDescription: (platform) =>
+        `此服务器运行在 ${platform} 上。电脑控制需要 macOS，或运行在 Linux 上的 Wayland 桌面（KWin、Hyprland 或 Synara 自带的嵌套桌面）。`,
+      needsPermissions: (permissions) => `电脑控制需要${permissions}权限`,
+      permissionLabels: {
+        accessibility: "辅助功能",
+        screenRecording: "屏幕录制",
+        inputMonitoring: "输入监控",
+      },
+      listSeparator: "、",
+      listAnd: "和",
+    },
+    permissions: {
+      featureName: "电脑控制",
+      accessibility: {
+        title: "辅助功能",
+        description: "允许 Synara 代你移动指针、点击和输入。只有在你授权电脑控制任务后才会执行操作。",
+      },
+      screenRecording: {
+        title: "屏幕录制",
+        description: "允许 Synara 截取窗口和桌面，以便智能体看清正在操作的内容。",
+      },
+      inputMonitoring: {
+        title: "输入监控",
+        description: "允许 Synara 检测 Esc 键，在你接管电脑时暂停操作。这不会启用 AppSnap 快捷键。",
+      },
+    },
+    resetLabels: {
+      control: "电脑控制",
+      preview: "电脑画面预览",
+      cursorColors: "光标颜色",
+    },
   },
   providerUsage: {
     title: "提供商用量",

@@ -55,7 +55,7 @@ export function FileCommentsSummaryChip(props: FileCommentsSummaryChipProps) {
           <p className="text-[0.6875rem] font-medium text-muted-foreground">
             {fileCommentHeading(comment, lineCommentCopy.range)}
           </p>
-          <p className="text-xs leading-relaxed">{comment.text}</p>
+          <p className="text-ui leading-relaxed">{comment.text}</p>
         </div>
       ))}
     />

@@ -2,8 +2,8 @@
 // Purpose: "Pull request" section of the Environment panel — one row (state glyph, title,
 //          live check status) that opens the PR action menu: view / code changes, the
 //          checks and review-comment lists, Repair (hands comments, failing checks, or
-//          conflicts to the composer as context cards), Merge, Add to chat, Status, and
-//          Open in GitHub.
+//          conflicts to the composer as context cards), Merge, Status (draft / ready /
+//          close / reopen), and Add to chat. Copy link and Open in GitHub ride on the View PR row.
 // Layer: Environment panel section
 // Depends on: git status/PR-snapshot React Query helpers, the pull request action mutation,
 //             and the shared Environment row skin.
@@ -24,16 +24,6 @@ import { useState, type ReactNode } from "react";
 
 import { ComposerPickerMenuPopup, ComposerPickerMenuSubPopup } from "../ComposerPickerMenuPopup";
 import {
-  AlertDialog,
-  AlertDialogClose,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogPopup,
-  AlertDialogTitle,
-} from "../../ui/alert-dialog";
-import { Button } from "../../ui/button";
-import {
   Menu,
   MenuItem,
   MenuRadioGroup,
@@ -44,7 +34,13 @@ import {
   MenuTrigger,
 } from "../../ui/menu";
 import { toastManager } from "../../ui/toast";
+import { DEFAULT_TOAST_TIMEOUT_MS } from "../../ui/toast.logic";
 import { PullRequestAvatar } from "../../pullRequest/PullRequestAvatar";
+import {
+  copyPullRequestLink,
+  PullRequestConfirmActionDialog,
+  type PullRequestConfirmAction,
+} from "../../pullRequest/PullRequestConfirmActionDialog";
 import { PullRequestCheckStatusIcon } from "../../pullRequest/PullRequestCheckStatusIcon";
 import { PullRequestDiffStat } from "../../pullRequest/PullRequestDiffStat";
 import {
@@ -59,20 +55,21 @@ import {
 import { addChatPullRequestContext } from "~/lib/chatReferences";
 import { gitPullRequestSnapshotQueryOptions, gitStatusQueryOptions } from "~/lib/gitReactQuery";
 import {
-  ArrowUpRightIcon,
   ChatBubbleIcon,
+  ChatBubblePlusIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   DiffIcon,
-  ExternalLinkIcon,
-  FileIcon,
+  GitHubMarkIcon,
   GitMergeConflictIcon,
   GitMergeIcon,
+  GitPullRequestClosedIcon,
   GitPullRequestDraftIcon,
   GitPullRequestIcon,
   HammerIcon,
+  LinkIcon,
   Loader2Icon,
-  MessageCircleIcon,
+  PageTextIcon,
   RefreshCwIcon,
 } from "~/lib/icons";
 import {
@@ -88,7 +85,6 @@ import {
   ENVIRONMENT_ROW_CLASS_NAME,
   ENVIRONMENT_ROW_ICON_CLASS_NAME,
   EnvironmentLabeledSection,
-  EnvironmentRow,
   EnvironmentRowBody,
   EnvironmentRowChevron,
 } from "./EnvironmentRow";
@@ -107,6 +103,8 @@ import {
 import { useMessages } from "~/i18n/context";
 
 const MENU_ICON_CLASS_NAME = "size-3.5 shrink-0";
+/** Icon-only action sharing the "View PR" row (copy link, open in GitHub). */
+const MENU_INLINE_ACTION_CLASS_NAME = "shrink-0 px-1.5";
 /** Right-aligned secondary value on a menu row (diff stat, count, current status).
  *  The label grows instead of this span using `ml-auto`: sub-trigger chevrons already carry
  *  `margin-inline-start: auto`, and two auto margins would split the free space and float
@@ -128,6 +126,19 @@ const ACTION_SUCCESS_TITLES: Record<PullRequestAction, string> = {
   draft: "Converted to draft",
   close: "Pull request closed",
   reopen: "Pull request reopened",
+};
+
+const ACTION_PENDING_TITLES: Record<Exclude<PullRequestAction, "merge">, string> = {
+  ready: "Marking ready for review...",
+  draft: "Converting to draft...",
+  close: "Closing pull request...",
+  reopen: "Reopening pull request...",
+};
+
+const MERGE_PENDING_TITLES: Record<PullRequestMergeMethod, string> = {
+  merge: "Merging pull request...",
+  squash: "Squashing and merging...",
+  rebase: "Rebasing and merging...",
 };
 
 function checksToneIcon(tone: PullRequestChecksTone) {
@@ -190,11 +201,11 @@ function ChecksMenuRow({
     <MenuRow
       url={check.url}
       onOpenUrl={onOpenUrl}
-      className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1 text-[length:var(--app-font-size-ui,12px)]"
+      className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1 text-ui"
     >
       <PullRequestCheckStatusIcon status={check.status} />
       <span className="min-w-0 truncate text-[var(--color-text-foreground)]">{check.name}</span>
-      <span className="shrink-0 text-[length:var(--app-font-size-ui-xs,10px)] text-muted-foreground">
+      <span className="shrink-0 text-ui-xs text-muted-foreground">
         {PULL_REQUEST_CHECK_STATUS_LABELS[check.status]}
       </span>
     </MenuRow>
@@ -216,18 +227,16 @@ function CommentsMenuRow({
       onOpenUrl={onOpenUrl}
       className="flex flex-col items-stretch gap-0.5 px-2 py-1.5"
     >
-      <span className="line-clamp-2 text-[length:var(--app-font-size-ui,12px)] text-[var(--color-text-foreground)]">
+      <span className="line-clamp-2 text-ui text-[var(--color-text-foreground)]">
         {display.title}
       </span>
       {display.snippet ? (
-        <span className="line-clamp-2 text-[length:var(--app-font-size-ui-xs,10px)] text-muted-foreground">
-          {display.snippet}
-        </span>
+        <span className="line-clamp-2 text-ui-xs text-muted-foreground">{display.snippet}</span>
       ) : null}
       <span
         className={cn(
           PR_QUIET_INK_CLASS_NAME,
-          "flex items-center justify-between gap-2 text-[length:var(--app-font-size-ui-xs,10px)]",
+          "flex items-center justify-between gap-2 text-ui-xs",
         )}
       >
         {comment.author ? (
@@ -254,11 +263,7 @@ function CommentsMenuRow({
 }
 
 function MenuPlaceholder({ text }: { text: string }) {
-  return (
-    <div className="px-3 py-3 text-center text-[length:var(--app-font-size-ui,12px)] text-muted-foreground">
-      {text}
-    </div>
-  );
+  return <div className="px-3 py-3 text-center text-ui text-muted-foreground">{text}</div>;
 }
 
 /** Menu row label + optional trailing value, laid out like the reference PR menu. */
@@ -306,7 +311,7 @@ export function EnvironmentPullRequestSection({
   const openPane = useRightDockStore((store) => store.openPane);
   const queryClient = useQueryClient();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [confirmMerge, setConfirmMerge] = useState<PullRequestMergeMethod | null>(null);
+  const [confirmAction, setConfirmAction] = useState<PullRequestConfirmAction | null>(null);
   // Share the git block's cache, but revalidate stale status when this always-mounted
   // panel opens so an earlier missing PR does not linger until the next polling tick.
   const { data: gitStatus } = useQuery(gitStatusQueryOptions(gitCwd, enabled));
@@ -337,11 +342,12 @@ export function EnvironmentPullRequestSection({
     displayPr && projectId && pullRequestRepository && repositoryBelongsToProject
       ? { projectId, repository: pullRequestRepository, number: displayPr.number }
       : null;
-  // Merge capabilities (allowed methods, stack state) only live on the detail query. Fetch
-  // it lazily while the menu is open so the row itself stays as cheap as before.
+  // Merge capabilities (allowed methods, stack state) and the merged/closed timestamps only
+  // live on the detail query. Fetch it lazily while the menu is open so the row itself stays
+  // as cheap as before.
   const detailQuery = useQuery({
     ...pullRequestDetailQueryOptions(actionInput, { pollingEnabled: false }),
-    enabled: actionInput !== null && menuOpen && displayPr?.state === "open",
+    enabled: actionInput !== null && menuOpen,
   });
   const actionMutation = useMutation(pullRequestActionMutationOptions(queryClient));
 
@@ -420,11 +426,20 @@ export function EnvironmentPullRequestSection({
     if (!actionInput || actionMutation.isPending) {
       return;
     }
+    const toastId = toastManager.add({
+      type: "loading",
+      title:
+        action === "merge"
+          ? MERGE_PENDING_TITLES[method ?? "merge"]
+          : ACTION_PENDING_TITLES[action],
+      timeout: 0,
+    });
     void actionMutation
       .mutateAsync({ ...actionInput, action, ...(method ? { mergeMethod: method } : {}) })
       .then((result) => {
-        toastManager.add({
+        toastManager.update(toastId, {
           type: "success",
+          timeout: DEFAULT_TOAST_TIMEOUT_MS,
           title:
             action === "merge" && result.mergeOutcome === "enqueued"
               ? "Pull request added to merge queue"
@@ -432,8 +447,9 @@ export function EnvironmentPullRequestSection({
         });
       })
       .catch((error: unknown) => {
-        toastManager.add({
+        toastManager.update(toastId, {
           type: "error",
+          timeout: DEFAULT_TOAST_TIMEOUT_MS,
           title: "Pull request action failed",
           description: error instanceof Error ? error.message : "GitHub CLI action failed.",
         });
@@ -465,13 +481,14 @@ export function EnvironmentPullRequestSection({
   const mergeDisabled = actionPending || mergeBlocker !== null || mergeDetailStatus !== "ready";
   const mergeTrailing =
     mergeBlocker !== null
-      ? "Blocked"
+      ? copy.environment.menu.blocked
       : mergeDetailStatus === "loading"
-        ? "Loading…"
+        ? copy.environment.menu.loading
         : mergeDetailStatus === "error"
-          ? "Unavailable"
+          ? copy.environment.menu.unavailable
           : null;
   const canRunActions = actionInput !== null && settledState === null;
+  const canReopen = actionInput !== null && settledState === "closed";
   const repairDisabled = loading || failed || !activeThreadId || repairs.total === 0;
   const stateLabel = settledState
     ? settledState === "merged"
@@ -480,6 +497,14 @@ export function EnvironmentPullRequestSection({
     : displayPr.isDraft
       ? "Draft"
       : "Ready for review";
+  // The git snapshot has no merged/closed timestamp; the lazily fetched detail does.
+  const settledAt = settledState === "merged" ? detail?.mergedAt : detail?.closedAt;
+  // formatRelativeTime is the compact list form ("12h"); a sentence needs "12h ago".
+  const settledAgo = settledAt ? formatRelativeTime(settledAt) : null;
+  const statusTrailing =
+    settledState && settledAgo
+      ? `${stateLabel} ${settledAgo === "now" ? "just now" : `${settledAgo} ago`}`
+      : stateLabel;
 
   const rowTrailing = settledState ? (
     <span className={cn("text-muted-foreground", PR_QUIET_INK_CLASS_NAME)}>{stateLabel}</span>
@@ -499,7 +524,7 @@ export function EnvironmentPullRequestSection({
         : checksSummary.label;
 
   return (
-    <EnvironmentLabeledSection label="Pull request">
+    <EnvironmentLabeledSection label={copy.environment.label}>
       <Menu open={menuOpen} onOpenChange={setMenuOpen} keepOpenOnSubmenuInteraction>
         <MenuTrigger
           render={<button type="button" className={ENVIRONMENT_ROW_CLASS_NAME} title={rowTitle} />}
@@ -535,16 +560,36 @@ export function EnvironmentPullRequestSection({
           collisionAvoidance={{ fallbackAxisSide: "end" }}
           className="w-72 min-w-72"
         >
-          <MenuItem onClick={() => openPullRequest()}>
-            <MenuRowLabel
-              icon={<FileIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-              label="View PR"
-            />
-          </MenuItem>
+          {/* One visual row, three menu items: the link actions ride along with "View PR"
+              instead of taking rows of their own. */}
+          <div className="flex items-center gap-0.5">
+            <MenuItem className="min-w-0 flex-1" onClick={() => openPullRequest()}>
+              <MenuRowLabel
+                icon={<PageTextIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
+                label={copy.environment.menu.viewPr}
+              />
+            </MenuItem>
+            <MenuItem
+              aria-label={copy.actions.copyLink}
+              title={copy.actions.copyLink}
+              className={MENU_INLINE_ACTION_CLASS_NAME}
+              onClick={() => copyPullRequestLink(displayPr.url, copy.toast)}
+            >
+              <LinkIcon className={MENU_ICON_CLASS_NAME} aria-hidden />
+            </MenuItem>
+            <MenuItem
+              aria-label={copy.environment.menu.openInGitHub}
+              title={copy.environment.menu.openInGitHub}
+              className={MENU_INLINE_ACTION_CLASS_NAME}
+              onClick={openInGitHub}
+            >
+              <GitHubMarkIcon className={MENU_ICON_CLASS_NAME} aria-hidden />
+            </MenuItem>
+          </div>
           <MenuItem onClick={() => openPullRequest("code")}>
             <MenuRowLabel
               icon={<DiffIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-              label="Code changes"
+              label={copy.environment.menu.codeChanges}
               trailing={
                 diffStat ? (
                   <PullRequestDiffStat
@@ -563,8 +608,8 @@ export function EnvironmentPullRequestSection({
                 <MenuSubTrigger disabled={loading}>
                   <MenuRowLabel
                     icon={checksToneIcon(checksSummary.tone)}
-                    label="Checks"
-                    trailing={loading ? "Loading…" : failed ? "Unavailable" : checksSummary.label}
+                    label={copy.environment.menu.checks}
+                    trailing={loading ? copy.environment.menu.loading : failed ? copy.environment.menu.unavailable : checksSummary.label}
                   />
                 </MenuSubTrigger>
                 <ComposerPickerMenuSubPopup side={SUBMENU_SIDE} className="w-72 min-w-72">
@@ -572,11 +617,11 @@ export function EnvironmentPullRequestSection({
                     <MenuItem onClick={() => void snapshotQuery.refetch()}>
                       <MenuRowLabel
                         icon={<RefreshCwIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-                        label="Retry loading checks"
+                        label={copy.environment.menu.retryChecks}
                       />
                     </MenuItem>
                   ) : checks.length === 0 ? (
-                    <MenuPlaceholder text="No checks reported for this PR." />
+                    <MenuPlaceholder text={copy.environment.noChecks} />
                   ) : (
                     <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto [&>*]:shrink-0">
                       {withStableCheckKeys(checks).map(({ key, check }) => (
@@ -597,12 +642,12 @@ export function EnvironmentPullRequestSection({
                 <MenuSubTrigger disabled={loading}>
                   <MenuRowLabel
                     icon={<ChatBubbleIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-                    label="Comments"
+                    label={copy.environment.menu.comments}
                     trailing={
                       loading
-                        ? "Loading…"
+                        ? copy.environment.menu.loading
                         : failed || commentsError
-                          ? "Unavailable"
+                          ? copy.environment.menu.unavailable
                           : summarizePullRequestComments(comments.length, commentsTruncated)
                     }
                   />
@@ -612,17 +657,17 @@ export function EnvironmentPullRequestSection({
                     <MenuItem onClick={() => void snapshotQuery.refetch()}>
                       <MenuRowLabel
                         icon={<RefreshCwIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-                        label="Retry loading comments"
+                        label={copy.environment.menu.retryComments}
                       />
                     </MenuItem>
                   ) : commentsError ? (
-                    <MenuPlaceholder text={`Couldn't load review comments: ${commentsError}`} />
+                    <MenuPlaceholder text={copy.environment.commentsLoadFailed(commentsError)} />
                   ) : comments.length === 0 ? (
                     <MenuPlaceholder
                       text={
                         commentsTruncated
-                          ? "Review comments may be hidden by the bounded preview. Open the PR on GitHub."
-                          : "No unresolved review comments."
+                          ? copy.environment.commentsHidden
+                          : copy.environment.noUnresolvedComments
                       }
                     />
                   ) : (
@@ -653,7 +698,7 @@ export function EnvironmentPullRequestSection({
                 <MenuSubTrigger disabled={repairDisabled} data-testid="pr-repair-trigger">
                   <MenuRowLabel
                     icon={<HammerIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-                    label="Repair"
+                    label={copy.environment.menu.repair}
                     trailing={
                       repairs.total > 0 ? (
                         <span className={cn(!repairDisabled && "text-destructive")}>
@@ -670,7 +715,7 @@ export function EnvironmentPullRequestSection({
                   >
                     <MenuRowLabel
                       icon={<ChatBubbleIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-                      label="Comments"
+                      label={copy.environment.menu.comments}
                       trailing={repairs.comments > 0 ? repairs.comments : null}
                     />
                   </MenuItem>
@@ -680,7 +725,7 @@ export function EnvironmentPullRequestSection({
                   >
                     <MenuRowLabel
                       icon={<CircleAlertIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-                      label="Failing checks"
+                      label={copy.environment.menu.failingChecks}
                       trailing={repairs.failingChecks > 0 ? repairs.failingChecks : null}
                     />
                   </MenuItem>
@@ -690,14 +735,14 @@ export function EnvironmentPullRequestSection({
                   >
                     <MenuRowLabel
                       icon={<GitMergeConflictIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-                      label="Merge conflicts"
+                      label={copy.environment.menu.mergeConflicts}
                     />
                   </MenuItem>
                   <MenuSeparator />
                   <MenuItem onClick={() => attachContextCard("everything")}>
                     <MenuRowLabel
                       icon={<HammerIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-                      label="Everything"
+                      label={copy.environment.menu.everything}
                     />
                   </MenuItem>
                 </ComposerPickerMenuSubPopup>
@@ -724,7 +769,10 @@ export function EnvironmentPullRequestSection({
                   </MenuSubTrigger>
                   <ComposerPickerMenuSubPopup side={SUBMENU_SIDE} className="w-56 min-w-56">
                     {allowedMergeMethods.map((method) => (
-                      <MenuItem key={method} onClick={() => setConfirmMerge(method)}>
+                      <MenuItem
+                        key={method}
+                        onClick={() => setConfirmAction({ kind: "merge", method })}
+                      >
                         <MenuRowLabel
                           icon={<GitMergeIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
                           label={MERGE_METHOD_LABELS[method]}
@@ -737,128 +785,88 @@ export function EnvironmentPullRequestSection({
             </>
           ) : null}
 
-          {activeThreadId ? (
-            <MenuItem onClick={() => attachContextCard("reference")}>
-              <MenuRowLabel
-                icon={<MessageCircleIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-                label="Add to chat"
-              />
-            </MenuItem>
-          ) : null}
+          {settledState === null ? <MenuSeparator /> : null}
 
-          <MenuSeparator />
-
-          {canRunActions ? (
+          {canRunActions || canReopen ? (
             <MenuSub keepOpenOnFocusOut>
               <MenuSubTrigger disabled={actionPending}>
                 <MenuRowLabel
                   icon={<GitPullRequestIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-                  label="Status"
-                  trailing={stateLabel}
+                  label={copy.environment.menu.status}
+                  trailing={statusTrailing}
                 />
               </MenuSubTrigger>
               <ComposerPickerMenuSubPopup side={SUBMENU_SIDE} className="w-56 min-w-56">
-                <MenuRadioGroup
-                  value={displayPr.isDraft ? "draft" : "ready"}
-                  onValueChange={(value) => {
-                    if (value === "draft" && !displayPr.isDraft) runAction("draft");
-                    if (value === "ready" && displayPr.isDraft) runAction("ready");
-                  }}
-                >
-                  <MenuRadioItem value="draft" disabled={actionPending}>
-                    <GitPullRequestDraftIcon className={MENU_ICON_CLASS_NAME} aria-hidden />
-                    <span>Draft</span>
-                  </MenuRadioItem>
-                  <MenuRadioItem value="ready" disabled={actionPending}>
-                    <GitPullRequestIcon className={MENU_ICON_CLASS_NAME} aria-hidden />
-                    <span>Ready for review</span>
-                  </MenuRadioItem>
-                </MenuRadioGroup>
+                {canReopen ? (
+                  <MenuItem disabled={actionPending} onClick={() => runAction("reopen")}>
+                    <MenuRowLabel
+                      icon={<GitPullRequestIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
+                      label={copy.environment.menu.reopen}
+                    />
+                  </MenuItem>
+                ) : (
+                  <MenuRadioGroup
+                    value={displayPr.isDraft ? "draft" : "ready"}
+                    onValueChange={(value) => {
+                      if (value === "draft" && !displayPr.isDraft) runAction("draft");
+                      if (value === "ready" && displayPr.isDraft) runAction("ready");
+                      // Closing is one more status option, but it still confirms first.
+                      if (value === "closed") setConfirmAction({ kind: "close" });
+                    }}
+                  >
+                    <MenuRadioItem value="draft" disabled={actionPending}>
+                      <GitPullRequestDraftIcon className={MENU_ICON_CLASS_NAME} aria-hidden />
+                      <span>{copy.environment.menu.draft}</span>
+                    </MenuRadioItem>
+                    <MenuRadioItem value="ready" disabled={actionPending}>
+                      <GitPullRequestIcon className={MENU_ICON_CLASS_NAME} aria-hidden />
+                      <span>{copy.environment.menu.readyForReview}</span>
+                    </MenuRadioItem>
+                    <MenuRadioItem value="closed" disabled={actionPending}>
+                      <GitPullRequestClosedIcon className={MENU_ICON_CLASS_NAME} aria-hidden />
+                      <span>{copy.environment.menu.closed}</span>
+                    </MenuRadioItem>
+                  </MenuRadioGroup>
+                )}
               </ComposerPickerMenuSubPopup>
             </MenuSub>
           ) : (
             <MenuItem disabled>
               <MenuRowLabel
                 icon={<GitPullRequestIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-                label="Status"
-                trailing={stateLabel}
+                label={copy.environment.menu.status}
+                trailing={statusTrailing}
               />
             </MenuItem>
           )}
-          <MenuItem onClick={openInGitHub}>
-            <MenuRowLabel
-              icon={<ExternalLinkIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
-              label="Open in GitHub"
-            />
-          </MenuItem>
+          {activeThreadId ? (
+            <MenuItem onClick={() => attachContextCard("reference")}>
+              <MenuRowLabel
+                icon={<ChatBubblePlusIcon className={MENU_ICON_CLASS_NAME} aria-hidden />}
+                label={copy.environment.menu.addToChat}
+              />
+            </MenuItem>
+          ) : null}
         </ComposerPickerMenuPopup>
       </Menu>
 
-      {settledState ? (
-        <EnvironmentRow
-          icon={
-            settledState === "merged" ? (
-              <CircleCheckIcon
-                className={cn(ENVIRONMENT_ROW_ICON_CLASS_NAME, "text-success")}
-                aria-hidden
-              />
-            ) : (
-              <CircleAlertIcon
-                className={cn(ENVIRONMENT_ROW_ICON_CLASS_NAME, "opacity-60")}
-                aria-hidden
-              />
-            )
+      <PullRequestConfirmActionDialog
+        action={confirmAction}
+        number={displayPr.number}
+        baseBranch={displayPr.baseBranch}
+        stack={detail?.stack ?? null}
+        stackMergeTargetCount={stackAssessment?.mergeTargetCount ?? 0}
+        pending={actionPending}
+        onDismiss={() => setConfirmAction(null)}
+        onConfirm={(action) => {
+          if (action.kind === "close") {
+            runAction("close");
+            // Re-check against the loaded capabilities: the dialog may outlive a refetch.
+          } else if (detail && allowedMergeMethods.includes(action.method)) {
+            runAction("merge", action.method);
           }
-          label={
-            settledState === "merged" ? copy.status.mergedOnGitHub : copy.status.closedOnGitHub
-          }
-          trailing={<ArrowUpRightIcon className={ENVIRONMENT_ROW_ICON_CLASS_NAME} aria-hidden />}
-          onClick={() => {
-            openPullRequest();
-          }}
-        />
-      ) : null}
-
-      <AlertDialog
-        open={confirmMerge !== null}
-        onOpenChange={(open) => {
-          if (!open) setConfirmMerge(null);
         }}
-      >
-        <AlertDialogPopup>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {detail?.stack && stackAssessment
-                ? `Merge ${stackAssessment.mergeTargetCount} ${stackAssessment.mergeTargetCount === 1 ? "pull request" : "pull requests"}?`
-                : "Merge pull request?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {detail?.stack
-                ? `This will atomically merge every open pull request through #${displayPr.number} into ${detail.stack.baseBranch} using ${confirmMerge ?? "merge"}.`
-                : `This will merge #${displayPr.number} into ${displayPr.baseBranch} using ${confirmMerge ?? "merge"}.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" size="sm" />}>
-              Cancel
-            </AlertDialogClose>
-            <Button
-              size="sm"
-              disabled={actionPending}
-              onClick={() => {
-                const method = confirmMerge;
-                setConfirmMerge(null);
-                // Re-check against the loaded capabilities: the dialog may outlive a refetch.
-                if (method && detail && allowedMergeMethods.includes(method)) {
-                  runAction("merge", method);
-                }
-              }}
-            >
-              {detail?.stack ? "Merge stack" : "Merge"}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogPopup>
-      </AlertDialog>
+      />
     </EnvironmentLabeledSection>
   );
 }

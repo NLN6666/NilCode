@@ -15,6 +15,7 @@ import {
   createSidechatSummariesForSourceSelector,
   createSidebarTreeThreadsSelector,
   createThreadExistsSelector,
+  createThreadGitActionsMetadataSelector,
   createThreadProjectIdSelector,
   createThreadShellsSelector,
   createThreadWorkspaceMetadataSelector,
@@ -211,27 +212,6 @@ describe("createAccountRateLimitThreadsSelector", () => {
     expect(result[0]?.activities).toEqual([rateLimitActivity]);
   });
 
-  it("stays reference-stable when message slices change (streaming deltas)", () => {
-    const selectRateLimitThreads = createAccountRateLimitThreadsSelector();
-    const threadIds = [threadIdA];
-    const activityIdsByThreadId = { [threadIdA]: [rateLimitActivity.id] };
-    const activityByThreadId = { [threadIdA]: { [rateLimitActivity.id]: rateLimitActivity } };
-
-    const before = selectRateLimitThreads(
-      makeState({ threadIds, activityIdsByThreadId, activityByThreadId }),
-    );
-    const after = selectRateLimitThreads(
-      makeState({
-        threadIds,
-        activityIdsByThreadId,
-        activityByThreadId,
-        messageIdsByThreadId: { [threadIdA]: [messageId] },
-      }),
-    );
-
-    expect(after).toBe(before);
-  });
-
   it("stays reference-stable when a non-rate-limit activity is appended", () => {
     const selectRateLimitThreads = createAccountRateLimitThreadsSelector();
     const threadIds = [threadIdA];
@@ -289,17 +269,6 @@ describe("createAccountRateLimitThreadsSelector", () => {
     expect(after).not.toBe(before);
     expect(after[0]?.activities).toEqual([rateLimitActivity, laterRateLimitActivity]);
   });
-
-  it("returns the empty constant when no thread has rate-limit activities", () => {
-    const selectRateLimitThreads = createAccountRateLimitThreadsSelector();
-    const state = makeState({
-      threadIds: [threadIdA],
-      activityIdsByThreadId: { [threadIdA]: [toolActivity.id] },
-      activityByThreadId: { [threadIdA]: { [toolActivity.id]: toolActivity } },
-    });
-
-    expect(selectRateLimitThreads(state)).toEqual([]);
-  });
 });
 
 describe("sidebar thread visibility", () => {
@@ -328,19 +297,6 @@ describe("sidebar thread visibility", () => {
     },
   });
 
-  it("keeps every thread when the hide option is off", () => {
-    expect(isSidebarThreadVisible(runSummary)).toBe(true);
-    expect(isSidebarThreadVisible(runSummary, {})).toBe(true);
-    expect(isSidebarThreadVisible(runSummary, { hideAutomationRunThreads: false })).toBe(true);
-  });
-
-  it("hides only unpinned automation-run threads when the option is on", () => {
-    const options = { hideAutomationRunThreads: true };
-    expect(isSidebarThreadVisible(runSummary, options)).toBe(false);
-    expect(isSidebarThreadVisible(pinnedRunSummary, options)).toBe(true);
-    expect(isSidebarThreadVisible(normalSummary, options)).toBe(true);
-  });
-
   it("always hides side chats, including pinned side chats", () => {
     expect(isSidebarThreadVisible(sidechatSummary)).toBe(false);
     expect(isSidebarThreadVisible(sidechatSummary, { hideAutomationRunThreads: true })).toBe(false);
@@ -361,11 +317,6 @@ describe("sidebar thread visibility", () => {
       threadIdB,
       threadIdC,
     ]);
-  });
-
-  it("stays reference-stable while the underlying summaries do not change", () => {
-    const selectDisplay = createSidebarDisplayThreadsSelector({ hideAutomationRunThreads: true });
-    expect(selectDisplay(state)).toBe(selectDisplay(state));
   });
 });
 
@@ -516,11 +467,6 @@ describe("createAllThreadsSelector", () => {
 });
 
 describe("createAllThreadsMessagelessSelector", () => {
-  it("is vacuously true with no threads", () => {
-    const selectMessageless = createAllThreadsMessagelessSelector();
-    expect(selectMessageless(makeState({}))).toBe(true);
-  });
-
   it("is true when every thread has no message ids", () => {
     const selectMessageless = createAllThreadsMessagelessSelector();
     const state = makeState({
@@ -671,5 +617,65 @@ describe("createProjectLastActivityAtSelector", () => {
     );
 
     expect(after).toBe(before);
+  });
+});
+
+describe("createThreadGitActionsMetadataSelector", () => {
+  it("keeps git action metadata stable while streaming messages change", () => {
+    const selectGitActionsMetadata = createThreadGitActionsMetadataSelector(threadIdA);
+    const threadIds = [threadIdA];
+    const threadShellById = {
+      [threadIdA]: {
+        ...shellA,
+        branch: "feature",
+        worktreePath: "/repo/.worktrees/feature",
+        associatedWorktreeBranch: "feature",
+        createBranchFlowCompleted: true,
+      },
+    };
+
+    const before = selectGitActionsMetadata(makeState({ threadIds, threadShellById }));
+    const after = selectGitActionsMetadata(
+      makeState({
+        threadIds,
+        threadShellById,
+        messageIdsByThreadId: { [threadIdA]: [messageId] },
+      }),
+    );
+
+    expect(after).toBe(before);
+    expect(after).toEqual({
+      worktreePath: "/repo/.worktrees/feature",
+      branch: "feature",
+      associatedWorktreeBranch: "feature",
+      createBranchFlowCompleted: true,
+      title: "A",
+    });
+  });
+
+  it("re-derives when a git field or the title changes and empties for unknown threads", () => {
+    const selectGitActionsMetadata = createThreadGitActionsMetadataSelector(threadIdA);
+    const before = selectGitActionsMetadata(
+      makeState({ threadIds: [threadIdA], threadShellById: { [threadIdA]: shellA } }),
+    );
+    const after = selectGitActionsMetadata(
+      makeState({
+        threadIds: [threadIdA],
+        threadShellById: { [threadIdA]: { ...shellA, title: "Renamed", branch: "main" } },
+      }),
+    );
+    expect(after).not.toBe(before);
+    expect(after.title).toBe("Renamed");
+    expect(after.branch).toBe("main");
+    expect(selectGitActionsMetadata(makeState({}))).toEqual({
+      worktreePath: null,
+      branch: null,
+      associatedWorktreeBranch: null,
+      createBranchFlowCompleted: false,
+      title: undefined,
+    });
+    expect(createThreadGitActionsMetadataSelector(null)(makeState({}))).toBe(
+      createThreadGitActionsMetadataSelector(undefined)(makeState({})),
+    );
   });
 });

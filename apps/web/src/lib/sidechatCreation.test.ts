@@ -1,4 +1,4 @@
-import type { NativeApi, OrchestrationShellSnapshot } from "@synara/contracts";
+import type { ModelSelection, NativeApi, OrchestrationShellSnapshot } from "@synara/contracts";
 import { ProjectId, ThreadId } from "@synara/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,7 @@ import {
   createOrJoinSidechat,
   createSidechatThread,
   getSidechatPaneRetentionVersion,
+  sendSidechatPrompt,
   sidechatPaneRetentionRemainingMs,
   subscribeSidechatPaneRetention,
   type SidechatCreationFlight,
@@ -24,6 +25,7 @@ const sourceThread = {
   id: ThreadId.makeUnsafe("source-thread"),
   projectId: ProjectId.makeUnsafe("project-1"),
   title: "Source thread",
+  runtimeMode: "full-access",
   envMode: "local",
   branch: "main",
   worktreePath: null,
@@ -59,6 +61,72 @@ describe("createSidechatThread", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearSidechatPaneRetention(ThreadId.makeUnsafe("sidechat-thread"));
+  });
+
+  it.each(["codex", "claudeAgent"] as const)(
+    "inherits Full access for a %s fork and its first prompt",
+    async (provider) => {
+      const dispatchCommand = vi.fn().mockResolvedValue(undefined);
+      await createSidechatThread({
+        api: makeApi({ dispatchCommand }),
+        project,
+        sourceThread,
+        selectedModelSelection: { provider, model: "test-model" },
+        initialPrompt: "Investigate this",
+        openSidechat: vi.fn(),
+        syncServerShellSnapshot: vi.fn(),
+      });
+      expect(dispatchCommand.mock.calls.map(([command]) => command.runtimeMode)).toEqual([
+        "full-access",
+        "full-access",
+      ]);
+    },
+  );
+
+  it.each([
+    [{ provider: "codex", model: "test-model" }, "auto"],
+    [{ provider: "claudeAgent", model: "test-model", supportsAutoMode: true }, "auto"],
+    [
+      { provider: "claudeAgent", model: "test-model", supportsAutoMode: false },
+      "approval-required",
+    ],
+    [{ provider: "claudeAgent", model: "test-model" }, "approval-required"],
+  ] satisfies [ModelSelection, string][])(
+    "normalizes inherited Auto for %j to %s",
+    async (modelSelection, expectedRuntimeMode) => {
+      const dispatchCommand = vi.fn().mockResolvedValue(undefined);
+      await createSidechatThread({
+        api: makeApi({ dispatchCommand }),
+        project,
+        sourceThread: { ...sourceThread, runtimeMode: "auto" },
+        selectedModelSelection: modelSelection,
+        initialPrompt: "Investigate this",
+        openSidechat: vi.fn(),
+        syncServerShellSnapshot: vi.fn(),
+      });
+      expect(dispatchCommand.mock.calls.map(([command]) => command.runtimeMode)).toEqual([
+        expectedRuntimeMode,
+        expectedRuntimeMode,
+      ]);
+    },
+  );
+
+  it("uses the selected composer permission instead of the older source value", async () => {
+    const dispatchCommand = vi.fn().mockResolvedValue(undefined);
+    await createSidechatThread({
+      api: makeApi({ dispatchCommand }),
+      project,
+      sourceThread,
+      selectedModelSelection,
+      runtimeMode: "approval-required",
+      initialPrompt: "Investigate this",
+      openSidechat: vi.fn(),
+      syncServerShellSnapshot: vi.fn(),
+    });
+    expect(dispatchCommand.mock.calls.map(([command]) => command.runtimeMode)).toEqual([
+      "approval-required",
+      "approval-required",
+    ]);
   });
 
   it("opens the fork before waiting for the shell snapshot", async () => {
@@ -215,6 +283,20 @@ describe("createSidechatThread", () => {
   });
 });
 
+describe("sendSidechatPrompt", () => {
+  it.each(["auto"] as const)("preserves %s for a queued prompt", async (runtimeMode) => {
+    const dispatchCommand = vi.fn().mockResolvedValue(undefined);
+    await sendSidechatPrompt({
+      api: makeApi({ dispatchCommand }),
+      threadId: sourceThread.id,
+      selectedModelSelection,
+      runtimeMode,
+      prompt: "Follow up",
+    });
+    expect(dispatchCommand).toHaveBeenCalledWith(expect.objectContaining({ runtimeMode }));
+  });
+});
+
 describe("sidechat pane retention", () => {
   it("gives a restored missing pane one grace window before pruning", () => {
     const threadId = ThreadId.makeUnsafe("restored-sidechat");
@@ -236,14 +318,13 @@ describe("createOrJoinSidechat", () => {
   function run(input: {
     flights: Map<string, SidechatCreationFlight>;
     sourceThreadId: ThreadId;
-    targetProvider?: string;
     initialPrompt?: string | undefined;
     startCreation: (initialPrompt?: string | undefined) => Promise<SidechatCreationResult>;
     sendQueuedPrompt: (threadId: ThreadId, prompt: string) => Promise<void>;
   }): Promise<true> {
     return createOrJoinSidechat({
       inFlightByKey: input.flights,
-      flightKey: `${input.sourceThreadId}:${input.targetProvider ?? "codex"}`,
+      flightKey: `${input.sourceThreadId}:codex`,
       initialPrompt: input.initialPrompt,
       startCreation: input.startCreation,
       sendQueuedPrompt: input.sendQueuedPrompt,
@@ -342,35 +423,5 @@ describe("createOrJoinSidechat", () => {
 
     expect(startFirst).toHaveBeenCalledOnce();
     expect(startSecond).toHaveBeenCalledOnce();
-  });
-
-  it("creates separate in-flight sidechats for different target providers", async () => {
-    const flights = new Map<string, SidechatCreationFlight>();
-    const sourceThreadId = ThreadId.makeUnsafe("source-a");
-    const startCodex = vi.fn().mockResolvedValue(result);
-    const startCursor = vi.fn().mockResolvedValue({
-      ...result,
-      threadId: ThreadId.makeUnsafe("cursor-sidechat"),
-    });
-
-    await Promise.all([
-      run({
-        flights,
-        sourceThreadId,
-        targetProvider: "codex",
-        startCreation: startCodex,
-        sendQueuedPrompt: vi.fn().mockResolvedValue(undefined),
-      }),
-      run({
-        flights,
-        sourceThreadId,
-        targetProvider: "cursor",
-        startCreation: startCursor,
-        sendQueuedPrompt: vi.fn().mockResolvedValue(undefined),
-      }),
-    ]);
-
-    expect(startCodex).toHaveBeenCalledOnce();
-    expect(startCursor).toHaveBeenCalledOnce();
   });
 });

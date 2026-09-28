@@ -1,18 +1,33 @@
 diff --git a/dist/NodeChildProcessSpawner.js b/dist/NodeChildProcessSpawner.js
+index 7e51c00..fbf5eb7 100644
 --- a/dist/NodeChildProcessSpawner.js
 +++ b/dist/NodeChildProcessSpawner.js
-@@ -242,7 +242,9 @@
+@@ -240,6 +240,14 @@ const make = /*#__PURE__*/Effect.gen(function* () {
+     });
+   });
    const killProcessGroup = (command, childProcess, signal) => {
++    const pid = childProcess.pid;
++    // Never turn an invalid child handle into a broadcast/group target.
++    // A valid group can outlive its leader, so do not require a live leader.
++    if (pid === undefined || !Number.isSafeInteger(pid) || pid <= 1 || pid > 0x7fffffff) {
++      return Effect.void;
++    }
      if (globalThis.process.platform === "win32") {
        return Effect.callback(resume => {
 -        NodeChildProcess.exec(`taskkill /pid ${childProcess.pid} /T /F`, error => {
 +        NodeChildProcess.exec(`taskkill /pid ${childProcess.pid} /T /F`, {
 +          windowsHide: true
 +        }, error => {
-           if (error) {
-             resume(Effect.fail(toPlatformError("kill", toError(error), command)));
-           } else {
-@@ -314,7 +316,9 @@
+@@ -253,7 +261,7 @@ const make = /*#__PURE__*/Effect.gen(function* () {
+     }
+     return Effect.try({
+       try: () => {
+-        globalThis.process.kill(-childProcess.pid, signal);
++        globalThis.process.kill(-pid, signal);
+       },
+       catch: error => toPlatformError("kill", toError(error), command)
+     });
+@@ -314,7 +322,9 @@ const make = /*#__PURE__*/Effect.gen(function* () {
              env,
              stdio,
              detached: cmd.options.detached ?? process.platform !== "win32",
@@ -24,22 +39,37 @@ diff --git a/dist/NodeChildProcessSpawner.js b/dist/NodeChildProcessSpawner.js
              const exited = yield* Deferred.isDone(exitSignal);
              const killWithTimeout = withTimeout(childProcess, cmd, cmd.options);
 diff --git a/src/NodeChildProcessSpawner.ts b/src/NodeChildProcessSpawner.ts
+index dc53baf..110ce95 100644
 --- a/src/NodeChildProcessSpawner.ts
 +++ b/src/NodeChildProcessSpawner.ts
-@@ -326,7 +326,11 @@
+@@ -324,6 +324,16 @@ const make = Effect.gen(function*() {
+     childProcess: NodeChildProcess.ChildProcess,
+     signal: NodeJS.Signals
    ) => {
++    const pid = childProcess.pid
++    // Never turn an invalid child handle into a broadcast/group target.
++    // A valid group can outlive its leader, so do not require a live leader.
++    if (pid === undefined || !Number.isSafeInteger(pid) || pid <= 1 || pid > 0x7fffffff) {
++      return Effect.void
++    }
      if (globalThis.process.platform === "win32") {
        return Effect.callback<void, PlatformError.PlatformError>((resume) => {
++        // Without windowsHide, taskkill opens a console window for a
++        // packaged desktop app even after the child has already exited.
 -        NodeChildProcess.exec(`taskkill /pid ${childProcess.pid} /T /F`, (error) => {
-+        // Without `windowsHide` this pops a console window every time a child
-+        // process group is killed, and one is killed per finished command.
 +        NodeChildProcess.exec(`taskkill /pid ${childProcess.pid} /T /F`, {
 +          windowsHide: true
 +        }, (error) => {
-           if (error) {
-             resume(Effect.fail(toPlatformError("kill", toError(error), command)))
-           } else {
-@@ -430,7 +434,21 @@
+@@ -337,7 +347,7 @@ const make = Effect.gen(function*() {
+     }
+     return Effect.try({
+       try: () => {
+-        globalThis.process.kill(-childProcess.pid!, signal)
++        globalThis.process.kill(-pid, signal)
+       },
+       catch: (error) => toPlatformError("kill", toError(error), command)
+     })
+@@ -430,7 +440,21 @@ const make = Effect.gen(function*() {
              env,
              stdio,
              detached: cmd.options.detached ?? process.platform !== "win32",

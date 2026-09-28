@@ -58,7 +58,7 @@ export function DebugFeatureFlagsMenu() {
         render={
           <SidebarMenuButton
             size="default"
-            className="h-8 flex-1 gap-2.5 rounded-lg px-2 text-[length:var(--app-font-size-ui,12px)] font-normal text-muted-foreground/72 hover:bg-[var(--sidebar-accent)]"
+            className="h-8 flex-1 gap-2.5 rounded-lg px-2 text-ui font-normal text-muted-foreground/72 hover:bg-[var(--sidebar-accent)]"
           />
         }
       >
@@ -78,7 +78,7 @@ export function DebugFeatureFlagsMenu() {
                 >
                   <div className="flex min-w-0 flex-col gap-0.5">
                     <span>{flag.label}</span>
-                    <span className="text-[length:var(--app-font-size-ui-xs,10px)] leading-4 text-muted-foreground/70">
+                    <span className="text-ui-xs leading-4 text-muted-foreground/70">
                       {flag.description}
                     </span>
                   </div>
@@ -98,7 +98,7 @@ export function DebugFeatureFlagsMenu() {
               >
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <span>{flag.label}</span>
-                  <span className="text-[length:var(--app-font-size-ui-xs,10px)] leading-4 text-muted-foreground/70">
+                  <span className="text-ui-xs leading-4 text-muted-foreground/70">
                     {flag.description}
                   </span>
                 </div>

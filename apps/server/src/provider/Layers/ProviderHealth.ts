@@ -21,6 +21,7 @@ import type {
 import { ServerProviderUpdateError } from "@synara/contracts";
 import { parseCodexConfigModelProvider } from "@synara/shared/codexConfig";
 import { decodeJsonResult } from "@synara/shared/schemaJson";
+import { expandHomePath } from "@synara/shared/synaraHome";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   Array,
@@ -43,6 +44,7 @@ import {
 } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { makeEffectProcessCommand } from "../../platform/effectProcessRuntime.ts";
+import { SERVER_DESKTOP_FLAVOR } from "../../betaFeatureGate.ts";
 
 import {
   compareCodexCliVersions,
@@ -56,6 +58,7 @@ import {
   buildProviderChildEnvironment,
   type ProviderChildKind,
 } from "../../providerChildEnvironment.ts";
+import { buildOpenCodeServerProcessEnv } from "../providerBinaryResolution.ts";
 import { ServerSettingsService } from "../../serverSettings";
 import { isWindowsShellCommandMissingResult } from "../../shell-command-detection";
 import {
@@ -66,6 +69,7 @@ import {
 } from "../acp/CursorAcpCommand";
 import { hasDroidApiKeyEnv, resolveDroidCliBinaryPath } from "../acp/DroidAcpSupport";
 import { hasGrokApiKeyEnv } from "../acp/GrokAcpSupport";
+import { resolveOmpCliBinaryPath } from "../acp/OmpAcpSupport";
 import {
   hasDevinApiKeyEnv,
   readDevinStoredCredentials,
@@ -170,7 +174,9 @@ const providerChildKind = (provider: ProviderKind): ProviderChildKind =>
   provider === CLAUDE_AGENT_PROVIDER ? "claude" : provider === OMP_PROVIDER ? "acp" : provider;
 
 const providerCommandEnv = (provider: ProviderKind): NodeJS.ProcessEnv =>
-  buildProviderChildEnvironment({ provider: providerChildKind(provider) });
+  provider === OPENCODE_PROVIDER
+    ? buildOpenCodeServerProcessEnv({})
+    : buildProviderChildEnvironment({ provider: providerChildKind(provider) });
 
 const UPDATE_OUTPUT_MAX_BYTES = 10_000;
 const MAX_REFRESH_REVISION_RETRIES = 1;
@@ -302,6 +308,13 @@ export const PACKAGE_MANAGED_PROVIDER_UPDATES: Partial<
       lockKey: "pi-native",
       strategy: "always",
     },
+  },
+  omp: {
+    provider: OMP_PROVIDER,
+    binaryName: "omp",
+    npmPackageName: null,
+    homebrew: null,
+    nativeUpdate: null,
   },
 };
 
@@ -1392,7 +1405,7 @@ export const makeCheckOpenCodeProviderStatus = (
 ): Effect.Effect<ServerProviderStatus, never, ChildProcessSpawner.ChildProcessSpawner> =>
   Effect.gen(function* () {
     const checkedAt = new Date().toISOString();
-    const executable = nonEmptyTrimmed(binaryPath) ?? "opencode";
+    const executable = expandHomePath(nonEmptyTrimmed(binaryPath) ?? "opencode");
 
     const versionProbe = yield* probeProviderCliVersion(
       runOpenCodeCommand(["--version"], executable),
@@ -1544,6 +1557,7 @@ export interface OhMyPiHealthCheckOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly platform?: NodeJS.Platform;
   readonly timeoutMs?: number;
+  readonly agentDir?: string;
   readonly inspectControlPlane?: () => Promise<OmpControlPlanePlan>;
 }
 
@@ -1671,7 +1685,10 @@ export const makeCheckOhMyPiProviderStatus = (
       Effect.tryPromise({
         try: () =>
           options.inspectControlPlane?.() ??
-          inspectOmpControlPlane(options.env ? { env: options.env } : undefined),
+          inspectOmpControlPlane({
+            ...(options.env ? { env: options.env } : {}),
+            ...(options.agentDir ? { agentDir: options.agentDir } : {}),
+          }),
         catch: (cause) => cause,
       }).pipe(
         Effect.map(
@@ -1686,6 +1703,74 @@ export const makeCheckOhMyPiProviderStatus = (
   );
 
 export const checkOhMyPiProviderStatus = makeCheckOhMyPiProviderStatus();
+
+/** Beta uses upstream's ACP runtime, not the fork's managed native overlay. */
+export const checkOmpBetaProviderStatus = (
+  agentDir?: string,
+  binaryPath?: string,
+): Effect.Effect<ServerProviderStatus, never, ChildProcessSpawner.ChildProcessSpawner> =>
+  Effect.gen(function* () {
+    const checkedAt = new Date().toISOString();
+    const executable = resolveOmpCliBinaryPath(nonEmptyTrimmed(binaryPath) ?? undefined);
+    const versionProbe = yield* probeProviderCliVersion(
+      runProviderCommand(executable, ["--version"], providerCommandEnv(OMP_PROVIDER)).pipe(
+        Effect.flatMap((result) =>
+          isWindowsShellCommandMissingResult({ code: result.code, stderr: result.stderr })
+            ? Effect.fail(new Error(`spawn ${executable} ENOENT`))
+            : Effect.succeed(result),
+        ),
+      ),
+      DEFAULT_TIMEOUT_MS,
+    );
+    if (versionProbe.outcome === "missing" || versionProbe.outcome === "failure") {
+      const cause = versionProbe.cause;
+      return {
+        provider: OMP_PROVIDER,
+        status: "error",
+        available: false,
+        authStatus: "unknown",
+        checkedAt,
+        message:
+          versionProbe.outcome === "missing"
+            ? "OMP CLI (`omp`) is not on PATH. Install it to use the OMP provider."
+            : `OMP CLI health check failed: ${cause instanceof Error ? cause.message : String(cause)}.`,
+      } satisfies ServerProviderStatus;
+    }
+    if (versionProbe.outcome === "timeout") {
+      return {
+        provider: OMP_PROVIDER,
+        status: "error",
+        available: false,
+        authStatus: "unknown",
+        checkedAt,
+        message: "OMP CLI health check timed out before Synara could verify the installed version.",
+      } satisfies ServerProviderStatus;
+    }
+    if (versionProbe.outcome === "nonzero") {
+      const detail = detailFromResult(versionProbe.result);
+      return {
+        provider: OMP_PROVIDER,
+        status: "error",
+        available: false,
+        authStatus: "unknown",
+        checkedAt,
+        message: detail ? `OMP CLI health check failed. ${detail}` : "OMP CLI health check failed.",
+      } satisfies ServerProviderStatus;
+    }
+    const version = versionProbe.result;
+    const configuredAgentDir = nonEmptyTrimmed(agentDir);
+    return {
+      provider: OMP_PROVIDER,
+      status: "ready",
+      available: true,
+      authStatus: "unknown",
+      version: parseGenericCliVersion(`${version.stdout}\n${version.stderr}`),
+      checkedAt,
+      message: configuredAgentDir
+        ? `OMP CLI is installed. Synara will use the OMP agent dir ${configuredAgentDir}.`
+        : "OMP CLI is installed. Configure provider credentials inside the OMP app as needed.",
+    } satisfies ServerProviderStatus;
+  });
 
 // ── Antigravity CLI health check ──────────────────────────────────
 
@@ -2373,13 +2458,13 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
           case "droid":
             return settings.providers.droid.binaryPath;
           case "opencode":
-            return settings.providers.opencode.binaryPath;
-          case "omp":
-            return settings.providers.omp.binaryPath;
+            return expandHomePath(settings.providers.opencode.binaryPath);
           case "pi":
             return settings.providers.pi.binaryPath;
           case "devin":
             return settings.providers.devin.binaryPath;
+          case "omp":
+            return settings.providers.omp.binaryPath;
         }
       };
 
@@ -2429,7 +2514,17 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
       const applyVolatileProviderState = Effect.fn("applyVolatileProviderState")(function* (
         status: ServerProviderStatus,
       ) {
-        const statusWithOmpRuntime = projectVolatileOmpRuntimeStatus(status, getOmpRuntimeStatus());
+        // A cached native-overlay verdict from an older Beta build cannot
+        // describe Beta's upstream ACP adapter.
+        let statusForFlavor = status;
+        if (SERVER_DESKTOP_FLAVOR === "beta" && status.provider === OMP_PROVIDER) {
+          const { ompPolicy: _oldPolicy, ...withoutPolicy } = status;
+          statusForFlavor = withoutPolicy;
+        }
+        const statusWithOmpRuntime = projectVolatileOmpRuntimeStatus(
+          statusForFlavor,
+          getOmpRuntimeStatus(),
+        );
         const updateStates = yield* Ref.get(updateStatesRef);
         const updateState = updateStates.get(statusWithOmpRuntime.provider);
         if (!updateState) {
@@ -2589,7 +2684,14 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
                 checkProviderWhenEnabled(
                   settings,
                   OMP_PROVIDER,
-                  makeCheckOhMyPiProviderStatus(settings.providers.omp.binaryPath),
+                  SERVER_DESKTOP_FLAVOR === "beta"
+                    ? checkOmpBetaProviderStatus(
+                        settings.providers.omp.agentDir,
+                        settings.providers.omp.binaryPath,
+                      )
+                    : makeCheckOhMyPiProviderStatus(settings.providers.omp.binaryPath, {
+                        agentDir: settings.providers.omp.agentDir,
+                      }),
                 ),
                 checkProviderWhenEnabled(
                   settings,

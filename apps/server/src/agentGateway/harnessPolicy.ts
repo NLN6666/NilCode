@@ -1,14 +1,18 @@
 import type { ProviderKind } from "@synara/contracts";
 
+import { SERVER_DESKTOP_FLAVOR } from "../betaFeatureGate.ts";
+import { computerToolInstructions } from "./computerGuidance.ts";
+
 import { AUTOMATION_AUTHORING_GUIDANCE } from "./automationAuthoringGuidance.ts";
 
 /** Canonical, versioned host policy delivered to every supported provider. */
-export const SYNARA_HARNESS_POLICY_VERSION = "2026-09-07.1";
+export const SYNARA_HARNESS_POLICY_VERSION = "2026-09-28.1";
 export const SYNARA_HARNESS_POLICY_MARKER = `[Synara harness policy ${SYNARA_HARNESS_POLICY_VERSION}]`;
 
 export interface SynaraHarnessCapabilities {
   readonly gatewayControlAvailable: boolean;
   readonly automationAuthoring?: "tool-descriptions";
+  readonly enableComputerControl?: boolean | undefined;
 }
 
 /**
@@ -26,13 +30,13 @@ export function renderSynaraHarnessPolicy(capabilities: SynaraHarnessCapabilitie
         "For any-language iOS app or simulator request, call device_* directly and autonomously as the canonical, complete control surface; never use xcrun simctl, AppleScript, Appium, idb, open Simulator.app, or substitute mobile/OS-automation tools/skills, because the user watches the streamed pane. Detailed rules live in each tool description.",
         "For thread discovery and diagnosis, use synara_list_threads, synara_read_thread, synara_read_thread_activity, synara_read_thread_events, synara_read_thread_runtime_events, and synara_diagnose_thread before SQLite or process logs. Use host storage only when tool coverage says required evidence is unavailable.",
         "After successfully creating a pull request for the current thread's own deliverable, call synara_set_thread_pull_request with its URL. Never associate a pull request that the thread only reviews, references, or discusses.",
-        "Processes outliving this turn must use synara_*_daemon tools, never shell backgrounding. Shell children die with the session and are absent from Services. Declare ready on synara_start_daemon; use synara_send_daemon_input for graceful shutdown before synara_stop_daemon. Use detached: true only to survive Synara exiting.",
-        "Provider-native subagent or Task tools are implementation details: they do not create Synara threads and must not substitute for an explicit request to create Synara threads.",
+        "For long-lived processes use synara_*_daemon, not shell backgrounding: shell children die with the session. Declare ready when starting; send daemon input before stopping gracefully. Use detached: true only to survive Synara exiting.",
+        "Native subagent/Task tools do not create Synara threads; use synara_create_threads for explicit Synara thread requests.",
         "For a plural thread request, submit one exact synara_create_threads plan. The array length is the exact requested count.",
         "If synara_create_threads fails before returning an operationId, correct the rejected plan and reuse its requestId; no durable task was created.",
-        "Use synara_capabilities to select canonical provider, model, and option values. Never guess a model slug or silently substitute a provider or model.",
-        "Use synara_capabilities.targetConstruction: Codex options.reasoningEffort and Claude Agent options.effort are not interchangeable.",
-        "When results are requested, call synara_wait_for_threads for the created thread ids, wait for every requested result, then synthesize all outcomes.",
+        "Use synara_capabilities for canonical provider/model/options; never guess or silently substitute.",
+        "Follow synara_capabilities.targetConstruction: Codex reasoningEffort and Claude Agent effort differ.",
+        "For requested results, synara_wait_for_threads on every created id before synthesizing outcomes.",
         "After an operationId, retries keep the same requestId and exact plan. Report terminal failures; no replacement threads without a new user request.",
         "Synara automations support heartbeat, standalone, and dedicated modes plus interval, once, daily, weekdays, weekly, and cron schedules. Existing everyMinutes heartbeat calls remain supported. Use fastInterval: true only when the user explicitly accepts a sub-minute bounded loop.",
         "Mode controls execution: heartbeat appends to an idle target thread; standalone opens a fresh thread per independent run; dedicated reuses one automation-owned thread so runs build on each other without writing into another thread.",
@@ -60,6 +64,9 @@ export function renderSynaraHarnessPolicy(capabilities: SynaraHarnessCapabilitie
     'Synara collapses progress and tools under "Worked for...". Final responses must restate every needed scope, plan, decision, result, caveat, instruction, or question. Never request approval using "this", "the above", or another referent available only in collapsed content.',
     "When a structured user-input tool is available for a genuine decision, prefer it and include all decision context in its question or card.",
     ...controlPolicy,
+    ...(capabilities.gatewayControlAvailable && capabilities.enableComputerControl === true
+      ? [computerToolInstructions()]
+      : []),
   ].join("\n");
 }
 
@@ -76,6 +83,7 @@ export interface SynaraHarnessPolicyDeliveryState {
    * whole life and never learn a newly added constraint.
    */
   deliveredHarnessPolicyVersion?: string;
+  enableComputerControl?: boolean | undefined;
 }
 
 const PROVIDERS_WITH_THREAD_SCOPED_SYNARA_MCP = new Set<ProviderKind>([
@@ -96,7 +104,9 @@ export function providerHasSynaraGatewayControl(input: {
 }): boolean {
   return (
     input.scopedGatewayConnectionAvailable &&
-    PROVIDERS_WITH_THREAD_SCOPED_SYNARA_MCP.has(input.provider)
+    (input.provider === "omp"
+      ? SERVER_DESKTOP_FLAVOR === "beta"
+      : PROVIDERS_WITH_THREAD_SCOPED_SYNARA_MCP.has(input.provider))
   );
 }
 
@@ -127,6 +137,7 @@ export function takeSynaraHarnessPolicyForProviderSession(
 ): string | null {
   return takeSynaraHarnessPolicyForSession(state, {
     gatewayControlAvailable: providerHasSynaraGatewayControl(input),
+    enableComputerControl: state.enableComputerControl === true,
   });
 }
 

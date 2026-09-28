@@ -173,7 +173,7 @@ export function WhatsNewPopoutCard({
             {primaryFeatureTitle ?? copy.popoutTitle(currentVersion)}
           </p>
           {primaryFeatureDescription !== undefined && (
-            <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground/90">
+            <p className="mt-1.5 line-clamp-2 text-ui leading-relaxed text-muted-foreground/90">
               {primaryFeatureDescription}
             </p>
           )}

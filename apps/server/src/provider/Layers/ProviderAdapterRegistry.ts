@@ -9,6 +9,7 @@
  */
 import { Effect, Layer } from "effect";
 
+import { SERVER_DESKTOP_FLAVOR } from "../../betaFeatureGate.ts";
 import { ProviderUnsupportedError, type ProviderAdapterError } from "../Errors.ts";
 import {
   assertProviderAdapterConformance,
@@ -28,13 +29,26 @@ import { GrokAdapter } from "../Services/GrokAdapter.ts";
 import { OpenCodeAdapter } from "../Services/OpenCodeAdapter.ts";
 import { OhMyPiAdapter } from "../Services/OhMyPiAdapter.ts";
 import { PiAdapter } from "../Services/PiAdapter.ts";
+import { OmpAdapter } from "../Services/OmpAdapter.ts";
 import { AntigravityAdapter } from "../Services/AntigravityAdapter.ts";
 
 export interface ProviderAdapterRegistryLiveOptions {
   readonly adapters?: ReadonlyArray<ProviderAdapterShape<ProviderAdapterError>>;
 }
 
-const makeProviderAdapterRegistry = (options?: ProviderAdapterRegistryLiveOptions) =>
+/** Beta's ACP provider and the fork's native Launch provider share one identity. */
+export function selectOmpAdapter(
+  flavor: typeof SERVER_DESKTOP_FLAVOR,
+  nativeAdapter: ProviderAdapterShape<ProviderAdapterError>,
+  betaAdapter: ProviderAdapterShape<ProviderAdapterError>,
+): ProviderAdapterShape<ProviderAdapterError> {
+  return flavor === "beta" ? betaAdapter : nativeAdapter;
+}
+
+const makeProviderAdapterRegistry = (
+  flavor: typeof SERVER_DESKTOP_FLAVOR,
+  options?: ProviderAdapterRegistryLiveOptions,
+) =>
   Effect.gen(function* () {
     const adapters =
       options?.adapters !== undefined
@@ -48,7 +62,7 @@ const makeProviderAdapterRegistry = (options?: ProviderAdapterRegistryLiveOption
             yield* GrokAdapter,
             yield* DroidAdapter,
             yield* OpenCodeAdapter,
-            yield* OhMyPiAdapter,
+            selectOmpAdapter(flavor, yield* OhMyPiAdapter, yield* OmpAdapter),
             yield* PiAdapter,
           ];
 
@@ -82,7 +96,7 @@ const makeProviderAdapterRegistry = (options?: ProviderAdapterRegistryLiveOption
     } satisfies ProviderAdapterRegistryShape;
   });
 
-export const ProviderAdapterRegistryLive = Layer.effect(
-  ProviderAdapterRegistry,
-  makeProviderAdapterRegistry(),
-);
+export const makeProviderAdapterRegistryLive = (flavor: typeof SERVER_DESKTOP_FLAVOR) =>
+  Layer.effect(ProviderAdapterRegistry, makeProviderAdapterRegistry(flavor));
+
+export const ProviderAdapterRegistryLive = makeProviderAdapterRegistryLive(SERVER_DESKTOP_FLAVOR);

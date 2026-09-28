@@ -12,6 +12,7 @@ import {
   AdvisorThreadOverride,
   NonNegativeInt,
   OrchestrationThreadPullRequest,
+  PendingClaudeCacheReview,
   ThreadNotes,
   ThreadGoal,
   ThreadGoalAchievements,
@@ -76,6 +77,9 @@ export const ProjectionThread = Schema.Struct({
   lastKnownPr: Schema.NullOr(OrchestrationThreadPullRequest),
   latestTurnId: Schema.NullOr(TurnId),
   handoff: Schema.NullOr(ThreadHandoff),
+  // Omission preserves an existing review during legacy whole-row upserts;
+  // null explicitly clears it.
+  claudeCacheReview: Schema.optional(Schema.NullOr(PendingClaudeCacheReview)),
   pinnedMessages: Schema.NullOr(ThreadPinnedMessages),
   notes: Schema.NullOr(ThreadNotes),
   goal: Schema.NullOr(ThreadGoal),
@@ -89,6 +93,7 @@ export const ProjectionThread = Schema.Struct({
     Schema.withDecodingDefault(() => null),
   ),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
+  latestHumanMessageAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   pendingApprovalCount: NonNegativeInt,
   pendingUserInputCount: NonNegativeInt,
   hasActionableProposedPlan: NonNegativeInt,

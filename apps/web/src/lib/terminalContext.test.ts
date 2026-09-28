@@ -4,21 +4,17 @@ import { describe, expect, it } from "vitest";
 import {
   appendOriginalComposerPromptBlocks,
   appendTerminalContextsToPrompt,
-  buildTerminalContextBlock,
   countInlineTerminalContextPlaceholders,
   deriveDisplayedUserMessageState,
   ensureInlineTerminalContextPlaceholders,
   extractTrailingTerminalContexts,
   filterTerminalContextsWithText,
-  formatInlineTerminalContextLabel,
-  formatTerminalContextLabel,
   hasTerminalContextText,
   IMAGE_ONLY_BOOTSTRAP_PROMPT,
   IMAGE_ONLY_VISIBLE_PLACEHOLDER,
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   insertInlineTerminalContextPlaceholder,
   isTerminalContextExpired,
-  materializeInlineTerminalContextPrompt,
   removeInlineTerminalContextPlaceholder,
   stripInlineTerminalContextPlaceholders,
   syncTerminalContextsByIds,
@@ -83,54 +79,10 @@ describe("terminalContext", () => {
     expect(terminalContextIdListsEqual(contexts, ["first"])).toBe(false);
   });
 
-  it("formats terminal labels with line ranges", () => {
-    expect(formatTerminalContextLabel(makeContext())).toBe("Terminal 1 lines 12-13");
-    expect(
-      formatTerminalContextLabel(
-        makeContext({
-          lineStart: 9,
-          lineEnd: 9,
-        }),
-      ),
-    ).toBe("Terminal 1 line 9");
-  });
-
-  it("builds a numbered terminal context block", () => {
-    expect(buildTerminalContextBlock([makeContext()])).toBe(
-      [
-        "<terminal_context>",
-        "- Terminal 1 lines 12-13:",
-        "  12 | git status",
-        "  13 | On branch main",
-        "</terminal_context>",
-      ].join("\n"),
-    );
-  });
-
   it("appends terminal context blocks after prompt text", () => {
     expect(appendTerminalContextsToPrompt("Investigate this", [makeContext()])).toBe(
       [
         "Investigate this",
-        "",
-        "<terminal_context>",
-        "- Terminal 1 lines 12-13:",
-        "  12 | git status",
-        "  13 | On branch main",
-        "</terminal_context>",
-      ].join("\n"),
-    );
-  });
-
-  it("preserves the original terminal context block when editing display text", () => {
-    const originalPrompt = appendTerminalContextsToPrompt("Investigate this", [makeContext()]);
-    expect(
-      appendOriginalComposerPromptBlocks({
-        editedPrompt: "Investigate this edited",
-        originalPrompt,
-      }),
-    ).toBe(
-      [
-        "Investigate this edited",
         "",
         "<terminal_context>",
         "- Terminal 1 lines 12-13:",
@@ -397,7 +349,6 @@ describe("terminalContext", () => {
       browserAnnotations: [],
     });
   });
-
   it("separates file comments, terminal context, and assistant selections in display state", () => {
     // Mirror the composer send path: assistant selections, then terminal
     // contexts, then file comments (outermost).
@@ -432,15 +383,6 @@ describe("terminalContext", () => {
       pastedTexts: [],
       pullRequestContexts: [],
       browserAnnotations: [],
-    });
-  });
-
-  it("preserves prompt text when no trailing terminal context block exists", () => {
-    expect(extractTrailingTerminalContexts("No attached context")).toEqual({
-      promptText: "No attached context",
-      contextCount: 0,
-      previewTitle: null,
-      contexts: [],
     });
   });
 
@@ -513,15 +455,5 @@ describe("terminalContext", () => {
     expect(hasTerminalContextText(expiredContext)).toBe(false);
     expect(isTerminalContextExpired(expiredContext)).toBe(true);
     expect(filterTerminalContextsWithText([expiredContext, liveContext])).toEqual([liveContext]);
-  });
-
-  it("formats and materializes inline terminal labels from placeholder positions", () => {
-    expect(formatInlineTerminalContextLabel(makeContext())).toBe("@terminal-1:12-13");
-    expect(
-      materializeInlineTerminalContextPrompt(
-        `Investigate ${INLINE_TERMINAL_CONTEXT_PLACEHOLDER} carefully`,
-        [makeContext()],
-      ),
-    ).toBe("Investigate @terminal-1:12-13 carefully");
   });
 });

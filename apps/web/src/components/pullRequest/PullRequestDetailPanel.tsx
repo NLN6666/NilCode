@@ -28,15 +28,6 @@ import {
   buildResolveConflictsPrompt,
   createPullRequestContextDraft,
 } from "~/components/chat/environment/environmentPullRequest.logic";
-import {
-  AlertDialog,
-  AlertDialogClose,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogPopup,
-  AlertDialogTitle,
-} from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "~/components/ui/empty";
 import { IconButton } from "~/components/ui/icon-button";
@@ -75,7 +66,10 @@ import { type PullRequestContextDraft } from "~/lib/pullRequestContext";
 import { cn } from "~/lib/utils";
 import { ensureNativeApi } from "~/nativeApi";
 import { useHandleNewThread } from "~/hooks/useHandleNewThread";
-import { copyTextToClipboard } from "~/hooks/useCopyToClipboard";
+import {
+  copyPullRequestLink,
+  PullRequestConfirmActionDialog,
+} from "./PullRequestConfirmActionDialog";
 import { PullRequestSummaryTab } from "./PullRequestSummaryTab";
 import { PullRequestStackPopover } from "./PullRequestStackPopover";
 import { PullRequestTimelineTab } from "./PullRequestTimelineTab";
@@ -117,7 +111,7 @@ const PR_HEADER_ICON_BUTTON_CLASS_NAME = cn(
 // font-normal, so medium made the one filled control shout a weight heavier than its whole row.
 const PR_HEADER_ACTION_BUTTON_CLASS_NAME = cn(
   CHAT_HEADER_CONTROL_CLASS_NAME,
-  "px-3 text-[length:var(--app-font-size-ui,12px)] font-normal sm:text-[length:var(--app-font-size-ui,12px)]",
+  "px-3 text-ui font-normal sm:text-ui",
 );
 
 // Lazy: the diff renderer + worker pool are heavyweight and only needed on the Code tab.
@@ -316,19 +310,6 @@ export function PullRequestDetailPanel({
     );
   };
 
-  const copyPullRequestLink = async () => {
-    if (!detail) return;
-    try {
-      await copyTextToClipboard(detail.url);
-      toastManager.add({ type: "success", title: copy.toast.linkCopied });
-    } catch (error) {
-      toastManager.add({
-        type: "error",
-        title: copy.toast.linkCopyFailed,
-        description: error instanceof Error ? error.message : copy.toast.clipboardFailed,
-      });
-    }
-  };
 
   const allowedMethods = detail
     ? (["merge", "squash", "rebase"] as const).filter((method) => detail.mergeCapabilities[method])
@@ -453,7 +434,7 @@ export function PullRequestDetailPanel({
                       <MenuSeparator />
                     </>
                   ) : null}
-                  <MenuItem onClick={() => void copyPullRequestLink()}>
+                  <MenuItem onClick={() => copyPullRequestLink(detail.url, copy.toast)}>
                     <LinkIcon className="size-3.5 shrink-0" />
                     <span>{copy.actions.copyLink}</span>
                   </MenuItem>
@@ -632,56 +613,24 @@ export function PullRequestDetailPanel({
         )}
       </div>
 
-      <AlertDialog
-        open={confirmAction !== null}
-        onOpenChange={(open) => !open && setConfirmAction(null)}
-      >
-        <AlertDialogPopup>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {confirmAction === "merge"
-                ? detail?.stack
-                  ? copy.confirm.mergeStackTitle(stackMergeTargetCount)
-                  : copy.confirm.mergeTitle
-                : copy.confirm.closeTitle}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmAction === "merge"
-                ? detail?.stack
-                  ? copy.confirm.mergeStackDescription(
-                      input.number,
-                      detail.stack.baseBranch,
-                      selectedMergeMethod,
-                      detail.stack.position < detail.stack.size,
-                    )
-                  : copy.confirm.mergeDescription(input.number, selectedMergeMethod)
-                : copy.confirm.closeDescription(input.number)}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="outline" size="sm" />}>
-              {copy.actions.cancel}
-            </AlertDialogClose>
-            <Button
-              size="sm"
-              variant={confirmAction === "close" ? "destructive" : "default"}
-              disabled={actionPending}
-              onClick={() => {
-                const action = confirmAction;
-                setConfirmAction(null);
-                if (action === "merge") void runAction("merge", selectedMergeMethod);
-                if (action === "close") void runAction("close");
-              }}
-            >
-              {confirmAction === "merge"
-                ? detail?.stack
-                  ? copy.confirm.mergeStack
-                  : copy.confirm.merge
-                : copy.confirm.close}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogPopup>
-      </AlertDialog>
+      <PullRequestConfirmActionDialog
+        action={
+          confirmAction === "merge"
+            ? { kind: "merge", method: selectedMergeMethod }
+            : confirmAction === "close"
+              ? { kind: "close" }
+              : null
+        }
+        number={input.number}
+        stack={detail?.stack ?? null}
+        stackMergeTargetCount={stackMergeTargetCount}
+        pending={actionPending}
+        onDismiss={() => setConfirmAction(null)}
+        onConfirm={(action) => {
+          if (action.kind === "merge") void runAction("merge", action.method);
+          else void runAction("close");
+        }}
+      />
     </div>
   );
 }

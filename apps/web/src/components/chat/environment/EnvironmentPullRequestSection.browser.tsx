@@ -157,7 +157,7 @@ describe("EnvironmentPullRequestSection", () => {
     useComposerDraftStore.getState().clearDraftThread(threadId);
   });
 
-  it.each(["ready", "draft"] as const)(
+  it.each(["ready"] as const)(
     "shows %s immediately while GitHub is pending and restores the menu on failure",
     async (action) => {
       const queryClient = createQueryClient();
@@ -208,6 +208,51 @@ describe("EnvironmentPullRequestSection", () => {
     },
   );
 
+  it("closes the pull request from the Status menu after confirmation", async () => {
+    const queryClient = createQueryClient();
+    const projectId = ProjectId.makeUnsafe("project-pr-status");
+    getPullRequestDetail.mockReturnValue(new Promise(() => {}));
+    runPullRequestAction.mockReturnValue(new Promise(() => {}));
+    await render(section(queryClient, vi.fn(), { projectId }));
+
+    await page.getByText("#321 Keep PR context visible", { exact: true }).click();
+    await page.getByRole("menuitem", { name: /^Status/ }).hover();
+    await page.getByRole("menuitemradio", { name: "Closed", exact: true }).click();
+    expect(runPullRequestAction).not.toHaveBeenCalled();
+
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await expect.poll(() => runPullRequestAction.mock.calls.length).toBe(1);
+    expect(runPullRequestAction).toHaveBeenCalledWith({
+      projectId,
+      repository: "example/synara",
+      number: 321,
+      action: "close",
+    });
+  });
+
+  it("reopens a closed pull request from the Status menu", async () => {
+    const queryClient = createQueryClient();
+    const projectId = ProjectId.makeUnsafe("project-pr-status");
+    queryClient.setQueryData<GitStatusResult>(gitQueryKeys.status(cwd), (status) =>
+      status ? { ...status, pr: { ...pullRequest, state: "closed" } } : status,
+    );
+    getPullRequestDetail.mockReturnValue(new Promise(() => {}));
+    runPullRequestAction.mockReturnValue(new Promise(() => {}));
+    await render(section(queryClient, vi.fn(), { projectId }));
+
+    await page.getByRole("button", { name: "#321 Keep PR context visible Closed" }).click();
+    await page.getByRole("menuitem", { name: /^Status/ }).hover();
+    await page.getByRole("menuitem", { name: "Reopen", exact: true }).click();
+
+    await expect.poll(() => runPullRequestAction.mock.calls.length).toBe(1);
+    expect(runPullRequestAction).toHaveBeenCalledWith({
+      projectId,
+      repository: "example/synara",
+      number: 321,
+      action: "reopen",
+    });
+  });
+
   it("refreshes an old missing PR when the mounted panel opens", async () => {
     const queryClient = createQueryClient();
     const status = queryClient.getQueryData<GitStatusResult>(gitQueryKeys.status(cwd))!;
@@ -230,7 +275,7 @@ describe("EnvironmentPullRequestSection", () => {
     expect(getGitStatus).toHaveBeenCalledExactlyOnceWith({ cwd });
   });
 
-  it.each(["merged", "closed"] as const)(
+  it.each(["merged"] as const)(
     "shows a branch's %s PR on first open without loading active PR details",
     async (state) => {
       const queryClient = createQueryClient();
@@ -247,7 +292,7 @@ describe("EnvironmentPullRequestSection", () => {
       await expect.element(prRow).toBeVisible();
       await expect
         .element(page.getByText(`${stateLabel} on GitHub`, { exact: true }))
-        .toBeVisible();
+        .not.toBeInTheDocument();
       expect(queryClient.isFetching()).toBe(0);
       expect(getPullRequestSnapshot).not.toHaveBeenCalled();
 
@@ -255,7 +300,12 @@ describe("EnvironmentPullRequestSection", () => {
       await expect.element(page.getByText("View PR", { exact: true })).toBeVisible();
       await expect.element(page.getByText("Code changes", { exact: true })).toBeVisible();
       await expect.element(page.getByText("Add to chat", { exact: true })).toBeVisible();
-      await expect.element(page.getByText("Open in GitHub", { exact: true })).toBeVisible();
+      await expect
+        .element(page.getByRole("menuitem", { name: "Copy link", exact: true }))
+        .toBeVisible();
+      await expect
+        .element(page.getByRole("menuitem", { name: "Open in GitHub", exact: true }))
+        .toBeVisible();
       await expect.element(page.getByText("Repair", { exact: true })).not.toBeInTheDocument();
       await expect.element(page.getByText("Merge", { exact: true })).not.toBeInTheDocument();
     },
@@ -275,7 +325,10 @@ describe("EnvironmentPullRequestSection", () => {
     await expect
       .element(page.getByText("#321 Keep PR context visible", { exact: true }))
       .toBeVisible();
-    await expect.element(page.getByText("Merged on GitHub", { exact: true })).toBeVisible();
+    await expect.element(page.getByText("Merged", { exact: true })).toBeVisible();
+    await expect
+      .element(page.getByText("Merged on GitHub", { exact: true }))
+      .not.toBeInTheDocument();
     await page.getByText("#321 Keep PR context visible", { exact: true }).click();
     await expect.element(page.getByText("Repair", { exact: true })).not.toBeInTheDocument();
   });

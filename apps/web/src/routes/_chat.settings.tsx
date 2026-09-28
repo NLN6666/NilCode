@@ -4,7 +4,7 @@
 // Exports: Settings route component for `/settings`
 
 import { PROVIDER_DISPLAY_NAMES, type ProviderKind } from "@synara/contracts";
-import { PROVIDER_DESCRIPTORS } from "@synara/shared/providerMetadata";
+import { isBetaFeatureOn, VISIBLE_PROVIDER_DESCRIPTORS } from "../betaFeatures";
 import { sameAppSnapShortcut } from "@synara/shared/appSnapShortcut";
 import { isLocale, SUPPORTED_LOCALES } from "@synara/shared/i18n";
 import { SafariAccessSetupButton } from "../components/SafariAccessOnboarding";
@@ -17,6 +17,7 @@ import {
   DEFAULT_UI_DENSITY,
   DEFAULT_CHAT_WIDTH,
   type UiDensity,
+  type SidebarLayout,
   MAX_CHAT_FONT_SIZE_PX,
   MAX_TERMINAL_FONT_SIZE_PX,
   MIN_CHAT_FONT_SIZE_PX,
@@ -37,8 +38,10 @@ import {
 } from "~/components/settings/ConversationStorageSettingsPanels";
 import {
   AppSnapSettingsPanel,
+  BetaChannelSettingsPanel,
   NotificationsSettingsPanel,
 } from "~/components/settings/DesktopSettingsPanels";
+import { ComputerSettingsPanel } from "~/components/settings/ComputerSettingsPanel";
 import { ModelsSettingsPanel } from "~/components/settings/ModelsSettingsPanel";
 import {
   isProviderInstallSettingsDirty,
@@ -84,6 +87,7 @@ import {
   AutocompleteList,
   AutocompletePopup,
 } from "../components/ui/autocomplete";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { useOnboardingDialogStore } from "../onboarding/onboardingDialogStore";
 import { Input } from "../components/ui/input";
@@ -118,7 +122,7 @@ import { SETTINGS_PAGE_BACKGROUND_CLASS_NAME } from "../settingsPanelStyles";
 
 // ── Settings taxonomy ──────────────────────────────────────────────────────
 
-const PROVIDER_SELECT_OPTIONS = PROVIDER_DESCRIPTORS.map((descriptor) => descriptor.kind);
+const PROVIDER_SELECT_OPTIONS = VISIBLE_PROVIDER_DESCRIPTORS.map((descriptor) => descriptor.kind);
 
 // Option rows carry translated labels, so they are derived from the active catalog rather than
 // declared as module constants. Icons stay here because they never change with locale.
@@ -281,6 +285,12 @@ function SettingsRouteView() {
     ...(settings.defaultThreadEnvMode !== defaults.defaultThreadEnvMode
       ? [m.settings.general.coreDefaults.newThreads.title]
       : []),
+    ...(settings.archiveDeletesOrphanedWorktree !== defaults.archiveDeletesOrphanedWorktree
+      ? [m.settings.general.coreDefaults.archiveWorktree.title]
+      : []),
+    ...(isBetaFeatureOn("sidebarV2") && settings.sidebarLayout !== defaults.sidebarLayout
+      ? [m.settings.general.sidebarOrganization.layout.title]
+      : []),
     ...(settings.sidebarProjectSortOrder !== defaults.sidebarProjectSortOrder
       ? [m.settings.general.sidebarOrganization.projectOrder.title]
       : []),
@@ -345,6 +355,15 @@ function SettingsRouteView() {
       : []),
     ...(settings.appSnapPlaySound !== defaults.appSnapPlaySound
       ? [m.settings.appSnap.capture.sound.title]
+      : []),
+    ...(settings.computerControlEnabled !== defaults.computerControlEnabled
+      ? [m.settings.computer.resetLabels.control]
+      : []),
+    ...(settings.autoOpenComputerPane !== defaults.autoOpenComputerPane
+      ? [m.settings.computer.resetLabels.preview]
+      : []),
+    ...(settings.agentCursorColorMode !== defaults.agentCursorColorMode
+      ? [m.settings.computer.resetLabels.cursorColors]
       : []),
     ...(settings.enableProviderUpdateChecks !== defaults.enableProviderUpdateChecks
       ? [m.settings.providers.updates.autoChecks.title]
@@ -453,6 +472,7 @@ function SettingsRouteView() {
   const renderGeneralPanel = () => (
     <div className="space-y-6">
       <SafariAccessSetupButton />
+      <BetaChannelSettingsPanel active={true} />
       <SettingsSection title={m.settings.general.coreDefaults.title}>
         <SettingsRow
           anchorKey="general:language"
@@ -566,6 +586,12 @@ function SettingsRouteView() {
           }
         />
 
+        {renderBooleanSettingRow({
+          settingKey: "archiveDeletesOrphanedWorktree",
+          anchorKey: "general:delete-worktree-on-archive",
+          ...m.settings.general.coreDefaults.archiveWorktree,
+        })}
+
         <SettingsRow
           anchorKey="general:welcome-tour"
           title={m.settings.general.coreDefaults.welcomeTour.title}
@@ -582,6 +608,38 @@ function SettingsRouteView() {
       </SettingsSection>
 
       <SettingsSection title={m.settings.general.sidebarOrganization.title}>
+        {isBetaFeatureOn("sidebarV2") ? (
+          <SettingsRow
+            anchorKey="general:sidebar-layout"
+            title={m.settings.general.sidebarOrganization.layout.title}
+            description={m.settings.general.sidebarOrganization.layout.description}
+            resetAction={
+              settings.sidebarLayout !== defaults.sidebarLayout ? (
+                <SettingResetButton
+                  label={m.settings.general.sidebarOrganization.layout.resetLabel}
+                  onClick={() => updateSettings({ sidebarLayout: defaults.sidebarLayout })}
+                />
+              ) : null
+            }
+            control={
+              <SettingsSegmentedControl
+                value={settings.sidebarLayout}
+                onValueChange={(value) => updateSettings({ sidebarLayout: value })}
+                ariaLabel={m.settings.general.sidebarOrganization.layout.ariaLabel}
+                options={[
+                  {
+                    value: "classic",
+                    label: m.settings.general.sidebarOrganization.layout.options.classic,
+                  },
+                  {
+                    value: "rail",
+                    label: m.settings.general.sidebarOrganization.layout.options.rail,
+                  },
+                ] satisfies readonly SettingsSegmentedOption<SidebarLayout>[]}
+              />
+            }
+          />
+        ) : null}
         <SettingsRow
           anchorKey="general:project-order"
           title={m.settings.general.sidebarOrganization.projectOrder.title}
@@ -990,7 +1048,7 @@ function SettingsRouteView() {
                 }}
                 aria-label={m.settings.appearance.baseFontSize.ariaLabel}
               />
-              <span className="text-xs text-muted-foreground">px</span>
+              <span className="text-ui leading-snug text-muted-foreground">px</span>
             </div>
           }
         />
@@ -1031,7 +1089,7 @@ function SettingsRouteView() {
                 }}
                 aria-label={m.settings.appearance.terminalFontSize.ariaLabel}
               />
-              <span className="text-xs text-muted-foreground">px</span>
+              <span className="text-ui leading-snug text-muted-foreground">px</span>
             </div>
           }
         />
@@ -1304,10 +1362,19 @@ function SettingsRouteView() {
               {activeSection !== "profile" ? (
                 <div className="mb-8 flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <h1 className="text-xl font-medium tracking-tight text-foreground">
+                    <h1 className="flex items-center gap-2 text-xl font-medium tracking-tight text-foreground">
                       {m.settingsNav.sections[activeSection].label}
+                      {SETTINGS_NAV_ITEMS.find((item) => item.id === activeSection)?.badge ===
+                      "beta" ? (
+                        <Badge
+                          variant="outline"
+                          className="rounded-full px-2 font-normal tracking-normal text-muted-foreground"
+                        >
+                          {m.settingsNav.badges.beta}
+                        </Badge>
+                      ) : null}
                     </h1>
-                    <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    <p className="mt-1.5 text-ui leading-relaxed text-muted-foreground">
                       {m.settingsNav.sections[activeSection].description}
                     </p>
                   </div>
@@ -1336,6 +1403,12 @@ function SettingsRouteView() {
                 />
                 <AppSnapSettingsPanel
                   active={activeSection === "appsnap"}
+                  settings={settings}
+                  defaults={defaults}
+                  updateSettings={updateSettings}
+                />
+                <ComputerSettingsPanel
+                  active={activeSection === "computer"}
                   settings={settings}
                   defaults={defaults}
                   updateSettings={updateSettings}

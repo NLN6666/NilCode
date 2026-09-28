@@ -216,6 +216,9 @@ export const composer = {
   },
 
   subagents: {
+    runningSummary: (running: number, total: number) => `${running} of ${total} subagents running`,
+    totalSummary: (total: number) => `${total} subagents`,
+    background: "background",
     expandStrip: "Expand subagent strip",
     collapseStrip: "Collapse subagent strip",
     stopAll: "Stop all subagents",
@@ -261,6 +264,7 @@ export const composer = {
 
     /** Keyed by the request kind the provider reported. */
     prompts: {
+      tool: "Approve this tool call?",
       command: "Approve this command?",
       "file-read": "Approve reading this file?",
       "file-change": "Approve this file change?",
@@ -268,6 +272,36 @@ export const composer = {
     },
 
     permissionProfileTitle: "Requested permission profile",
+    scopes: {
+      computerTask: {
+        prompt: "Allow Computer for this task?",
+        acceptLabel: "Allow Computer for this task",
+        acceptDescription:
+          "Continue routine desktop actions until this response ends. Stop cancels access. Clipboard reads still ask separately.",
+        declineLabel: "Decline",
+        declineDescription: "Stop desktop for this turn; agent continues without tools",
+        cancelLabel: "Cancel this request",
+        cancelDescription: "Deny this request; use Stop to end the agent turn.",
+      },
+      computerForeground: {
+        prompt: "Show this on your screen?",
+        acceptLabel: "Show on screen for this task",
+        acceptDescription: "Computer may bring windows to the front until this response ends.",
+        declineLabel: "Keep it in the background",
+        declineDescription: "No window is raised; agent continues in the background",
+        cancelLabel: "Cancel this request",
+        cancelDescription: "Use Stop to end the agent turn.",
+      },
+      deviceTask: {
+        prompt: "Allow Device for this task?",
+        acceptLabel: "Allow Device for this task",
+        acceptDescription: "Continue routine device actions until this response ends. Stop cancels access.",
+        declineLabel: "Decline",
+        declineDescription: "Stop device control for this turn; agent continues without tools",
+        cancelLabel: "Cancel this request",
+        cancelDescription: "Deny this request; use Stop to end the agent turn.",
+      },
+    },
 
     actions: {
       acceptOnce: { label: "Approve once", description: "Allow just this request" },
@@ -278,6 +312,45 @@ export const composer = {
       decline: { label: "Decline", description: "Reject and let the agent continue" },
       cancelTurn: { label: "Cancel turn", description: "Stop the current turn" },
     },
+  },
+  claudeCacheReview: {
+    permissionSetupFailed: "Computer permission setup could not start",
+    compactChecking: "Checking Claude’s available commands…",
+    compactUnavailable: "Compaction is unavailable for this Claude session.",
+    waitForBackground: "Wait for Claude and its background tasks to finish.",
+    resolveRequest: "Resolve the pending request before compacting.",
+    heldMessage: (context: string) =>
+      `Your message is saved and on hold. Continuing may reprocess ${context}.`,
+    chooseHeldMessage: "Choose how to resume the held message above.",
+    waitForTurn: "Wait for Claude to finish before compacting.",
+    reconnect: "Reconnect before choosing how to resume.",
+    ariaLabel: "Claude cache review",
+    uncertainTitle: "Request status is uncertain",
+    compactTitle: "Compaction will read the expired context",
+    expiredTitle: "Claude’s prompt cache likely expired",
+    uncertainDescription:
+      "Claude may have accepted the request. Sending is paused until its status can be confirmed.",
+    contextUnknown: "the conversation’s context",
+    contextTokens: (tokens: string) => `about ${tokens} tokens`,
+    compactDescription: "Compacting also processes the full history once. Later requests use its summary.",
+    submitFailed: "Could not submit this choice. Try again.",
+    compactExistingLabel: "Compact this conversation",
+    continueLabel: "Continue with full context",
+    compactExistingDescription: "Process the existing history and save its summary",
+    continueDescription: "Send the saved message with the existing history",
+    compactThenSendLabel: "Compact, then send",
+    compactThenSendDescription: "Summarize this conversation before sending the saved message",
+    cancelLabel: "Cancel this send",
+    cancelDescription: "Keep this conversation without sending the held message",
+  },
+  threadMentionDrop: {
+    unavailableTitle: "Could not reference this chat",
+    unavailableDescription: "This chat is unavailable or cannot be mentioned here.",
+  },
+  computerControlEffortHint: {
+    message: "Desktop actions are faster at Medium effort",
+    apply: "Use Medium",
+    dismiss: "Dismiss tip",
   },
 
   planBanner: {

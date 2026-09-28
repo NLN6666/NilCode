@@ -43,12 +43,12 @@ import { ShortcutKbd } from "../ui/shortcut-kbd";
 import { useMessages } from "~/i18n/context";
 import { useComposerDraftStore } from "~/composerDraftStore";
 
-function defaultAgentForProvider(provider: ProviderKind): string | null {
+export function defaultAgentForProvider(provider: ProviderKind): string | null {
   if (provider === "opencode") return "build";
   return null;
 }
 
-function getAgentOptions(
+export function getAgentOptions(
   provider: ProviderKind,
   runtimeAgents: ReadonlyArray<ProviderAgentDescriptor> | null | undefined,
 ): ReadonlyArray<ProviderAgentDescriptor> {
@@ -56,7 +56,7 @@ function getAgentOptions(
   return runtimeAgents ?? [];
 }
 
-function getSelectedAgentValue(
+export function getSelectedAgentValue(
   provider: ProviderKind,
   modelOptions: ProviderOptions | null | undefined,
 ): string | null {
@@ -672,7 +672,7 @@ export const TraitsPicker = memo(function TraitsPicker({
                 <span>{copy.trigger}</span>
                 <ShortcutKbd
                   shortcutLabel={shortcutLabel}
-                  className="h-4 min-w-4 px-1 text-[length:var(--app-font-size-ui-2xs,9px)] text-muted-foreground"
+                  className="h-4 min-w-4 px-1 text-ui-2xs text-muted-foreground"
                 />
               </span>
             </TooltipPopup>

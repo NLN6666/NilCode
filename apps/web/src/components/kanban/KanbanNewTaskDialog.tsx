@@ -75,7 +75,7 @@ import {
   type DraftThreadEnvMode,
   useComposerDraftStore,
 } from "../../composerDraftStore";
-import { buildModelSelection } from "../../providerModelOptions";
+import { buildModelSelection, type ProviderOptions } from "../../providerModelOptions";
 import { type ExpandedImagePreview } from "../chat/ExpandedImagePreview";
 import { ExpandedImageOverlay } from "../chat/ExpandedImageOverlay";
 import { useStore } from "../../store";
@@ -226,14 +226,18 @@ export function KanbanNewTaskDialog({
     [selectedModel, selectedModelSupportsAutoMode, selectedProvider, selectedRuntimeModel],
   );
   const handleProviderModelChange = useCallback(
-    (provider: ProviderKind, model: Parameters<typeof setScratchProviderModel>[1]) => {
+    (
+      provider: ProviderKind,
+      model: Parameters<typeof setScratchProviderModel>[1],
+      options?: ProviderOptions,
+    ) => {
       const runtimeModel = resolveRuntimeModelDescriptor({
         provider,
         model,
         runtimeModels: runtimeModelsByProvider[provider],
       });
       setRuntimeMode((current) => normalizeRuntimeModeForProvider(current, provider));
-      setScratchProviderModel(provider, model, runtimeModel?.supportsAutoMode);
+      setScratchProviderModel(provider, model, runtimeModel?.supportsAutoMode, options);
     },
     [runtimeModelsByProvider, setScratchProviderModel],
   );
@@ -324,6 +328,7 @@ export function KanbanNewTaskDialog({
     hiddenProviders: settings.hiddenProviders,
     providerOrder: settings.providerOrder,
     piAgentDir: settings.piAgentDir || null,
+    ompAgentDir: settings.ompAgentDir || null,
     handleProviderModelChange,
     setInteractionMode,
     onCreate: handleCreateRequest,
@@ -524,7 +529,7 @@ export function KanbanNewTaskDialog({
             />
             {isPreparingImages ? (
               <div
-                className="flex items-center gap-1.5 py-1 text-xs text-muted-foreground"
+                className="flex items-center gap-1.5 py-1 text-ui leading-snug text-muted-foreground"
                 role="status"
               >
                 <LoaderCircleIcon className="size-3.5 animate-spin" />
@@ -542,7 +547,7 @@ export function KanbanNewTaskDialog({
               className={cn(
                 COMPOSER_EDITOR_MIN_HEIGHT_CLASS_NAME,
                 COMPOSER_EDITOR_TYPOGRAPHY_CLASS_NAME,
-                "px-0 py-0 text-sm",
+                "px-0 py-0",
               )}
               onRemoveTerminalContext={removeComposerTerminalContext}
               onChange={onPromptChange}
@@ -599,6 +604,9 @@ export function KanbanNewTaskDialog({
                     hiddenProviders={settings.hiddenProviders}
                     providerOrder={settings.providerOrder}
                     onProviderModelChange={handleProviderModelChange}
+                    onProviderModelRoleSelect={(model, options) =>
+                      handleProviderModelChange("omp", model, options)
+                    }
                     open={isModelPickerOpen}
                     onOpenChange={setIsModelPickerOpen}
                   />
@@ -653,7 +661,7 @@ export function KanbanNewTaskDialog({
               ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-3">
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <label className="flex cursor-pointer items-center gap-2 text-ui leading-snug text-muted-foreground">
                 <Switch
                   checked={sendAsDraft}
                   onCheckedChange={(checked) => setSendAsDraft(checked === true)}

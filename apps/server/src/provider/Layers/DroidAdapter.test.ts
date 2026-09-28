@@ -1,7 +1,7 @@
 import { TurnId } from "@synara/contracts";
 import { describe, expect, it } from "vitest";
-import { SYNARA_HARNESS_POLICY_MARKER } from "../../agentGateway/harnessPolicy.ts";
 
+import { SYNARA_HARNESS_POLICY_MARKER } from "../../agentGateway/harnessPolicy.ts";
 import {
   classifyDroidPromptTurnCompletion,
   extractDroidApproveSpecPlanMarkdown,

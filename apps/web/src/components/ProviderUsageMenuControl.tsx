@@ -4,6 +4,7 @@
 import {
   PROVIDER_DISPLAY_NAMES,
   type ProviderKind,
+  type ServerCodexResetCredits,
   type ServerGetProviderUsageSnapshotResult,
 } from "@synara/contracts";
 import { providerUsageNeedsAuthDetail } from "@synara/shared/providerUsage";
@@ -42,6 +43,7 @@ export interface ProviderUsageMenuModel {
   notice: string | undefined;
   emptyMessage: string | undefined;
   isLoading: boolean;
+  resetCredits?: ServerCodexResetCredits | undefined;
 }
 
 export function buildProviderUsageMenuModel(input: {
@@ -61,6 +63,7 @@ export function buildProviderUsageMenuModel(input: {
     notice: input.usageSummary.usageNotice,
     emptyMessage: providerUsageEmptyMessage(input.provider, input.providerSnapshot, input.copy),
     isLoading: input.usageSummary.isLoading,
+    resetCredits: input.usageSummary.resetCredits,
   };
 }
 
@@ -135,6 +138,8 @@ export function ProviderUsageMenuPopup({
           notice={model.notice}
           emptyMessage={model.emptyMessage}
           isLoading={model.isLoading}
+          resetCredits={model.resetCredits}
+          resetCreditsSurface="popover"
           showUsageLines={showUsageLines}
           showTitle={false}
           className="px-2 pb-1 pt-1"

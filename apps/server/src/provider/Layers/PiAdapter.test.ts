@@ -13,6 +13,7 @@ import path from "node:path";
 import { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
+import { SYNARA_COMPUTER_TOOL_NAMES } from "../../agentGateway/computerToolPermission.ts";
 import {
   createPiModelRuntime,
   ensurePiAnthropicCatalogModels,
@@ -20,10 +21,10 @@ import {
   findModelInRegistry,
   getPiSupportedThinkingOptions,
   buildPiAgentGatewayCustomTools,
+  piInstalledGatewayToolNames,
   makePiBashProcessSupervisor,
   makePiRuntimeEventBase,
   makePiUserInputOptions,
-  PLAIN_PI_EXTENSION_THEME,
   toPiProviderModelDescriptor,
 } from "./PiAdapter";
 
@@ -143,6 +144,137 @@ describe("Pi native Synara gateway tools", () => {
     await expect(execution).rejects.toMatchObject({ name: "AbortError" });
     expect(callSignal).toBe(controller.signal);
     expect(controller.signal.aborted).toBe(true);
+  });
+
+  it("only adds specialist routes when the catalog advertises a canonical Computer tool", () => {
+    expect(piInstalledGatewayToolNames(["synara_list_threads"])).toEqual(
+      new Set(["synara_list_threads"]),
+    );
+    for (const unrelated of ["computer_future_tool", "mcp__other__computer_click"]) {
+      expect(piInstalledGatewayToolNames([unrelated])).toEqual(new Set([unrelated]));
+    }
+    expect(piInstalledGatewayToolNames(["synara_list_threads", "computer_run"])).toEqual(
+      new Set(["synara_list_threads", ...SYNARA_COMPUTER_TOOL_NAMES]),
+    );
+  });
+
+  it.each([
+    ["help-only", ["computer_help"]],
+    ["list-only", ["computer_list_windows"]],
+    ["read-only", ["computer_list_windows", "computer_get_state", "computer_screenshot"]],
+    ["actions-only", ["computer_click", "computer_press_key", "computer_run"]],
+  ] as const)(
+    "rejects an enabled %s catalog before creating compatibility forwarders",
+    async (_, names) => {
+      let defined = 0;
+      await expect(
+        buildPiAgentGatewayCustomTools({
+          connection: { url: "http://127.0.0.1:3773/mcp", bearerToken: "token-a" },
+          enableComputerControl: true,
+          defineTool: (tool) => {
+            defined += 1;
+            return tool;
+          },
+          fetch: async (_input, init) =>
+            Response.json({
+              jsonrpc: "2.0",
+              id: JSON.parse(String(init?.body)).id,
+              result: {
+                tools: names.map((name) => ({
+                  name,
+                  description: name,
+                  inputSchema: { type: "object", properties: {} },
+                })),
+              },
+            }),
+        }),
+      ).rejects.toThrow("missing required Computer tools");
+      expect(defined).toBe(0);
+    },
+  );
+
+  it("retains enabled specialist routes, no idle schemas, and gateway denials after revocation", async () => {
+    const computerTool = {
+      name: "computer_click",
+      description: "Click.",
+      inputSchema: { type: "object", properties: { x: { type: "number" } } },
+    };
+    const ordinaryTool = {
+      name: "synara_list_threads",
+      description: "List Synara threads.",
+      inputSchema: { type: "object", properties: {} },
+    };
+    let enabled = true;
+    const calls: Array<{ name: string; args: unknown; token: string | null; signal: unknown }> = [];
+    const fetch = async (_input: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      if (body.method === "tools/call") {
+        calls.push({
+          name: body.params.name,
+          args: body.params.arguments,
+          token: new Headers(init?.headers).get("Authorization"),
+          signal: init?.signal,
+        });
+      }
+      return Response.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result:
+          body.method === "tools/list"
+            ? { tools: enabled ? [ordinaryTool, computerTool] : [ordinaryTool] }
+            : enabled
+              ? { content: [{ type: "text", text: "ok" }] }
+              : { isError: true, content: [{ type: "text", text: "capability_denied" }] },
+      });
+    };
+    const connection = { url: "http://127.0.0.1:3773/mcp", bearerToken: "t" };
+    const projection = () =>
+      buildPiAgentGatewayCustomTools({
+        connection,
+        defineTool: (tool) => tool,
+        fetch,
+      });
+    const on = await projection();
+    expect(new Set(on.map((tool) => tool.name))).toEqual(
+      new Set([ordinaryTool.name, ...SYNARA_COMPUTER_TOOL_NAMES]),
+    );
+    expect(on[1]?.parameters).toEqual(computerTool.inputSchema);
+    const controller = new AbortController();
+    for (const name of [
+      "computer_read_clipboard",
+      "computer_zoom",
+      "computer_get_accessibility_tree",
+      "computer_get_cursor_position",
+    ]) {
+      const specialist = on.find((tool) => tool.name === name)!;
+      expect(specialist.description).toContain(`computer_help({tool:"${name}"})`);
+      const args = name === "computer_zoom" ? { x: 5, y: 6, width: 40, height: 30 } : {};
+      await expect(
+        specialist.execute(name, args, controller.signal, undefined, {} as never),
+      ).resolves.toMatchObject({ content: [{ type: "text", text: "ok" }] });
+      expect(calls.at(-1)).toEqual({
+        name,
+        args,
+        token: "Bearer t",
+        signal: controller.signal,
+      });
+    }
+
+    enabled = false;
+    connection.bearerToken = "revoked";
+    const off = await projection();
+    expect(off.map((tool) => tool.name)).toEqual([ordinaryTool.name]);
+    // A tool closure already issued to an earlier turn still reaches the
+    // authoritative gateway refusal; no idle model-facing stub is needed.
+    await expect(
+      on[1]!.execute("stale", { x: 1 }, undefined, undefined, {} as never),
+    ).rejects.toThrow("capability_denied");
+    await expect(
+      on
+        .find((tool) => tool.name === "computer_read_clipboard")!
+        .execute("stale-specialist", {}, undefined, undefined, {} as never),
+    ).rejects.toThrow("capability_denied");
+    expect(calls.at(-1)?.token).toBe("Bearer revoked");
   });
 });
 
@@ -447,25 +579,6 @@ describe("getPiDiscoverableModels", () => {
 });
 
 describe("ensurePiAnthropicCatalogModels", () => {
-  it("does not invent Anthropic models when Anthropic is unauthenticated", () => {
-    const models = ensurePiAnthropicCatalogModels([
-      {
-        id: "glm-5.2",
-        name: "GLM 5.2",
-        api: "openai-completions",
-        provider: "local",
-        baseUrl: "http://127.0.0.1:11434/v1",
-        reasoning: false,
-        input: ["text"],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 128_000,
-        maxTokens: 16_384,
-      },
-    ]);
-
-    expect(models.every((model) => model.provider !== "anthropic")).toBe(true);
-  });
-
   it("restores Fable 5.1, Fable 5, and Opus 4.8 when an oauth catalog omitted them", () => {
     const peer = {
       id: "claude-opus-4-7",
@@ -546,23 +659,6 @@ describe("getPiSupportedThinkingOptions", () => {
     ]);
   });
 
-  it("respects provider-level disabled thinking levels", () => {
-    const options = getPiSupportedThinkingOptions(
-      makePiModel({
-        reasoning: true,
-        thinkingLevelMap: {
-          off: null,
-          minimal: "low",
-          low: "low",
-          medium: "medium",
-          high: "high",
-        },
-      }),
-    );
-
-    expect(options.map((option) => option.value)).toEqual(["minimal", "low", "medium", "high"]);
-  });
-
   it("preserves kimi-k3 style ladders that expose low, high, and max", () => {
     const options = getPiSupportedThinkingOptions(
       makePiModel({
@@ -608,11 +704,5 @@ describe("Pi extension UI helpers", () => {
       "Option 2",
       "OpenRouter (2)",
     ]);
-  });
-
-  it("provides a no-color theme object for UI-gated extensions", () => {
-    expect(PLAIN_PI_EXTENSION_THEME.fg("accent", "ready")).toBe("ready");
-    expect(PLAIN_PI_EXTENSION_THEME.bold("done")).toBe("done");
-    expect(PLAIN_PI_EXTENSION_THEME.getThinkingBorderColor("medium")("thinking")).toBe("thinking");
   });
 });

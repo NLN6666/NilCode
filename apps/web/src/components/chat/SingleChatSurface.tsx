@@ -113,13 +113,15 @@ import {
   CHAT_MAIN_CONTENT_SURFACE_CLASS_NAME,
   CHAT_MAIN_VIEWPORT_SHELL_CLASS_NAME,
 } from "./composerPickerStyles";
-import { routeSingleBrowserPanelOpenRequest } from "./browserPanelOpenRequest";
+import { routeSingleDockPaneOpenRequest } from "./dockPaneOpenRequest";
 import {
   selectFloatingBrowserRequested,
   useFloatingBrowserRequestStore,
 } from "./floatingBrowserRequestStore";
-import { routeSingleDevicePaneOpenRequest } from "./devicePaneOpenRequest";
-import { pullRequestDetailInputFromPane } from "../pullRequest/pullRequestDetail.logic";
+import {
+  pullRequestDetailInputFromPane,
+  pullRequestPaneTabLabel,
+} from "../pullRequest/pullRequestDetail.logic";
 import { usePullRequestPaneStateIcon } from "../pullRequest/usePullRequestPaneStateIcon";
 import { RouteInsetSurface } from "../RouteInsetSurface";
 import { SidebarInset } from "../ui/sidebar";
@@ -455,7 +457,6 @@ export function SingleChatSurface(props: {
       diffFilePath: filePath ?? null,
     });
   };
-
   // Stable identities: these feed memoized result rows in the search palette,
   // so recreating them per render would defeat the rows' React.memo bailout.
   const handleOpenWorkspaceSearchFile = useCallback(
@@ -811,12 +812,11 @@ export function SingleChatSurface(props: {
       toggleSingletonPane(props.threadId, { kind: "browser" });
     },
     onOpen: (requestedThreadId) => {
-      routeSingleBrowserPanelOpenRequest({
+      routeSingleDockPaneOpenRequest({
         currentThreadId: props.threadId,
         requestedThreadId,
-        requestImmediateBrowserHydration: () => requestImmediateDockHydration("browser"),
-        showFloatingBrowser: requestFloatingBrowser,
-        rememberFloatingBrowser: requestFloatingBrowser,
+        requestImmediateHydration: () => requestImmediateDockHydration("browser"),
+        openPane: requestFloatingBrowser,
       });
     },
   });
@@ -825,11 +825,11 @@ export function SingleChatSurface(props: {
     onOpenPaneRequested:
       hasDeviceSupport && appSettings.autoOpenDevicePane
         ? (event) => {
-            routeSingleDevicePaneOpenRequest({
+            routeSingleDockPaneOpenRequest({
               currentThreadId: props.threadId,
               requestedThreadId: event.threadId,
-              requestImmediateDeviceHydration: () => requestImmediateDockHydration("device"),
-              openDevicePane: (threadId) => {
+              requestImmediateHydration: () => requestImmediateDockHydration("device"),
+              openPane: (threadId) => {
                 if (threadId === props.threadId) syncSharedBrowserVisibility(false);
                 openPane(threadId, { kind: "device" });
               },
@@ -837,7 +837,6 @@ export function SingleChatSurface(props: {
           }
         : null,
   });
-
   const excludedThreadIds = new Set<ThreadId>([props.threadId]);
 
   // Sidechat tab labels only need thread titles, so subscribe to the coarse
@@ -1329,9 +1328,9 @@ export function SingleChatSurface(props: {
               onToggleDiff={handleToggleDiff}
               onToggleRightDock={handleToggleRightDock}
               onToggleBrowser={handleToggleBrowser}
-              {...(hasDeviceSupport ? { onToggleDevice: handleToggleDevice } : {})}
               onOpenBrowserUrl={handleOpenBrowserUrl}
               onOpenTurnDiff={handleOpenTurnDiff}
+              {...(hasDeviceSupport ? { onToggleDevice: handleToggleDevice } : {})}
               onSplitSurface={handleSplitSurface}
               viewModeAction={{
                 label: "Editor view",

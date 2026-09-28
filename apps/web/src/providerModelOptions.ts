@@ -3,6 +3,7 @@ import {
   humanizeModelSlug,
   normalizeModelDisplayName,
   normalizeModelSlug,
+  resolveNewestKnownClaudeFamilyModel,
 } from "@synara/shared/model";
 import {
   MODEL_OPTIONS_BY_PROVIDER,
@@ -23,10 +24,11 @@ import {
   type GrokModelOptions,
   type GrokModelSelection,
   type ModelSelection,
+  type OmpModelOptions,
+  type OmpModelSelection,
+  type OmpThinkingLevel,
   type OpenCodeModelOptions,
   type OpenCodeModelSelection,
-  type OhMyPiModelOptions,
-  type OhMyPiModelSelection,
   type PiModelOptions,
   type PiModelSelection,
   type ProviderKind,
@@ -43,6 +45,7 @@ export interface ProviderModelOption {
   description?: string;
   upstreamProviderId?: string;
   upstreamProviderName?: string;
+  role?: { name: string; model: string; thinkingLevel?: OmpThinkingLevel };
 }
 
 export interface ProviderModelOptionGroup {
@@ -117,6 +120,21 @@ function normalizeDynamicModelSlug(provider: ProviderKind, slug: string): string
   return normalizeModelSlug(slug, provider) ?? slug;
 }
 
+// Claude Code lists its current models by alias (`opus[1m]`) with the concrete id
+// in `resolvedModel`. When that id is a release newer than the catalog knows, list
+// it under its own id; otherwise the alias would fold into an older catalog model.
+export function normalizeClaudeModelOptionSlug(model: {
+  slug: string;
+  resolvedModel?: string | undefined;
+}): string {
+  const resolvedSlug = model.resolvedModel
+    ? normalizeDynamicModelSlug("claudeAgent", model.resolvedModel)
+    : null;
+  return resolvedSlug && resolveNewestKnownClaudeFamilyModel(resolvedSlug)
+    ? resolvedSlug
+    : normalizeDynamicModelSlug("claudeAgent", model.slug);
+}
+
 // Claude discovery order comes from the CLI's own catalog, which interleaves
 // families (Haiku ahead of Opus) and shifts with every CLI release. Rank Claude
 // models by our curated catalog instead so the picker stays strongest-first and
@@ -126,14 +144,23 @@ const CLAUDE_CATALOG_RANK_BY_SLUG: ReadonlyMap<string, number> = new Map(
 );
 
 // Models the CLI exposes but the catalog does not know yet (a release landing
-// before Synara updates) sort first so they stay visible at the top.
+// before Synara updates) sort just ahead of their family's newest catalog model,
+// so a new Opus stays below Fable. Other unknown models sort first.
+function claudeModelRank(slug: string): number {
+  const catalogRank = CLAUDE_CATALOG_RANK_BY_SLUG.get(slug);
+  if (catalogRank !== undefined) {
+    return catalogRank;
+  }
+  const newestKnown = resolveNewestKnownClaudeFamilyModel(slug);
+  const familyRank = newestKnown ? CLAUDE_CATALOG_RANK_BY_SLUG.get(newestKnown) : undefined;
+  return familyRank === undefined ? -1 : familyRank - 0.5;
+}
+
 function orderClaudeModelOptions<T extends ProviderModelOption>(
   options: ReadonlyArray<T>,
 ): ReadonlyArray<T> {
   return options.toSorted(
-    (left, right) =>
-      (CLAUDE_CATALOG_RANK_BY_SLUG.get(left.slug) ?? -1) -
-      (CLAUDE_CATALOG_RANK_BY_SLUG.get(right.slug) ?? -1),
+    (left, right) => claudeModelRank(left.slug) - claudeModelRank(right.slug),
   );
 }
 
@@ -141,7 +168,8 @@ function orderClaudeModelOptions<T extends ProviderModelOption>(
  * Folds runtime-discovered models into the static option list for a provider:
  * discovered models lead (with display names recovered from the static list when
  * possible), static built-ins fill gaps unless discovery fully owns the catalog
- * (antigravity/opencode/cursor/grok), and user-defined custom models always survive.
+ * (codex/antigravity/opencode/cursor/droid/grok/devin). Codex also owns a successful
+ * empty catalog. User-defined custom models survive except for Droid.
  * Claude is the exception: its discovered and static built-in models are merged
  * into the curated catalog order.
  */
@@ -150,6 +178,7 @@ export function mergeDynamicModelOptions(input: {
   staticOptions: ReadonlyArray<ProviderModelOption & { isCustom?: boolean }>;
   dynamicModels: ReadonlyArray<{
     slug: string;
+    resolvedModel?: string | undefined;
     name?: string | null | undefined;
     description?: string | null | undefined;
     upstreamProviderId?: string | null | undefined;
@@ -174,7 +203,10 @@ export function mergeDynamicModelOptions(input: {
       continue;
     }
 
-    const normalizedSlug = normalizeDynamicModelSlug(input.provider, dynamicModel.slug);
+    const normalizedSlug =
+      input.provider === "claudeAgent"
+        ? normalizeClaudeModelOptionSlug(dynamicModel)
+        : normalizeDynamicModelSlug(input.provider, dynamicModel.slug);
     const modelIdentifier = normalizedSlug.slice(normalizedSlug.lastIndexOf("/") + 1);
     const displayNameFallback = formatProviderModelOptionName({
       provider: input.provider,
@@ -188,6 +220,11 @@ export function mergeDynamicModelOptions(input: {
       slug: normalizedSlug,
       name:
         staticNameBySlug.get(normalizedSlug) ??
+        // Claude Code names rows by alias ("Opus (1M context)"); an uncatalogued
+        // Claude release reads better as its versioned id ("Claude Opus 6").
+        (input.provider === "claudeAgent" && resolveNewestKnownClaudeFamilyModel(normalizedSlug)
+          ? displayNameFallback
+          : undefined) ??
         (rawName.length > 0 &&
         rawName !== dynamicModel.slug.trim() &&
         rawName !== normalizedSlug &&
@@ -204,31 +241,57 @@ export function mergeDynamicModelOptions(input: {
     });
   }
 
+  // Scoped providers (omp/pi/opencode) surface catalog slugs as
+  // `<upstream-provider>/<model>`. A bare custom slug naming the same model id
+  // duplicates the discovered row; drop it only when exactly one discovered
+  // option carries that id so an ambiguous name never silently wins.
+  const scopedProvider =
+    input.provider === "omp" || input.provider === "pi" || input.provider === "opencode";
+  const dynamicIdPartCounts = scopedProvider
+    ? normalizedDynamicOptions.reduce((counts, option) => {
+        const idPart = option.slug.slice(option.slug.lastIndexOf("/") + 1);
+        counts.set(idPart, (counts.get(idPart) ?? 0) + 1);
+        return counts;
+      }, new Map<string, number>())
+    : undefined;
+
   // Droid validates model values against its live ACP select options, so an
   // arbitrary custom slug is guaranteed to fail at session configuration.
   const customOnlyModels =
-    input.provider === "droid" || input.provider === "omp"
+    input.provider === "droid"
       ? []
-      : input.staticOptions.filter(
-          (model) =>
-            "isCustom" in model &&
-            model.isCustom &&
-            !dynamicNormalizedSlugs.has(normalizeDynamicModelSlug(input.provider, model.slug)),
-        );
+      : input.staticOptions.filter((model) => {
+          if (!("isCustom" in model) || !model.isCustom) {
+            return false;
+          }
+          const normalizedCustomSlug = normalizeDynamicModelSlug(input.provider, model.slug);
+          if (dynamicNormalizedSlugs.has(normalizedCustomSlug)) {
+            return false;
+          }
+          if (
+            dynamicIdPartCounts !== undefined &&
+            !normalizedCustomSlug.includes("/") &&
+            dynamicIdPartCounts.get(normalizedCustomSlug) === 1
+          ) {
+            return false;
+          }
+          return true;
+        });
   const staticBuiltInModels = input.staticOptions.filter(
     (model) => !("isCustom" in model) || model.isCustom !== true,
   );
-  const missingStaticBuiltIns =
-    (input.provider === "antigravity" ||
-      input.provider === "opencode" ||
-      input.provider === "cursor" ||
-      input.provider === "droid" ||
-      input.provider === "omp" ||
-      input.provider === "grok" ||
-      input.provider === "devin") &&
-    normalizedDynamicOptions.length > 0
-      ? []
-      : staticBuiltInModels.filter((model) => !dynamicNormalizedSlugs.has(model.slug));
+  const hasAuthoritativeCatalog =
+    input.provider === "codex" ||
+    (normalizedDynamicOptions.length > 0 &&
+      (input.provider === "antigravity" ||
+        input.provider === "opencode" ||
+        input.provider === "cursor" ||
+        input.provider === "droid" ||
+        input.provider === "grok" ||
+        input.provider === "devin"));
+  const missingStaticBuiltIns = hasAuthoritativeCatalog
+    ? []
+    : staticBuiltInModels.filter((model) => !dynamicNormalizedSlugs.has(model.slug));
 
   if (input.provider === "claudeAgent") {
     return [
@@ -376,9 +439,9 @@ export function buildNextProviderOptions(
   }
   if (provider === "omp") {
     return {
-      ...(modelOptions as OhMyPiModelOptions | undefined),
+      ...(modelOptions as OmpModelOptions | undefined),
       ...patch,
-    } as OhMyPiModelOptions;
+    } as OmpModelOptions;
   }
   return {
     ...(modelOptions as PiModelOptions | undefined),
@@ -431,11 +494,6 @@ export function buildModelSelection(
   options?: OpenCodeModelOptions | null | undefined,
 ): OpenCodeModelSelection;
 export function buildModelSelection(
-  provider: "omp",
-  model: string,
-  options?: OhMyPiModelOptions | null | undefined,
-): OhMyPiModelSelection;
-export function buildModelSelection(
   provider: "pi",
   model: string,
   options?: PiModelOptions | null | undefined,
@@ -445,6 +503,11 @@ export function buildModelSelection(
   model: string,
   options?: DevinModelOptions | null | undefined,
 ): DevinModelSelection;
+export function buildModelSelection(
+  provider: "omp",
+  model: string,
+  options?: OmpModelOptions | null | undefined,
+): OmpModelSelection;
 export function buildModelSelection(
   provider: ProviderKind,
   model: string,
@@ -526,7 +589,7 @@ export function buildModelSelection(
         ? {
             provider,
             model,
-            options: options as OhMyPiModelOptions,
+            options: options as OmpModelOptions,
           }
         : { provider, model };
     case "pi":

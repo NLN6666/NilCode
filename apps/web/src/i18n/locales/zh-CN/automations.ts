@@ -13,6 +13,10 @@ export const automations: Automations = {
   newAutomation: "新建自动化",
   editAutomation: "编辑自动化",
   newResult: "有新结果",
+  railLanding: {
+    title: "自动化",
+    description: "从侧边栏选择一项自动化，或创建新的自动化。",
+  },
 
   empty: {
     title: "还没有自动化",

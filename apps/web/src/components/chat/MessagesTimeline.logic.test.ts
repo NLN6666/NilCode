@@ -4,8 +4,8 @@ import {
   buildTurnDiffSummaryByAssistantMessageId,
   canSubmitUserMessageEdit,
   capOpenWorkEntryRenderChunks,
-  chunkCollapsedTurnItems,
   chunkWorkEntries,
+  chunkCollapsedTurnItems,
   computeMessageDurationStart,
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
@@ -13,6 +13,7 @@ import {
   findLastLiveWorkGroupId,
   normalizeCompactToolLabel,
   planWorkEntryRenderChunks,
+  resolveWorkEntryChunkFold,
   resolveAssistantMessageCopyState,
   resolveAssistantMessageDisplayText,
   resolveThreadFindJumpTarget,
@@ -22,6 +23,7 @@ import {
 } from "./MessagesTimeline.logic";
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import type { ChatMessage, TurnDiffSummary, WorktreeSetupSnapshot } from "../../types";
+import { createWorktreeSetupSnapshot } from "../ChatView.logic";
 
 describe("canSubmitUserMessageEdit", () => {
   it("allows an empty edit only when hidden annotations remain attached", () => {
@@ -183,10 +185,6 @@ describe("computeMessageDurationStart", () => {
 describe("normalizeCompactToolLabel", () => {
   it("removes trailing completion wording from command labels", () => {
     expect(normalizeCompactToolLabel("Ran command complete")).toBe("Ran command");
-  });
-
-  it("removes trailing completion wording from other labels", () => {
-    expect(normalizeCompactToolLabel("Read file completed")).toBe("Read file");
   });
 });
 
@@ -454,9 +452,7 @@ describe("computeStableMessagesTimelineRows", () => {
     expect(second).not.toBe(first);
     expect(second.result[0]).toBe(enrichedRows[0]);
   });
-});
 
-describe("deriveTerminalAssistantMessageIds", () => {
   it("keeps only the latest assistant message in a user-visible response segment", () => {
     expect(
       deriveTerminalAssistantMessageIds([
@@ -467,7 +463,9 @@ describe("deriveTerminalAssistantMessageIds", () => {
       ]),
     ).toEqual(new Set(["a3"]));
   });
+});
 
+describe("deriveTerminalAssistantMessageIds", () => {
   it("treats assistant messages without turn ids as one response per user boundary", () => {
     expect(
       deriveTerminalAssistantMessageIds([
@@ -479,9 +477,7 @@ describe("deriveTerminalAssistantMessageIds", () => {
       ]),
     ).toEqual(new Set(["a2", "a3"]));
   });
-});
 
-describe("buildTurnDiffSummaryByAssistantMessageId", () => {
   it("attaches each summary to the terminal assistant message of its response segment", () => {
     const result = buildTurnDiffSummaryByAssistantMessageId({
       turnDiffSummaries: [makeSummary({ turnId: "turn-1" }), makeSummary({ turnId: "turn-2" })],
@@ -528,7 +524,9 @@ describe("buildTurnDiffSummaryByAssistantMessageId", () => {
     );
     expect(result.has(MessageId.makeUnsafe("a-files"))).toBe(false);
   });
+});
 
+describe("buildTurnDiffSummaryByAssistantMessageId", () => {
   it("keeps files from multiple mini-turn summaries on the final answer", () => {
     const result = buildTurnDiffSummaryByAssistantMessageId({
       turnDiffSummaries: [
@@ -1051,6 +1049,34 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
+  it("keeps async question cards visible after their originating turn settles", () => {
+    const question = assistantEntry("question", "2026-01-01T00:00:01Z", {
+      turnId: "t1",
+      text: "Which action?",
+    });
+    if (question.kind !== "message") throw new Error("Expected a message");
+    question.message.asyncUserInput = { questions: [{ title: "Which action?" }] };
+    const rows = deriveMessagesTimelineRows({
+      ...baseInput,
+      timelineEntries: [
+        userEntry("u1", "2026-01-01T00:00:00Z"),
+        question,
+        workEntry("w1", "2026-01-01T00:00:02Z", "Inspecting code"),
+        assistantEntry("done", "2026-01-01T00:00:03Z", {
+          turnId: "t1",
+          text: "Done.",
+          completedAt: "2026-01-01T00:00:04Z",
+        }),
+      ],
+    });
+    expect(messageRow(rows, "question")?.message.asyncUserInput?.questions).toEqual([
+      { title: "Which action?" },
+    ]);
+    expect(
+      messageRow(rows, "done")?.collapsedTurnItems?.some((item) => item.id === "question"),
+    ).not.toBe(true);
+  });
+
   it("folds a settled turn's narration and work into one collapsed group on the terminal message", () => {
     const rows = deriveMessagesTimelineRows({
       ...baseInput,
@@ -1505,17 +1531,8 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
-  const worktreeSetupSnapshot = (): WorktreeSetupSnapshot => ({
-    steps: [
-      { id: "create-branch", label: "Creating branch", status: "done" },
-      { id: "create-worktree", label: "Creating worktree", status: "done" },
-      { id: "prepare-thread", label: "Linking thread workspace", status: "active" },
-      { id: "start-session", label: "Starting session", status: "pending" },
-    ],
-  });
-
   it("appends an open worktree-setup row and suppresses the generic working shimmer", () => {
-    const setup = worktreeSetupSnapshot();
+    const setup = createWorktreeSetupSnapshot("create-worktree");
     const rows = deriveMessagesTimelineRows({
       ...baseInput,
       isWorking: true,
@@ -1538,7 +1555,7 @@ describe("deriveMessagesTimelineRows", () => {
     const rows = deriveMessagesTimelineRows({
       ...baseInput,
       isWorking: true,
-      worktreeSetup: worktreeSetupSnapshot(),
+      worktreeSetup: createWorktreeSetupSnapshot("create-worktree"),
       worktreeSetupOpen: false,
       timelineEntries: [userEntry("u1", "2026-01-01T00:00:00Z")],
     });
@@ -1625,9 +1642,7 @@ describe("chunkCollapsedTurnItems", () => {
       ]),
     ).toEqual(["group:w1:w1+w2", "item:work:err", "group:w3:w3+w4"]);
   });
-});
 
-describe("chunkWorkEntries", () => {
   it("preserves rich rows between independently collapsible tool runs", () => {
     const entries = [
       toolItem("w1").entry,
@@ -1645,18 +1660,7 @@ describe("chunkWorkEntries", () => {
       ),
     ).toEqual(["group:w1+w2", "item:err", "group:w3+w4"]);
   });
-});
 
-const planSignature = (
-  entries: ReadonlyArray<WorkLogEntry>,
-  options: { tailIsLive: boolean },
-): string[] =>
-  planWorkEntryRenderChunks(entries, options).map((chunk) => {
-    const ids = chunk.entries.map((entry) => entry.id).join("+");
-    return chunk.summary === null ? `open:${ids}` : `collapsed:${ids}`;
-  });
-
-describe("planWorkEntryRenderChunks", () => {
   it("collapses the earlier run across a thinking boundary while the live tail stays open", () => {
     expect(
       planSignature(
@@ -1669,7 +1673,7 @@ describe("planWorkEntryRenderChunks", () => {
         ],
         { tailIsLive: true },
       ),
-    ).toEqual(["collapsed:w1+w2", "open:think", "open:w3+w4"]);
+    ).toEqual(["collapsed:w1+w2", "open:think", "live(w4):w3+w4"]);
   });
 
   it("collapses every run when narration is the trailing block", () => {
@@ -1686,7 +1690,19 @@ describe("planWorkEntryRenderChunks", () => {
       planSignature([toolItem("w1").entry, toolItem("w2").entry], { tailIsLive: false }),
     ).toEqual(["collapsed:w1+w2"]);
   });
+});
 
+const planSignature = (
+  entries: ReadonlyArray<WorkLogEntry>,
+  options: { tailIsLive: boolean },
+): string[] =>
+  planWorkEntryRenderChunks(entries, options).map((chunk) => {
+    const ids = chunk.entries.map((entry) => entry.id).join("+");
+    if (chunk.liveEntry) return `live(${chunk.liveEntry.id}):${ids}`;
+    return chunk.summary === null ? `open:${ids}` : `collapsed:${ids}`;
+  });
+
+describe("planWorkEntryRenderChunks", () => {
   it("never collapses a run that still has running work", () => {
     expect(
       planSignature(
@@ -1699,7 +1715,7 @@ describe("planWorkEntryRenderChunks", () => {
         ],
         { tailIsLive: false },
       ),
-    ).toEqual(["open:w1+w2", "open:think", "collapsed:w3+w4"]);
+    ).toEqual(["live(w2):w1+w2", "open:think", "collapsed:w3+w4"]);
   });
 
   it("keeps singleton runs open: nothing to summarize", () => {
@@ -1710,9 +1726,7 @@ describe("planWorkEntryRenderChunks", () => {
       ),
     ).toEqual(["open:w1", "open:think", "open:w2"]);
   });
-});
 
-describe("capOpenWorkEntryRenderChunks", () => {
   it("preserves collapsed summaries while limiting later open entries", () => {
     const chunks = planWorkEntryRenderChunks(
       [
@@ -1720,9 +1734,13 @@ describe("capOpenWorkEntryRenderChunks", () => {
         toolItem("w2").entry,
         toolItem("think", { tone: "thinking" }).entry,
         toolItem("w3").entry,
+        toolItem("think3", { tone: "thinking" }).entry,
         toolItem("w4").entry,
+        toolItem("think4", { tone: "thinking" }).entry,
         toolItem("w5").entry,
+        toolItem("think5", { tone: "thinking" }).entry,
         toolItem("w6").entry,
+        toolItem("think6", { tone: "thinking" }).entry,
         toolItem("w7").entry,
       ],
       { tailIsLive: true },
@@ -1732,6 +1750,7 @@ describe("capOpenWorkEntryRenderChunks", () => {
       expanded: false,
       maxVisibleEntries: 3,
       keep: "last",
+      shouldCapEntry: (entry) => entry.tone === "tool",
     });
 
     expect(
@@ -1741,11 +1760,19 @@ describe("capOpenWorkEntryRenderChunks", () => {
       })),
     ).toEqual([
       { ids: ["w1", "w2"], collapsed: true },
+      { ids: ["think"], collapsed: false },
       { ids: [], collapsed: false },
-      { ids: ["w5", "w6", "w7"], collapsed: false },
+      { ids: ["think3"], collapsed: false },
+      { ids: [], collapsed: false },
+      { ids: ["think4"], collapsed: false },
+      { ids: ["w5"], collapsed: false },
+      { ids: ["think5"], collapsed: false },
+      { ids: ["w6"], collapsed: false },
+      { ids: ["think6"], collapsed: false },
+      { ids: ["w7"], collapsed: false },
     ]);
     expect(result.hasOverflow).toBe(true);
-    expect(result.hiddenEntryCount).toBe(3);
+    expect(result.hiddenEntryCount).toBe(2);
   });
 
   it("does not count separately rendered status boundaries against the tool cap", () => {
@@ -1755,7 +1782,9 @@ describe("capOpenWorkEntryRenderChunks", () => {
         toolItem("w2").entry,
         toolItem("think", { tone: "thinking" }).entry,
         toolItem("w3").entry,
+        toolItem("think2", { tone: "thinking" }).entry,
         toolItem("w4").entry,
+        toolItem("think3", { tone: "thinking" }).entry,
         toolItem("w5").entry,
       ],
       { tailIsLive: true },
@@ -1771,30 +1800,134 @@ describe("capOpenWorkEntryRenderChunks", () => {
     expect(result.chunks.map((chunk) => chunk.entries.map((entry) => entry.id))).toEqual([
       ["w1", "w2"],
       ["think"],
-      ["w3", "w4"],
+      ["w3"],
+      ["think2"],
+      ["w4"],
+      ["think3"],
+      [],
     ]);
     expect(result.hiddenEntryCount).toBe(1);
   });
+});
 
-  it("restores every open entry when expanded while retaining overflow state", () => {
+describe("capOpenWorkEntryRenderChunks", () => {
+  const singletonRuns = [
+    toolItem("w1").entry,
+    toolItem("w2").entry,
+    toolItem("think1", { tone: "thinking" }).entry,
+    toolItem("w3").entry,
+    toolItem("think2", { tone: "thinking" }).entry,
+    toolItem("w4").entry,
+    toolItem("think3", { tone: "thinking" }).entry,
+    toolItem("w5").entry,
+  ];
+
+  it("preserves collapsed summaries and uncapped boundaries while limiting open entries", () => {
+    const result = capOpenWorkEntryRenderChunks(
+      planWorkEntryRenderChunks(singletonRuns, { tailIsLive: false }),
+      {
+        expanded: false,
+        maxVisibleEntries: 2,
+        keep: "last",
+        shouldCapEntry: (entry) => entry.tone === "tool",
+      },
+    );
+
+    expect(result.chunks.map((chunk) => chunk.entries.map((entry) => entry.id))).toEqual([
+      ["w1", "w2"],
+      ["think1"],
+      [],
+      ["think2"],
+      ["w4"],
+      ["think3"],
+      ["w5"],
+    ]);
+    expect(result.hasOverflow).toBe(true);
+    expect(result.hiddenEntryCount).toBe(1);
+  });
+
+  it("never caps a live run: it already renders as one line", () => {
     const chunks = planWorkEntryRenderChunks(
       [toolItem("w1").entry, toolItem("w2").entry, toolItem("w3").entry],
       { tailIsLive: true },
     );
 
     const result = capOpenWorkEntryRenderChunks(chunks, {
-      expanded: true,
+      expanded: false,
       maxVisibleEntries: 2,
       keep: "last",
     });
 
-    expect(result.chunks.flatMap((chunk) => chunk.entries.map((entry) => entry.id))).toEqual([
-      "w1",
-      "w2",
-      "w3",
-    ]);
+    expect(result.chunks).toEqual(chunks);
+    expect(result.hasOverflow).toBe(false);
+  });
+
+  it("restores every open entry when expanded while retaining overflow state", () => {
+    const result = capOpenWorkEntryRenderChunks(
+      planWorkEntryRenderChunks(singletonRuns, { tailIsLive: false }),
+      { expanded: true, maxVisibleEntries: 2, keep: "last" },
+    );
+
+    expect(result.chunks.flatMap((chunk) => chunk.entries.map((entry) => entry.id))).toEqual(
+      singletonRuns.map((entry) => entry.id),
+    );
     expect(result.hasOverflow).toBe(true);
     expect(result.hiddenEntryCount).toBe(0);
+  });
+});
+
+describe("multi-file edit folding", () => {
+  const patch = toolItem("patch", {
+    itemType: "file_change",
+    changedFiles: ["a.swift", "b.swift", "c.swift"],
+  }).entry;
+
+  it("folds a lone patch that would list a column of edited-file rows", () => {
+    const [settled] = planWorkEntryRenderChunks([patch], { tailIsLive: false });
+
+    expect(settled?.summary?.label).toBe("Edited 3 files");
+    expect(resolveWorkEntryChunkFold(settled!)?.entries).toEqual([patch]);
+  });
+
+  it("keeps the patch's file rows behind its live line", () => {
+    const [live] = planWorkEntryRenderChunks([patch], { tailIsLive: true });
+
+    expect(live?.liveEntry).toBe(patch);
+    expect(resolveWorkEntryChunkFold(live!)?.entries).toEqual([patch]);
+  });
+
+  it("leaves a single-file edit as a plain row", () => {
+    const edit = toolItem("edit", { itemType: "file_change", changedFiles: ["a.swift"] }).entry;
+    const [chunk] = planWorkEntryRenderChunks([edit], { tailIsLive: false });
+
+    expect(resolveWorkEntryChunkFold(chunk!)).toBeNull();
+  });
+});
+
+describe("resolveWorkEntryChunkFold", () => {
+  it("reveals only the calls before the one a live line wears", () => {
+    const [chunk] = planWorkEntryRenderChunks(
+      [toolItem("w1").entry, toolItem("w2").entry, toolItem("w3").entry],
+      { tailIsLive: true },
+    );
+    const fold = resolveWorkEntryChunkFold(chunk!);
+
+    expect(fold?.entries.map((entry) => entry.id)).toEqual(["w1", "w2"]);
+    expect(fold?.keySuffix).toBe(":live");
+  });
+
+  it("reveals every call of a settled summary and leaves singletons unfolded", () => {
+    const [settled] = planWorkEntryRenderChunks([toolItem("w1").entry, toolItem("w2").entry], {
+      tailIsLive: false,
+    });
+    const [singleton] = planWorkEntryRenderChunks([toolItem("w1").entry], { tailIsLive: true });
+
+    expect(resolveWorkEntryChunkFold(settled!)?.entries.map((entry) => entry.id)).toEqual([
+      "w1",
+      "w2",
+    ]);
+    expect(resolveWorkEntryChunkFold(settled!)?.keySuffix).toBe("");
+    expect(resolveWorkEntryChunkFold(singleton!)).toBeNull();
   });
 });
 

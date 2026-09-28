@@ -54,6 +54,12 @@ import {
   normalizeSidebarNavOrder,
   SIDEBAR_NAV_ITEM_IDS,
 } from "./sidebarNavOrdering";
+import {
+  DEFAULT_HIDDEN_RAIL_ITEMS,
+  normalizeHiddenRailItems,
+  normalizeRailItemOrder,
+  RAIL_ORDERABLE_ITEM_IDS,
+} from "./appRail.logic";
 import { ensureNativeApi } from "./nativeApi";
 import { providerDiscoveryQueryKeys } from "./lib/providerDiscoveryReactQuery";
 import {
@@ -79,7 +85,7 @@ const MAX_CUSTOM_MODEL_COUNT = 32;
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
 export const MIN_CHAT_FONT_SIZE_PX = 11;
 export const MAX_CHAT_FONT_SIZE_PX = 18;
-export const DEFAULT_CHAT_FONT_SIZE_PX = 12;
+export const DEFAULT_CHAT_FONT_SIZE_PX = 13;
 export const MIN_TERMINAL_FONT_SIZE_PX = 10;
 export const MAX_TERMINAL_FONT_SIZE_PX = 22;
 export const DEFAULT_TERMINAL_FONT_SIZE_PX = 12;
@@ -121,8 +127,19 @@ export const SidebarProjectSortOrder = Schema.Literals(["updated_at", "created_a
 export type SidebarProjectSortOrder = typeof SidebarProjectSortOrder.Type;
 export const DEFAULT_SIDEBAR_PROJECT_SORT_ORDER: SidebarProjectSortOrder = "manual";
 export const SidebarThreadSortOrder = Schema.Literals(["updated_at", "created_at"]);
+export const ComputerPreviewSize = Schema.Literals(["compact", "large"]);
+export type ComputerPreviewSize = typeof ComputerPreviewSize.Type;
+export const DEFAULT_COMPUTER_PREVIEW_SIZE: ComputerPreviewSize = "compact";
+export const AgentCursorColorMode = Schema.Literals(["stock", "custom"]);
+export type AgentCursorColorMode = typeof AgentCursorColorMode.Type;
+export const DEFAULT_AGENT_CURSOR_COLOR_MODE: AgentCursorColorMode = "stock";
 
 const SidebarNavItemId = Schema.Literals([...SIDEBAR_NAV_ITEM_IDS]);
+const RailOrderableItemId = Schema.Literals([...RAIL_ORDERABLE_ITEM_IDS]);
+/** Classic: one sidebar column. Rail: fixed icon tabs plus a panel. */
+export const SidebarLayout = Schema.Literals(["classic", "rail"]);
+export type SidebarLayout = typeof SidebarLayout.Type;
+export const DEFAULT_SIDEBAR_LAYOUT: SidebarLayout = "classic";
 export type SidebarThreadSortOrder = typeof SidebarThreadSortOrder.Type;
 export const DEFAULT_SIDEBAR_THREAD_SORT_ORDER: SidebarThreadSortOrder = "updated_at";
 export const FollowUpBehavior = Schema.Literals(["queue", "steer"]);
@@ -275,6 +292,7 @@ const PersistedHiddenModels = Schema.Array(
 
 export const AppSettingsSchema = Schema.Struct({
   claudeBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
+  claudeEnableArtifacts: Schema.Boolean.pipe(withDefaults(() => false)),
   // Server-backed first-run marker; see ServerSettings.onboardingCompletedAt.
   onboardingCompletedAt: Schema.NullOr(Schema.String).pipe(withDefaults((): string | null => null)),
   uiDensity: UiDensity.pipe(withDefaults(() => DEFAULT_UI_DENSITY)),
@@ -296,9 +314,10 @@ export const AppSettingsSchema = Schema.Struct({
   grokBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   droidBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   openCodeBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
-  ompBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   piBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   piAgentDir: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
+  ompBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
+  ompAgentDir: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   openCodeServerUrl: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   openCodeServerPassword: Schema.String.check(Schema.isMaxLength(4096)).pipe(
     withDefaults(() => ""),
@@ -307,6 +326,8 @@ export const AppSettingsSchema = Schema.Struct({
   openCodeExperimentalWebSockets: Schema.Boolean.pipe(withDefaults(() => false)),
   defaultThreadEnvMode: EnvMode.pipe(withDefaults(() => "local" as const satisfies EnvMode)),
   confirmThreadDelete: Schema.Boolean.pipe(withDefaults(() => true)),
+  // Opt-in: archiving a task also releases its worktree when nothing else uses it.
+  archiveDeletesOrphanedWorktree: Schema.Boolean.pipe(withDefaults(() => false)),
   // Desktop quit dialog: remember interrupted chats and continue them on the next launch.
   resumeChatsAfterQuit: Schema.Boolean.pipe(withDefaults(() => true)),
   confirmThreadArchive: Schema.Boolean.pipe(withDefaults(() => false)),
@@ -327,6 +348,23 @@ export const AppSettingsSchema = Schema.Struct({
     withDefaults(() => [...DEFAULT_SIDEBAR_NAV_ORDER]),
   ),
   hiddenSidebarNavItems: Schema.Array(SidebarNavItemId).pipe(withDefaults(() => [])),
+  // Local-only shell layout, available in Stable and Beta. useSidebarLayout keeps
+  // mobile on classic even when the stored preference is "rail".
+  sidebarLayout: SidebarLayout.pipe(withDefaults(() => DEFAULT_SIDEBAR_LAYOUT)),
+  // Rail layout shortcuts the user added from the rail's "…" menu, in rail order:
+  // "space:<id>" (the Void key for unfiled) or "project:<id>" (see appRail.logic).
+  railShortcuts: Schema.Array(Schema.String.check(Schema.isMaxLength(512))).pipe(
+    withDefaults(() => []),
+  ),
+  // Rail layout's own Customize state (the classic nav block keeps `sidebarNavOrder`):
+  // the order of the rail's top items and the ones the user hid. Home never hides, and an
+  // active hidden item stays visible (see appRail.logic).
+  railItemOrder: Schema.Array(RailOrderableItemId).pipe(
+    withDefaults(() => [...RAIL_ORDERABLE_ITEM_IDS]),
+  ),
+  hiddenRailItems: Schema.Array(RailOrderableItemId).pipe(
+    withDefaults(() => [...DEFAULT_HIDDEN_RAIL_ITEMS]),
+  ),
   // Whether the per-run threads standalone automations create appear in the sidebar
   // (and the surfaces derived from it: Kanban, Activity, project picker). Runs stay
   // listed on the automation's page and findable via search either way.
@@ -369,6 +407,28 @@ export const AppSettingsSchema = Schema.Struct({
   appSnapPlaySound: Schema.Boolean.pipe(withDefaults(() => true)),
   // Deprecated rename bridge. Normalization migrates this value and then omits the key.
   enableAppshots: Schema.optionalKey(Schema.Boolean),
+  // Show the in-chat Computer preview when an agent starts driving the desktop.
+  autoOpenComputerPane: Schema.Boolean.pipe(withDefaults(() => true)),
+  // In-chat computer preview footprint. Compact is the default: a small
+  // glanceable card that reserves a narrow gutter. Large restores the
+  // previous wide card for users who want the detail inline.
+  computerPreviewSize: ComputerPreviewSize.pipe(withDefaults(() => DEFAULT_COMPUTER_PREVIEW_SIZE)),
+  // Computer control is off by default. When on, the agent may use the desktop
+  // in any chat. Approval gates and Stop still apply.
+  computerControlEnabled: Schema.Boolean.pipe(withDefaults(() => false)),
+  // The agent cursor's colors. Stock is the default monochrome treatment and
+  // stores no overrides; "custom" opts into a fill and rim, persisted as
+  // lowercase `#rrggbb` strings and pushed to the desktop cursor host.
+  agentCursorColorMode: AgentCursorColorMode.pipe(
+    withDefaults(() => DEFAULT_AGENT_CURSOR_COLOR_MODE),
+  ),
+  agentCursorFillColor: Schema.String.check(Schema.isMaxLength(7)).pipe(withDefaults(() => "")),
+  agentCursorRimColor: Schema.String.check(Schema.isMaxLength(7)).pipe(withDefaults(() => "")),
+  // Deprecated rename bridge. Normalization migrates this value and then omits the key.
+  allowComputerControlInNewChats: Schema.optionalKey(Schema.Boolean),
+  // One-shot composer hint that suggests Medium effort for faster desktop actions.
+  // Set when the user applies or dismisses it, so the hint never asks twice.
+  dismissedComputerControlEffortHint: Schema.Boolean.pipe(withDefaults(() => false)),
   sidebarProjectSortOrder: SidebarProjectSortOrder.pipe(
     withDefaults(() => DEFAULT_SIDEBAR_PROJECT_SORT_ORDER),
   ),
@@ -386,8 +446,8 @@ export const AppSettingsSchema = Schema.Struct({
   customGrokModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customDroidModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customOpenCodeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
-  customOmpModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customPiModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
+  customOmpModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   textGenerationProvider: PersistedProviderKind.pipe(withDefaults(() => "codex" as const)),
   textGenerationModel: Schema.optional(TrimmedNonEmptyString),
   uiFontFamily: Schema.String.check(Schema.isMaxLength(256)).pipe(withDefaults(() => "")),
@@ -537,7 +597,7 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     settingsKey: "customOmpModels",
     defaultSettingsKey: "customOmpModels",
     title: "Oh My Pi",
-    description: "Preserve additional Oh My Pi model slugs when ACP discovery is unavailable.",
+    description: "Save additional Oh My Pi model slugs for the picker and provider runtime.",
     placeholder: "provider/model",
     example: "anthropic/claude-sonnet-4-5",
   },
@@ -557,7 +617,7 @@ export const MODEL_PROVIDER_SETTINGS = Object.values(PROVIDER_CUSTOM_MODEL_CONFI
 // Droid's ACP catalog is authoritative and rejects unknown slugs. Preserve its
 // persisted config for compatibility, but do not offer an editor it cannot honor.
 export const CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS = MODEL_PROVIDER_SETTINGS.filter(
-  (config) => config.provider !== "droid" && config.provider !== "omp",
+  (config) => config.provider !== "droid",
 );
 
 // Pi is excluded on purpose: it has no built-in default model, so
@@ -616,6 +676,32 @@ export function normalizeTerminalFontSizePx(value: number | null | undefined): n
   );
 }
 
+/** Normalize a cursor color to lowercase `#rrggbb`, or "" for anything else. */
+export function normalizeCursorHexColor(value: string | null | undefined): string {
+  const candidate = (value ?? "").trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(candidate) ? candidate : "";
+}
+
+/**
+ * The custom agent-cursor colors to push to the desktop cursor host, or null
+ * for the stock monochrome cursor. Stock mode resolves to null no matter what
+ * colors are stored, so switching back to stock never leaves a stale override
+ * in the pushed payload. A channel with no valid color is omitted, not sent
+ * empty, because the driver treats an omitted channel as stock.
+ */
+export function resolveAgentCursorColors(
+  settings: Pick<
+    AppSettings,
+    "agentCursorColorMode" | "agentCursorFillColor" | "agentCursorRimColor"
+  >,
+): { fill?: string; rim?: string } | null {
+  if ((settings.agentCursorColorMode ?? DEFAULT_AGENT_CURSOR_COLOR_MODE) !== "custom") return null;
+  const fill = normalizeCursorHexColor(settings.agentCursorFillColor);
+  const rim = normalizeCursorHexColor(settings.agentCursorRimColor);
+  if (!fill && !rim) return null;
+  return { ...(fill ? { fill } : {}), ...(rim ? { rim } : {}) };
+}
+
 export function normalizeTerminalFontFamily(value: string | null | undefined): string {
   // Free-form font-family text. Only strip characters that can't legitimately
   // appear in a CSS font-family value so the typed name can't break out of the
@@ -664,6 +750,7 @@ function normalizeProviderBinaryPathOverride(
 function normalizeAppSettings(settings: AppSettings): AppSettings {
   const {
     enableAppshots: legacyEnableAppshots,
+    allowComputerControlInNewChats: legacyAllowComputerControlInNewChats,
     geminiBinaryPath: legacyGeminiBinaryPath,
     customGeminiModels: legacyCustomGeminiModels,
     ...currentSettings
@@ -671,6 +758,8 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
   return {
     ...currentSettings,
     enableAppSnap: settings.enableAppSnap || legacyEnableAppshots === true,
+    computerControlEnabled:
+      settings.computerControlEnabled || legacyAllowComputerControlInNewChats === true,
     // Password fields are accepted only as write-only update patches. Never retain
     // reusable provider credentials in browser state or localStorage.
     openCodeServerPassword: "",
@@ -688,10 +777,12 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
       "opencode",
       settings.openCodeBinaryPath,
     ),
-    ompBinaryPath: normalizeProviderBinaryPathOverride("omp", settings.ompBinaryPath),
     piBinaryPath: normalizeProviderBinaryPathOverride("pi", settings.piBinaryPath),
+    ompBinaryPath: normalizeProviderBinaryPathOverride("omp", settings.ompBinaryPath),
     uiDensity: normalizeUiDensityValue(settings.uiDensity),
     chatWidth: normalizeChatWidthModeValue(settings.chatWidth),
+    agentCursorFillColor: normalizeCursorHexColor(settings.agentCursorFillColor),
+    agentCursorRimColor: normalizeCursorHexColor(settings.agentCursorRimColor),
     chatFontSizePx: normalizeChatFontSizePx(settings.chatFontSizePx),
     terminalFontSizePx: normalizeTerminalFontSizePx(settings.terminalFontSizePx),
     terminalFontFamily: normalizeTerminalFontFamily(settings.terminalFontFamily),
@@ -706,15 +797,17 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     customGrokModels: normalizeCustomModelSlugs(settings.customGrokModels, "grok"),
     customDroidModels: normalizeCustomModelSlugs(settings.customDroidModels, "droid"),
     customOpenCodeModels: normalizeCustomModelSlugs(settings.customOpenCodeModels, "opencode"),
-    customOmpModels: normalizeCustomModelSlugs(settings.customOmpModels, "omp"),
     customPiModels: normalizeCustomModelSlugs(settings.customPiModels, "pi"),
+    customOmpModels: normalizeCustomModelSlugs(settings.customOmpModels, "omp"),
     hiddenProviders: normalizeHiddenProviders(settings.hiddenProviders),
     disabledProviders: normalizeHiddenProviders(settings.disabledProviders),
     providerOrder: normalizeProviderOrder(settings.providerOrder),
-    hiddenModels: normalizeHiddenModels(settings.hiddenModels),
     defaultModelByProvider: normalizeDefaultModels(settings.defaultModelByProvider),
     sidebarNavOrder: normalizeSidebarNavOrder(settings.sidebarNavOrder),
     hiddenSidebarNavItems: normalizeHiddenSidebarNavItems(settings.hiddenSidebarNavItems),
+    railItemOrder: normalizeRailItemOrder(settings.railItemOrder),
+    hiddenRailItems: normalizeHiddenRailItems(settings.hiddenRailItems),
+    hiddenModels: normalizeHiddenModels(settings.hiddenModels),
   };
 }
 
@@ -736,9 +829,21 @@ export function didProviderEnablementChange(
   );
 }
 
+/** Server settings that change which native commands a provider reports. */
+export function didProviderCommandDiscoverySettingsChange(
+  previous: Pick<ServerSettingsView, "providers"> | undefined,
+  next: Pick<ServerSettingsView, "providers">,
+): boolean {
+  return (
+    previous !== undefined &&
+    previous.providers.claudeAgent.enableArtifacts !== next.providers.claudeAgent.enableArtifacts
+  );
+}
+
 function serverSettingsToAppSettings(settings: ServerSettingsView): Partial<AppSettings> {
   return {
     claudeBinaryPath: settings.providers.claudeAgent.binaryPath,
+    claudeEnableArtifacts: settings.providers.claudeAgent.enableArtifacts,
     codexBinaryPath: settings.providers.codex.binaryPath,
     codexHomePath: settings.providers.codex.homePath,
     cursorApiEndpoint: settings.providers.cursor.apiEndpoint,
@@ -754,9 +859,10 @@ function serverSettingsToAppSettings(settings: ServerSettingsView): Partial<AppS
     openCodeExperimentalWebSockets: settings.providers.opencode.experimentalWebSockets,
     openCodeServerPasswordConfigured: settings.providers.opencode.serverPasswordConfigured,
     openCodeServerUrl: settings.providers.opencode.serverUrl,
-    ompBinaryPath: settings.providers.omp.binaryPath,
     piAgentDir: settings.providers.pi.agentDir,
     piBinaryPath: settings.providers.pi.binaryPath,
+    ompAgentDir: settings.providers.omp.agentDir,
+    ompBinaryPath: settings.providers.omp.binaryPath,
     customCodexModels: settings.providers.codex.customModels,
     customClaudeModels: settings.providers.claudeAgent.customModels,
     customCursorModels: settings.providers.cursor.customModels,
@@ -765,8 +871,8 @@ function serverSettingsToAppSettings(settings: ServerSettingsView): Partial<AppS
     customGrokModels: settings.providers.grok.customModels,
     customDroidModels: settings.providers.droid.customModels,
     customOpenCodeModels: settings.providers.opencode.customModels,
-    customOmpModels: settings.providers.omp.customModels,
     customPiModels: settings.providers.pi.customModels,
+    customOmpModels: settings.providers.omp.customModels,
     disabledProviders: getServerDisabledProviders(settings),
     textGenerationProvider: settings.textGenerationModelSelection.provider,
     textGenerationModel: settings.textGenerationModelSelection.model,
@@ -791,13 +897,15 @@ function hasOwn<Key extends keyof AppSettings>(patch: Partial<AppSettings>, key:
 
 function touchesProviderDiscoverySettings(patch: Partial<AppSettings>): boolean {
   return (
+    hasOwn(patch, "claudeEnableArtifacts") ||
     hasOwn(patch, "devinBinaryPath") ||
     hasOwn(patch, "openCodeBinaryPath") ||
     hasOwn(patch, "openCodeExperimentalWebSockets") ||
     hasOwn(patch, "openCodeServerPassword") ||
     hasOwn(patch, "openCodeServerUrl") ||
-    hasOwn(patch, "ompBinaryPath") ||
     hasOwn(patch, "piAgentDir") ||
+    hasOwn(patch, "ompBinaryPath") ||
+    hasOwn(patch, "ompAgentDir") ||
     hasOwn(patch, "disabledProviders")
   );
 }
@@ -878,18 +986,19 @@ export function appSettingsPatchToServerSettingsPatch(
         : {}),
     };
   }
-  if (hasOwn(patch, "claudeBinaryPath") || hasOwn(patch, "customClaudeModels")) {
+  if (
+    hasOwn(patch, "claudeBinaryPath") ||
+    hasOwn(patch, "claudeEnableArtifacts") ||
+    hasOwn(patch, "customClaudeModels")
+  ) {
     providers.claudeAgent = {
       ...(hasOwn(patch, "claudeBinaryPath") ? { binaryPath: patch.claudeBinaryPath ?? "" } : {}),
+      ...(hasOwn(patch, "claudeEnableArtifacts")
+        ? { enableArtifacts: Boolean(patch.claudeEnableArtifacts) }
+        : {}),
       ...(hasOwn(patch, "customClaudeModels")
         ? { customModels: patch.customClaudeModels ?? [] }
         : {}),
-    };
-  }
-  if (hasOwn(patch, "ompBinaryPath") || hasOwn(patch, "customOmpModels")) {
-    providers.omp = {
-      ...(hasOwn(patch, "ompBinaryPath") ? { binaryPath: patch.ompBinaryPath ?? "" } : {}),
-      ...(hasOwn(patch, "customOmpModels") ? { customModels: patch.customOmpModels ?? [] } : {}),
     };
   }
   if (
@@ -971,6 +1080,17 @@ export function appSettingsPatchToServerSettingsPatch(
       ...(hasOwn(patch, "customPiModels") ? { customModels: patch.customPiModels ?? [] } : {}),
     };
   }
+  if (
+    hasOwn(patch, "ompAgentDir") ||
+    hasOwn(patch, "ompBinaryPath") ||
+    hasOwn(patch, "customOmpModels")
+  ) {
+    providers.omp = {
+      ...(hasOwn(patch, "ompAgentDir") ? { agentDir: patch.ompAgentDir ?? "" } : {}),
+      ...(hasOwn(patch, "ompBinaryPath") ? { binaryPath: patch.ompBinaryPath ?? "" } : {}),
+      ...(hasOwn(patch, "customOmpModels") ? { customModels: patch.customOmpModels ?? [] } : {}),
+    };
+  }
   if (hasOwn(patch, "disabledProviders")) {
     const disabledProviders = new Set(normalizeHiddenProviders(patch.disabledProviders ?? []));
     for (const provider of DEFAULT_PROVIDER_ORDER) {
@@ -1006,6 +1126,7 @@ function buildInitialServerSettingsMigrationPatch(settings: AppSettings): Server
 
   for (const key of [
     "claudeBinaryPath",
+    "claudeEnableArtifacts",
     "codexBinaryPath",
     "codexHomePath",
     "cursorApiEndpoint",
@@ -1024,6 +1145,7 @@ function buildInitialServerSettingsMigrationPatch(settings: AppSettings): Server
     "ompBinaryPath",
     "piAgentDir",
     "piBinaryPath",
+    "ompAgentDir",
     "textGenerationModel",
     "textGenerationProvider",
   ] as const) {
@@ -1049,6 +1171,7 @@ function buildInitialServerSettingsMigrationPatch(settings: AppSettings): Server
     "customOpenCodeModels",
     "customOmpModels",
     "customPiModels",
+    "customOmpModels",
   ] as const) {
     if (normalizedSettings[key].length > 0) {
       patch[key] = normalizedSettings[key] as never;
@@ -1116,8 +1239,8 @@ export function getCustomModelsByProvider(
     grok: getCustomModelsForProvider(settings, "grok"),
     droid: getCustomModelsForProvider(settings, "droid"),
     opencode: getCustomModelsForProvider(settings, "opencode"),
-    omp: getCustomModelsForProvider(settings, "omp"),
     pi: getCustomModelsForProvider(settings, "pi"),
+    omp: getCustomModelsForProvider(settings, "omp"),
   };
 }
 
@@ -1255,7 +1378,6 @@ export function getCustomModelOptionsByProvider(
     pi: getAppModelOptions("pi", customModelsByProvider.pi),
   };
 }
-
 export function getProviderStartOptions(
   settings: Pick<
     AppSettings,
@@ -1274,6 +1396,7 @@ export function getProviderStartOptions(
     | "ompBinaryPath"
     | "piAgentDir"
     | "piBinaryPath"
+    | "ompAgentDir"
   >,
 ): ProviderStartOptions | undefined {
   const claudeBinaryPath = normalizeProviderBinaryPathOverride(
@@ -1359,12 +1482,19 @@ export function getProviderStartOptions(
           },
         }
       : {}),
-    ...(ompBinaryPath ? { omp: { binaryPath: ompBinaryPath } } : {}),
     ...(piBinaryPath || settings.piAgentDir
       ? {
           pi: {
             ...(piBinaryPath ? { binaryPath: piBinaryPath } : {}),
             ...(settings.piAgentDir ? { agentDir: settings.piAgentDir } : {}),
+          },
+        }
+      : {}),
+    ...(ompBinaryPath || settings.ompAgentDir
+      ? {
+          omp: {
+            ...(ompBinaryPath ? { binaryPath: ompBinaryPath } : {}),
+            ...(settings.ompAgentDir ? { agentDir: settings.ompAgentDir } : {}),
           },
         }
       : {}),
@@ -1412,8 +1542,8 @@ export function getCustomBinaryPathForProvider(
     | "grokBinaryPath"
     | "droidBinaryPath"
     | "openCodeBinaryPath"
-    | "ompBinaryPath"
     | "piBinaryPath"
+    | "ompBinaryPath"
   >,
   provider: ProviderKind,
 ): string {
@@ -1434,10 +1564,10 @@ export function getCustomBinaryPathForProvider(
       return normalizeProviderBinaryPathOverride(provider, settings.droidBinaryPath);
     case "opencode":
       return normalizeProviderBinaryPathOverride(provider, settings.openCodeBinaryPath);
-    case "omp":
-      return normalizeProviderBinaryPathOverride(provider, settings.ompBinaryPath);
     case "pi":
       return normalizeProviderBinaryPathOverride(provider, settings.piBinaryPath);
+    case "omp":
+      return normalizeProviderBinaryPathOverride(provider, settings.ompBinaryPath);
   }
 }
 

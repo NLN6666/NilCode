@@ -6,7 +6,7 @@
  * @module OhMyPiAcpSupport
  */
 import type {
-  OhMyPiModelOptions,
+  OmpModelOptions,
   ProviderInteractionMode,
   ProviderListModelsResult,
   ProviderModelDescriptor,
@@ -41,6 +41,7 @@ export const OH_MY_PI_ACP_CLIENT_CAPABILITIES = {
 export interface OhMyPiAcpRuntimeSettings {
   readonly binaryPath?: string;
   readonly overlayPath?: string;
+  readonly agentDir?: string;
 }
 
 export interface OhMyPiAcpRuntimeInput extends Omit<
@@ -71,6 +72,7 @@ export function buildOhMyPiAcpSpawnInput(
   }
   const env = buildProviderChildEnvironment({ provider: "acp" });
   delete env.PI_CODING_AGENT_DIR;
+  if (settings?.agentDir?.trim()) env.PI_CODING_AGENT_DIR = settings.agentDir.trim();
   return {
     command: resolveOhMyPiCliBinaryPath(settings?.binaryPath),
     args: ["acp", "--config", overlayPath],
@@ -173,7 +175,7 @@ export function applyOhMyPiAcpSessionConfiguration<E>(input: {
   readonly runtime: OhMyPiConfigurationRuntime;
   readonly interactionMode?: ProviderInteractionMode;
   readonly model?: string | null;
-  readonly thinkingLevel?: OhMyPiModelOptions["thinkingLevel"] | null;
+  readonly thinkingLevel?: OmpModelOptions["thinkingLevel"] | null;
   readonly mapError: (context: OhMyPiAcpConfigurationErrorContext) => E;
 }): Effect.Effect<void, E> {
   const configure = Effect.gen(function* () {

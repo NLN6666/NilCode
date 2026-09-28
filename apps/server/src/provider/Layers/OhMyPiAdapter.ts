@@ -174,7 +174,7 @@ export interface OhMyPiAdapterLiveOptions {
   ) => Effect.Effect<AcpSessionRuntimeShape, import("../acp/AcpErrors.ts").AcpError, Scope.Scope>;
   readonly discoveryCacheMs?: number;
   readonly discoveryTimeoutMs?: number;
-  readonly prepareControlPlane?: () => Effect.Effect<PreparedOmpControlPlane, Error>;
+  readonly prepareControlPlane?: (agentDir?: string) => Effect.Effect<PreparedOmpControlPlane, Error>;
   readonly settleQuietWindowMs?: number;
   readonly settleMaxWaitMs?: number;
   readonly settlePollMs?: number;
@@ -278,9 +278,9 @@ function cacheSet<T>(cache: Map<string, T>, key: string, value: T): void {
   }
 }
 
-function discoveryCacheKey(binaryPath: string | undefined, cwd: string): string {
+function discoveryCacheKey(binaryPath: string | undefined, cwd: string, agentDir?: string): string {
   const resolved = resolveOhMyPiCliBinaryPath(binaryPath);
-  return `${resolved}\u0000${executableIdentity(resolved) ?? "identity-unavailable"}\u0000${cwd}`;
+  return `${resolved}\u0000${executableIdentity(resolved) ?? "identity-unavailable"}\u0000${agentDir ?? ""}\u0000${cwd}`;
 }
 
 function effectiveDiscoveryBinaryPath(
@@ -301,9 +301,9 @@ export function makeOhMyPiAdapter(
     const runtimeFactory = options?.makeRuntime ?? makeOhMyPiAcpRuntime;
     const prepareControlPlane =
       options?.prepareControlPlane ??
-      (() =>
+      ((agentDir?: string) =>
         Effect.tryPromise({
-          try: () => prepareOmpControlPlane(),
+          try: () => prepareOmpControlPlane(agentDir ? { agentDir } : undefined),
           catch: (cause) =>
             cause instanceof Error
               ? cause
@@ -583,7 +583,8 @@ export function makeOhMyPiAdapter(
 
           const selection =
             input.modelSelection?.provider === PROVIDER ? input.modelSelection : undefined;
-          const controlPlane = yield* prepareControlPlane().pipe(
+          const agentDir = input.providerOptions?.omp?.agentDir?.trim() || settings.agentDir?.trim();
+          const controlPlane = yield* prepareControlPlane(agentDir).pipe(
             Effect.mapError(
               (cause) =>
                 new ProviderAdapterRequestError({
@@ -595,6 +596,7 @@ export function makeOhMyPiAdapter(
           );
           const providerSettings: OhMyPiAcpRuntimeSettings = {
             overlayPath: controlPlane.overlayPath,
+            ...(agentDir ? { agentDir } : {}),
             ...(settings.binaryPath ? { binaryPath: settings.binaryPath } : {}),
             ...(input.providerOptions?.omp?.binaryPath
               ? { binaryPath: input.providerOptions.omp.binaryPath }
@@ -1384,7 +1386,7 @@ export function makeOhMyPiAdapter(
       } satisfies ProviderComposerCapabilities);
 
     const withDiscoveryRuntime = <A>(
-      input: { readonly cwd?: string; readonly binaryPath?: string },
+      input: { readonly cwd?: string; readonly binaryPath?: string; readonly agentDir?: string },
       use: (runtime: AcpSessionRuntimeShape) => Effect.Effect<A, unknown>,
     ) =>
       Effect.gen(function* () {
@@ -1396,9 +1398,12 @@ export function makeOhMyPiAdapter(
             issue: "cwd is required and no server cwd fallback is available.",
           });
         }
+        const agentDir = input.agentDir?.trim() || settings.agentDir?.trim();
+        const controlPlane = yield* prepareControlPlane(agentDir);
         const runtime = yield* runtimeFactory({
           ohMyPiSettings: {
-            overlayPath: (yield* prepareControlPlane()).overlayPath,
+            overlayPath: controlPlane.overlayPath,
+            ...(agentDir ? { agentDir } : {}),
             ...(settings.binaryPath ? { binaryPath: settings.binaryPath } : {}),
             ...(input.binaryPath ? { binaryPath: input.binaryPath } : {}),
           },
@@ -1474,6 +1479,7 @@ export function makeOhMyPiAdapter(
           const key = discoveryCacheKey(
             effectiveDiscoveryBinaryPath(input.binaryPath, settings.binaryPath),
             cwd,
+            input.agentDir?.trim() || settings.agentDir?.trim(),
           );
           const cached = modelCache.get(key);
           if (input.forceReload !== true && cached && cached.expiresAt > Date.now()) {
@@ -1502,6 +1508,7 @@ export function makeOhMyPiAdapter(
           const key = discoveryCacheKey(
             effectiveDiscoveryBinaryPath(input.binaryPath, settings.binaryPath),
             cwd,
+            input.agentDir?.trim() || settings.agentDir?.trim(),
           );
           const cached = commandCache.get(key);
           if (input.forceReload !== true && cached && cached.expiresAt > Date.now()) {

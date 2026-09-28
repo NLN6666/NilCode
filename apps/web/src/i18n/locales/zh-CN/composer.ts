@@ -186,6 +186,9 @@ export const composer: Messages["composer"] = {
   },
 
   subagents: {
+    runningSummary: (running, total) => `${total} 个子智能体中 ${running} 个正在运行`,
+    totalSummary: (total) => `${total} 个子智能体`,
+    background: "后台运行",
     expandStrip: "展开子智能体条",
     collapseStrip: "折叠子智能体条",
     stopAll: "停止所有子智能体",
@@ -224,6 +227,7 @@ export const composer: Messages["composer"] = {
     reviewToContinue: "查看这个请求后才能继续。",
 
     prompts: {
+      tool: "允许这次工具调用吗？",
       command: "允许执行这条命令吗？",
       "file-read": "允许读取这个文件吗？",
       "file-change": "允许这次文件修改吗？",
@@ -231,6 +235,35 @@ export const composer: Messages["composer"] = {
     },
 
     permissionProfileTitle: "请求的权限配置",
+    scopes: {
+      computerTask: {
+        prompt: "允许本次任务使用电脑吗？",
+        acceptLabel: "允许本次任务使用电脑",
+        acceptDescription: "在本次回复结束前允许常规桌面操作。点击「停止」可撤销访问；读取剪贴板仍需单独授权。",
+        declineLabel: "拒绝",
+        declineDescription: "本轮停止桌面控制，智能体会在不使用工具的情况下继续",
+        cancelLabel: "取消这次请求",
+        cancelDescription: "拒绝这次请求；若要结束智能体回合，请点击「停止」。",
+      },
+      computerForeground: {
+        prompt: "在你的屏幕上显示操作吗？",
+        acceptLabel: "在本次任务中显示到屏幕上",
+        acceptDescription: "本次回复结束前，电脑工具可以将窗口置于前台。",
+        declineLabel: "留在后台",
+        declineDescription: "不会将窗口置于前台；智能体继续在后台工作",
+        cancelLabel: "取消这次请求",
+        cancelDescription: "若要结束智能体回合，请点击「停止」。",
+      },
+      deviceTask: {
+        prompt: "允许本次任务使用设备吗？",
+        acceptLabel: "允许本次任务使用设备",
+        acceptDescription: "在本次回复结束前允许常规设备操作。点击「停止」可撤销访问。",
+        declineLabel: "拒绝",
+        declineDescription: "本轮停止设备控制，智能体会在不使用工具的情况下继续",
+        cancelLabel: "取消这次请求",
+        cancelDescription: "拒绝这次请求；若要结束智能体回合，请点击「停止」。",
+      },
+    },
 
     actions: {
       acceptOnce: { label: "仅允许这一次", description: "只放行本次请求" },
@@ -241,6 +274,43 @@ export const composer: Messages["composer"] = {
       decline: { label: "拒绝", description: "拒绝本次请求，让智能体继续" },
       cancelTurn: { label: "中止本轮", description: "停止当前这一轮对话" },
     },
+  },
+  claudeCacheReview: {
+    permissionSetupFailed: "无法启动电脑权限配置",
+    compactChecking: "正在检查 Claude 可用的命令…",
+    compactUnavailable: "此 Claude 会话无法压缩上下文。",
+    waitForBackground: "请等待 Claude 及其后台任务完成。",
+    resolveRequest: "压缩前请先处理待决请求。",
+    heldMessage: (context) => `你的消息已保存并暂缓发送。继续操作可能重新处理${context}。`,
+    chooseHeldMessage: "请先选择如何继续发送上方暂缓的消息。",
+    waitForTurn: "请等待 Claude 完成当前回合，再压缩上下文。",
+    reconnect: "请先重新连接，再选择如何继续。",
+    ariaLabel: "Claude 缓存状态确认",
+    uncertainTitle: "请求状态尚不明确",
+    compactTitle: "压缩将读取已过期的上下文",
+    expiredTitle: "Claude 的提示词缓存可能已过期",
+    uncertainDescription: "Claude 可能已接受请求。在确认请求状态之前，消息将暂停发送。",
+    contextUnknown: "对话上下文",
+    contextTokens: (tokens) => `约 ${tokens} 个 token 的上下文`,
+    compactDescription: "压缩也会完整处理一次历史记录；后续请求将使用生成的摘要。",
+    submitFailed: "无法提交这项选择，请重试。",
+    compactExistingLabel: "压缩当前对话",
+    continueLabel: "保留完整上下文并继续",
+    compactExistingDescription: "处理已有历史记录并保存其摘要",
+    continueDescription: "附上已有历史记录发送暂缓的消息",
+    compactThenSendLabel: "先压缩，再发送",
+    compactThenSendDescription: "发送暂缓的消息前先总结当前对话",
+    cancelLabel: "取消这次发送",
+    cancelDescription: "保留当前对话，不发送暂缓的消息",
+  },
+  threadMentionDrop: {
+    unavailableTitle: "无法引用该对话",
+    unavailableDescription: "该对话不可用，或无法在此处被提及。",
+  },
+  computerControlEffortHint: {
+    message: "使用中等推理强度可加快桌面操作",
+    apply: "使用中等",
+    dismiss: "关闭提示",
   },
 
   taskBanner: {

@@ -71,12 +71,12 @@ const PlanSidebar = function PlanSidebar({
         <div className="flex items-center gap-2">
           <Badge
             variant="secondary"
-            className="rounded-md bg-[color-mix(in_srgb,var(--color-accent-blue)_10%,transparent)] px-1.5 py-0 text-[10px] font-semibold text-[var(--color-accent-blue)]"
+            className="rounded-md bg-[color-mix(in_srgb,var(--color-accent-blue)_10%,transparent)] px-1.5 py-0 text-ui-xs font-semibold text-[var(--color-accent-blue)]"
           >
             {m.sidebar.planSidebar.title}
           </Badge>
           {activeTaskList ? (
-            <span className="text-[11px] text-muted-foreground/60">
+            <span className="text-ui-sm text-muted-foreground/60">
               {formatTimestamp(activeTaskList.createdAt, timestampFormat)}
             </span>
           ) : null}
@@ -107,7 +107,7 @@ const PlanSidebar = function PlanSidebar({
         <div className="p-3 space-y-4">
           {/* Explanation */}
           {activeTaskList?.explanation ? (
-            <p className="text-[13px] leading-relaxed text-muted-foreground/80">
+            <p className="text-ui-lg leading-relaxed text-muted-foreground/80">
               {activeTaskList.explanation}
             </p>
           ) : null}
@@ -132,7 +132,7 @@ const PlanSidebar = function PlanSidebar({
                   <div className="mt-0.5">{stepStatusIcon(task.status)}</div>
                   <p
                     className={cn(
-                      "text-[13px] leading-snug",
+                      "text-ui-lg leading-snug",
                       task.status === "completed"
                         ? "text-muted-foreground/50 line-through decoration-muted-foreground/20"
                         : task.status === "inProgress"
@@ -160,7 +160,7 @@ const PlanSidebar = function PlanSidebar({
                 ) : (
                   <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/40 transition-transform" />
                 )}
-                <span className="text-[10px] font-semibold text-muted-foreground/40 group-hover:text-muted-foreground/60">
+                <span className="text-ui-xs font-semibold text-muted-foreground/40 group-hover:text-muted-foreground/60">
                   {planTitle ?? "Full Plan"}
                 </span>
               </button>

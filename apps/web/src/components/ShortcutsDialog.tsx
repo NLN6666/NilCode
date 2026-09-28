@@ -138,13 +138,13 @@ function ShortcutSection({
       <header className="flex items-baseline justify-between gap-3 px-6 pt-4 pb-2">
         <h3
           className={cn(
-            "text-[11px] font-semibold",
+            "text-ui-sm font-semibold",
             muted ? "text-muted-foreground/70" : "text-muted-foreground",
           )}
         >
           {section.title}
         </h3>
-        <p className="truncate text-[11px] text-muted-foreground/70">{section.description}</p>
+        <p className="truncate text-ui-sm text-muted-foreground/70">{section.description}</p>
       </header>
       <ul className={cn("px-3 pb-3", muted && "opacity-75")}>
         {section.entries.map((entry) => (
@@ -152,7 +152,9 @@ function ShortcutSection({
             key={entry.id}
             className="group flex items-center justify-between gap-4 rounded-md px-3 py-1.5 hover:bg-muted/60"
           >
-            <span className="min-w-0 truncate text-sm text-foreground">{entry.label}</span>
+            <span className="min-w-0 truncate text-ui leading-snug text-foreground">
+              {entry.label}
+            </span>
             <ShortcutKbd shortcutLabel={entry.shortcutLabel} groupClassName="shrink-0" />
           </li>
         ))}

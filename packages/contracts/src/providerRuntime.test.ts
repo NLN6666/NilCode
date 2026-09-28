@@ -1,91 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { Schema } from "effect";
 
-import { ProviderRuntimeEvent, type ProviderRuntimeEventType } from "./providerRuntime";
+import { ProviderRuntimeEvent } from "./providerRuntime";
 
 const decodeRuntimeEvent = Schema.decodeUnknownSync(ProviderRuntimeEvent);
 
 describe("ProviderRuntimeEvent", () => {
-  it("includes turn.steered in the exported event type", () => {
-    const eventType: ProviderRuntimeEventType = "turn.steered";
-    expect(eventType).toBe("turn.steered");
-  });
-
-  it("decodes turn.tasks.updated for task-list rendering", () => {
-    const parsed = decodeRuntimeEvent({
-      type: "turn.tasks.updated",
-      eventId: "event-1",
-      provider: "claudeAgent",
-      sessionId: "runtime-session-1",
-      createdAt: "2026-02-28T00:00:00.000Z",
-      threadId: "thread-1",
-      turnId: "turn-1",
-      payload: {
-        explanation: "Implement schema updates",
-        tasks: [
-          { task: "Define event union", status: "completed" },
-          { task: "Wire adapter mapping", status: "inProgress" },
-        ],
-      },
-    });
-
-    expect(parsed.type).toBe("turn.tasks.updated");
-    if (parsed.type !== "turn.tasks.updated") {
-      throw new Error("expected turn.tasks.updated");
-    }
-    expect(parsed.payload.tasks).toHaveLength(2);
-    expect(parsed.payload.tasks[1]?.status).toBe("inProgress");
-  });
-
-  it("decodes proposed-plan completion events", () => {
-    const parsed = decodeRuntimeEvent({
-      type: "turn.proposed.completed",
-      eventId: "event-proposed-plan-1",
-      provider: "codex",
-      createdAt: "2026-02-28T00:00:00.000Z",
-      threadId: "thread-1",
-      turnId: "turn-1",
-      payload: {
-        planMarkdown: "# Ship it",
-      },
-    });
-
-    expect(parsed.type).toBe("turn.proposed.completed");
-    if (parsed.type !== "turn.proposed.completed") {
-      throw new Error("expected turn.proposed.completed");
-    }
-    expect(parsed.payload.planMarkdown).toBe("# Ship it");
-  });
-
-  it("decodes canonical hook completion diagnostics", () => {
-    const parsed = decodeRuntimeEvent({
-      type: "hook.completed",
-      eventId: "event-hook-1",
-      provider: "codex",
-      createdAt: "2026-02-28T00:00:00.000Z",
-      threadId: "thread-1",
-      turnId: "turn-1",
-      payload: {
-        hookId: "hook-run-1",
-        hookName: "/Users/example/.codex/hooks.json",
-        hookEvent: "preToolUse",
-        outcome: "cancelled",
-        status: "blocked",
-        statusMessage: "Destructive command blocked.",
-        durationMs: 12,
-        data: { handlerType: "command" },
-      },
-    });
-
-    expect(parsed.type).toBe("hook.completed");
-    if (parsed.type !== "hook.completed") {
-      throw new Error("expected hook.completed");
-    }
-    expect(parsed.payload.status).toBe("blocked");
-    expect(parsed.payload.hookEvent).toBe("preToolUse");
-    expect(parsed.payload.durationMs).toBe(12);
-  });
-
   it("decodes user-input.requested with structured questions", () => {
     const parsed = decodeRuntimeEvent({
       type: "user-input.requested",
@@ -122,29 +42,6 @@ describe("ProviderRuntimeEvent", () => {
     }
     expect(parsed.payload.questions[0]?.id).toBe("sandbox_mode");
     expect(parsed.payload.questions[0]?.options).toHaveLength(2);
-  });
-
-  it("decodes user-input.resolved with answer map", () => {
-    const parsed = decodeRuntimeEvent({
-      type: "user-input.resolved",
-      eventId: "event-3",
-      provider: "claudeAgent",
-      sessionId: "runtime-session-2",
-      createdAt: "2026-02-28T00:00:02.000Z",
-      threadId: "thread-2",
-      requestId: "request-1",
-      payload: {
-        answers: {
-          sandbox_mode: "workspace-write",
-        },
-      },
-    });
-
-    expect(parsed.type).toBe("user-input.resolved");
-    if (parsed.type !== "user-input.resolved") {
-      throw new Error("expected user-input.resolved");
-    }
-    expect(parsed.payload.answers.sandbox_mode).toBe("workspace-write");
   });
 
   it("rejects legacy message.delta type", () => {

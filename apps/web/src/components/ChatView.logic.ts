@@ -1,19 +1,27 @@
 import {
+  resolveComputerControlMode,
+  type ComposerComputerControlMode,
+} from "../computerControlMode";
+import {
   DEFAULT_MODEL_BY_PROVIDER,
   ProjectId,
   ThreadId,
+  type AssistantDeliveryMode,
   type GitWorktreeSetupPhase,
   type GitWorktreeSetupProgressEvent,
   type ModelSelection,
   type ModelSlug,
   type ProviderApprovalDecision,
+  type ProviderInteractionMode,
   type ProviderKind,
   type ProviderRequestKind,
+  type ProviderStartOptions,
   type RuntimeMode,
   type ServerProviderAuthStatus,
   type ThreadId as ThreadIdType,
 } from "@synara/contracts";
 import { getDefaultModel, normalizeModelSlug } from "@synara/shared/model";
+import { approvalSessionGrantWidensSessionPolicy } from "@synara/shared/approvalSessionGrant";
 import { buildSynaraBranchName } from "@synara/shared/git";
 import { isGenericChatThreadTitle } from "@synara/shared/chatThreads";
 import { isGenericTerminalThreadTitle } from "@synara/shared/terminalThreads";
@@ -27,7 +35,12 @@ import {
   type WorktreeSetupSnapshot,
   type WorktreeSetupStepId,
 } from "../types";
-import { type DraftThreadState } from "../composerDraftStore";
+import {
+  type DraftThreadEnvMode,
+  type DraftThreadState,
+  type QueuedComposerChatTurn,
+  type QueuedComposerTurn,
+} from "../composerDraftStore";
 import { Schema } from "effect";
 import {
   filterTerminalContextsWithText,
@@ -59,6 +72,20 @@ export const PROMPT_HISTORY_MAX_ENTRIES = 100;
 
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 export const DismissedProviderHealthBannersSchema = Schema.Array(Schema.String);
+
+export function canApplyComposerFocus(input: {
+  readonly windowHasFocus: boolean;
+  readonly secondaryChromeReady: boolean;
+  readonly editorAvailable: boolean;
+  readonly editorDisabled: boolean;
+}): boolean {
+  return (
+    input.windowHasFocus &&
+    input.secondaryChromeReady &&
+    input.editorAvailable &&
+    !input.editorDisabled
+  );
+}
 
 export interface PendingFileUndo {
   readonly threadId: ThreadIdType;
@@ -119,10 +146,11 @@ export function resolveRuntimeModeAfterApprovalDecision(
   decision: ProviderApprovalDecision,
   requestKind?: ProviderRequestKind,
 ): RuntimeMode | null {
-  // Permission-profile grants are narrower than a runtime-mode override.
-  // Their acceptForSession decision is persisted by the provider for only
-  // that permission set and must not silently broaden the whole thread.
-  if (requestKind === "permissions") {
+  // Permission-profile and tool grants are narrower than a runtime-mode
+  // override: the provider remembers that exact permission set or tool, and
+  // widening them here would un-supervise commands and file changes the user
+  // never saw.
+  if (!approvalSessionGrantWidensSessionPolicy(requestKind)) {
     return null;
   }
   if (decision === "acceptForSession" && currentRuntimeMode === "approval-required") {
@@ -740,16 +768,18 @@ export function resolveThreadDetailHydration(input: {
 /**
  * Fallback model selection for a draft thread before the first server turn exists.
  * An explicit project default wins; otherwise the user's default provider is used
- * (pi has no default model, so it is skipped), then codex. The model comes from the
- * project default only when it matches the chosen provider, otherwise the provider's
- * own default.
+ * (pi and omp have no default model, so they are skipped), then codex. The model
+ * comes from the project default only when it matches the chosen provider,
+ * otherwise the provider's own default.
  */
 export function resolveDraftFallbackModelSelection(input: {
   projectDefault: ModelSelection | null | undefined;
   settingsDefaultProvider: ProviderKind;
 }): ModelSelection {
   const settingsProvider =
-    input.settingsDefaultProvider === "pi" ? null : input.settingsDefaultProvider;
+    input.settingsDefaultProvider === "pi" || input.settingsDefaultProvider === "omp"
+      ? null
+      : input.settingsDefaultProvider;
   const provider = input.projectDefault?.provider ?? settingsProvider ?? "codex";
   const model =
     (provider === input.projectDefault?.provider ? input.projectDefault.model : null) ??
@@ -1296,6 +1326,7 @@ export function hasServerAcknowledgedLocalDispatch(input: {
   messages: readonly ChatMessage[];
   hasPendingApproval: boolean;
   hasPendingUserInput: boolean;
+  claudeCacheReview?: Thread["claudeCacheReview"];
   threadError: string | null | undefined;
 }): boolean {
   if (!input.localDispatch) {
@@ -1305,6 +1336,8 @@ export function hasServerAcknowledgedLocalDispatch(input: {
     input.phase === "running" ||
     input.hasPendingApproval ||
     input.hasPendingUserInput ||
+    (input.localDispatch.expectedUserMessageId !== null &&
+      input.claudeCacheReview?.messageId === input.localDispatch.expectedUserMessageId) ||
     Boolean(input.threadError)
   ) {
     return true;
@@ -1383,6 +1416,7 @@ export function hasLiveTurnTakenOver(input: {
   session: Thread["session"] | null;
   hasPendingApproval: boolean;
   hasPendingUserInput: boolean;
+  claudeCacheReview?: Thread["claudeCacheReview"];
   threadError: string | null | undefined;
   now?: number;
 }): boolean {
@@ -1396,6 +1430,12 @@ export function hasLiveTurnTakenOver(input: {
     return true;
   }
   if (input.hasPendingApproval || input.hasPendingUserInput || Boolean(input.threadError)) {
+    return true;
+  }
+  if (
+    input.localDispatch.expectedUserMessageId !== null &&
+    input.claudeCacheReview?.messageId === input.localDispatch.expectedUserMessageId
+  ) {
     return true;
   }
 
@@ -1540,10 +1580,14 @@ export function resolveQueuedComposerAutoDispatchHold(input: {
   hasPendingApproval: boolean;
   hasPendingProgress: boolean;
   hasPendingUserInput: boolean;
+  claudeCacheReview?: Thread["claudeCacheReview"];
   queuedTurnCount: number;
   threadError: string | null | undefined;
   now?: number;
 }): boolean {
+  // A held Claude message has not started a turn yet. Do not drain the next
+  // queued composer turn until the user explicitly resolves that review.
+  if (input.claudeCacheReview != null) return true;
   const isSendBusy =
     input.localDispatch !== null &&
     !hasServerAcknowledgedLocalDispatch({
@@ -1554,6 +1598,7 @@ export function resolveQueuedComposerAutoDispatchHold(input: {
       messages: input.messages,
       hasPendingApproval: input.hasPendingApproval,
       hasPendingUserInput: input.hasPendingUserInput,
+      claudeCacheReview: input.claudeCacheReview,
       threadError: input.threadError,
     });
   const turnTakenOver = hasLiveTurnTakenOver({
@@ -1563,6 +1608,7 @@ export function resolveQueuedComposerAutoDispatchHold(input: {
     session: input.session,
     hasPendingApproval: input.hasPendingApproval,
     hasPendingUserInput: input.hasPendingUserInput,
+    claudeCacheReview: input.claudeCacheReview,
     threadError: input.threadError,
     ...(input.now === undefined ? {} : { now: input.now }),
   });
@@ -1643,6 +1689,176 @@ export function deriveComposerSendState(options: {
       sendableTerminalContexts.length > 0 ||
       sendablePastedTexts.length > 0 ||
       sendablePullRequestContexts.length > 0,
+  };
+}
+
+/**
+ * Everything a dispatched turn carries besides its message: the composer's model
+ * choice, the provider start options, and the per-turn mode flags.
+ *
+ * ChatView assembles this once per render and every dispatch site spreads a
+ * projection of it. Before, each site re-derived the same six values inline and
+ * listed them one by one in its `useCallback` deps; a single missed dep shipped
+ * a stale computer-control flag (commit ca0e72f3e) and cost React Compiler the
+ * whole component. One object means one dep.
+ */
+export interface TurnDispatchSettings {
+  readonly modelSelection: ModelSelection;
+  /** Absent when the user has configured no provider overrides at all. */
+  readonly providerOptions: ProviderStartOptions | undefined;
+  readonly enableComputerControl: boolean;
+  readonly computerControlMode?: ComposerComputerControlMode | undefined;
+  readonly computerControlGeneration?: number | undefined;
+  readonly assistantDeliveryMode: AssistantDeliveryMode;
+  readonly runtimeMode: RuntimeMode;
+  readonly interactionMode: ProviderInteractionMode;
+  readonly envMode: DraftThreadEnvMode;
+}
+
+/**
+ * A queued turn froze its dispatch settings when it was queued, so dispatching
+ * it later must replay those, not whatever the composer shows now. Every field
+ * falls back to the live settings except Computer access: request mode remains
+ * a frozen one-turn choice, while chat mode still needs the Settings default.
+ * Stop/disable revoke queued generations rather than depending on draft text.
+ *
+ * `interactionMode` is deliberately included here but overridden by the
+ * plan-follow-up path, which decides the mode from the follow-up itself.
+ */
+export function resolveQueuedTurnDispatchSettings(
+  settings: TurnDispatchSettings,
+  queuedTurn: QueuedComposerTurn | null | undefined,
+): TurnDispatchSettings {
+  if (!queuedTurn) {
+    return settings;
+  }
+  const queuedMode = resolveComputerControlMode(
+    queuedTurn.computerControlMode,
+    queuedTurn.enableComputerControl,
+  );
+  const liveMode = resolveComputerControlMode(
+    settings.computerControlMode,
+    settings.enableComputerControl,
+  );
+  const sameGeneration =
+    settings.computerControlGeneration === undefined ||
+    settings.computerControlGeneration === (queuedTurn.computerControlGeneration ?? 0);
+  const computerControlMode =
+    sameGeneration && (queuedMode === "request" || liveMode === "chat") ? queuedMode : "off";
+  const enableComputerControl = computerControlMode !== "off";
+  return {
+    ...settings,
+    modelSelection: queuedTurn.modelSelection ?? settings.modelSelection,
+    providerOptions: queuedTurn.providerOptionsForDispatch ?? settings.providerOptions,
+    enableComputerControl,
+    computerControlGeneration: queuedTurn.computerControlGeneration ?? 0,
+    computerControlMode,
+    runtimeMode: queuedTurn.runtimeMode ?? settings.runtimeMode,
+    interactionMode: queuedTurn.interactionMode ?? settings.interactionMode,
+    // Plan follow-ups carry no environment of their own; they run wherever the
+    // thread already is.
+    envMode: (queuedTurn.kind === "chat" ? queuedTurn.envMode : undefined) ?? settings.envMode,
+  };
+}
+
+function turnDispatchIdentityFields(settings: TurnDispatchSettings) {
+  return {
+    modelSelection: settings.modelSelection,
+    ...(settings.providerOptions ? { providerOptions: settings.providerOptions } : {}),
+    enableComputerControl: settings.enableComputerControl,
+    computerControlGeneration: settings.computerControlGeneration ?? 0,
+    computerControlMode: resolveComputerControlMode(
+      settings.computerControlMode,
+      settings.enableComputerControl,
+    ),
+    assistantDeliveryMode: settings.assistantDeliveryMode,
+  };
+}
+
+function turnDispatchModeFields(settings: TurnDispatchSettings) {
+  return {
+    runtimeMode: settings.runtimeMode,
+    interactionMode: settings.interactionMode,
+  };
+}
+
+/** Settings half of a `thread.turn.start` command payload. */
+export function turnStartDispatchFields(
+  settings: TurnDispatchSettings,
+  dispatchMode: "queue" | "steer",
+) {
+  return {
+    ...turnDispatchIdentityFields(settings),
+    dispatchMode,
+    ...turnDispatchModeFields(settings),
+  };
+}
+
+/**
+ * Settings half of a `thread.message.edit-and-resend` command payload. Same
+ * fields as a turn start minus `dispatchMode`, which that command has no
+ * concept of.
+ */
+export function editAndResendDispatchFields(settings: TurnDispatchSettings) {
+  return {
+    ...turnDispatchIdentityFields(settings),
+    ...turnDispatchModeFields(settings),
+  };
+}
+
+/** Settings half of a queued chat turn stored in the composer draft. */
+export function queuedChatTurnDispatchFields(
+  settings: TurnDispatchSettings,
+  sourceProposedPlan: QueuedComposerChatTurn["sourceProposedPlan"],
+) {
+  return {
+    modelSelection: settings.modelSelection,
+    ...(settings.providerOptions ? { providerOptionsForDispatch: settings.providerOptions } : {}),
+    enableComputerControl: settings.enableComputerControl,
+    computerControlGeneration: settings.computerControlGeneration ?? 0,
+    computerControlMode: resolveComputerControlMode(
+      settings.computerControlMode,
+      settings.enableComputerControl,
+    ),
+    ...(sourceProposedPlan ? { sourceProposedPlan } : {}),
+    ...turnDispatchModeFields(settings),
+    envMode: settings.envMode,
+  };
+}
+
+/**
+ * Settings half of a queued plan follow-up. It carries no `interactionMode`
+ * (the follow-up itself decides that) and no `envMode`.
+ */
+export function queuedPlanFollowUpDispatchFields(settings: TurnDispatchSettings) {
+  return {
+    modelSelection: settings.modelSelection,
+    ...(settings.providerOptions ? { providerOptionsForDispatch: settings.providerOptions } : {}),
+    enableComputerControl: settings.enableComputerControl,
+    computerControlGeneration: settings.computerControlGeneration ?? 0,
+    computerControlMode: resolveComputerControlMode(
+      settings.computerControlMode,
+      settings.enableComputerControl,
+    ),
+    runtimeMode: settings.runtimeMode,
+  };
+}
+
+/**
+ * The thread-level half of the settings: what `thread.create` records on a new
+ * thread and what the pre-turn persistence call writes back to an existing one.
+ */
+/** A new implementation thread starts its own revocation generation. */
+export function planImplementationDispatchSettings(
+  settings: TurnDispatchSettings,
+): TurnDispatchSettings {
+  return { ...settings, interactionMode: "default", computerControlGeneration: 0 };
+}
+
+export function threadSettingsDispatchFields(settings: TurnDispatchSettings) {
+  return {
+    modelSelection: settings.modelSelection,
+    ...turnDispatchModeFields(settings),
   };
 }
 

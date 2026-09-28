@@ -10,7 +10,7 @@
 import { useState } from "react";
 
 import type { ThreadId } from "@synara/contracts";
-import { pluralize } from "@synara/shared/text";
+
 
 import {
   BackgroundTrayIcon,
@@ -123,7 +123,7 @@ function SubagentStripRow({
           ) : null}
           {item.isBackground ? (
             <span className="ml-1.5 text-[11px] font-normal text-muted-foreground/45">
-              background
+              {copy.background}
             </span>
           ) : null}
         </span>
@@ -213,8 +213,8 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
           )}
           <ComposerStackedPanelRowLabel tone="meta">
             {runningCount > 0
-              ? `${runningCount} of ${subagentCount} ${pluralize(subagentCount, "subagent")} running`
-              : `${subagentCount} ${pluralize(subagentCount, "subagent")}`}
+              ? copy.runningSummary(runningCount, subagentCount)
+              : copy.totalSummary(subagentCount)}
           </ComposerStackedPanelRowLabel>
         </ComposerStackedPanelRowMain>
         {onStopAll && runningCount > 1 ? (

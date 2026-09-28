@@ -9,6 +9,7 @@ import { type KeyboardEvent as ReactKeyboardEvent, useState } from "react";
 
 import { CentralIcon } from "~/lib/central-icons";
 import { cn } from "~/lib/utils";
+import { Badge } from "./ui/badge";
 import { SearchInput } from "./ui/search-input";
 import { SidebarLeadingIcon } from "./SidebarLeadingIcon";
 import {
@@ -86,7 +87,8 @@ function SettingsSearchResultRow(props: {
 
 export function SettingsSidebarNav(props: {
   activeSection: SettingsSectionId;
-  onBack: () => void;
+  /** Null hides the "Back to app" row (the rail layout navigates with the rail instead). */
+  onBack: (() => void) | null;
   onSelectSection: (section: SettingsSectionId, options?: { target?: string }) => void;
 }) {
   const { onSelectSection } = props;
@@ -119,21 +121,23 @@ export function SettingsSidebarNav(props: {
 
   return (
     <div className="px-1.5 py-1.5">
-      <div className="mb-3">
-        <button
-          type="button"
-          className={cn(
-            SETTINGS_SIDEBAR_ITEM_CLASS_NAME,
-            SETTINGS_SIDEBAR_ROW_FILL_HOVER_CLASS_NAME,
-          )}
-          onClick={props.onBack}
-        >
-          <SidebarLeadingIcon size="sm" tone="text-inherit">
-            <CentralIcon name="arrow-left" className={SETTINGS_SIDEBAR_ICON_CLASS_NAME} />
-          </SidebarLeadingIcon>
-          <span className={SETTINGS_SIDEBAR_ITEM_LABEL_CLASS_NAME}>{m.settingsNav.backToApp}</span>
-        </button>
-      </div>
+      {props.onBack ? (
+        <div className="mb-3">
+          <button
+            type="button"
+            className={cn(
+              SETTINGS_SIDEBAR_ITEM_CLASS_NAME,
+              SETTINGS_SIDEBAR_ROW_FILL_HOVER_CLASS_NAME,
+            )}
+            onClick={props.onBack}
+          >
+            <SidebarLeadingIcon size="sm" tone="text-inherit">
+              <CentralIcon name="arrow-left" className={SETTINGS_SIDEBAR_ICON_CLASS_NAME} />
+            </SidebarLeadingIcon>
+            <span className={SETTINGS_SIDEBAR_ITEM_LABEL_CLASS_NAME}>{m.settingsNav.backToApp}</span>
+          </button>
+        </div>
+      ) : null}
 
       <div className="mb-3 px-1">
         <SearchInput
@@ -206,6 +210,15 @@ export function SettingsSidebarNav(props: {
                           <span className={SETTINGS_SIDEBAR_ITEM_LABEL_CLASS_NAME}>
                             {m.settingsNav.sections[item.id].label}
                           </span>
+                          {item.badge ? (
+                            <Badge
+                              variant="outline"
+                              size="sm"
+                              className="ml-auto rounded-full px-1.5 font-normal text-muted-foreground"
+                            >
+                              {m.settingsNav.badges[item.badge]}
+                            </Badge>
+                          ) : null}
                         </button>
                       </li>
                     );

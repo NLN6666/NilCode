@@ -237,7 +237,7 @@ export function AdvancedSettingsPanel(props: {
               <DisclosureRegion
                 open={showRecoveryTools}
                 contentClassName={cn(
-                  "mt-3 px-3 py-3 text-xs text-muted-foreground",
+                  "mt-3 px-3 py-3 text-ui leading-snug text-muted-foreground",
                   SETTINGS_INSET_LIST_CLASS_NAME,
                 )}
               >

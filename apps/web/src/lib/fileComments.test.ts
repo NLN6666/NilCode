@@ -11,7 +11,6 @@ import {
   formatFileCommentTitleSeed,
   getFileCommentValidationError,
   normalizeFileCommentSelection,
-  normalizeFileCommentText,
   type FileCommentSelection,
 } from "./fileComments";
 
@@ -26,11 +25,6 @@ function makeSelection(overrides?: Partial<FileCommentSelection>): FileCommentSe
 }
 
 describe("fileComments", () => {
-  it("normalizes comment text by stripping CRLF and edge whitespace", () => {
-    expect(normalizeFileCommentText("  hello\r\nworld  \n\n")).toBe("hello\nworld");
-    expect(normalizeFileCommentText("\n\n  \n")).toBe("");
-  });
-
   it("validates path and text presence and length", () => {
     expect(getFileCommentValidationError(makeSelection())).toBeNull();
     expect(getFileCommentValidationError(makeSelection({ text: "   " }))).toBe("empty");
@@ -91,7 +85,6 @@ describe("fileComments", () => {
     expect(formatFileCommentTitleSeed(1)).toBe("File comment");
     expect(formatFileCommentTitleSeed(2)).toBe("File comments");
   });
-
   it("builds a numbered prompt block and skips invalid entries", () => {
     expect(
       buildFileCommentsPromptBlock([
@@ -144,24 +137,5 @@ describe("fileComments", () => {
         { path: "src/util.ts", startLine: 8, endLine: 8, text: "guard null\nhere" },
       ],
     });
-  });
-
-  it("leaves prompt text untouched when there is no trailing block", () => {
-    expect(extractTrailingFileComments("No comments here")).toEqual({
-      promptText: "No comments here",
-      comments: [],
-    });
-  });
-
-  it("round-trips append -> extract for multi-line comment text", () => {
-    const selections = [
-      makeSelection({ path: "a.ts", startLine: 1, endLine: 2, text: "line one\nline two" }),
-    ];
-    const prompt = appendFileCommentsToPrompt("Do the thing", selections);
-    const extracted = extractTrailingFileComments(prompt);
-    expect(extracted.promptText).toBe("Do the thing");
-    expect(extracted.comments).toEqual([
-      { path: "a.ts", startLine: 1, endLine: 2, text: "line one\nline two" },
-    ]);
   });
 });

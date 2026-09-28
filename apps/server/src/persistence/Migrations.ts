@@ -119,8 +119,13 @@ import Migration0100 from "./Migrations/100_MessageTextChunks.ts";
 import Migration0101 from "./Migrations/101_RemoveTranscriptMarkers.ts";
 import Migration0102 from "./Migrations/102_ProjectionThreadMessagesTurnBoundary.ts";
 import ClaudeTokenAccountingMigration from "./Migrations/103_ClaudeTokenAccounting.ts";
-import Migration0104 from "./Migrations/104_ProjectionProjectsBrowserSharing.ts";
-import Migration0105 from "./Migrations/105_ProjectionThreadsAdvisorEnabled.ts";
+import Migration0104 from "./Migrations/104_ProjectionThreadsClaudeCacheReview.ts";
+import AsyncUserInputMigration from "./Migrations/105_AsyncUserInput.ts";
+import ProjectImportOriginsMigration from "./Migrations/106_ProjectImportOrigins.ts";
+import Migration0107 from "./Migrations/107_ProjectionThreadsHumanMessage.ts";
+import Migration0108 from "./Migrations/108_GatewayCompletions.ts";
+import BrowserSharingMigration from "./Migrations/109_ProjectionProjectsBrowserSharing.ts";
+import AdvisorEnabledMigration from "./Migrations/110_ProjectionThreadsAdvisorEnabled.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -240,8 +245,13 @@ export const migrationEntries = [
   [102, "ProjectionThreadMessagesTurnBoundary", Migration0102],
   // Keep this ID literal: scripts/check-migration-lineage.ts parses this list.
   [103, "ClaudeTokenAccounting", ClaudeTokenAccountingMigration],
-  [104, "ProjectionProjectsBrowserSharing", Migration0104],
-  [105, "ProjectionThreadsAdvisorEnabled", Migration0105],
+  [104, "ProjectionThreadsClaudeCacheReview", Migration0104],
+  [105, "AsyncUserInput", AsyncUserInputMigration],
+  [106, "ProjectImportOrigins", ProjectImportOriginsMigration],
+  [107, "ProjectionThreadsHumanMessage", Migration0107],
+  [108, "GatewayCompletions", Migration0108],
+  [109, "ProjectionProjectsBrowserSharing", BrowserSharingMigration],
+  [110, "ProjectionThreadsAdvisorEnabled", AdvisorEnabledMigration],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>
@@ -267,7 +277,7 @@ export const makeMigrationLoader = (throughId?: number) =>
  * prevented at the source instead, by `scripts/check-migration-lineage.ts`.
  */
 export const LAST_SHARED_LINEAGE_MIGRATION_ID = 16;
-const LATEST_MIGRATION_ID = Math.max(...migrationEntries.map(([id]) => id));
+export const LATEST_MIGRATION_ID = Math.max(...migrationEntries.map(([id]) => id));
 
 const canonicalMigrationNamesById: ReadonlyMap<number, string> = new Map(
   migrationEntries.map(([id, name]) => [id, name] as const),
@@ -349,32 +359,32 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
   {
     // The dev branch briefly recorded this at 88 before the v0.7.2 upstream
     // merge canonicalized the shared 88-96 range (both branches had appended
-    // migrations there). Its current slot follows the released upstream range.
+    // migrations there). The canonical 88 migration must actually run.
     historicalId: 88,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 104,
-    historicalSlotRequiresRerun: false,
+    currentId: 109,
+    historicalSlotRequiresRerun: true,
   },
   {
     // Same v0.7.2 merge: this fork-only migration briefly recorded at 91
     // moved for the same reason as the ProjectionProjectsBrowserSharing alias.
     historicalId: 91,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 105,
-    historicalSlotRequiresRerun: false,
+    currentId: 110,
+    historicalSlotRequiresRerun: true,
   },
   {
     // v0.7.3 dev used 97/98 for fork state. The upstream sidechat and Kilo
     // migrations now occupying those slots have never run on that database.
     historicalId: 97,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 104,
+    currentId: 109,
     historicalSlotRequiresRerun: true,
   },
   {
     historicalId: 98,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 105,
+    currentId: 110,
     historicalSlotRequiresRerun: true,
   },
   {
@@ -383,13 +393,27 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // migrations must still run; the relocated fork migrations are idempotent.
     historicalId: 100,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 104,
+    currentId: 109,
     historicalSlotRequiresRerun: true,
   },
   {
     historicalId: 101,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 105,
+    currentId: 110,
+    historicalSlotRequiresRerun: true,
+  },
+  {
+    // Released v0.8.4 assigned these slots to fork features. Upstream v0.9.2
+    // uses them for different migrations, so replay both newly occupied slots.
+    historicalId: 104,
+    historicalName: "ProjectionProjectsBrowserSharing",
+    currentId: 109,
+    historicalSlotRequiresRerun: true,
+  },
+  {
+    historicalId: 105,
+    historicalName: "ProjectionThreadsAdvisorEnabled",
+    currentId: 110,
     historicalSlotRequiresRerun: true,
   },
 ];

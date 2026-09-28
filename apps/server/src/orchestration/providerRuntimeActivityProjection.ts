@@ -11,6 +11,11 @@ import {
 import { nonEmptyTrimmed } from "@synara/shared/text";
 
 import {
+  isSensitiveKey,
+  REDACTED_SENSITIVE_VALUE,
+  redactSensitiveJsonFields,
+} from "../sensitiveKeys.ts";
+import {
   sanitizeUnmappedProviderData,
   sanitizeUnmappedProviderDetail,
 } from "../provider/unmappedProviderEvents.ts";
@@ -287,16 +292,10 @@ function truncateJsonValue(
     return String(value);
   }
 
-  const entries = Object.entries(value)
-    .filter(
-      ([, entry]) =>
-        entry !== undefined && typeof entry !== "function" && typeof entry !== "symbol",
-    )
-    .toSorted((left, right) => {
-      const byRank = activityPayloadKeyRank(left[0]) - activityPayloadKeyRank(right[0]);
-      return byRank !== 0 ? byRank : left[0].localeCompare(right[0]);
-    });
-  const retainedEntries = entries.slice(0, options.objectKeys);
+  const entries = Object.entries(value).filter(
+    ([, entry]) => entry !== undefined && typeof entry !== "function" && typeof entry !== "symbol",
+  );
+  const retainedEntries = selectLeadingActivityPayloadEntries(entries, options.objectKeys);
   const result: Record<string, unknown> = {};
   for (const [key, entry] of retainedEntries) {
     result[key] = truncateJsonValue(entry, { ...options, depth: options.depth - 1 });
@@ -526,11 +525,16 @@ export function runtimeTurnState(
 
 function requestKindFromCanonicalRequestType(
   requestType: string | undefined,
-): "command" | "file-read" | "file-change" | "permissions" | undefined {
+): "command" | "file-read" | "file-change" | "permissions" | "tool" | undefined {
   if (requestType === "command_execution_approval" || requestType === "exec_command_approval")
     return "command";
   if (requestType === "file_read_approval") return "file-read";
   if (requestType === "permissions_approval") return "permissions";
+  if (requestType === "tool_approval") return "tool";
+  // Legacy Claude classification: generic/MCP tool approvals were labelled with the
+  // item type instead of the canonical "tool_approval". Kept so persisted events
+  // still resolve to a renderable kind.
+  if (requestType === "dynamic_tool_call") return "tool";
   return requestType === "file_change_approval" || requestType === "apply_patch_approval"
     ? "file-change"
     : undefined;
@@ -556,6 +560,108 @@ function sessionApprovalAvailable(
   return typeof args?.sessionApprovalAvailable === "boolean"
     ? args.sessionApprovalAvailable
     : undefined;
+}
+
+// Approval cards render `toolParamsDisplay` entries as name/value rows, so a raw
+// tool-input object has to be flattened into that shape.
+function toolParamsDisplayFromToolInput(
+  input: Record<string, unknown> | undefined,
+): ReadonlyArray<{ readonly name: string; readonly value: unknown }> | undefined {
+  if (!input) {
+    return undefined;
+  }
+  const entries = Object.entries(input).map(([name, value]) => ({ name, value }));
+  return entries.length > 0 ? entries : undefined;
+}
+
+// Values are stringified rather than passed through as nested JSON: the card
+// prints one compact line per parameter, and pre-formatting keeps the persisted
+// payload small. Approval cards are persisted and replayed, so a credential-named
+// parameter, or a credential nested inside one, is redacted before it gets there.
+function toolParamDisplayValue(names: ReadonlyArray<string | undefined>, value: unknown): string {
+  if (names.some((name) => name !== undefined && isSensitiveKey(name))) {
+    return REDACTED_SENSITIVE_VALUE;
+  }
+  if (typeof value === "string") {
+    return redactStructuredToolParamString(value);
+  }
+  // No unredacted fallback serializer: a value JSON cannot encode is shown as
+  // its string form instead.
+  return safeStringifyToolParamValue(value) ?? String(value);
+}
+
+// Codex can supply already-formatted parameter strings. Inspect a complete JSON
+// object or array, but leave ordinary strings and JSON without secrets unchanged.
+function redactStructuredToolParamString(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return value;
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (parsed === null || typeof parsed !== "object") {
+      return value;
+    }
+    let redacted = false;
+    const serialized = JSON.stringify(parsed, (key, entry: unknown) => {
+      if (isSensitiveKey(key)) {
+        redacted = true;
+      }
+      return redactSensitiveJsonFields(key, entry);
+    });
+    return redacted ? serialized : value;
+  } catch {
+    return value;
+  }
+}
+
+function safeStringifyToolParamValue(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value, redactSensitiveJsonFields);
+  } catch {
+    return undefined;
+  }
+}
+
+function requestedMcpToolCallPresentation(
+  event: Extract<ProviderRuntimeEvent, { type: "request.opened" }>,
+): { title?: string; toolName?: string; toolParamsDisplay?: unknown } {
+  // "dynamic_tool_call" is the legacy Claude request type for the same approval.
+  if (
+    event.payload.requestType !== "tool_approval" &&
+    event.payload.requestType !== "dynamic_tool_call"
+  ) {
+    return {};
+  }
+  const args = asObject(event.payload.args);
+  // Codex ships presentation through MCP elicitation `_meta`; Claude's canUseTool
+  // request carries the tool name and the raw tool input instead.
+  const metadata = asObject(args?._meta);
+  const title = asString(metadata?.tool_title);
+  const toolName = asString(metadata?.tool_name) ?? asString(args?.toolName);
+  const rawParams = Array.isArray(metadata?.tool_params_display)
+    ? metadata.tool_params_display
+    : toolParamsDisplayFromToolInput(asObject(args?.input));
+  // Preserve the array shape consumed by approval cards even for large inputs.
+  const toolParamsDisplay = rawParams?.slice(0, 12).map((entry) => {
+    const row = asObject(entry);
+    const name = asString(row?.name);
+    const displayName = asString(row?.display_name);
+    return {
+      ...(displayName ? { display_name: truncateJsonString(displayName, 128) } : {}),
+      name: truncateJsonString(name ?? "argument", 128),
+      value: truncateJsonString(toolParamDisplayValue([name, displayName], row?.value), 900),
+    };
+  });
+  return {
+    ...(title ? { title: truncateJsonString(title, 128) } : {}),
+    ...(toolName ? { toolName } : {}),
+    ...(toolParamsDisplay !== undefined ? { toolParamsDisplay } : {}),
+  };
+}
+
+function boundActivityDataOrUndefined(value: unknown): unknown {
+  return value === undefined ? undefined : boundActivityData(value);
 }
 
 export function projectProviderRuntimeActivities(
@@ -660,6 +766,8 @@ export function projectProviderRuntimeActivities(
         event.type === "request.opened" ? requestedPermissionProfile(event) : undefined;
       const canApproveForSession =
         event.type === "request.opened" ? sessionApprovalAvailable(event) : undefined;
+      const toolCallPresentation =
+        event.type === "request.opened" ? requestedMcpToolCallPresentation(event) : {};
       const requestId = nonEmptyTrimmed(event.requestId);
       return [
         {
@@ -678,7 +786,9 @@ export function projectProviderRuntimeActivities(
                     ? "File-change approval requested"
                     : requestKind === "permissions"
                       ? "Permission approval requested"
-                      : "Approval requested",
+                      : requestKind === "tool"
+                        ? "Tool approval requested"
+                        : "Approval requested",
           payload: toActivityPayload({
             // Omitted, never `undefined`: `Schema.Json` rejects a member that is
             // explicitly present and undefined.
@@ -692,6 +802,7 @@ export function projectProviderRuntimeActivities(
               ? { detail: truncateDetail(event.payload.detail) }
               : {}),
             ...(permissionProfile ? { permissionProfile } : {}),
+            ...toolCallPresentation,
             ...(canApproveForSession !== undefined
               ? { sessionApprovalAvailable: canApproveForSession }
               : {}),
@@ -1386,4 +1497,55 @@ export function providerActivityUpdateFingerprint(activity: OrchestrationThreadA
     payload: activity.payload,
     turnId: activity.turnId,
   });
+}
+
+function compareActivityPayloadEntries(
+  left: readonly [string, unknown],
+  right: readonly [string, unknown],
+): number {
+  const byRank = activityPayloadKeyRank(left[0]) - activityPayloadKeyRank(right[0]);
+  return byRank !== 0 ? byRank : left[0].localeCompare(right[0]);
+}
+
+/**
+ * The first `limit` entries in rank/name order, without sorting the whole
+ * object first. Payloads are untrusted and can be arbitrarily wide, so a full
+ * sort just to keep a handful of keys made truncation itself the expensive
+ * step. Keys are unique, so the comparator never ties and the selection is
+ * exactly `toSorted(...).slice(0, limit)`.
+ */
+function selectLeadingActivityPayloadEntries(
+  entries: ReadonlyArray<[string, unknown]>,
+  limit: number,
+): Array<[string, unknown]> {
+  if (limit <= 0) {
+    return [];
+  }
+  if (entries.length <= limit) {
+    return entries.toSorted(compareActivityPayloadEntries);
+  }
+  const leading: Array<[string, unknown]> = [];
+  for (const entry of entries) {
+    if (
+      leading.length === limit &&
+      compareActivityPayloadEntries(entry, leading[leading.length - 1]!) >= 0
+    ) {
+      continue;
+    }
+    let low = 0;
+    let high = leading.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (compareActivityPayloadEntries(leading[middle]!, entry) <= 0) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    leading.splice(low, 0, entry);
+    if (leading.length > limit) {
+      leading.pop();
+    }
+  }
+  return leading;
 }

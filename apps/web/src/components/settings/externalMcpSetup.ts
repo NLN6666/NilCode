@@ -204,5 +204,8 @@ export function describeExternalMcpPermissions(
   if (capabilities.includes("runtime:full-access")) {
     descriptions.push(copy.fullAccess);
   }
+  if (capabilities.includes("computer:control")) {
+    descriptions.push("Control this Mac (per-action approval still applies)");
+  }
   return descriptions.join(" · ");
 }

@@ -1,4 +1,10 @@
 import { Schema } from "effect";
+import type {
+  ImportProjectInput,
+  ImportProjectResult,
+  ListProjectImportsInput,
+  ListProjectImportsResult,
+} from "./projectImport";
 
 import type {
   AuthBearerBootstrapResult,
@@ -202,6 +208,26 @@ import type {
   DeviceTypeTextInput,
   ThreadDeviceState,
 } from "./device";
+import type {
+  ComputerActionResult,
+  ComputerControlEnabledResult,
+  ComputerEvent,
+  ComputerGetStateInput,
+  ComputerGetStatusInput,
+  ComputerInputClickInput,
+  ComputerInputKeyInput,
+  ComputerInputScrollInput,
+  ComputerListWindowsInput,
+  ComputerListWindowsResult,
+  ComputerProvisionInput,
+  ComputerProvisionResult,
+  ComputerSetControlEnabledInput,
+  ComputerState,
+  ComputerStatusResult,
+  ComputerThreadInput,
+  ThreadComputerState,
+} from "./computer";
+import type { ComputerGetAuditHistoryInput, ComputerGetAuditHistoryResult } from "./computerAudit";
 import type { StudioListThreadOutputsInput, StudioListThreadOutputsResult } from "./studio";
 import type {
   ServerConfig,
@@ -214,11 +240,15 @@ import type {
   OmpLaunchSendInput,
   OmpLaunchStopInput,
   OmpRuntimeService,
+  ServerReadThreadDiagnosticsInput,
+  ServerReadThreadDiagnosticsResult,
   ServerGenerateAutomationIntentInput,
   ServerGenerateAutomationIntentResult,
   ServerGenerateThreadRecapInput,
   ServerGenerateThreadRecapResult,
   ServerGetEnvironmentResult,
+  ServerConsumeCodexResetCreditInput,
+  ServerConsumeCodexResetCreditResult,
   ServerGetProviderUsageSnapshotInput,
   ServerGetProviderUsageSnapshotResult,
   ServerListProviderUsageInput,
@@ -358,6 +388,9 @@ export interface DesktopUpdateState {
   errorContext: "check" | "download" | "install" | null;
   canRetry: boolean;
   installFailureCount: number;
+  // Build flavor of the running desktop app ("production" | "beta" | "canary" | "cua").
+  // The web UI uses it for beta-only branding; production builds never see it.
+  flavor: "production" | "beta" | "canary" | "cua";
   // Public URL where the user can manually download the release when the
   // in-app updater cannot apply it (silent installer failure, unsigned build,
   // read-only install location, unsupported platform). Null when no GitHub
@@ -369,6 +402,55 @@ export interface DesktopUpdateActionResult {
   accepted: boolean;
   completed: boolean;
   state: DesktopUpdateState;
+}
+
+/** In-flight or failed beta download/install reported by the stable side. */
+export interface DesktopBetaInstallProgress {
+  readonly phase: "downloading" | "verifying" | "installing" | "opening" | "error";
+  /** 0-100 while the download reports a content length; null when indeterminate. */
+  readonly percent: number | null;
+  readonly message?: string;
+}
+
+/** Result of a stable-side probe for a parallel Synara Beta install. */
+export interface DesktopBetaChannelState {
+  /** False on web builds and unsupported probing environments. */
+  readonly supported: boolean;
+  /** Flavor of the running desktop app; the card only acts on "production". */
+  readonly flavor: "production" | "beta" | "canary" | "cua";
+  readonly installed: boolean;
+  readonly version: string | null;
+  /** True when this platform can install beta in place (macOS today). */
+  readonly canInstall: boolean;
+  /** Beta's server pid is alive (its launch marker/runtime file says so). */
+  readonly running: boolean;
+  /** Timestamp of the last completed data import reported by the beta app. */
+  readonly lastImportAt: string | null;
+  readonly lastImportError: string | null;
+  /** Public download page handed to the user when beta is not installed. */
+  readonly downloadUrl: string;
+  /** Live download/install progress; an `error` phase stays until the next attempt. */
+  readonly install: DesktopBetaInstallProgress | null;
+  /** Beta only: a stable Synara app was found to switch back to. */
+  readonly stableInstalled: boolean;
+  /** Beta only: leaving can also move the beta app to the Trash (macOS). */
+  readonly canMoveBetaToTrash: boolean;
+  /** Stable download page offered from beta when stable is not installed. */
+  readonly stableDownloadUrl: string;
+}
+
+export type DesktopBetaActionError =
+  | "not-supported"
+  | "not-installed"
+  | "beta-running"
+  | "install-failed"
+  | "launch-failed"
+  | "internal";
+
+export interface DesktopBetaActionResult {
+  readonly ok: boolean;
+  readonly error?: DesktopBetaActionError;
+  readonly message?: string;
 }
 
 export interface BrowserTabState {
@@ -502,15 +584,34 @@ export interface DesktopAppSnapShortcutUpdateResult {
   availability: DesktopAppSnapShortcutAvailability;
 }
 
+export type DesktopAppSnapSettingsPane = "accessibility" | "input-monitoring" | "screen-recording";
+
+/** A macOS privacy grant the AppSnap helper can check or request. */
+export type DesktopAppSnapPermissionKind = "accessibility" | "inputMonitoring" | "screenRecording";
+
+export type DesktopAppSnapPermissionGuideState = "closed" | "granted";
+
 export interface DesktopAppSnapState {
   platform: DesktopAppSnapPlatform;
   supported: boolean;
   enabled: boolean;
   status: DesktopAppSnapStatus;
   shortcut: DesktopAppSnapShortcut | null;
+  /**
+   * Only present once a caller asked about Accessibility; the helper reports
+   * just the grants it was queried for, so an absent field means "not asked".
+   */
+  accessibilityPermission?: DesktopAppSnapPermission;
   inputMonitoringPermission: DesktopAppSnapPermission;
   screenRecordingPermission: DesktopAppSnapPermission;
   message: string | null;
+  /** Explicit setup failure; unrelated AppSnap capture errors do not set this. */
+  permissionSetupErrorCode?:
+    | "permission_setup_bundle_unavailable"
+    | "permission_setup_registration_unresolved"
+    | "permission_setup_identity_mismatch";
+  /** Name macOS shows for this build in System Settings permission lists. */
+  appDisplayName: string;
 }
 
 export interface DesktopAppSnapCapture {
@@ -695,6 +796,29 @@ export type DesktopSafariAccessInfo =
   | { supported: false }
   | { supported: true; appName: string; appPath: string | null };
 
+/**
+ * One frame of the desktop app's native computer preview tap: a complete JPEG
+ * of the driven window. `seq` is monotonic per host process; the first frame
+ * marks stream start and frames simply stop when the tap ends or dies. Sent
+ * over the desktop bridge only, never through the computer WebSocket path.
+ */
+export interface DesktopComputerPreviewFrame {
+  readonly windowId: number;
+  readonly seq: number;
+  readonly jpeg: Uint8Array;
+}
+
+/**
+ * Agent cursor colors mirrored from the renderer to the desktop main process.
+ * Each channel is a `#rrggbb` string; an omitted channel keeps the driver's
+ * stock treatment for it, and `null` is the stock monochrome cursor.
+ */
+export interface DesktopAgentCursorStyle {
+  readonly fill?: string;
+  readonly rim?: string;
+  readonly shadow?: string;
+}
+
 export interface DesktopBridge {
   safariAccess?: {
     getInfo: () => Promise<DesktopSafariAccessInfo>;
@@ -745,6 +869,24 @@ export interface DesktopBridge {
     setPreference: (enabled: boolean) => Promise<DesktopCustomTitleBarState>;
     relaunch: () => Promise<void>;
   };
+  /**
+   * Live desktop frames from the native computer frame tap, desktop app only.
+   * Plain browser clients never see this member; their preview keeps drawing
+   * the WebSocket stills stream.
+   */
+  computerPreview?: {
+    onFrame: (listener: (frame: DesktopComputerPreviewFrame) => void) => () => void;
+  };
+  /**
+   * Desktop-owned computer preferences. `setCursorStyle` mirrors the agent
+   * cursor colors to the main process, which persists them for the next Cua
+   * driver session and live-pushes them when a session is already open.
+   * `null` restores the stock cursor. Plain browser clients never see this
+   * member; their settings stay local and the driver is not running there.
+   */
+  computer?: {
+    setCursorStyle: (style: DesktopAgentCursorStyle | null) => Promise<void>;
+  };
   onMenuAction: (listener: (action: string) => void) => () => void;
   onQuitConfirmationRequest: (
     listener: (request: DesktopQuitConfirmationRequest) => void,
@@ -758,22 +900,61 @@ export interface DesktopBridge {
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
+  /** Stable→Beta opt-in surface. Absent on builds that do not ship it. */
+  beta?: {
+    getState: () => Promise<DesktopBetaChannelState>;
+    /** Downloads and installs Synara Beta when missing (macOS), then opens it. */
+    install: () => Promise<DesktopBetaActionResult>;
+    /**
+     * Installs Synara Beta when missing (macOS), writes the import marker, and
+     * launches it to consume the import.
+     */
+    importAndLaunch: () => Promise<DesktopBetaActionResult>;
+    launch: () => Promise<DesktopBetaActionResult>;
+    /**
+     * Beta only: opens stable Synara, optionally moves the beta app to the
+     * Trash (macOS), then quits beta. Beta data stays in the beta home.
+     */
+    leave: (input: { readonly moveToTrash: boolean }) => Promise<DesktopBetaActionResult>;
+  };
   notifications: {
     isSupported: () => Promise<boolean>;
     show: (input: DesktopNotificationInput) => Promise<boolean>;
   };
   appSnap: {
-    getState: () => Promise<DesktopAppSnapState>;
+    captureCurrentApp: (requestId: string) => Promise<DesktopAppSnapCapture>;
+    cancelCapture: (requestId: string) => Promise<void>;
+    getState: (
+      permissions?: readonly DesktopAppSnapPermissionKind[],
+    ) => Promise<DesktopAppSnapState>;
     setEnabled: (enabled: boolean) => Promise<DesktopAppSnapState>;
     checkShortcut: (
       shortcut: DesktopAppSnapShortcut,
     ) => Promise<DesktopAppSnapShortcutAvailability>;
     setShortcut: (shortcut: DesktopAppSnapShortcut) => Promise<DesktopAppSnapShortcutUpdateResult>;
-    requestPermissions: () => Promise<DesktopAppSnapState>;
+    requestPermissions: (
+      permissions?: readonly DesktopAppSnapPermissionKind[],
+    ) => Promise<DesktopAppSnapState>;
+    /**
+     * Reads current grants without prompting, then walks the floating permission
+     * coach through each pane still missing a grant — opening its System
+     * Settings page and raising that pane's prompt as each step begins, so macOS
+     * never shows several permission dialogs at once.
+     */
+    startPermissionSetup: (
+      permissions: readonly DesktopAppSnapPermissionKind[],
+    ) => Promise<DesktopAppSnapState>;
     listPendingCaptures: () => Promise<DesktopAppSnapCapture[]>;
     acknowledgeCapture: (captureId: string) => Promise<void>;
     listWindows: () => Promise<DesktopAppSnapWindowEntry[]>;
     captureWindow: (input: { windowId: number }) => Promise<DesktopAppSnapCapture>;
+    openPermissionSettings: (pane: DesktopAppSnapSettingsPane) => Promise<boolean>;
+    restartApp: () => Promise<void>;
+    showPermissionGuide: (pane: DesktopAppSnapSettingsPane) => Promise<void>;
+    hidePermissionGuide: () => Promise<void>;
+    onPermissionGuideState: (
+      listener: (state: DesktopAppSnapPermissionGuideState) => void,
+    ) => () => void;
     onCaptured: (listener: (capture: DesktopAppSnapCapture) => void) => () => void;
     onError: (listener: (error: DesktopAppSnapErrorEvent) => void) => () => void;
     onState: (listener: (state: DesktopAppSnapState) => void) => () => void;
@@ -1003,7 +1184,13 @@ export interface NativeApi {
     listProviderUsage: (
       input: ServerListProviderUsageInput,
     ) => Promise<ServerListProviderUsageResult>;
+    consumeCodexResetCredit: (
+      input: ServerConsumeCodexResetCreditInput,
+    ) => Promise<ServerConsumeCodexResetCreditResult>;
     getDiagnostics: () => Promise<ServerDiagnosticsResult>;
+    readThreadDiagnostics: (
+      input: ServerReadThreadDiagnosticsInput,
+    ) => Promise<ServerReadThreadDiagnosticsResult>;
     generateThreadRecap: (
       input: ServerGenerateThreadRecapInput,
     ) => Promise<ServerGenerateThreadRecapResult>;
@@ -1048,6 +1235,8 @@ export interface NativeApi {
     importThread: (
       input: OrchestrationImportThreadInput,
     ) => Promise<OrchestrationImportThreadResult>;
+    listProjectImports: (input: ListProjectImportsInput) => Promise<ListProjectImportsResult>;
+    importProject: (input: ImportProjectInput) => Promise<ImportProjectResult>;
     regenerateThreadTitle: (
       input: OrchestrationRegenerateThreadTitleInput,
     ) => Promise<OrchestrationRegenerateThreadTitleResult>;
@@ -1120,5 +1309,23 @@ export interface NativeApi {
     describeUi: (input: DeviceDescribeUiInput) => Promise<DeviceDescribeUiResult>;
     scrollToElement: (input: DeviceScrollToElementInput) => Promise<DeviceScrollToElementResult>;
     onEvent: (callback: (event: DeviceEvent) => void) => () => void;
+  };
+  computer: {
+    /** Thread-independent backend status for surfaces outside any conversation. */
+    getStatus: (input: ComputerGetStatusInput) => Promise<ComputerStatusResult>;
+    getAuditHistory: (
+      input: ComputerGetAuditHistoryInput,
+    ) => Promise<ComputerGetAuditHistoryResult>;
+    provision: (input: ComputerProvisionInput) => Promise<ComputerProvisionResult>;
+    setControlEnabled: (
+      input: ComputerSetControlEnabledInput,
+    ) => Promise<ComputerControlEnabledResult>;
+    getThreadState: (input: ComputerThreadInput) => Promise<ThreadComputerState>;
+    getState: (input: ComputerGetStateInput) => Promise<ComputerState>;
+    /** User input from the computer dock pane; needs no agent turn in flight. */
+    inputClick: (input: ComputerInputClickInput) => Promise<ComputerActionResult>;
+    inputScroll: (input: ComputerInputScrollInput) => Promise<ComputerActionResult>;
+    inputKey: (input: ComputerInputKeyInput) => Promise<ComputerActionResult>;
+    onEvent: (callback: (event: ComputerEvent) => void) => () => void;
   };
 }

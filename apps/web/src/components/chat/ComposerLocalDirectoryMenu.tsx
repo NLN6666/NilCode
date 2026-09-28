@@ -418,7 +418,7 @@ export function ComposerLocalDirectoryMenu(props: {
           ) : (
             <FolderClosed className="size-3.5 shrink-0 text-muted-foreground/70" />
           )}
-          <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground/80">
+          <span className="min-w-0 flex-1 truncate text-ui-sm font-medium text-foreground/80">
             {headerLabel}
           </span>
           {!isRootDirectory(directory) ? (
@@ -426,7 +426,7 @@ export function ComposerLocalDirectoryMenu(props: {
               type="button"
               onMouseDown={(event) => event.preventDefault()}
               onClick={handleSelectCurrentDirectory}
-              className={cn(DIRECTORY_MENU_HEADER_ACTION_CLASS_NAME, "px-1.5 py-0.5 text-[10.5px]")}
+              className={cn(DIRECTORY_MENU_HEADER_ACTION_CLASS_NAME, "px-1.5 py-0.5 text-ui-xs")}
             >
               {copy.useThisFolder}
             </button>
@@ -522,7 +522,7 @@ export function ComposerLocalDirectoryMenu(props: {
         ) : isLoading && visibleCount === 0 ? (
           <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">{copy.loading}</p>
         ) : errorMessage ? (
-          <p className="px-2 py-1.5 text-destructive/80 text-[11px]">{errorMessage}</p>
+          <p className="px-2 py-1.5 text-destructive/80 text-ui-sm">{errorMessage}</p>
         ) : isSearchPending ? (
           <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">{copy.searching}</p>
         ) : visibleCount === 0 ? (
@@ -615,11 +615,11 @@ function LocalSearchRow(props: {
         <FileIcon className="size-3.5 text-muted-foreground/60" />
       )}
       <div className="min-w-0 flex flex-1 items-center gap-3">
-        <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-foreground/80">
+        <span className="min-w-0 flex-1 truncate text-ui-sm font-medium text-foreground/80">
           {entry.name}
         </span>
         {subtitle ? (
-          <span className="shrink-0 max-w-[60%] truncate pl-2 text-right text-[10.5px] text-muted-foreground/42">
+          <span className="shrink-0 max-w-[60%] truncate pl-2 text-right text-ui-xs text-muted-foreground/42">
             {subtitle}
           </span>
         ) : null}
@@ -657,7 +657,7 @@ function LocalEntryRow(props: {
         <FileIcon className="size-3.5 text-muted-foreground/60" />
       )}
       <div className="min-w-0 flex flex-1 items-center gap-1.5 overflow-hidden">
-        <span className="truncate text-[11.5px] font-medium text-foreground/80">{entry.name}</span>
+        <span className="truncate text-ui-sm font-medium text-foreground/80">{entry.name}</span>
       </div>
     </CommandItem>
   );

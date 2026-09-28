@@ -29,6 +29,13 @@ export const DESKTOP_IPC_CHANNELS = {
   menuAction: "desktop:menu-action",
   quitConfirmationRequest: "desktop:quit-confirmation-request",
   quitConfirmationResponse: "desktop:quit-confirmation-response",
+  beta: {
+    getState: "desktop:beta-get-state",
+    launch: "desktop:beta-launch",
+    install: "desktop:beta-install",
+    importAndLaunch: "desktop:beta-import-and-launch",
+    leave: "desktop:beta-leave",
+  },
   updateState: "desktop:update-state",
   updateGetState: "desktop:update-get-state",
   updateCheck: "desktop:update-check",
@@ -40,20 +47,30 @@ export const DESKTOP_IPC_CHANNELS = {
   zoomFactorChanged: "desktop:zoom-factor-changed",
   wsUrl: "desktop:get-ws-url",
   transcribeVoice: "desktop:server-transcribe-voice",
+  computerPreviewFrame: "computerPreview.frame",
+  computerSetCursorStyle: "desktop:computer-set-cursor-style",
   storageMigration: {
     read: "desktop:storage-migration-read",
     acknowledge: "desktop:storage-migration-acknowledge",
   },
   appSnap: {
+    captureCurrentApp: "desktop:appsnap-capture-current-app",
+    cancelCapture: "desktop:appsnap-cancel-capture",
     getState: "desktop:appsnap-get-state",
     setEnabled: "desktop:appsnap-set-enabled",
     checkShortcut: "desktop:appsnap-check-shortcut",
     setShortcut: "desktop:appsnap-set-shortcut",
     requestPermissions: "desktop:appsnap-request-permissions",
+    startPermissionSetup: "desktop:appsnap-start-permission-setup",
     listPendingCaptures: "desktop:appsnap-list-pending-captures",
     acknowledgeCapture: "desktop:appsnap-acknowledge-capture",
     listWindows: "desktop:appsnap-list-windows",
     captureWindow: "desktop:appsnap-capture-window",
+    openPermissionSettings: "desktop:appsnap-open-permission-settings",
+    restartApp: "desktop:appsnap-restart-app",
+    showPermissionGuide: "desktop:appsnap-show-permission-guide",
+    hidePermissionGuide: "desktop:appsnap-hide-permission-guide",
+    permissionGuideState: "desktop:appsnap-permission-guide-state",
     captured: "desktop:appsnap-captured",
     error: "desktop:appsnap-error",
     state: "desktop:appsnap-state",
@@ -113,5 +130,6 @@ export const DESKTOP_IPC_CHANNELS = {
 export const BROWSER_IPC_CHANNELS = DESKTOP_IPC_CHANNELS.browser;
 export const BROWSER_ANNOTATION_GUEST_COMMAND_CHANNEL = "desktop:browser-annotations-guest-command";
 export const APPSNAP_IPC_CHANNELS = DESKTOP_IPC_CHANNELS.appSnap;
+export const BETA_IPC_CHANNELS = DESKTOP_IPC_CHANNELS.beta;
 export const DESKTOP_WS_URL_CHANNEL = DESKTOP_IPC_CHANNELS.wsUrl;
 export const SERVER_TRANSCRIBE_VOICE_CHANNEL = DESKTOP_IPC_CHANNELS.transcribeVoice;

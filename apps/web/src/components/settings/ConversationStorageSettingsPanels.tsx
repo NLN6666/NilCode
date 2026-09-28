@@ -6,7 +6,7 @@
 import type { ThreadId } from "@synara/contracts";
 import { collectSubagentDescendants } from "@synara/shared/threadHierarchy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { useMessages } from "../../i18n/context";
@@ -21,14 +21,9 @@ import { ensureNativeApi, readNativeApi } from "~/nativeApi";
 import { SETTINGS_CARD_ROW_DESCRIPTION_CLASS_NAME } from "~/settingsPanelStyles";
 import { useStore } from "~/store";
 import { createThreadShellsSelector } from "~/storeSelectors";
-import { formatWorktreePathForDisplay } from "~/worktreeCleanup";
+import { formatWorktreePathForDisplay, isThreadAssociatedWithWorktree } from "~/worktreeCleanup";
 import { toastManager } from "../ui/toast";
 import { SettingsEmptyState, SettingsListRow, SettingsSection } from "./SettingsPanelPrimitives";
-
-type WorktreeAssociation = {
-  worktreePath?: string | null | undefined;
-  associatedWorktreePath?: string | null | undefined;
-};
 
 type ArchivedSortableThread = {
   id: string;
@@ -36,16 +31,6 @@ type ArchivedSortableThread = {
   updatedAt?: string | null | undefined;
   createdAt: string;
 };
-
-function isThreadAssociatedWithWorktree(
-  thread: WorktreeAssociation,
-  worktreePath: string,
-): boolean {
-  return [thread.worktreePath, thread.associatedWorktreePath].some((candidate) => {
-    const normalized = candidate?.trim();
-    return Boolean(normalized) && normalized === worktreePath;
-  });
-}
 
 function compareArchivedThreads(left: ArchivedSortableThread, right: ArchivedSortableThread) {
   const leftKey = left.archivedAt ?? left.updatedAt ?? left.createdAt;
@@ -328,6 +313,19 @@ export function ArchivedSettingsPanel({ active }: { readonly active: boolean }) 
     [m],
   );
 
+  // Subagent threads are hidden from this list and unreachable without their
+  // parent, so deleting the parent removes the whole subtree. Children go
+  // first so a mid-flight failure cannot strand them without a parent entry.
+  const collectSubtreeDeletionOrder = useCallback(
+    (threadId: ThreadId): ThreadId[] => [
+      ...collectSubagentDescendants(threadShells, threadId)
+        .map((thread) => thread.id)
+        .toReversed(),
+      threadId,
+    ],
+    [threadShells],
+  );
+
   const deleteArchivedThread = useCallback(
     async (threadId: ThreadId, threadTitle: string) => {
       const api = readNativeApi();
@@ -335,15 +333,9 @@ export function ArchivedSettingsPanel({ active }: { readonly active: boolean }) 
       const confirmed = await api.dialogs.confirm(m.settings.archived.deleteConfirm(threadTitle));
       if (!confirmed) return;
       try {
-        // Subagent threads are hidden from this list and unreachable without their
-        // parent, so deleting the parent removes the whole subtree. Children go
-        // first so a mid-flight failure cannot strand them without a parent entry.
-        const subagentThreadIds = collectSubagentDescendants(threadShells, threadId).map(
-          (thread) => thread.id,
-        );
         await deleteArchivedThreadsFromClient({
           api: api.orchestration,
-          threadIds: [...subagentThreadIds.toReversed(), threadId],
+          threadIds: collectSubtreeDeletionOrder(threadId),
           removeDeletedThreadFromClientState,
         });
         toastManager.add({
@@ -360,8 +352,48 @@ export function ArchivedSettingsPanel({ active }: { readonly active: boolean }) 
         });
       }
     },
-    [m, removeDeletedThreadFromClientState, threadShells],
+    [m, collectSubtreeDeletionOrder, removeDeletedThreadFromClientState],
   );
+
+  const archivedThreadCount = archivedGroups.reduce(
+    (count, group) => count + group.threads.length,
+    0,
+  );
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const deleteAllArchivedThreads = useCallback(async () => {
+    const api = readNativeApi();
+    if (!api) return;
+    const rootThreadIds = archivedGroups.flatMap((group) =>
+      group.threads.map((thread) => thread.id),
+    );
+    if (rootThreadIds.length === 0) return;
+    const confirmed = await api.dialogs.confirm(
+      m.settings.archived.deleteAllConfirm(rootThreadIds.length),
+    );
+    if (!confirmed) return;
+    setIsDeletingAll(true);
+    try {
+      await deleteArchivedThreadsFromClient({
+        api: api.orchestration,
+        threadIds: rootThreadIds.flatMap(collectSubtreeDeletionOrder),
+        removeDeletedThreadFromClientState,
+      });
+      toastManager.add({
+        type: "success",
+        title: m.settings.archived.deleteAllSuccessTitle,
+        description: m.settings.archived.deleteAllSuccessDescription(rootThreadIds.length),
+      });
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: m.settings.archived.deleteAllFailedTitle,
+        description:
+          error instanceof Error ? error.message : m.settings.archived.deleteAllFailedDescription,
+      });
+    } finally {
+      setIsDeletingAll(false);
+    }
+  }, [archivedGroups, collectSubtreeDeletionOrder, m, removeDeletedThreadFromClientState]);
 
   const handleContextMenu = useCallback(
     async (threadId: ThreadId, threadTitle: string, position: { x: number; y: number }) => {
@@ -401,6 +433,19 @@ export function ArchivedSettingsPanel({ active }: { readonly active: boolean }) 
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-ui-sm text-muted-foreground">
+          {m.settings.archived.count(archivedThreadCount)}
+        </span>
+        <Button
+          size="xs"
+          variant="destructive"
+          disabled={isDeletingAll}
+          onClick={() => void deleteAllArchivedThreads()}
+        >
+          {m.settings.archived.deleteAll}
+        </Button>
+      </div>
       {archivedGroups.map(({ project, threads }) => (
         <SettingsSection
           key={project?.id ?? "unknown-project"}

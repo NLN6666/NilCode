@@ -5,18 +5,15 @@ import {
   getRuntimeAwareModelCapabilities,
   resolveRuntimeModelDescriptor,
 } from "./runtimeModelCapabilities";
-import { withCloudModelDescriptors } from "~/providerModelOptions";
+import { mergeDynamicModelOptions, withCloudModelDescriptors } from "~/providerModelOptions";
+import { providerModelSupportsAutoRuntimeMode } from "~/lib/runtimeMode";
 
 const efforts = (input: Parameters<typeof getRuntimeAwareModelCapabilities>[0]) =>
   getRuntimeAwareModelCapabilities(input).reasoningEffortLevels.map((level) => level.value);
 
 describe("getRuntimeAwareModelCapabilities for Claude", () => {
   it("gives a model outside the built-in table the discovered ladder", () => {
-    // A model the cloud catalog ships before this build's table knows it, which
-    // without this reaches the trait picker with no effort options at all. The
-    // slug has to be one the table still has no ladder for — the moment it gains
-    // one, `keepsCuratedClaudeEfforts` takes over and this stops testing
-    // discovery at all (which is what retired the original claude-opus-5 here).
+    // Family fallback must not mask the actual discovered ladder of a newer model.
     expect(
       efforts({
         provider: "claudeAgent",
@@ -53,8 +50,14 @@ describe("getRuntimeAwareModelCapabilities for Claude", () => {
     expect(curated.length).toBeGreaterThan(2);
   });
 
-  it("stays empty when neither the table nor discovery knows the model", () => {
-    expect(efforts({ provider: "claudeAgent", model: "claude-opus-9" })).toEqual([]);
+  it("borrows the newest family ladder for a newer Claude model until discovery arrives", () => {
+    expect(efforts({ provider: "claudeAgent", model: "claude-opus-9" })).toEqual(
+      efforts({ provider: "claudeAgent", model: "claude-opus-5-5" }),
+    );
+  });
+
+  it("does not guess a ladder for an unrecognized Claude model", () => {
+    expect(efforts({ provider: "claudeAgent", model: "claude-custom" })).toEqual([]);
   });
 });
 
@@ -120,5 +123,66 @@ describe("resolveRuntimeModelDescriptor", () => {
         runtimeModels,
       }),
     ).toBe(runtimeModels[0]);
+  });
+
+  it.each([
+    ["opus", true],
+    ["opus[1m]", true],
+    ["opus[1m]", false],
+  ] as const)("preserves Auto support for discovered %s (%s)", (slug, supportsAutoMode) => {
+    const runtimeModels: ReadonlyArray<ProviderModelDescriptor> = [
+      { slug, resolvedModel: "claude-opus-6[1m]", name: "Opus", supportsAutoMode },
+    ];
+    const [option] = mergeDynamicModelOptions({
+      provider: "claudeAgent",
+      staticOptions: [],
+      dynamicModels: runtimeModels,
+    });
+    expect(option?.slug).toBe("claude-opus-6");
+    const descriptor = resolveRuntimeModelDescriptor({
+      provider: "claudeAgent",
+      model: option?.slug,
+      runtimeModels,
+    });
+    expect(descriptor).toBe(runtimeModels[0]);
+    expect(
+      providerModelSupportsAutoRuntimeMode("claudeAgent", descriptor, {
+        provider: "claudeAgent",
+        status: "ready",
+        available: true,
+        authStatus: "authenticated",
+        supportsAutoRuntimeMode: true,
+        checkedAt: new Date(0).toISOString(),
+      }),
+    ).toBe(supportsAutoMode);
+  });
+
+  it("prefers an exact Claude descriptor over a context-qualified fallback", () => {
+    const runtimeModels: ReadonlyArray<ProviderModelDescriptor> = [
+      {
+        slug: "opus[1m]",
+        resolvedModel: "claude-opus-6[1m]",
+        name: "Opus",
+        supportsAutoMode: true,
+      },
+      { slug: "claude-opus-6", name: "Opus", supportsAutoMode: false },
+    ];
+    expect(
+      resolveRuntimeModelDescriptor({
+        provider: "claudeAgent",
+        model: "claude-opus-6",
+        runtimeModels,
+      }),
+    ).toBe(runtimeModels[1]);
+  });
+
+  it("does not resolve an explicitly qualified selection to a bare Claude descriptor", () => {
+    expect(
+      resolveRuntimeModelDescriptor({
+        provider: "claudeAgent",
+        model: "claude-opus-6[1m]",
+        runtimeModels: [{ slug: "claude-opus-6", name: "Opus", supportsAutoMode: true }],
+      }),
+    ).toBeUndefined();
   });
 });

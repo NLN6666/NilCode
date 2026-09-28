@@ -18,6 +18,9 @@ export const settingsNav = {
   searchAriaLabel: "Search settings",
   searchResultsAriaLabel: "Settings search results",
   noResults: "No matching settings.",
+  badges: {
+    beta: "Beta",
+  },
 
   groups: {
     personal: "Personal",
@@ -59,6 +62,10 @@ export const settingsNav = {
     appsnap: {
       label: "AppSnap",
       description: "Capture another app's frontmost window directly into a task.",
+    },
+    computer: {
+      label: "Computer",
+      description: "Let the agent control a desktop and customize its pointer and preview.",
     },
     mcpServers: {
       label: "MCP Servers",

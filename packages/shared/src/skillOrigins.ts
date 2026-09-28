@@ -29,6 +29,7 @@ export const SKILL_HOME_ORIGIN_ORDER = [
   "grok",
   "factory",
   "opencode",
+  "omp",
   "pi",
   "devin",
   "agents",
@@ -53,7 +54,7 @@ export const PROVIDER_SKILL_ORIGINS = {
   grok: ["grok", "claude", "agents"],
   droid: ["factory", "agents", "claude", "codex"],
   opencode: ["opencode", "claude", "agents"],
-  omp: [],
+  omp: ["omp"],
   pi: ["pi", "agents"],
   devin: ["devin", "claude", "agents"],
 } as const satisfies Record<ProviderKind, readonly SkillHomeOrigin[]>;

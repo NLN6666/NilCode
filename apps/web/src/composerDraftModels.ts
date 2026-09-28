@@ -13,6 +13,7 @@ import {
   type GrokReasoningEffort,
   type ModelSelection,
   type ModelSlug,
+  type OmpModelOptions,
   type PiThinkingLevel,
   type ProviderModelOptions,
 } from "@synara/contracts";
@@ -22,6 +23,7 @@ import {
   getDefaultModel,
   normalizeGrokModelOptions,
   normalizeModelSlug,
+  normalizeOmpModelOptions,
   resolveModelSlugForProvider,
   resolveSelectableModel,
 } from "@synara/shared/model";
@@ -216,20 +218,20 @@ export function makeModelSelection(
           ? { options: options as Extract<ModelSelection, { provider: "opencode" }>["options"] }
           : {}),
       };
-    case "omp":
-      return {
-        provider,
-        model,
-        ...(options
-          ? { options: options as Extract<ModelSelection, { provider: "omp" }>["options"] }
-          : {}),
-      };
     case "pi":
       return {
         provider,
         model,
         ...(options
           ? { options: options as Extract<ModelSelection, { provider: "pi" }>["options"] }
+          : {}),
+      };
+    case "omp":
+      return {
+        provider,
+        model,
+        ...(options
+          ? { options: options as Extract<ModelSelection, { provider: "omp" }>["options"] }
           : {}),
       };
   }
@@ -377,8 +379,6 @@ export function normalizeProviderModelOptions(
           ...(openCodeAgent !== undefined ? { agent: openCodeAgent } : {}),
         }
       : undefined;
-  const ompThinkingLevel = trimStringOrUndefined(ompCandidate?.thinkingLevel);
-  const omp = ompThinkingLevel !== undefined ? { thinkingLevel: ompThinkingLevel } : undefined;
   const piThinkingLevel: PiThinkingLevel | undefined =
     piCandidate?.thinkingLevel === "off" ||
     piCandidate?.thinkingLevel === "minimal" ||
@@ -409,6 +409,7 @@ export function normalizeProviderModelOptions(
           ...(devinModelVariant !== undefined ? { modelVariant: devinModelVariant } : {}),
         }
       : undefined;
+  const omp = normalizeOmpModelOptions(ompCandidate as OmpModelOptions | null | undefined);
   if (
     !codex &&
     !claude &&
@@ -432,8 +433,8 @@ export function normalizeProviderModelOptions(
     ...(grok ? { grok } : {}),
     ...(droid ? { droid } : {}),
     ...(opencode ? { opencode } : {}),
-    ...(omp ? { omp } : {}),
     ...(pi ? { pi } : {}),
+    ...(omp ? { omp } : {}),
   };
 }
 
@@ -703,7 +704,10 @@ export function deriveEffectiveComposerModelState(input: {
         activeSelection.model,
       )
     : null;
-  const unlistedDraftModel = input.selectedProvider === "pi" ? selectedDraftModel : null;
+  // pi and omp serve fully dynamic catalogs, so a draft model can be absent
+  // from the option list; keep it ahead of the first-catalog-entry fallback.
+  const unlistedDraftModel =
+    input.selectedProvider === "pi" || input.selectedProvider === "omp" ? selectedDraftModel : null;
   const selectedModel =
     resolveAvailableModel(activeSelection?.model) ??
     resolveAvailableModel(
@@ -759,9 +763,10 @@ export function resolvePreferredComposerModelSelection(input: {
     input.defaultProvider ??
     "codex";
 
-  // Pi has no built-in default model, so it falls back to Codex like the rest of
-  // the composer does; the user default is read for whichever provider survives.
-  const fallbackProvider = preferredProvider === "pi" ? "codex" : preferredProvider;
+  // Pi and OMP have no built-in default model; fall back to Codex only when no
+  // draft, thread, or project selection remembers their provider's model.
+  const fallbackProvider =
+    preferredProvider === "pi" || preferredProvider === "omp" ? "codex" : preferredProvider;
   const userDefault = resolveDefaultModelRef(input.defaultModelByProvider, fallbackProvider);
   const userDefaultModel = userDefault?.slug ?? null;
   const defaultTraitOptions = defaultModelTraitOptions(fallbackProvider, userDefault);

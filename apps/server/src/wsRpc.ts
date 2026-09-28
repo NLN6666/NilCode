@@ -1,7 +1,9 @@
+import { AgentGatewaySessionRegistry } from "./agentGateway/Services/AgentGatewaySessionRegistry";
 import { execFile } from "node:child_process";
 
 import {
   CommandId,
+  COMPUTER_WS_METHODS,
   DEFAULT_TERMINAL_ID,
   DEVICE_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
@@ -13,12 +15,15 @@ import {
   WS_METHODS,
   WsBootstrapRpcGroup,
   WsCompatibilityError,
+  WsComputerRpcGroup,
   WsDeviceRpcGroup,
   WsFeatureRpcGroup,
   WsRpcError,
   PullRequestsUnavailableError,
   type DeviceEvent,
+  type ComputerEvent,
   type GitActionProgressEvent,
+  type GitRemoveWorktreeInput,
   type GitHubProjectProvisionProgressEvent,
   type GitWorktreeSetupProgressEvent,
   type OrchestrationCommand,
@@ -75,6 +80,10 @@ import { DevServerManager, findProjectDevServerForLocalServer } from "./devServe
 import { DeviceService } from "./device/Services/DeviceService";
 import { makeWsDeviceHandlers } from "./device/wsDeviceHandlers";
 import { makeDeviceFrameRouteLayer } from "./device/deviceFrameRoute";
+import { ComputerService } from "./computer/Services/ComputerService";
+import { makeWsComputerHandlers } from "./computer/wsComputerHandlers";
+import { makeComputerFrameRouteLayer } from "./computer/computerFrameRoute";
+import { ComputerEventInterests } from "./computer/computerEventInterests";
 import { GitCore } from "./git/Services/GitCore";
 import { GitHubCli } from "./git/Services/GitHubCli";
 import { GitManager } from "./git/Services/GitManager";
@@ -92,17 +101,31 @@ import {
 import { Keybindings } from "./keybindings";
 import { createLocalPreviewGrant } from "./localImageFiles";
 import { listLocalServers, stopLocalServer } from "./localServerMonitor";
-import { listManagedWorktrees, pruneProjectedArchivedManagedWorktrees } from "./managedWorktrees";
+import {
+  archivedWorktreeHasNoOtherOwners,
+  discardEmptyManagedWorktreeParent,
+  discardManagedWorktreeResidue,
+  isManagedWorktreePathCanonical,
+  listManagedWorktrees,
+  managedWorktreeSnapshotsDir,
+  pruneProjectedArchivedManagedWorktrees,
+} from "./managedWorktrees";
 import {
   attachmentPrincipalForSession,
   CurrentManagedAttachmentPrincipal,
   LOCAL_LOOPBACK_ATTACHMENT_PRINCIPAL,
 } from "./managedAttachmentPrincipal";
 import { Open, resolveAvailableEditors } from "./open";
+import {
+  OrchestrationCommandInvariantError,
+  OrchestrationCommandPreviouslyRejectedError,
+} from "./orchestration/Errors";
 import { makeDispatchCommandNormalizer } from "./orchestration/dispatchCommandNormalization";
 import { prepareQuitResume } from "./orchestration/quitResume";
 import { makeImportThreadHandler } from "./orchestration/importThreadRoute";
 import { mirrorLaunchConfigIntoProject } from "./launchConfigMirror";
+import { makeProjectImportHandlers } from "./orchestration/projectImportRoute";
+import { makeProjectImportRepository } from "./persistence/projectImportRepository";
 import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine";
 import { ProviderCommandReactor } from "./orchestration/Services/ProviderCommandReactor";
 import { SidechatExpiryReactor } from "./orchestration/Services/SidechatExpiryReactor";
@@ -118,7 +141,7 @@ import { getEnabledProviderAdapter } from "./provider/enabledProviderAdapter";
 import { ProviderHealth } from "./provider/Services/ProviderHealth";
 import { ProviderService } from "./provider/Services/ProviderService";
 import type { OhMyPiAdapterShape } from "./provider/Services/OhMyPiAdapter";
-import { listProviderUsage } from "./providerUsage";
+import { consumeCodexResetCreditEffect, listProviderUsage } from "./providerUsage";
 import { getProviderUsageSnapshot } from "./providerUsageSnapshot";
 import { ProfileStatsQuery } from "./profileStats";
 import { redactSensitiveProcessArgs } from "./processArgumentRedaction";
@@ -146,10 +169,13 @@ import {
   makeWsStreamAdmission,
 } from "./wsStreamAdmission";
 import { ThreadDiagnosticsQuery } from "./diagnostics/Services/ThreadDiagnosticsQuery";
+import { makeOwnerThreadDiagnosticReader } from "./diagnostics/ownerThreadDiagnostics";
+import { OrchestrationEventStore } from "./persistence/Services/OrchestrationEventStore";
+import { ProviderRuntimeEventRepository } from "./persistence/Services/ProviderRuntimeEvents";
+import { requireWsOwnerSession } from "./wsOwnerAuthorization";
 import { makeWsRequestAdmission } from "./wsRequestAdmission";
 import { voiceUploadAdmissionGate } from "./voiceUploadAdmission";
 import {
-  CurrentWsSessionRole,
   provideWsConnectionSession,
   WS_CONNECTION_SESSION_HEADER,
   WsConnectionSessions,
@@ -198,12 +224,11 @@ class WsRequestAdmissionMiddleware extends RpcMiddleware.Service<WsRequestAdmiss
   { error: WsRpcError, requiredForClient: false },
 ) {}
 
-// The device group is defined separately in contracts because its engine is
-// macOS-only, but it is served on the same socket: one connection, one
-// admission middleware, one exhaustive handler map.
-const AdmittedWsFeatureRpcGroup = WsFeatureRpcGroup.merge(WsDeviceRpcGroup).middleware(
-  WsRequestAdmissionMiddleware,
-);
+// Optional device and computer groups are served on the same socket: one
+// connection, one admission middleware, one exhaustive handler map.
+const AdmittedWsFeatureRpcGroup = WsFeatureRpcGroup.merge(WsDeviceRpcGroup)
+  .merge(WsComputerRpcGroup)
+  .middleware(WsRequestAdmissionMiddleware);
 
 const wsRequestAdmissionMiddlewareLayer = Layer.effect(
   WsRequestAdmissionMiddleware,
@@ -303,9 +328,20 @@ function readDescendantProcesses(rootPid: number): Promise<ProcessTableRow[]> {
   });
 }
 
-function toWsRpcError(cause: unknown, fallbackMessage: string) {
+export function toWsRpcError(cause: unknown, fallbackMessage: string) {
   if (Schema.is(WsRpcError)(cause)) {
     return cause;
+  }
+  if (
+    cause instanceof OrchestrationCommandInvariantError ||
+    cause instanceof OrchestrationCommandPreviouslyRejectedError
+  ) {
+    return new WsRpcError({
+      message: cause.message,
+      code: "ORCHESTRATION_COMMAND_REJECTED",
+      retryable: false,
+      cause,
+    });
   }
   // Missing projector cursors make the snapshot fence underivable. Mark the
   // failure non-retryable with its own code so clients surface a diagnosable
@@ -392,10 +428,32 @@ const makeWsRpcHandlersLayer = () =>
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
       const threadDiagnostics = yield* ThreadDiagnosticsQuery;
+      const eventStore = yield* OrchestrationEventStore;
+      const providerRuntimeEvents = yield* ProviderRuntimeEventRepository;
+      const readOwnerThreadDiagnostics = makeOwnerThreadDiagnosticReader({
+        eventStore,
+        providerRuntimeEvents,
+        requireThreadShell: (threadId) =>
+          projectionReadModelQuery.getThreadShellById(ThreadId.makeUnsafe(threadId)).pipe(
+            Effect.flatMap(
+              Option.match({
+                onNone: () => Effect.fail(new Error("Thread was not found.")),
+                onSome: Effect.succeed,
+              }),
+            ),
+          ),
+      });
       // Optional so route-level tests and non-macOS builds can mount the RPC
       // group without a device engine; the handlers below then refuse cleanly
       // with the same unsupported-platform answer the backend would give.
       const deviceService = Option.getOrUndefined(yield* Effect.serviceOption(DeviceService));
+      const computerService = Option.getOrUndefined(yield* Effect.serviceOption(ComputerService));
+      const connectionSessions = yield* WsConnectionSessions;
+      const computerInterests = new ComputerEventInterests(connectionSessions.onClose);
+      const computerHandlers = makeWsComputerHandlers(
+        computerService,
+        Option.getOrUndefined(yield* Effect.serviceOption(AgentGatewaySessionRegistry)),
+      );
       const githubProjectProvisioner = yield* makeGitHubProjectProvisioner({
         homeDir: config.homeDir,
         fileSystem,
@@ -641,6 +699,13 @@ const makeWsRpcHandlersLayer = () =>
         providerService,
         serverSettings,
       });
+      const projectImports = makeProjectImportHandlers({
+        repository: yield* makeProjectImportRepository,
+        orchestrationEngine,
+        providerService,
+        providerAdapterRegistry,
+        serverSettings,
+      });
 
       const dispatchOrchestrationCommand = (command: OrchestrationCommand) =>
         Effect.gen(function* () {
@@ -739,6 +804,79 @@ const makeWsRpcHandlersLayer = () =>
           Effect.forkDetach,
           Effect.asVoid,
         );
+
+      const validateArchiveWorktreeRemoval = (input: GitRemoveWorktreeInput) =>
+        Effect.gen(function* () {
+          if (!input.archiveCleanup) return;
+          const { threadId, archiveSequence } = input.archiveCleanup;
+          const events = yield* Stream.runCollect(
+            orchestrationEngine.readThreadEventsThrough(
+              threadId,
+              Math.max(0, archiveSequence - 1),
+              archiveSequence,
+              ["thread.archived"],
+            ),
+          );
+          const archiveEvent = [...events].find((event) => event.sequence === archiveSequence);
+          const shell = Option.getOrUndefined(
+            yield* projectionReadModelQuery.getThreadShellById(threadId),
+          );
+          if (
+            archiveEvent?.type !== "thread.archived" ||
+            !archiveEvent.payload.archivedAt ||
+            !shell ||
+            shell.archivedAt !== archiveEvent.payload.archivedAt ||
+            (shell.session !== null && shell.session.status !== "stopped")
+          ) {
+            return yield* Effect.fail(
+              new WsRpcError({ message: "Archive cleanup is no longer safe for this task." }),
+            );
+          }
+          if (
+            !(yield* isManagedWorktreePathCanonical({
+              worktreesDir: config.worktreesDir,
+              worktreePath: input.path,
+            }))
+          ) {
+            return yield* Effect.fail(
+              new WsRpcError({ message: "Archive cleanup only removes managed worktrees." }),
+            );
+          }
+          // A detached HEAD may contain commits with no branch reference. Do
+          // not silently make those commits unreachable through auto-cleanup.
+          const branchContext = yield* git.readBranchContext(input.path);
+          if (!branchContext.isRepo || branchContext.branch === null) {
+            return yield* Effect.fail(
+              new WsRpcError({ message: "Archive cleanup kept a worktree without a branch." }),
+            );
+          }
+          const owners = yield* projectionReadModelQuery.listManagedWorktreeThreads();
+          if (
+            !(yield* archivedWorktreeHasNoOtherOwners({
+              worktreePath: input.path,
+              threadId,
+              threads: owners,
+            }))
+          ) {
+            return yield* Effect.fail(
+              new WsRpcError({ message: "Another task still refers to this worktree." }),
+            );
+          }
+          // Archive's terminal reactor is asynchronous. Close only sessions
+          // opened before this archive event, preserving a newer restored one.
+          yield* terminalManager.closeSessionsOpenedAtOrBefore({
+            threadId,
+            openedAtOrBefore: archiveEvent.payload.archivedAt,
+          });
+          const afterTerminalCleanup = Option.getOrUndefined(
+            yield* projectionReadModelQuery.getThreadShellById(threadId),
+          );
+          if (afterTerminalCleanup?.archivedAt !== archiveEvent.payload.archivedAt) {
+            return yield* Effect.fail(
+              new WsRpcError({ message: "The task was restored during archive cleanup." }),
+            );
+          }
+        });
 
       const pruneManagedWorktrees = pruneProjectedArchivedManagedWorktrees({
         homeDir: config.homeDir,
@@ -876,11 +1014,7 @@ const makeWsRpcHandlersLayer = () =>
           );
 
       const requireOwner = Effect.gen(function* () {
-        if (!canManageExternalMcp(yield* CurrentWsSessionRole)) {
-          return yield* Effect.fail(
-            new WsRpcError({ message: "Owner authorization is required for this operation." }),
-          );
-        }
+        yield* requireWsOwnerSession;
         if (!isLoopbackHost(config.host) || config.publicUrl !== undefined) {
           return yield* Effect.fail(
             new WsRpcError({
@@ -912,6 +1046,10 @@ const makeWsRpcHandlersLayer = () =>
           ),
         [ORCHESTRATION_WS_METHODS.importThread]: (input) =>
           rpcEffect(importThread(input), "Failed to import thread"),
+        [ORCHESTRATION_WS_METHODS.listProjectImports]: (input) =>
+          rpcEffect(projectImports.listProjectImports(input), "Failed to find local projects"),
+        [ORCHESTRATION_WS_METHODS.importProject]: (input) =>
+          rpcEffect(projectImports.importProject(input), "Failed to import project"),
         [ORCHESTRATION_WS_METHODS.regenerateThreadTitle]: (input) =>
           rpcEffect(
             providerCommandReactor.regenerateThreadTitle(input),
@@ -1587,7 +1725,42 @@ const makeWsRpcHandlersLayer = () =>
           rpcEffect(
             refreshGitStatusAfter(
               input.cwd,
-              git.withMutation(input.cwd, git.removeWorktree(input)),
+              git.withMutation(
+                input.cwd,
+                validateArchiveWorktreeRemoval(input).pipe(
+                  Effect.andThen(
+                    git.removeWorktree(
+                      input.archiveCleanup
+                        ? { ...input, force: false, reclaimTemporaryBranch: false }
+                        : input,
+                    ),
+                  ),
+                  // Automatic archive cleanup preserves recovery data; an
+                  // explicit removal discards snapshots and empty directories.
+                  Effect.tap(() =>
+                    isManagedWorktreePathCanonical({
+                      worktreesDir: config.worktreesDir,
+                      worktreePath: input.path,
+                    }).pipe(
+                      Effect.flatMap((managed) =>
+                        !managed
+                          ? Effect.void
+                          : input.archiveCleanup
+                            ? discardEmptyManagedWorktreeParent({
+                                worktreesDir: config.worktreesDir,
+                                worktreePath: input.path,
+                              })
+                            : discardManagedWorktreeResidue({
+                                worktreesDir: config.worktreesDir,
+                                snapshotsDir: managedWorktreeSnapshotsDir(config.homeDir),
+                                worktreePath: input.path,
+                              }),
+                      ),
+                      Effect.catch(() => Effect.void),
+                    ),
+                  ),
+                ),
+              ),
             ),
             "Failed to remove worktree",
           ),
@@ -1913,6 +2086,8 @@ const makeWsRpcHandlersLayer = () =>
           rpcEffect(getProviderUsageSnapshot(input), "Failed to load provider usage"),
         [WS_METHODS.serverListProviderUsage]: (input) =>
           rpcEffect(listProviderUsage(input), "Failed to load provider usage"),
+        [WS_METHODS.serverConsumeCodexResetCredit]: (input) =>
+          rpcEffect(consumeCodexResetCreditEffect(input), "Failed to use Codex reset"),
         [WS_METHODS.serverGetDiagnostics]: () =>
           rpcEffect(
             Effect.gen(function* () {
@@ -1945,6 +2120,12 @@ const makeWsRpcHandlersLayer = () =>
               return diagnostics;
             }),
             "Failed to load server diagnostics",
+          ),
+        [WS_METHODS.serverReadThreadDiagnostics]: (input) =>
+          requireWsOwnerSession.pipe(
+            Effect.andThen(
+              rpcEffect(readOwnerThreadDiagnostics(input), "Failed to read thread diagnostics"),
+            ),
           ),
         [WS_METHODS.serverPrewarmVoice]: (input) =>
           rpcEffect(
@@ -2260,6 +2441,45 @@ const makeWsRpcHandlersLayer = () =>
                   { label: "device.events" },
                 ),
           ),
+
+        ...computerHandlers,
+        [COMPUTER_WS_METHODS.getAuditHistory]: (input) =>
+          requireWsOwnerSession.pipe(
+            Effect.andThen(computerHandlers[COMPUTER_WS_METHODS.getAuditHistory](input)),
+          ),
+        [COMPUTER_WS_METHODS.getThreadState]: (input, { headers }) =>
+          Effect.suspend(() => {
+            computerInterests.watch(
+              Headers.get(headers, WS_CONNECTION_SESSION_HEADER),
+              input.threadId,
+            );
+            return computerHandlers[COMPUTER_WS_METHODS.getThreadState](input);
+          }),
+        [COMPUTER_WS_METHODS.subscribeEvents]: (_, { clientId, headers }) =>
+          streamAdmission.guard(
+            clientId,
+            { key: "computer.events" },
+            computerService?.supported !== true
+              ? Stream.never
+              : bufferLiveUiStream(
+                  Stream.callback<ComputerEvent>((queue) =>
+                    Effect.gen(function* () {
+                      const connectionKey = Headers.get(headers, WS_CONNECTION_SESSION_HEADER);
+                      const unsubscribe = computerInterests.subscribe(
+                        connectionKey,
+                        computerService.manager.onEvent.bind(computerService.manager),
+                        (event) => {
+                          Effect.runFork(Queue.offer(queue, event).pipe(Effect.asVoid));
+                        },
+                      );
+                      // Socket cleanup owns interests; a stream retry only
+                      // replaces its listener and must retain every live view.
+                      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+                    }),
+                  ),
+                  { label: "computer.events" },
+                ),
+          ),
       });
     }),
   );
@@ -2345,6 +2565,9 @@ export function authorizeDeviceFrameWebSocketUpgrade(input: {
     Effect.orElseSucceed(() => false),
   );
 }
+
+/** Computer still frames use the same trusted-origin and authentication policy. */
+export const authorizeComputerFrameWebSocketUpgrade = authorizeDeviceFrameWebSocketUpgrade;
 
 export function makeWebsocketRpcRouteLayer<R>(
   rpcWebSocketHttpEffectSource: Effect.Effect<
@@ -2555,8 +2778,25 @@ const deviceFrameRouteLayer = makeDeviceFrameRouteLayer({
     }),
 });
 
+const computerFrameRouteLayer = makeComputerFrameRouteLayer({
+  authorizeUpgrade: (request) =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig;
+      const serverAuth = yield* ServerAuth;
+      const url = trustedWebSocketRequestUrl(request, config);
+      if (url === null) return false;
+      return yield* authorizeComputerFrameWebSocketUpgrade({
+        config,
+        legacyToken: url.searchParams.get("token"),
+        request: makeEffectAuthRequest(request),
+        serverAuth,
+      });
+    }),
+});
+
 export const websocketRpcRouteLayer = Layer.mergeAll(
   deviceFrameRouteLayer,
+  computerFrameRouteLayer,
   makeWebsocketNegotiationRouteLayer(),
   // The registry must be provided here so the upgrade route and the RPC
   // middleware (built from the same source effect) share one instance.

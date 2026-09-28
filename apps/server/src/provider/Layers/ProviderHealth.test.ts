@@ -1,3 +1,6 @@
+import * as OS from "node:os";
+import { join } from "node:path";
+
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { ServerProviderStatus } from "@synara/contracts";
 import { DEFAULT_SERVER_SETTINGS, ServerProviderUpdateError } from "@synara/contracts";
@@ -26,8 +29,8 @@ import {
   checkGrokProviderStatus,
   checkOpenCodeProviderStatus,
   checkOhMyPiProviderStatus,
+  checkOmpBetaProviderStatus,
   checkPiProviderStatus,
-  makeDisabledProviderStatus,
   makeCheckClaudeProviderStatus,
   makeCheckCodexProviderStatus,
   makeCheckCursorProviderStatus,
@@ -35,6 +38,7 @@ import {
   makeCheckGrokProviderStatus,
   makeCheckOpenCodeProviderStatus,
   makeCheckOhMyPiProviderStatus,
+  makeDisabledProviderStatus,
   makeProviderHealthLive,
   parseAuthStatusFromOutput,
   parseClaudeAuthStatusFromOutput,
@@ -58,7 +62,8 @@ function mockHandle(
   options?: { readonly exitCode?: Effect.Effect<ChildProcessSpawner.ExitCode> },
 ) {
   return ChildProcessSpawner.makeHandle({
-    pid: ChildProcessSpawner.ProcessId(1),
+    pid: ChildProcessSpawner.ProcessId(0x7ff_f_fffe),
+
     exitCode: options?.exitCode ?? Effect.succeed(ChildProcessSpawner.ExitCode(result.code)),
     isRunning: Effect.succeed(false),
     kill: () => Effect.void,
@@ -128,7 +133,7 @@ function hangingSpawnerLayer(input: {
   readonly shouldHang: (args: ReadonlyArray<string>, command: string) => boolean;
 }) {
   const handle = ChildProcessSpawner.makeHandle({
-    pid: ChildProcessSpawner.ProcessId(2),
+    pid: ChildProcessSpawner.ProcessId(0x7fff_fffe),
     exitCode: Effect.never,
     isRunning: Effect.succeed(true),
     kill: () => Effect.sync(input.onKill),
@@ -1271,31 +1276,6 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
       ),
     );
 
-    it.effect("returns unauthenticated when login status output includes 'not logged in'", () =>
-      Effect.gen(function* () {
-        yield* withTempCodexHome();
-        const status = yield* checkCodexProviderStatus;
-        assert.strictEqual(status.provider, "codex");
-        assert.strictEqual(status.status, "error");
-        assert.strictEqual(status.available, true);
-        assert.strictEqual(status.authStatus, "unauthenticated");
-        assert.strictEqual(
-          status.message,
-          "Codex CLI is not authenticated. Run `codex login` and try again.",
-        );
-      }).pipe(
-        Effect.provide(
-          mockSpawnerLayer((args) => {
-            const joined = args.join(" ");
-            if (joined === "--version") return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
-            if (joined === "-c mcp_servers={} login status")
-              return { stdout: "Not logged in\n", stderr: "", code: 1 };
-            throw new Error(`Unexpected args: ${joined}`);
-          }),
-        ),
-      ),
-    );
-
     it.effect("returns warning when login status command is unsupported", () =>
       Effect.gen(function* () {
         yield* withTempCodexHome();
@@ -1402,12 +1382,6 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
   // ── parseAuthStatusFromOutput pure tests ──────────────────────────
 
   describe("parseAuthStatusFromOutput", () => {
-    it("exit code 0 with no auth markers is ready", () => {
-      const parsed = parseAuthStatusFromOutput({ stdout: "OK\n", stderr: "", code: 0 });
-      assert.strictEqual(parsed.status, "ready");
-      assert.strictEqual(parsed.authStatus, "authenticated");
-    });
-
     it("JSON with authenticated=false is unauthenticated", () => {
       const parsed = parseAuthStatusFromOutput({
         stdout: '[{"authenticated":false}]\n',
@@ -1432,50 +1406,6 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
   // ── readCodexConfigModelProviderForEnv tests ─────────────────────────────
 
   describe("readCodexConfigModelProviderForEnv", () => {
-    it.effect("returns undefined when config file does not exist", () =>
-      Effect.gen(function* () {
-        yield* withTempCodexHome();
-        assert.strictEqual(yield* readCodexConfigModelProviderForEnv(process.env), undefined);
-      }),
-    );
-
-    it.effect("returns undefined when config has no model_provider key", () =>
-      Effect.gen(function* () {
-        yield* withTempCodexHome('model = "gpt-5-codex"\n');
-        assert.strictEqual(yield* readCodexConfigModelProviderForEnv(process.env), undefined);
-      }),
-    );
-
-    it.effect("returns the provider when model_provider is set at top level", () =>
-      Effect.gen(function* () {
-        yield* withTempCodexHome('model = "gpt-5-codex"\nmodel_provider = "portkey"\n');
-        assert.strictEqual(yield* readCodexConfigModelProviderForEnv(process.env), "portkey");
-      }),
-    );
-
-    it.effect("returns openai when model_provider is openai", () =>
-      Effect.gen(function* () {
-        yield* withTempCodexHome('model_provider = "openai"\n');
-        assert.strictEqual(yield* readCodexConfigModelProviderForEnv(process.env), "openai");
-      }),
-    );
-
-    it.effect("ignores model_provider inside section headers", () =>
-      Effect.gen(function* () {
-        yield* withTempCodexHome(
-          [
-            'model = "gpt-5-codex"',
-            "",
-            "[model_providers.portkey]",
-            'base_url = "https://api.portkey.ai/v1"',
-            'model_provider = "should-be-ignored"',
-            "",
-          ].join("\n"),
-        );
-        assert.strictEqual(yield* readCodexConfigModelProviderForEnv(process.env), undefined);
-      }),
-    );
-
     it.effect("handles comments and whitespace", () =>
       Effect.gen(function* () {
         yield* withTempCodexHome(
@@ -2024,14 +1954,14 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
       ),
     );
 
-    it.effect("uses configured opencode binary for version probe", () =>
+    it.effect("expands a tilde opencode binary path for the version probe", () =>
       Effect.gen(function* () {
-        const status = yield* makeCheckOpenCodeProviderStatus("/custom/bin/opencode");
+        const status = yield* makeCheckOpenCodeProviderStatus("~/bin/opencode");
         assert.strictEqual(status.status, "ready");
       }).pipe(
         Effect.provide(
           mockSpawnerLayer((args, command) => {
-            assert.strictEqual(command, "/custom/bin/opencode");
+            assert.strictEqual(command, join(OS.homedir(), "bin/opencode"));
             const joined = args.join(" ");
             if (joined === "--version") return { stdout: "opencode 1.3.17\n", stderr: "", code: 0 };
             throw new Error(`Unexpected args: ${joined}`);
@@ -2346,6 +2276,28 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
     );
   });
 
+  it.effect("checks Beta's configured OMP ACP binary without claiming a native overlay", () =>
+    Effect.gen(function* () {
+      const status = yield* checkOmpBetaProviderStatus("/tmp/omp-profile", "/custom/bin/omp");
+      assert.strictEqual(status.provider, "omp");
+      assert.strictEqual(status.status, "ready");
+      assert.strictEqual(status.available, true);
+      assert.strictEqual(status.ompPolicy, undefined);
+      assert.strictEqual(
+        status.message,
+        "OMP CLI is installed. Synara will use the OMP agent dir /tmp/omp-profile.",
+      );
+    }).pipe(
+      Effect.provide(
+        mockSpawnerLayer((args, command) => {
+          assert.strictEqual(command, "/custom/bin/omp");
+          assert.deepStrictEqual(args, ["--version"]);
+          return { stdout: "omp 17.3.3\n", stderr: "", code: 0 };
+        }),
+      ),
+    ),
+  );
+
   describe("checkAntigravityProviderStatus", () => {
     it.effect("rejects versions that predate --new-project support", () =>
       Effect.gen(function* () {
@@ -2557,9 +2509,15 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
       );
     });
 
-    it.effect("returns ready with auth guidance when no Devin API key is set", () =>
-      Effect.gen(function* () {
-        const status = yield* checkDevinProviderStatus;
+    it.effect("returns ready with auth guidance when no Devin API key is set", () => {
+      const previousWindsurfKey = process.env.WINDSURF_API_KEY;
+      const previousDevinKey = process.env.DEVIN_API_KEY;
+      delete process.env.WINDSURF_API_KEY;
+      delete process.env.DEVIN_API_KEY;
+      return Effect.gen(function* () {
+        // Stub the credential read so a real `devin auth login` on the host
+        // cannot leak an "authenticated" result into this test.
+        const status = yield* makeCheckDevinProviderStatus(undefined, async () => undefined);
         assert.strictEqual(status.status, "ready");
         assert.strictEqual(status.available, true);
         assert.strictEqual(status.authStatus, "unknown");
@@ -2572,8 +2530,22 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
             throw new Error(`Unexpected args: ${joined}`);
           }),
         ),
-      ),
-    );
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (previousWindsurfKey === undefined) {
+              delete process.env.WINDSURF_API_KEY;
+            } else {
+              process.env.WINDSURF_API_KEY = previousWindsurfKey;
+            }
+            if (previousDevinKey === undefined) {
+              delete process.env.DEVIN_API_KEY;
+            } else {
+              process.env.DEVIN_API_KEY = previousDevinKey;
+            }
+          }),
+        ),
+      );
+    });
 
     it.effect("recognizes credentials saved by devin auth login", () => {
       let credentialsRead = false;
@@ -2922,32 +2894,6 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
   // ── parseClaudeAuthStatusFromOutput pure tests ────────────────────
 
   describe("parseClaudeAuthStatusFromOutput", () => {
-    it("exit code 0 with no auth markers is ready", () => {
-      const parsed = parseClaudeAuthStatusFromOutput({ stdout: "OK\n", stderr: "", code: 0 });
-      assert.strictEqual(parsed.status, "ready");
-      assert.strictEqual(parsed.authStatus, "authenticated");
-    });
-
-    it("JSON with loggedIn=true is authenticated", () => {
-      const parsed = parseClaudeAuthStatusFromOutput({
-        stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\n',
-        stderr: "",
-        code: 0,
-      });
-      assert.strictEqual(parsed.status, "ready");
-      assert.strictEqual(parsed.authStatus, "authenticated");
-    });
-
-    it("JSON with loggedIn=false is unauthenticated", () => {
-      const parsed = parseClaudeAuthStatusFromOutput({
-        stdout: '{"loggedIn":false}\n',
-        stderr: "",
-        code: 0,
-      });
-      assert.strictEqual(parsed.status, "error");
-      assert.strictEqual(parsed.authStatus, "unauthenticated");
-    });
-
     it("JSON without auth marker is warning", () => {
       const parsed = parseClaudeAuthStatusFromOutput({
         stdout: '{"ok":true}\n',

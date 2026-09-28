@@ -16,6 +16,22 @@
       "types": "./src/backgroundServiceSession.ts",
       "import": "./src/backgroundServiceSession.ts"
     },
+    "./betaFeatures": {
+      "types": "./src/betaFeatures.ts",
+      "import": "./src/betaFeatures.ts"
+    },
+    "./claudeCache": {
+      "types": "./src/claudeCache.ts",
+      "import": "./src/claudeCache.ts"
+    },
+    "./computerInvocation": {
+      "types": "./src/computerInvocation.ts",
+      "import": "./src/computerInvocation.ts"
+    },
+    "./cuaActionDiagnostics": {
+      "types": "./src/cuaActionDiagnostics.ts",
+      "import": "./src/cuaActionDiagnostics.ts"
+    },
     "./daemonKeys": {
       "types": "./src/daemonKeys.ts",
       "import": "./src/daemonKeys.ts"
@@ -24,6 +40,10 @@
       "types": "./src/daemonRestart.ts",
       "import": "./src/daemonRestart.ts"
     },
+    "./modelImageBudget": {
+      "types": "./src/modelImageBudget.ts",
+      "import": "./src/modelImageBudget.ts"
+    },
     "./model": {
       "types": "./src/model.ts",
       "import": "./src/model.ts"
@@ -31,6 +51,10 @@
     "./runtimeMode": {
       "types": "./src/runtimeMode.ts",
       "import": "./src/runtimeMode.ts"
+    },
+    "./approvalSessionGrant": {
+      "types": "./src/approvalSessionGrant.ts",
+      "import": "./src/approvalSessionGrant.ts"
     },
     "./git": {
       "types": "./src/git.ts",
@@ -115,6 +139,14 @@
     "./desktopIdentity": {
       "types": "./src/desktopIdentity.ts",
       "import": "./src/desktopIdentity.ts"
+    },
+    "./betaChannel": {
+      "types": "./src/betaChannel.ts",
+      "import": "./src/betaChannel.ts"
+    },
+    "./diagnosticsRedaction": {
+      "types": "./src/diagnosticsRedaction.ts",
+      "import": "./src/diagnosticsRedaction.ts"
     },
     "./Net": {
       "types": "./src/Net.ts",
@@ -352,13 +384,53 @@
       "types": "./src/deviceFrame.ts",
       "import": "./src/deviceFrame.ts"
     },
+    "./jsonrpc-stdio": {
+      "types": "./src/jsonrpc-stdio.ts",
+      "import": "./src/jsonrpc-stdio.ts"
+    },
+    "./frameTransport": {
+      "types": "./src/frameTransport.ts",
+      "import": "./src/frameTransport.ts"
+    },
+    "./computerFrame": {
+      "types": "./src/computerFrame.ts",
+      "import": "./src/computerFrame.ts"
+    },
     "./deviceHelperCache": {
       "types": "./src/deviceHelperCache.ts",
       "import": "./src/deviceHelperCache.ts"
     },
+    "./computerKeyNames": {
+      "types": "./src/computerKeyNames.ts",
+      "import": "./src/computerKeyNames.ts"
+    },
+    "./computerGrants": {
+      "types": "./src/computerGrants.ts",
+      "import": "./src/computerGrants.ts"
+    },
+    "./lengthPrefixedRecords": {
+      "types": "./src/lengthPrefixedRecords.ts",
+      "import": "./src/lengthPrefixedRecords.ts"
+    },
+    "./uiTreeTargeting": {
+      "types": "./src/uiTreeTargeting.ts",
+      "import": "./src/uiTreeTargeting.ts"
+    },
     "./searchQuery": {
       "types": "./src/searchQuery.ts",
       "import": "./src/searchQuery.ts"
+    },
+    "./cuaDriverProtocol": {
+      "types": "./src/cuaDriverProtocol.ts",
+      "import": "./src/cuaDriverProtocol.ts"
+    },
+    "./desktopOperationQueue": {
+      "types": "./src/desktopOperationQueue.ts",
+      "import": "./src/desktopOperationQueue.ts"
+    },
+    "./asyncUserInput": {
+      "types": "./src/asyncUserInput.ts",
+      "import": "./src/asyncUserInput.ts"
     }
   },
   "scripts": {

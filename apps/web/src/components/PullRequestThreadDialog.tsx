@@ -233,13 +233,15 @@ function PullRequestThreadDialogContent({
           <div className="rounded-xl border border-border/70 bg-muted/24 p-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="truncate font-medium text-sm">{resolvedPullRequest.title}</p>
-                <p className="truncate text-muted-foreground text-xs">
+                <p className="truncate font-medium text-ui-lg leading-snug">
+                  {resolvedPullRequest.title}
+                </p>
+                <p className="truncate text-muted-foreground text-ui leading-snug">
                   #{resolvedPullRequest.number} · {resolvedPullRequest.headBranch} to{" "}
                   {resolvedPullRequest.baseBranch}
                 </p>
               </div>
-              <span className={cn("shrink-0 text-xs capitalize", statusTone)}>
+              <span className={cn("shrink-0 text-ui leading-snug capitalize", statusTone)}>
                 {resolvedPullRequest.state}
               </span>
             </div>
@@ -247,13 +249,15 @@ function PullRequestThreadDialogContent({
         ) : null}
 
         {isResolving ? (
-          <div className="flex items-center gap-2 text-muted-foreground text-xs">
+          <div className="flex items-center gap-2 text-muted-foreground text-ui leading-snug">
             <Spinner className="size-3.5" />
             {copy.checkoutDialog.resolving}
           </div>
         ) : null}
 
-        {errorMessage ? <p className="text-destructive text-xs">{errorMessage}</p> : null}
+        {errorMessage ? (
+          <p className="text-destructive text-ui leading-snug">{errorMessage}</p>
+        ) : null}
       </DialogPanel>
       <DialogFooter>
         <Button

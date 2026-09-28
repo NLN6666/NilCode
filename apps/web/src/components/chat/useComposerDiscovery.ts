@@ -48,6 +48,8 @@ interface ComposerDiscoveryInput {
   providerOptionsForDispatch: ProviderStartOptions | undefined;
   gitCwd: string | null;
   piAgentDir: string;
+  ompAgentDir: string;
+  discoverNativeCompaction?: boolean;
 }
 
 export function useComposerDiscovery({
@@ -59,6 +61,8 @@ export function useComposerDiscovery({
   providerOptionsForDispatch,
   gitCwd,
   piAgentDir,
+  ompAgentDir,
+  discoverNativeCompaction,
 }: ComposerDiscoveryInput) {
   const composerTriggerKind = composerTrigger?.kind ?? null;
   const mentionTriggerQuery = composerTrigger?.kind === "mention" ? composerTrigger.query : "";
@@ -98,23 +102,40 @@ export function useComposerDiscovery({
         selectedProvider === "opencode"
           ? providerOptionsForDispatch?.opencode?.experimentalWebSockets
           : undefined,
-      agentDir: selectedProvider === "pi" ? piAgentDir || null : null,
+      agentDir:
+        selectedProvider === "pi"
+          ? piAgentDir || null
+          : selectedProvider === "omp"
+            ? ompAgentDir || null
+            : null,
       enabled:
-        (composerTriggerKind === "slash-command" || composerTriggerKind === "slash-model") &&
+        (composerTriggerKind === "slash-command" ||
+          composerTriggerKind === "slash-model" ||
+          discoverNativeCompaction === true) &&
         supportsNativeSlashCommandDiscovery(providerComposerCapabilitiesQuery.data) &&
         composerSkillCwd !== null,
     }),
   );
   const canDiscoverProviderSkills =
-    selectedProvider === "pi" || supportsSkillDiscovery(providerComposerCapabilitiesQuery.data);
+    selectedProvider === "pi" ||
+    selectedProvider === "omp" ||
+    supportsSkillDiscovery(providerComposerCapabilitiesQuery.data);
   const providerSkillsQuery = useQuery(
     providerSkillsQueryOptions({
       provider: selectedProvider,
       cwd: composerSkillCwd,
       threadId,
-      agentDir: selectedProvider === "pi" ? piAgentDir || null : null,
+      agentDir:
+        selectedProvider === "pi"
+          ? piAgentDir || null
+          : selectedProvider === "omp"
+            ? ompAgentDir || null
+            : null,
       enabled:
-        (isSkillTrigger || composerTriggerKind === "slash-command" || selectedProvider === "pi") &&
+        (isSkillTrigger ||
+          composerTriggerKind === "slash-command" ||
+          selectedProvider === "pi" ||
+          selectedProvider === "omp") &&
         canDiscoverProviderSkills &&
         composerSkillCwd !== null,
     }),
@@ -201,6 +222,7 @@ export function useComposerDiscovery({
     isLocalFolderBrowserOpen,
     providerPlugins,
     providerNativeCommands,
+    providerArtifacts: providerCommandsQuery.data?.artifacts,
     providerSkills,
     workspaceEntries,
     effectiveComposerTrigger,
@@ -208,5 +230,10 @@ export function useComposerDiscovery({
     supportsTextNativeReviewCommand,
     isComposerMenuLoading,
     canCompactThread: supportsThreadCompaction(providerComposerCapabilitiesQuery.data),
+    isNativeCommandDiscoveryPending:
+      providerComposerCapabilitiesQuery.isPending ||
+      (supportsNativeSlashCommandDiscovery(providerComposerCapabilitiesQuery.data) &&
+        providerCommandsQuery.isPending) ||
+      providerCommandsQuery.isFetching,
   };
 }

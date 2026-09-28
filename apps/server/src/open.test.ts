@@ -5,12 +5,9 @@ import { EDITORS } from "@synara/contracts";
 import { FileSystem, Path, Effect } from "effect";
 
 import {
-  clearCommandAvailabilityCache,
-  isCommandAvailable,
   launchDetached,
   resolveAvailableEditors,
   resolveEditorLaunch,
-  resolveWindowsEditorUriLaunch,
 } from "./open";
 import {
   clearWindowsStorePackageDiscoveryCache,
@@ -36,90 +33,6 @@ function fakePowerShellAppxScript(installLocation: string): string {
 }
 
 it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
-  it.effect("returns commands for command-based editors", () =>
-    Effect.gen(function* () {
-      const antigravityLaunch = yield* resolveEditorLaunch(
-        { cwd: "/tmp/workspace", editor: "antigravity" },
-        "linux",
-        { PATH: "" },
-      );
-      assert.deepEqual(antigravityLaunch, {
-        command: "agy",
-        args: ["/tmp/workspace"],
-      });
-
-      const cursorLaunch = yield* resolveEditorLaunch(
-        { cwd: "/tmp/workspace", editor: "cursor" },
-        "linux",
-        { PATH: "" },
-      );
-      assert.deepEqual(cursorLaunch, {
-        command: "cursor",
-        args: ["/tmp/workspace"],
-      });
-
-      const vscodeLaunch = yield* resolveEditorLaunch(
-        { cwd: "/tmp/workspace", editor: "vscode" },
-        "linux",
-        { PATH: "" },
-      );
-      assert.deepEqual(vscodeLaunch, {
-        command: "code",
-        args: ["/tmp/workspace"],
-      });
-
-      const traeLaunch = yield* resolveEditorLaunch(
-        { cwd: "/tmp/workspace", editor: "trae" },
-        "linux",
-        { PATH: "" },
-      );
-      assert.deepEqual(traeLaunch, {
-        command: "trae",
-        args: ["/tmp/workspace"],
-      });
-
-      const zedLaunch = yield* resolveEditorLaunch(
-        { cwd: "/tmp/workspace", editor: "zed" },
-        "linux",
-        { PATH: "" },
-      );
-      assert.deepEqual(zedLaunch, {
-        command: "zed",
-        args: ["/tmp/workspace"],
-      });
-
-      const windsurfLaunch = yield* resolveEditorLaunch(
-        { cwd: "/tmp/workspace", editor: "windsurf" },
-        "linux",
-        { PATH: "" },
-      );
-      assert.deepEqual(windsurfLaunch, {
-        command: "windsurf",
-        args: ["/tmp/workspace"],
-      });
-
-      const sublimeLaunch = yield* resolveEditorLaunch(
-        { cwd: "/tmp/workspace", editor: "sublime" },
-        "linux",
-        { PATH: "" },
-      );
-      assert.deepEqual(sublimeLaunch, {
-        command: "subl",
-        args: ["/tmp/workspace"],
-      });
-
-      const ideaLaunch = yield* resolveEditorLaunch(
-        { cwd: "/tmp/workspace", editor: "idea" },
-        "linux",
-        { PATH: "" },
-      );
-      assert.deepEqual(ideaLaunch, {
-        command: "idea",
-        args: ["/tmp/workspace"],
-      });
-    }),
-  );
-
   it.effect("uses --goto when editor supports line/column suffixes", () =>
     Effect.gen(function* () {
       const lineOnly = yield* resolveEditorLaunch(
@@ -224,12 +137,6 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
       });
     }),
   );
-
-  it("does not build URL-handler launches for non-Windows platforms", () => {
-    const editor = EDITORS.find((candidate) => candidate.id === "vscode");
-    assert.ok(editor);
-    assert.equal(resolveWindowsEditorUriLaunch(editor, "/tmp/workspace", "linux"), null);
-  });
 
   it.effect("opens terminal-style editors in the target working directory", () =>
     Effect.gen(function* () {
@@ -505,152 +412,6 @@ it.layer(NodeServices.layer)("launchDetached", (it) => {
       assert.equal(result._tag, "Failure");
     }),
   );
-});
-
-it.layer(NodeServices.layer)("isCommandAvailable", (it) => {
-  it.effect("resolves win32 commands with PATHEXT", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "synara-open-test-" });
-      yield* fs.writeFileString(path.join(dir, "code.CMD"), "@echo off\r\n");
-      const env = {
-        PATH: dir,
-        PATHEXT: ".COM;.EXE;.BAT;.CMD",
-      } satisfies NodeJS.ProcessEnv;
-      assert.equal(
-        yield* Effect.promise(() => isCommandAvailable("code", { platform: "win32", env })),
-        true,
-      );
-    }),
-  );
-
-  it("returns false when a command is not on PATH", async () => {
-    const env = {
-      PATH: "",
-      PATHEXT: ".COM;.EXE;.BAT;.CMD",
-    } satisfies NodeJS.ProcessEnv;
-    assert.equal(
-      await isCommandAvailable("definitely-not-installed", { platform: "win32", env }),
-      false,
-    );
-  });
-
-  it.effect("does not treat bare files without executable extension as available on win32", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "synara-open-test-" });
-      yield* fs.writeFileString(path.join(dir, "npm"), "echo nope\r\n");
-      const env = {
-        PATH: dir,
-        PATHEXT: ".COM;.EXE;.BAT;.CMD",
-      } satisfies NodeJS.ProcessEnv;
-      assert.equal(
-        yield* Effect.promise(() => isCommandAvailable("npm", { platform: "win32", env })),
-        false,
-      );
-    }),
-  );
-
-  it.effect("appends PATHEXT for commands with non-executable extensions on win32", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "synara-open-test-" });
-      yield* fs.writeFileString(path.join(dir, "my.tool.CMD"), "@echo off\r\n");
-      const env = {
-        PATH: dir,
-        PATHEXT: ".COM;.EXE;.BAT;.CMD",
-      } satisfies NodeJS.ProcessEnv;
-      assert.equal(
-        yield* Effect.promise(() => isCommandAvailable("my.tool", { platform: "win32", env })),
-        true,
-      );
-    }),
-  );
-
-  it.effect("uses platform-specific PATH delimiter for platform overrides", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const firstDir = yield* fs.makeTempDirectoryScoped({ prefix: "synara-open-test-" });
-      const secondDir = yield* fs.makeTempDirectoryScoped({ prefix: "synara-open-test-" });
-      yield* fs.writeFileString(path.join(firstDir, "code.CMD"), "@echo off\r\n");
-      yield* fs.writeFileString(path.join(secondDir, "code.CMD"), "MZ");
-      const env = {
-        PATH: `${firstDir};${secondDir}`,
-        PATHEXT: ".COM;.EXE;.BAT;.CMD",
-      } satisfies NodeJS.ProcessEnv;
-      assert.equal(
-        yield* Effect.promise(() => isCommandAvailable("code", { platform: "win32", env })),
-        true,
-      );
-    }),
-  );
-});
-
-// A PATH lookup is O(PATH entries x PATHEXT) synchronous stat calls. On a
-// developer machine that is thousands of them per call, and `loadServerConfig`
-// runs it on every `server.getConfig` and every `server.subscribeConfig`
-// reconnect — enough to stall the event loop, drop the WebSocket heartbeat, and
-// send the client into a reconnect loop. Caching is what keeps that off the hot
-// path, so it is asserted rather than assumed.
-it.layer(NodeServices.layer)("isCommandAvailable caching", (it) => {
-  it.effect("answers a repeat lookup from cache without re-reading the filesystem", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "synara-open-cache-" });
-      const commandPath = path.join(dir, "code.CMD");
-      yield* fs.writeFileString(commandPath, "@echo off\r\n");
-      const env = { PATH: dir, PATHEXT: ".COM;.EXE;.BAT;.CMD" } satisfies NodeJS.ProcessEnv;
-
-      clearCommandAvailabilityCache();
-      assert.equal(
-        yield* Effect.promise(() => isCommandAvailable("code", { platform: "win32", env })),
-        true,
-      );
-
-      // The only way the second answer can still be `true` is the cache.
-      yield* fs.remove(commandPath);
-      assert.equal(
-        yield* Effect.promise(() => isCommandAvailable("code", { platform: "win32", env })),
-        true,
-      );
-    }),
-  );
-
-  it.effect("re-reads the filesystem after the cache is cleared", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "synara-open-cache-" });
-      const commandPath = path.join(dir, "code.CMD");
-      yield* fs.writeFileString(commandPath, "@echo off\r\n");
-      const env = { PATH: dir, PATHEXT: ".COM;.EXE;.BAT;.CMD" } satisfies NodeJS.ProcessEnv;
-
-      clearCommandAvailabilityCache();
-      assert.equal(
-        yield* Effect.promise(() => isCommandAvailable("code", { platform: "win32", env })),
-        true,
-      );
-
-      yield* fs.remove(commandPath);
-      clearCommandAvailabilityCache();
-      assert.equal(
-        yield* Effect.promise(() => isCommandAvailable("code", { platform: "win32", env })),
-        false,
-      );
-    }),
-  );
-
-  it("keys the cache by command so one lookup cannot answer for another", async () => {
-    clearCommandAvailabilityCache();
-    const env = { PATH: "", PATHEXT: ".COM;.EXE;.BAT;.CMD" } satisfies NodeJS.ProcessEnv;
-    assert.equal(await isCommandAvailable("first-missing", { platform: "win32", env }), false);
-    assert.equal(await isCommandAvailable("second-missing", { platform: "win32", env }), false);
-  });
 });
 
 it.layer(NodeServices.layer)("resolveAvailableEditors", (it) => {

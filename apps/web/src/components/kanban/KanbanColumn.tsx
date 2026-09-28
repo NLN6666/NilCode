@@ -200,7 +200,7 @@ function KanbanColumnComponent({
             <button
               type="button"
               onClick={() => setShowAll(true)}
-              className="w-full rounded-lg px-3 py-1.5 text-center text-xs text-muted-foreground/80 transition-colors hover:bg-muted/40 hover:text-foreground"
+              className="w-full rounded-lg px-3 py-1.5 text-center text-ui leading-snug text-muted-foreground/80 transition-colors hover:bg-muted/40 hover:text-foreground"
             >
               {copy.showMore(hiddenCount)}
             </button>

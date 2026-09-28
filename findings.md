@@ -680,3 +680,17 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 保留单一 ChatView 控制器后，确认上游拆分出的 19 个控制器 hooks 及 4 个专用辅助模块没有运行时调用方，删除这条孤立依赖链，而非保留第二套失效实现；同步移除仅指向这些已删除模块的 Compiler 检查条目，实际 ChatView、时间线及输入组件的编译门禁不变。
 - 最终完整 ChatView 浏览器文件为 125 passed / 2 failed / 12 skipped；两项失败名称（access-mode reversal、cycle provider model）与合并前同命令对照完全一致。Goal 字面量编辑、选区新会话及重试、分支失败回滚、near-cap 输入性能和查找后的滚动跟随均在这次完整运行中通过。中间轮次 near-cap 曾出现活动计数与时延比波动，不据一次成功声称消除所有时序波动。
 - Git Bash 未能执行 `.bin/effect-tsgo.exe` shim；其 `@effect/tsgo` 目标只是 Effect 配置工具，不接受 `--noEmit`。本仓实际原生编译器是已安装的 `@typescript/native/lib/tsc.js`，应直接调用它，不猜 `native-preview` 包名或重新下载编译器。
+
+## 2026-09-28 main 0.9.2 合入 dev
+
+- 经用户针对 `https://github.com/NLN6666/NilCode.git` 的本次 fetch 授权，只拉取 `origin main`（无 push、部署或发布）；本地 main 从 `70f5ed0e4` 快进到 `05703a1d6`，旧 dev `c64acffbf` 保存在 `backup/dev-premerge-20260928-v092`。新 main 较旧 main 多 496 个提交；文本合并约 206 处冲突，须分目录认领并另外检查无标记的重复 OMP/Chat 控制路径。
+- 上游数据库迁移已发布至 108：保留其 104–108，将 fork browser-sharing/Advisor 从 104/105 后移至 109/110。历史 fork tracker 88/91、97/98、100/101、104/105 归一，旧槽位应重新执行上游迁移。`bun run migrations:check` 检查 83 个已发布 tag 通过。
+- fork Stable 原有 OMP 使用本地 Launch，而上游 Beta OMP 使用 ACP scoped gateway、模型角色和 import/fork，不能删掉任一侧；按 desktop flavor 各注册一个 adapter（Beta 上游 ACP，其他 fork 原生），移除上游的 Stable 禁用 OMP gate。provider metadata 的两份 `omp` 描述必须去重，否则默认顺序多一项且重复设置条目。
+- Effect spawner patch 的两边变更不冲突于语义却重叠于同一个 hunk：保留上游无效 PID 防护及 fork Windows 隐藏 taskkill 窗口。必须检查统一 diff hunk 计数；误标 `+17` 实际 `+21` 会让 `git apply` 报 corrupt patch。离线 frozen Bun install 已将两个防护落到实际安装包。
+- desktop portable artifact manifest 原只要求 CUA driver host；新 desktop main 也引用 watchdog helper。把 `desktopHangWatchdogProcess.js` 加入完整输出校验与归档 fixture，防止通过检查的 artifact 在运行时缺文件；scripts workspace 的聚焦 8 项通过。运行 `bun run test <scripts files>` 于根目录会被 Turbo 当任务名，须从 `scripts` 工作区调用。
+- Web 自动合并曾把 PR 详情动作确认对话框的闭合 JSX 与旧 AlertDialog 片段拼接，native TS 立即报语法错误；定位组件尾部只保留当前 `PullRequestConfirmActionDialog`。根目录 `git diff --check` 的大量新增行 CRLF 警告不能当真实空白错误，需按 `core.whitespace=cr-at-eol` 和实际行尾单独判别。
+- 旧 server ProviderHealth Windows `cmd` shim及 hung-update 检查的两个失败在独立 `c64acffbf` baseline 使用同一命令复现；不能归因于这次合并。其余失败须按完整用例名称集合对照；native server 75 项、desktop 17 项是上一次已记录的合并前类型诊断，需要同类路径/消息比较而不是只比较数目。
+- 独立 baseline 完整 ProviderHealth 的 17 个失败中，合并后对应 16 个失败名称均能在 baseline 找到；不能将这批 Windows 进程/超时环境失败归因于本次合并。server 原生 TypeScript 的 75 条、desktop 的 17 条路径/诊断集合与合并前一致；web 原生 TypeScript 成功。contracts 227 项、脚本 portable-build 8 项、server OMP ACP 44 项与迁移/OMP 聚焦其余文件均通过。
+- Web 全量首轮 16 项失败集中于 provider 模型发现、Timeline、React Compiler 及文字/源码快照断言；修复后第二轮 413 个文件通过，唯一失败为 Provider 列表测试中误写了两次 `omp` 的完整数组断言。删除该易碎枚举/文案断言，保留 OMP/Pi 可用且无重复项的行为约束，随后 session-logic/runtimeModelCapabilities 57 项通过。ChatView React Compiler 最初因合并导致 CFG 栈溢出，将 44 个 action 订阅提为保持细粒度 selector 的 hook，footer 提入现有组件，并修正六个漏列的 computer-control memo 依赖；编译门禁 20 项通过。未执行未授权的 `bun fmt`、`bun lint`、`bun typecheck`。
+- 浏览器 Playwright 所需 headless-shell 未安装；使用本机 Chrome 的临时测试配置，完成真实挂载 ChatView 的发送、scrollback、重新打开线程、模型选择和 composer 面板用例。定位新回归：用户滚到旧消息后发送仍跳到底部，`scrollTo` 调用栈来自 LegendList 的 `initialScrollAtEnd` 被反复重定向。让 bootstrap 在首次实际落底后即撤销 permission，且阅读者接管滚动时关闭该权限；同文件的三项滚动/锚点浏览器回归转绿，MessagesTimeline 单元测试 112 项通过。保留首次线程打开的底部定位，未用延时掩盖问题。
+- 本轮 `bun run build:desktop` 4/4 全新构建成功（web、CLI、desktop 依赖图）；额外的最后 web 修改单独重新构建。上游导入的 CUA patch 和测试证据原文包含尾随空白，`git diff --cached --check` 对这些上游原件报告空白警告；不能全库自动重写上游 patch 文本。

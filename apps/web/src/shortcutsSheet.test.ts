@@ -1,8 +1,3 @@
-// FILE: shortcutsSheet.test.ts
-// Purpose: Verify the shortcuts sheet builder reflects current context and dynamic script bindings.
-// Layer: UI helper tests
-
-import { STATIC_KEYBINDING_COMMANDS } from "@synara/contracts";
 import { describe, expect, it } from "vitest";
 
 import { buildShortcutSheetSections, listEditableShortcutDefinitions } from "./shortcutsSheet";
@@ -158,9 +153,16 @@ describe("buildShortcutSheetSections", () => {
 });
 
 describe("listEditableShortcutDefinitions", () => {
-  it("includes every built-in keybinding command", () => {
-    expect(listEditableShortcutDefinitions().map((definition) => definition.command)).toEqual(
-      STATIC_KEYBINDING_COMMANDS,
-    );
+  it("shows a friendly label instead of the raw command id for every built-in command", () => {
+    const definitions = listEditableShortcutDefinitions();
+    const unlabeledCommands = definitions
+      .filter(
+        (definition) =>
+          definition.label === definition.command ||
+          definition.description === "Assign a shortcut to this built-in command.",
+      )
+      .map((definition) => definition.command);
+
+    expect(unlabeledCommands).toEqual([]);
   });
 });

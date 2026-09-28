@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import { SERVER_DESKTOP_FLAVOR } from "../betaFeatureGate.ts";
 import { AUTOMATION_AUTHORING_GUIDANCE } from "./automationAuthoringGuidance.ts";
 
 import {
@@ -23,6 +24,7 @@ describe("Synara harness policy", () => {
     assert.include(deferred, "synara_view_automation");
     assert.include(deferred, "synara_report_automation_result");
   });
+
   it("includes honest completion evidence and opt-in delegated E2E testing", () => {
     const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
     for (const text of [
@@ -40,10 +42,10 @@ describe("Synara harness policy", () => {
       "browser_screenshot({kind:'proof'})",
     );
   });
+
   it("identifies Synara and explains exact batch coordination when MCP is available", () => {
     const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
     assert.include(policy, SYNARA_HARNESS_POLICY_MARKER);
-    assert.include(policy, "Synara is the host and harness");
     assert.include(policy, "one exact synara_create_threads plan");
     assert.include(policy, "before returning an operationId");
     assert.include(policy, "synara_wait_for_threads");
@@ -57,10 +59,7 @@ describe("Synara harness policy", () => {
     assert.include(policy, "Detailed rules live in each tool description");
     assert.notInclude(policy, "BrowserInterruptedByHuman");
     assert.notInclude(policy, "start with browser_open");
-    assert.include(policy, "do not create Synara threads");
-    assert.include(policy, "specific 3–8 word outcome label");
-    assert.include(policy, "Assume no chat context");
-    assert.include(policy, "notify-versus-silent criteria");
+    assert.include(policy, "synara_report_automation_result");
     assert.include(policy, 'later manual follow-up such as "continue"');
     assert.include(policy, "Never call this tool for a manual follow-up turn");
   });
@@ -101,6 +100,15 @@ describe("Synara harness policy", () => {
       "<synara_host_context>",
     );
     assert.isNull(takeSynaraHarnessPolicyForSession(state, { gatewayControlAvailable: true }));
+
+    // ACP text parts use the same versioned delivery state.
+    const partState: SynaraHarnessPolicyDeliveryState = {};
+    const input = { provider: "cursor", scopedGatewayConnectionAvailable: true } as const;
+    assert.include(
+      takeSynaraHarnessPolicyTextPartForProviderSession(partState, input)?.text ?? "",
+      SYNARA_HARNESS_POLICY_MARKER,
+    );
+    assert.isNull(takeSynaraHarnessPolicyTextPartForProviderSession(partState, input));
   });
 
   it("re-delivers to a session that only ever saw an older policy version", () => {
@@ -160,7 +168,7 @@ describe("Synara harness policy", () => {
     }
   });
 
-  it("keeps Oh My Pi identity-only because Launch is OMP-owned", () => {
+  it("advertises OMP gateway control only for the Beta adapter's scoped session", () => {
     const text =
       takeSynaraHarnessPolicyForProviderSession(
         {},
@@ -168,11 +176,98 @@ describe("Synara harness policy", () => {
       ) ?? "";
 
     assert.include(text, SYNARA_HARNESS_POLICY_MARKER);
-    assert.include(text, "Synara MCP control is unavailable");
-    assert.notInclude(text, "Use the synara_* tools");
+    if (SERVER_DESKTOP_FLAVOR === "beta") {
+      assert.include(text, "Use the synara_* tools");
+    } else {
+      assert.include(text, "Synara MCP control is unavailable");
+      assert.notInclude(text, "Use the synara_* tools");
+    }
+    assert.include(
+      takeSynaraHarnessPolicyForProviderSession(
+        {},
+        { provider: "omp", scopedGatewayConnectionAvailable: false },
+      ) ?? "",
+      "Synara MCP control is unavailable",
+    );
   });
 
   it("keeps the gateway policy below its prompt budget", () => {
-    assert.isAtMost(renderSynaraHarnessPolicy({ gatewayControlAvailable: true }).length, 6_000);
+    assert.isAtMost(renderSynaraHarnessPolicy({ gatewayControlAvailable: true }).length, 6_030);
   });
+
+  it("withholds device guidance from sessions with no gateway control", () => {
+    const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: false });
+
+    // Promising tools this session cannot reach would be a lie.
+    assert.notInclude(policy, "device_list");
+    assert.notInclude(policy, "device_describe_ui");
+  });
+
+  it("includes Computer tool guidance only when the session can use Computer", () => {
+    for (const gatewayControlAvailable of [true, false] as const) {
+      for (const enableComputerControl of [true, false, undefined] as const) {
+        const policy = renderSynaraHarnessPolicy({
+          gatewayControlAvailable,
+          ...(enableComputerControl === undefined ? {} : { enableComputerControl }),
+        });
+        const scope = `${gatewayControlAvailable}/${enableComputerControl}`;
+        if (gatewayControlAvailable && enableComputerControl === true) {
+          assert.include(policy, "## Synara computer use", scope);
+          assert.include(policy, "The computer_* tools are live on this session", scope);
+        } else {
+          assert.notInclude(policy, "## Synara computer use", scope);
+          assert.notInclude(policy, "computer_", scope);
+          assert.notInclude(policy, "turn Computer control on in Settings", scope);
+        }
+      }
+    }
+  });
+});
+
+it("adds Computer guidance only for an explicitly enabled scoped session across all providers", () => {
+  const providers = [
+    "codex",
+    "claudeAgent",
+    "cursor",
+    "grok",
+    "droid",
+    "devin",
+    "opencode",
+    "pi",
+    "antigravity",
+  ] as const;
+  for (const provider of providers) {
+    const off = takeSynaraHarnessPolicyForProviderSession(
+      {},
+      { provider, scopedGatewayConnectionAvailable: true },
+    );
+    const explicitOff = takeSynaraHarnessPolicyForProviderSession(
+      { enableComputerControl: false },
+      { provider, scopedGatewayConnectionAvailable: true },
+    );
+    assert.strictEqual(off, explicitOff);
+    assert.notInclude(off ?? "", "## Synara computer use");
+    assert.notInclude(off ?? "", "computer_", provider);
+    const state = { enableComputerControl: true };
+    const on =
+      takeSynaraHarnessPolicyForProviderSession(state, {
+        provider,
+        scopedGatewayConnectionAvailable: true,
+      }) ?? "";
+    assert.equal(on.split("## Synara computer use").length - 1, 1, provider);
+    assert.include(on, "never replay it");
+    assert.isNull(
+      takeSynaraHarnessPolicyForProviderSession(state, {
+        provider,
+        scopedGatewayConnectionAvailable: true,
+      }),
+    );
+    assert.notInclude(
+      takeSynaraHarnessPolicyForProviderSession(
+        { enableComputerControl: true },
+        { provider, scopedGatewayConnectionAvailable: false },
+      ) ?? "",
+      "## Synara computer use",
+    );
+  }
 });

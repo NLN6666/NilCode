@@ -416,11 +416,7 @@ export function CreateProjectDialog(props: {
                 <div className="space-y-2">
                   <span
                     id={sourceFolderLabelId}
-                    className={cn(
-                      "block",
-                      dialogFieldLabelClassName,
-                      "text-[length:var(--app-font-size-ui,12px)] text-foreground",
-                    )}
+                    className={cn("block", dialogFieldLabelClassName, "text-ui text-foreground")}
                   >
                     {copy.sourceFolder}
                   </span>
@@ -429,7 +425,7 @@ export function CreateProjectDialog(props: {
                     aria-labelledby={sourceFolderLabelId}
                     disabled={isPickingFolder || submitting}
                     className={cn(
-                      "flex min-h-12 w-full cursor-pointer items-center gap-2.5 rounded-xl border border-foreground/12 px-3.5 text-start text-[length:var(--app-font-size-ui,12px)] text-[var(--color-text-foreground)] transition-colors outline-none hover:bg-foreground/4 focus-visible:border-foreground/30 disabled:opacity-50",
+                      "flex min-h-12 w-full cursor-pointer items-center gap-2.5 rounded-xl border border-foreground/12 px-3.5 text-start text-ui text-[var(--color-text-foreground)] transition-colors outline-none hover:bg-foreground/4 focus-visible:border-foreground/30 disabled:opacity-50",
                       isDropTarget &&
                         "border-[color:var(--color-border-focus)] bg-foreground/6 text-[var(--color-text-foreground)]",
                     )}
@@ -441,7 +437,7 @@ export function CreateProjectDialog(props: {
                     ) : pickedFolderName ? (
                       <span className="flex min-w-0 flex-col">
                         <span className="truncate">{pickedFolderName}</span>
-                        <span className="truncate text-[length:var(--app-font-size-ui-xs,10px)] text-muted-foreground/70">
+                        <span className="truncate text-ui-xs text-muted-foreground/70">
                           {pickedPath}
                         </span>
                       </span>
@@ -492,11 +488,7 @@ export function CreateProjectDialog(props: {
           <div className="space-y-2">
             <span
               id={spaceLabelId}
-              className={cn(
-                "block",
-                dialogFieldLabelClassName,
-                "text-[length:var(--app-font-size-ui,12px)] text-foreground",
-              )}
+              className={cn("block", dialogFieldLabelClassName, "text-ui text-foreground")}
             >
               {copy.space}
             </span>
@@ -553,13 +545,9 @@ export function CreateProjectDialog(props: {
 
           {formError ? (
             <div id={errorId} role="alert" className="space-y-1">
-              <p className="text-[length:var(--app-font-size-ui-xs,10px)] text-destructive">
-                {formError}
-              </p>
+              <p className="text-ui-xs text-destructive">{formError}</p>
               {formErrorMeaning ? (
-                <p className="text-[length:var(--app-font-size-ui-xs,10px)] text-muted-foreground/70">
-                  {formErrorMeaning}
-                </p>
+                <p className="text-ui-xs text-muted-foreground/70">{formErrorMeaning}</p>
               ) : null}
             </div>
           ) : null}
@@ -568,7 +556,7 @@ export function CreateProjectDialog(props: {
           <Button
             variant="ghost"
             shape="capsule"
-            className="px-4 text-[length:var(--app-font-size-ui-lg,13px)] sm:text-[length:var(--app-font-size-ui-lg,13px)]"
+            className="px-4 text-ui-lg sm:text-ui-lg"
             onClick={() => handleOpenChange(false)}
             disabled={submitting && source === "local"}
           >
@@ -577,7 +565,7 @@ export function CreateProjectDialog(props: {
           <Button
             id={submitButtonId}
             variant="prominent"
-            className="px-4 text-[length:var(--app-font-size-ui-lg,13px)] transition-opacity hover:scale-100 sm:text-[length:var(--app-font-size-ui-lg,13px)]"
+            className="px-4 text-ui-lg transition-opacity hover:scale-100 sm:text-ui-lg"
             onClick={() => void submit()}
             disabled={submitting}
           >

@@ -14,6 +14,9 @@ export const settingsNav: SettingsNav = {
   searchAriaLabel: "搜索设置",
   searchResultsAriaLabel: "设置搜索结果",
   noResults: "没有匹配的设置。",
+  badges: {
+    beta: "测试版",
+  },
 
   groups: {
     personal: "个人",
@@ -55,6 +58,10 @@ export const settingsNav: SettingsNav = {
     appsnap: {
       label: "AppSnap",
       description: "将其他应用的最前窗口直接截取到任务中。",
+    },
+    computer: {
+      label: "电脑",
+      description: "允许智能体操作桌面，并自定义其光标和画面预览。",
     },
     mcpServers: {
       label: "MCP 服务器",

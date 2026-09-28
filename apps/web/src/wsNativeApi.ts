@@ -50,6 +50,9 @@ import {
   DEVICE_WS_CHANNELS,
   DEVICE_WS_METHODS,
   type DeviceEvent,
+  COMPUTER_WS_CHANNELS,
+  COMPUTER_WS_METHODS,
+  type ComputerEvent,
 } from "@synara/contracts";
 import { VOICE_TRANSCRIPTION_UPLOAD_ROUTE_PATH } from "@synara/shared/binaryTransfer";
 
@@ -162,6 +165,7 @@ const projectDevServerEventListeners = createListenerRegistry<ProjectDevServerEv
 const daemonEventListeners = createListenerRegistry<DaemonEvent>();
 const automationEventListeners = createListenerRegistry<AutomationStreamEvent>();
 const deviceEventListeners = createListenerRegistry<DeviceEvent>();
+const computerEventListeners = createListenerRegistry<ComputerEvent>();
 const orchestrationDomainEventListeners = createListenerRegistry<OrchestrationEvent>();
 const orchestrationShellEventListeners = createListenerRegistry<OrchestrationShellStreamItem>();
 const orchestrationThreadEventListeners = createListenerRegistry<OrchestrationThreadStreamItem>();
@@ -183,6 +187,7 @@ function clearWsNativeApiListeners(): void {
   daemonEventListeners.clear();
   automationEventListeners.clear();
   deviceEventListeners.clear();
+  computerEventListeners.clear();
   orchestrationDomainEventListeners.clear();
   orchestrationShellEventListeners.clear();
   orchestrationThreadEventListeners.clear();
@@ -482,6 +487,9 @@ export function createWsNativeApi(): NativeApi {
   transport.subscribe(DEVICE_WS_CHANNELS.event, (message) => {
     deviceEventListeners.emit(message.data);
   });
+  transport.subscribe(COMPUTER_WS_CHANNELS.event, (message) => {
+    computerEventListeners.emit(message.data);
+  });
   transport.subscribe(ORCHESTRATION_WS_CHANNELS.shellEvent, (message) => {
     orchestrationShellEventListeners.emit(message.data);
   });
@@ -735,7 +743,11 @@ export function createWsNativeApi(): NativeApi {
       setAgentMcpServerEnabled: (input: AgentMcpSetEnabledInput) =>
         transport.request(WS_METHODS.serverSetAgentMcpServerEnabled, input),
       listAgentMcpTools: () => transport.request(WS_METHODS.serverListAgentMcpTools),
-      refreshProviders: () => transport.request(WS_METHODS.serverRefreshProviders),
+      // Claude runs sequential CLI and auth probes, so a refresh can exceed the
+      // generic 60-second RPC deadline. Keep this bounded while allowing slow
+      // probes to finish; onboarding shows an error if this deadline expires.
+      refreshProviders: () =>
+        transport.request(WS_METHODS.serverRefreshProviders, undefined, { timeoutMs: 180_000 }),
       // Provider updates run up to 2 minutes server-side; callers wrap this in
       // withProviderUpdateTimeout, which owns the client-side watchdog.
       updateProvider: (input) =>
@@ -746,7 +758,11 @@ export function createWsNativeApi(): NativeApi {
       getProviderUsageSnapshot: (input) =>
         transport.request(WS_METHODS.serverGetProviderUsageSnapshot, input),
       listProviderUsage: (input) => transport.request(WS_METHODS.serverListProviderUsage, input),
+      consumeCodexResetCredit: (input) =>
+        transport.request(WS_METHODS.serverConsumeCodexResetCredit, input),
       getDiagnostics: () => transport.request(WS_METHODS.serverGetDiagnostics),
+      readThreadDiagnostics: (input) =>
+        transport.request(WS_METHODS.serverReadThreadDiagnostics, input),
       generateThreadRecap: (input) =>
         transport.request(WS_METHODS.serverGenerateThreadRecap, input, {
           timeoutMs: null,
@@ -800,6 +816,9 @@ export function createWsNativeApi(): NativeApi {
         });
       },
       importThread: (input) => transport.request(ORCHESTRATION_WS_METHODS.importThread, input),
+      listProjectImports: (input) =>
+        transport.request(ORCHESTRATION_WS_METHODS.listProjectImports, input),
+      importProject: (input) => transport.request(ORCHESTRATION_WS_METHODS.importProject, input),
       regenerateThreadTitle: (input) =>
         transport.request(ORCHESTRATION_WS_METHODS.regenerateThreadTitle, input, {
           timeoutMs: null,
@@ -886,6 +905,19 @@ export function createWsNativeApi(): NativeApi {
       scrollToElement: (input) =>
         transport.request(DEVICE_WS_METHODS.scrollToElement, input, { timeoutMs: null }),
       onEvent: deviceEventListeners.subscribe,
+    },
+    computer: {
+      getStatus: (input) => transport.request(COMPUTER_WS_METHODS.getStatus, input),
+      getAuditHistory: (input) => transport.request(COMPUTER_WS_METHODS.getAuditHistory, input),
+      getState: (input) => transport.request(COMPUTER_WS_METHODS.getState, input),
+      provision: (input) =>
+        transport.request(COMPUTER_WS_METHODS.provision, input, { timeoutMs: null }),
+      getThreadState: (input) => transport.request(COMPUTER_WS_METHODS.getThreadState, input),
+      setControlEnabled: (input) => transport.request(COMPUTER_WS_METHODS.setControlEnabled, input),
+      inputClick: (input) => transport.request(COMPUTER_WS_METHODS.inputClick, input),
+      inputScroll: (input) => transport.request(COMPUTER_WS_METHODS.inputScroll, input),
+      inputKey: (input) => transport.request(COMPUTER_WS_METHODS.inputKey, input),
+      onEvent: computerEventListeners.subscribe,
     },
     browser: {
       ...(window.desktopBridge?.browser?.vault

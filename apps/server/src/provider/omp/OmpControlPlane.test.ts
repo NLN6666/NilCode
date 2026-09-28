@@ -152,6 +152,25 @@ describe("OmpControlPlane overlay policy", () => {
     if (process.platform !== "win32") expect(overlayStat.mode & 0o777).toBe(0o600);
   });
 
+  it("uses the configured OMP profile for both its policy inspection and overlay", async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), "synara-omp-profile-"));
+    tempRoots.push(homeDir);
+    const agentDir = join(homeDir, "other-profile");
+    await mkdir(agentDir, { recursive: true });
+    await writeFile(
+      join(agentDir, "config.yml"),
+      "modelRoles:\n  advisor: anthropic/claude-fable-5:medium\n",
+    );
+
+    const plan = await prepareOmpControlPlane({ homeDir, agentDir });
+    expect(plan.overlayPath).toBe(join(agentDir, "synara", "acp-provider.yml"));
+    expect(plan.policy.advisor).toMatchObject({
+      state: "configured",
+      modelRole: "anthropic/claude-fable-5:medium",
+    });
+    expect(await readFile(plan.overlayPath, "utf8")).toBe(plan.overlayContent);
+  });
+
   it.each([
     ["missing", undefined, {}, "local", "synara-fallback", true],
     ["off", "off", {}, "local", "synara-fallback", true],

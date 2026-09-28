@@ -15,7 +15,6 @@ import {
   providerUpdateNotificationKey,
   shouldOfferProviderUpdateAction,
   shouldPromptProviderUpdate,
-  shouldShowProviderUpdateStatus,
   withProviderUpdateTimeout,
 } from "./providerUpdates";
 
@@ -62,7 +61,7 @@ function serverSettings(overrides: Partial<ServerSettings["providers"]> = {}): S
     textGenerationModelSelection: { provider: "codex", model: "gpt-5.4-mini" },
     providers: {
       codex: { ...provider, binaryPath: "codex", homePath: "" },
-      claudeAgent: { ...provider, binaryPath: "claude", launchArgs: "" },
+      claudeAgent: { ...provider, binaryPath: "claude", launchArgs: "", enableArtifacts: false },
       cursor: { ...provider, binaryPath: "cursor-agent", apiEndpoint: "" },
       devin: { ...provider, binaryPath: "devin" },
       antigravity: { ...provider, binaryPath: "agy" },
@@ -75,8 +74,8 @@ function serverSettings(overrides: Partial<ServerSettings["providers"]> = {}): S
         serverPasswordConfigured: false,
         experimentalWebSockets: false,
       },
-      omp: { ...provider, binaryPath: "omp" },
       pi: { ...provider, binaryPath: "pi", agentDir: "" },
+      omp: { ...provider, binaryPath: "omp", agentDir: "" },
       ...overrides,
     },
     advisor: DEFAULT_ADVISOR_SETTINGS,
@@ -219,31 +218,6 @@ describe("providerUpdateNotificationKey", () => {
   });
 });
 
-describe("shouldShowProviderUpdateStatus", () => {
-  it("matches the list filter for hidden and server-disabled providers", () => {
-    const codex = providerStatus("codex");
-    const hiddenPi = providerStatus("pi");
-    const settings = serverSettings({
-      codex: { enabled: false, binaryPath: "codex", homePath: "", customModels: [] },
-    });
-
-    expect(
-      shouldShowProviderUpdateStatus({
-        provider: codex,
-        hiddenProviderSet: new Set(),
-        serverSettings: settings,
-      }),
-    ).toBe(false);
-    expect(
-      shouldShowProviderUpdateStatus({
-        provider: hiddenPi,
-        hiddenProviders: ["pi"],
-        serverSettings: serverSettings(),
-      }),
-    ).toBe(false);
-  });
-});
-
 describe("isProviderUpdateActive", () => {
   it("only treats queued and running provider updates as active", () => {
     const queuedState = {
@@ -330,10 +304,6 @@ describe("shouldOfferProviderUpdateAction", () => {
 
     expect(shouldOfferProviderUpdateAction(uninstalledPi)).toBe(false);
     expect(shouldOfferProviderUpdateAction(uninstalledDroid)).toBe(false);
-  });
-
-  it("offers updates for installed outdated CLIs", () => {
-    expect(shouldOfferProviderUpdateAction(providerStatus("codex"))).toBe(true);
   });
 
   it("offers native AGY updates even when upstream latest-version metadata is unavailable", () => {

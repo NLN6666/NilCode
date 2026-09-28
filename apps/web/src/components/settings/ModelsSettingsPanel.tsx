@@ -13,6 +13,7 @@ import { getModelOptions, normalizeModelSlug } from "@synara/shared/model";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
+import { isBetaFeatureOn } from "~/betaFeatures";
 import {
   CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS,
   type AppSettingsBinding,
@@ -66,6 +67,13 @@ type CustomModelValidationResult =
   | { readonly model: string; readonly error?: never }
   | { readonly model?: never; readonly error: CustomModelValidationError };
 
+const VISIBLE_CUSTOM_MODEL_PROVIDER_SETTINGS = CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS.filter(
+  (config) => isBetaFeatureOn(config.provider),
+);
+const VISIBLE_DEFAULT_MODEL_PROVIDER_SETTINGS = DEFAULT_MODEL_PROVIDER_SETTINGS.filter((config) =>
+  isBetaFeatureOn(config.provider),
+);
+
 export function validateCustomModelInput(input: {
   readonly provider: ProviderKind;
   readonly value: string;
@@ -88,7 +96,7 @@ export function validateCustomModelInput(input: {
 }
 
 function isCustomModelEditorProvider(value: string | null): value is ProviderKind {
-  return CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS.some((config) => config.provider === value);
+  return VISIBLE_CUSTOM_MODEL_PROVIDER_SETTINGS.some((config) => config.provider === value);
 }
 
 export function ModelsSettingsPanel({
@@ -170,7 +178,7 @@ export function ModelsSettingsPanel({
         option.provider === currentGitTextGenerationProvider &&
         option.slug === currentGitTextGenerationModel,
     )?.name ?? currentGitTextGenerationModel;
-  const selectedCustomModelProviderSettings = CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS.find(
+  const selectedCustomModelProviderSettings = VISIBLE_CUSTOM_MODEL_PROVIDER_SETTINGS.find(
     (config) => config.provider === selectedCustomModelProvider,
   )!;
   const selectedCustomModelInput = customModelInputByProvider[selectedCustomModelProvider] ?? "";
@@ -185,7 +193,7 @@ export function ModelsSettingsPanel({
         : customModelErrors[selectedCustomModelErrorKey];
   const savedCustomModelRows = useMemo(
     () =>
-      CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS.flatMap((config) =>
+      VISIBLE_CUSTOM_MODEL_PROVIDER_SETTINGS.flatMap((config) =>
         getCustomModelsForProvider(settings, config.provider).map((slug) => ({
           key: `${config.provider}:${slug}`,
           provider: config.provider,
@@ -260,8 +268,10 @@ export function ModelsSettingsPanel({
         removeFirstBorder && "first:border-t-0",
       )}
     >
-      <span className="truncate text-xs text-muted-foreground">{row.providerTitle}</span>
-      <code className="min-w-0 truncate text-sm text-foreground">{row.slug}</code>
+      <span className="truncate text-ui leading-snug text-muted-foreground">
+        {row.providerTitle}
+      </span>
+      <code className="min-w-0 truncate text-ui-lg leading-snug text-foreground">{row.slug}</code>
       <button
         type="button"
         className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 hover:opacity-100"
@@ -499,7 +509,7 @@ export function ModelsSettingsPanel({
                 <SelectValue>{PROVIDER_DISPLAY_NAMES[defaultModelProvider]}</SelectValue>
               </SelectTrigger>
               <SettingsSelectPopup align="start">
-                {DEFAULT_MODEL_PROVIDER_SETTINGS.map((config) => (
+                {VISIBLE_DEFAULT_MODEL_PROVIDER_SETTINGS.map((config) => (
                   <SelectItem hideIndicator key={config.provider} value={config.provider}>
                     {PROVIDER_DISPLAY_NAMES[config.provider]}
                   </SelectItem>
@@ -607,7 +617,7 @@ export function ModelsSettingsPanel({
                 <SelectValue>{PROVIDER_DISPLAY_NAMES[visibilityProvider]}</SelectValue>
               </SelectTrigger>
               <SettingsSelectPopup align="start">
-                {CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS.map((config) => (
+                {VISIBLE_CUSTOM_MODEL_PROVIDER_SETTINGS.map((config) => (
                   <SelectItem hideIndicator key={config.provider} value={config.provider}>
                     {PROVIDER_DISPLAY_NAMES[config.provider]}
                   </SelectItem>
@@ -680,7 +690,7 @@ export function ModelsSettingsPanel({
                   <SelectValue>{selectedCustomModelProviderSettings.title}</SelectValue>
                 </SelectTrigger>
                 <SettingsSelectPopup align="start">
-                  {CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS.map((config) => (
+                  {VISIBLE_CUSTOM_MODEL_PROVIDER_SETTINGS.map((config) => (
                     <SelectItem hideIndicator key={config.provider} value={config.provider}>
                       {config.title}
                     </SelectItem>
@@ -724,7 +734,9 @@ export function ModelsSettingsPanel({
             </div>
 
             {selectedCustomModelError ? (
-              <p className="mt-2 text-xs text-destructive">{selectedCustomModelError}</p>
+              <p className="mt-2 text-ui leading-snug text-destructive">
+                {selectedCustomModelError}
+              </p>
             ) : null}
 
             {savedCustomModelRows.length > 0 ? (
@@ -739,7 +751,7 @@ export function ModelsSettingsPanel({
                     </DisclosureRegion>
                     <button
                       type="button"
-                      className="mt-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                      className="mt-2 text-ui leading-snug text-muted-foreground transition-colors hover:text-foreground"
                       aria-expanded={showAllCustomModels}
                       onClick={() => setShowAllCustomModels((value) => !value)}
                     >

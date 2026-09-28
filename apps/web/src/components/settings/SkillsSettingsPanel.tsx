@@ -6,7 +6,7 @@
 
 import type { DisabledSkillsByProvider, ProviderKind, ServerSettings } from "@synara/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { ProviderIcon } from "~/components/ProviderIcon";
 import { SettingsRow, SettingsSection } from "~/components/settings/SettingsPanelPrimitives";
@@ -23,7 +23,7 @@ import {
 import { serverQueryKeys, serverSettingsQueryOptions } from "~/lib/serverReactQuery";
 import {
   buildSettingsSkillGroups,
-  buildSettingsSkillSections,
+  buildSettingsSkillSectionsFromGroups,
   isSkillDisabledForProvider,
   nextDisabledSkills,
   providerDisplayName,
@@ -108,10 +108,14 @@ export function SkillsSettingsPanel() {
 
   const disabled = serverSettingsQuery.data?.skills.disabled;
 
-  const skillGroups = buildSettingsSkillGroups(catalogQuery.data?.skills ?? [], m.settings.skills);
-  const skillSections = buildSettingsSkillSections(
-    catalogQuery.data?.skills ?? [],
-    m.settings.skills,
+  const catalogSkills = catalogQuery.data?.skills;
+  const skillGroups = useMemo(
+    () => buildSettingsSkillGroups(catalogSkills ?? [], m.settings.skills),
+    [catalogSkills, m.settings.skills],
+  );
+  const skillSections = useMemo(
+    () => buildSettingsSkillSectionsFromGroups(skillGroups, m.settings.skills),
+    [skillGroups, m.settings.skills],
   );
 
   // Batched so a provider switch, a row, a section, and the whole catalog all travel the
@@ -166,7 +170,7 @@ export function SkillsSettingsPanel() {
           description={m.settings.skills.folder.description}
           status={
             synaraSkillsDir ? (
-              <code className="break-all text-[11px] text-muted-foreground">{synaraSkillsDir}</code>
+              <code className="break-all text-ui-sm text-muted-foreground">{synaraSkillsDir}</code>
             ) : null
           }
           control={
@@ -264,7 +268,7 @@ export function SkillsSettingsPanel() {
                       {group.sources.map((source) => (
                         <code
                           key={source.skill.path}
-                          className="truncate text-[11px] text-muted-foreground"
+                          className="truncate text-ui-sm text-muted-foreground"
                         >
                           {source.skill.path}
                         </code>

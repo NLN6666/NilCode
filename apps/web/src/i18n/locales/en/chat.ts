@@ -11,6 +11,45 @@
 import { pluralize } from "@synara/shared/text";
 
 export const chat = {
+  computerControl: {
+    statusUnavailable: "Computer status is unavailable",
+    ready: "Computer control is ready",
+    needs: (permissions: string) => `Computer control needs ${permissions}`,
+    needsSetup: "Computer control needs setup",
+    readyDescription: "Send a message and the agent will pick up where it left off.",
+    permissionDescription:
+      "Choose Set up to request missing permissions or open System Settings. Allow access for this Synara app, then return here to recheck.",
+    setupDescription: "Choose Set up to check permissions and prepare computer control.",
+    settingUp: "Setting up…",
+    setup: "Set up",
+    recheck: "Recheck",
+    checkFailed: "Could not check computer access. Try again.",
+    enabledTitle: "Computer control is on for this chat",
+    disabledTitle: "Computer control is off",
+    enable: "Enable",
+    enabledDescription: "Queued desktop turns stay cancelled — send a fresh message to continue.",
+    disabledDescription: "Turn it on in Settings to let the agent use the desktop.",
+  },
+  computerPreview: {
+    label: "Computer preview",
+    dock: "Dock the preview back into the chat rail",
+    float: "Float the preview as a draggable window",
+    hide: "Hide the preview for the rest of this task",
+  },
+  asyncUserInput: {
+    question: "Question",
+    count: (n: number) => `${n} question${n === 1 ? "" : "s"}`,
+    answerLabel: (question: string) => `Answer: ${question}`,
+    canKeepWorking: "Codex can keep working",
+    submitFailed: "The answer could not be submitted. Try again.",
+    answered: "Answered",
+    questionsFromCodex: "Questions from Codex",
+    typeOwnAnswer: "Or type your own answer…",
+    typeAnswer: "Type your answer…",
+    submitting: "Submitting…",
+    sendAnswer: "Send answer",
+    next: "Next",
+  },
   timeline: {
     preparingWorktree: "Preparing worktree...",
     editMessage: "Edit message",
@@ -41,6 +80,31 @@ export const chat = {
     totalProcessed: (tokens: string) => `Total processed: ${tokens} tokens`,
     autoCompacts: "Automatically compacts its context when needed.",
     sessionCost: (cost: string) => `Session cost: ${cost}`,
+    cache: {
+      warm: "Likely warm",
+      expired: "Likely expired",
+      unknown: "Unknown",
+      state: (label: string) => `Claude prompt cache: ${label}`,
+      observedLifetime: (duration: string) => `Observed lifetime: ${duration}`,
+      lifetimeUnknown: "Cache lifetime is unavailable.",
+      lastResponse: (duration: string) => `Last response: ${duration} ago`,
+      reprocessEstimate: (tokens: string) =>
+        `The next request may reprocess about ${tokens} tokens.`,
+      lastRequestCacheRead: "Last request · cache read",
+      cacheWritten: "Cache written",
+      uncachedInput: "Input outside cache",
+      estimateCaveat: "Cache state is estimated. It does not measure your plan’s remaining usage.",
+      unavailable: "Unavailable",
+      tokens: (tokens: string) => `${tokens} tokens`,
+      lessThanMinute: "less than a minute",
+      minutes: (count: number) => `${count} ${pluralize(count, "minute")}`,
+      hours: (count: number) => `${count} ${pluralize(count, "hour")}`,
+      remainingMinutes: (count: number) => `${count} min`,
+    },
+    compactNow: "Compact now",
+    compactStarting: "Starting compaction…",
+    compactCaveat:
+      "Compaction processes this conversation and consumes usage. Later turns use its summary.",
   },
 
   /** Workflow run card in the composer stack. */

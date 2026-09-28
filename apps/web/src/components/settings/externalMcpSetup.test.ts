@@ -117,7 +117,6 @@ describe("external MCP guided setup", () => {
       ),
     ).toBe("One, Two");
   });
-
   it("describes scopes without exposing capability identifiers", () => {
     const description = describeExternalMcpPermissions(
       ["projects:read", "tasks:create", "tasks:wait", "tasks:read", "runtime:local"],

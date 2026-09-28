@@ -45,6 +45,16 @@ describe("buildOhMyPiAcpSpawnInput", () => {
     expect(spawn.env?.SYNARA_AUTH_TOKEN).toBeUndefined();
   });
 
+  it("uses a configured OMP profile without inheriting an unrelated ambient profile", () => {
+    const agentDir = "C:/Users/Test User/custom omp agent";
+    const spawn = buildOhMyPiAcpSpawnInput(
+      { agentDir, overlayPath: `${agentDir}/synara/acp-provider.yml` },
+      "C:/Work Trees/project",
+    );
+    expect(spawn.env?.PI_CODING_AGENT_DIR).toBe(agentDir);
+    expect(spawn.args).toEqual(["acp", "--config", `${agentDir}/synara/acp-provider.yml`]);
+  });
+
   it("advertises only client capabilities Synara implements", () => {
     expect(OH_MY_PI_ACP_CLIENT_CAPABILITIES).toEqual({
       fs: { readTextFile: true, writeTextFile: true },

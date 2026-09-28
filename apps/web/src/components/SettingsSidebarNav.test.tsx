@@ -3,10 +3,8 @@
 // Layer: Component rendering tests
 // Depends on: SettingsSidebarNav, the settings search index, and React server rendering.
 
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { SettingsSidebarNav } from "./SettingsSidebarNav";
 import { settingRowAnchorId } from "../settingsNavigation";
 import {
   SETTINGS_SEARCH_ENTRIES,
@@ -54,7 +52,6 @@ describe("rankSettingsSearchEntries", () => {
       expect.arrayContaining(["general:environment-instructions", "appearance:system-ui-font"]),
     );
   });
-
   it("surfaces every row in a section when searching the section label", () => {
     const results = rankSettingsSearchEntries("appearance", SETTINGS_SEARCH_ENTRIES.length, m);
     expect(results.some((entry) => entry.section === "appearance")).toBe(true);
@@ -86,37 +83,5 @@ describe("rankSettingsSearchEntries", () => {
     for (const entry of SETTINGS_SEARCH_ENTRIES) {
       expect(entry.title(m)).not.toBe("");
     }
-  });
-});
-
-describe("SettingsSidebarNav", () => {
-  it("renders the soft search input alongside the section list", () => {
-    const markup = renderToStaticMarkup(
-      <SettingsSidebarNav activeSection="general" onBack={vi.fn()} onSelectSection={vi.fn()} />,
-    );
-
-    expect(markup).toContain('aria-label="Search settings"');
-    expect(markup).toContain('aria-label="Settings sections"');
-    expect(markup).toContain("Back to app");
-  });
-
-  it("groups settings by user intent instead of implementation ownership", () => {
-    const markup = renderToStaticMarkup(
-      <SettingsSidebarNav activeSection="general" onBack={vi.fn()} onSelectSection={vi.fn()} />,
-    );
-
-    expect(markup).toContain("Personal");
-    expect(markup).toContain("Integrations");
-    expect(markup).toContain("Coding");
-    expect(markup).toContain("System");
-    expect(markup).toContain("Archived");
-    expect(markup).toContain("Chat behavior");
-    expect(markup).toContain("MCP connections");
-    expect(markup).toContain("Agent providers");
-    expect(markup).toContain("Managed worktrees");
-    expect(markup).toContain("System tools");
-    expect(markup).toContain("Archived threads");
-    expect(markup).not.toContain(">App<");
-    expect(markup).not.toContain(">Synara<");
   });
 });

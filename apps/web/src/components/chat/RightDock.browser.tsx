@@ -2,8 +2,15 @@ import { page } from "vitest/browser";
 import "../../index.css";
 import { expect, it } from "vitest";
 import { render } from "vitest-browser-react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { RightDock } from "./RightDock";
 import type { RightDockThreadState } from "../../rightDockStore.logic";
+
+function renderDock(content: ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+  return render(<QueryClientProvider client={client}>{content}</QueryClientProvider>);
+}
 
 it("maximizes and restores without remounting or resetting document state", async () => {
   await page.viewport(1280, 800);
@@ -25,7 +32,7 @@ it("maximizes and restores without remounting or resetting document state", asyn
       },
     ],
   };
-  const screen = await render(
+  const screen = await renderDock(
     <div style={{ display: "flex", width: 1000, height: 600 }}>
       <div data-testid="chat" style={{ flex: 1 }}>
         Chat continues
@@ -131,7 +138,7 @@ it("keeps the whole dock maximized across selecting, opening and closing documen
       </div>
     );
   }
-  const screen = await render(<Harness />);
+  const screen = await renderDock(<Harness />);
   await screen.getByRole("button", { name: "Maximize panel", exact: true }).click();
   await screen.getByRole("button", { name: "b.md", exact: true }).click();
   await expect.element(screen.getByText("Document b", { exact: true })).toBeVisible();
@@ -209,7 +216,7 @@ it("restores host accessibility on resize, thread changes, collapse and final cl
       </>
     );
   }
-  const screen = await render(<Harness />);
+  const screen = await renderDock(<Harness />);
   const chat = document.querySelector<HTMLInputElement>('[aria-label="Chat composer"]')!;
   const host = document.querySelector<HTMLElement>('[data-testid="host"]')!;
   const covered = host.firstElementChild as HTMLElement;
@@ -270,4 +277,50 @@ it("restores host accessibility on resize, thread changes, collapse and final cl
   await screen.unmount();
   expect(covered.inert).toBe(false);
   expect(covered.style.visibility).toBe("");
+});
+
+it("offers maximize for every pane kind, not only documents", async () => {
+  await page.viewport(1280, 800);
+  const state: RightDockThreadState = {
+    open: true,
+    activePaneId: "terminal",
+    panes: [
+      {
+        id: "terminal",
+        kind: "terminal",
+        filePath: null,
+        threadId: null,
+        diffTurnId: null,
+        diffFilePath: null,
+        pullRequestProjectId: null,
+        pullRequestRepository: null,
+        pullRequestNumber: null,
+        pullRequestInitialTab: null,
+      },
+    ],
+  };
+  const screen = await renderDock(
+    <div style={{ display: "flex", width: 1000, height: 600 }}>
+      <div style={{ flex: 1 }}>Chat continues</div>
+      <RightDock
+        state={state}
+        minWidth={300}
+        defaultWidth="500px"
+        shouldAcceptWidth={() => true}
+        addMenuKinds={[]}
+        onClosePane={() => {}}
+        onCollapse={() => {}}
+        onOpenChange={() => {}}
+        onAddPane={() => {}}
+        renderPane={() => <div data-testid="terminal-pane">Terminal</div>}
+      />
+    </div>,
+  );
+  const pane = document.querySelector<HTMLElement>('[data-testid="terminal-pane"]')!;
+  const container = pane.closest<HTMLElement>('[data-slot="sidebar-container"]')!;
+  await screen.getByRole("button", { name: "Maximize panel", exact: true }).click();
+  await expect.poll(() => container.getBoundingClientRect().width).toBe(1000);
+  await screen.getByRole("button", { name: "Restore panel", exact: true }).click();
+  await expect.poll(() => container.getBoundingClientRect().width).toBeLessThan(1000);
+  await screen.unmount();
 });

@@ -7,6 +7,7 @@ import path from "node:path";
 import type {
   OrchestrationEvent,
   OrchestrationReadModel,
+  OrchestrationThread,
   ProviderKind,
   ProviderRuntimeEvent,
   ProviderSession,
@@ -30,6 +31,7 @@ import {
   Exit,
   Layer,
   ManagedRuntime,
+  Option,
   PubSub,
   Scope,
   Stream,
@@ -71,6 +73,10 @@ import {
   REASONING_STREAM_MIN_CHARS,
   shouldDispatchReasoningStream,
 } from "../reasoningStreamThrottle.ts";
+import { ComputerManager } from "../../computer/ComputerManager.ts";
+import { FakeComputerBackend } from "../../computer/FakeComputerBackend.ts";
+import { ComputerService } from "../../computer/Services/ComputerService.ts";
+import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import { ServerConfig } from "../../config.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -209,6 +215,97 @@ async function waitForThread(
   return poll();
 }
 
+function emitPendingUserInputRequest(
+  harness: { readonly emit: (event: LegacyProviderRuntimeEvent) => void },
+  input: {
+    readonly eventId: string;
+    readonly requestId: string;
+    readonly turnId: string;
+    readonly lifecycleGeneration: string;
+  },
+): void {
+  harness.emit({
+    type: "user-input.requested",
+    eventId: asEventId(input.eventId),
+    provider: "codex",
+    createdAt: new Date().toISOString(),
+    threadId: asThreadId("thread-1"),
+    turnId: asTurnId(input.turnId),
+    lifecycleGeneration: input.lifecycleGeneration,
+    requestId: ApprovalRequestId.makeUnsafe(input.requestId),
+    payload: {
+      questions: [
+        {
+          id: "question-1",
+          header: "Question",
+          question: "Which option should be used?",
+          options: [{ label: "one", description: "The first option" }],
+        },
+      ],
+    },
+  });
+}
+
+/**
+ * Emits an approval request that names no turn, the shape a Codex MCP
+ * elicitation (no `turnId` in its JSON-RPC params) or a Claude `canUseTool`
+ * callback with no bound turn state produces.
+ */
+function emitTurnlessPendingApprovalRequest(
+  harness: { readonly emit: (event: LegacyProviderRuntimeEvent) => void },
+  input: {
+    readonly eventId: string;
+    readonly requestId: string;
+    readonly lifecycleGeneration: string;
+  },
+): void {
+  harness.emit({
+    type: "request.opened",
+    eventId: asEventId(input.eventId),
+    provider: "codex",
+    createdAt: new Date().toISOString(),
+    threadId: asThreadId("thread-1"),
+    lifecycleGeneration: input.lifecycleGeneration,
+    requestId: ApprovalRequestId.makeUnsafe(input.requestId),
+    payload: {
+      requestType: "tool_approval",
+      detail: "An MCP tool wants to run",
+    },
+  });
+}
+
+const pendingInteractionStatus = (
+  thread: OrchestrationThread | undefined,
+  requestId: string,
+): string | undefined =>
+  thread?.pendingInteractions?.find((row) => row.requestId === requestId)?.status;
+
+const userInputFailureActivities = (thread: OrchestrationThread | undefined) =>
+  thread?.activities.filter((activity) => activity.kind === "provider.user-input.respond.failed") ??
+  [];
+
+const approvalFailureActivities = (thread: OrchestrationThread | undefined) =>
+  thread?.activities.filter((activity) => activity.kind === "provider.approval.respond.failed") ??
+  [];
+
+async function waitForProjectedThread(
+  read: () => Promise<OrchestrationThread | undefined>,
+  predicate: (thread: OrchestrationThread) => boolean,
+  timeoutMs = 2000,
+): Promise<OrchestrationThread> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const thread = await read();
+    if (thread && predicate(thread)) {
+      return thread;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error("Timed out waiting for projected thread state");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 type ProviderRuntimeTestReadModel = OrchestrationReadModel;
 type ProviderRuntimeTestThread = ProviderRuntimeTestReadModel["threads"][number];
 type ProviderRuntimeTestMessage = ProviderRuntimeTestThread["messages"][number];
@@ -263,7 +360,8 @@ describe("ProviderRuntimeIngestion", () => {
     | OrchestrationEngineService
     | ProviderRuntimeIngestionService
     | ProviderRuntimeEventRepository
-    | SqlClient.SqlClient,
+    | SqlClient.SqlClient
+    | ProjectionSnapshotQuery,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -292,6 +390,7 @@ describe("ProviderRuntimeIngestion", () => {
   async function createHarness(options?: {
     readonly startIngestion?: boolean;
     readonly persistedStream?: boolean;
+    readonly computerManager?: ComputerManager;
   }) {
     const workspaceRoot = makeTempDir("synara-provider-project-");
     fs.mkdirSync(path.join(workspaceRoot, ".git"));
@@ -308,6 +407,15 @@ describe("ProviderRuntimeIngestion", () => {
       Layer.provideMerge(SqlitePersistenceMemory),
     );
     const layer = ProviderRuntimeIngestionLive.pipe(
+      Layer.provideMerge(
+        options?.computerManager
+          ? Layer.succeed(ComputerService, {
+              supported: true,
+              availability: { kind: "available", backend: "test" },
+              manager: options.computerManager,
+            })
+          : Layer.empty,
+      ),
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
       Layer.provideMerge(SqlitePersistenceMemory),
@@ -322,6 +430,7 @@ describe("ProviderRuntimeIngestion", () => {
     const runtimeEventRepository = await runtime.runPromise(
       Effect.service(ProviderRuntimeEventRepository),
     );
+    const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
     scope = await Effect.runPromise(Scope.make("sequential"));
     let ingestionStarted = false;
     const startIngestion = async () => {
@@ -393,6 +502,13 @@ describe("ProviderRuntimeIngestion", () => {
       updatedAt: createdAt,
     });
 
+    // `engine.getReadModel()` is the command-side model; pending-interaction
+    // rows and their counts only exist in the projection, so read them there.
+    const readProjectedThread = async (
+      threadId: ThreadId = ThreadId.makeUnsafe("thread-1"),
+    ): Promise<OrchestrationThread | undefined> =>
+      Option.getOrUndefined(await runtime!.runPromise(snapshotQuery.getThreadDetailById(threadId)));
+
     return {
       engine,
       emit: provider.emit,
@@ -401,6 +517,7 @@ describe("ProviderRuntimeIngestion", () => {
       drain,
       startIngestion,
       runtimeEventRepository,
+      readProjectedThread,
     };
   }
 
@@ -448,6 +565,167 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(coverage.retainedCount).toBeGreaterThan(0);
   });
+  it.each([
+    { type: "turn.completed", payload: { state: "completed" } },
+    { type: "turn.aborted", payload: { reason: "User interrupted" } },
+    { type: "session.exited", payload: { exitKind: "graceful" } },
+    { type: "session.state.changed", payload: { state: "stopped" } },
+    { type: "session.state.changed", payload: { state: "error" } },
+    { type: "runtime.error", payload: { message: "Provider stopped" } },
+  ])("releases computer control on $type $payload without idle expiry", async (terminal) => {
+    const manager = new ComputerManager({ backend: new FakeComputerBackend(), now: () => 0 });
+    try {
+      const harness = await createHarness({ computerManager: manager });
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId("computer-turn-1");
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId("computer-turn-started"),
+        provider: "codex",
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+      });
+      await waitForThread(harness.engine, (thread) => thread.session?.activeTurnId === turnId);
+      await manager.withAgentActivity(
+        threadId,
+        () => manager.typeText(threadId, "first"),
+        undefined,
+        turnId,
+      );
+      await expect(manager.typeText("thread-2", "second")).rejects.toMatchObject({
+        code: "computer_controlled_by_other_thread",
+      });
+      harness.emit({
+        ...terminal,
+        eventId: asEventId("computer-turn-terminal"),
+        provider: "codex",
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+      });
+      await harness.drain();
+      await expect(manager.typeText("thread-2", "second")).resolves.toMatchObject({
+        action: "computer_type_text",
+      });
+    } finally {
+      await manager.dispose();
+    }
+  });
+
+  it.each([
+    { type: "turn.completed", payload: { state: "completed" } },
+    { type: "session.exited", payload: { exitKind: "graceful" } },
+  ])(
+    "does not let a delayed computer terminal $type release a newer turn's desktop",
+    async (terminal) => {
+      const manager = new ComputerManager({ backend: new FakeComputerBackend(), now: () => 0 });
+      try {
+        const harness = await createHarness({ computerManager: manager });
+        const threadId = asThreadId("thread-1");
+        const oldTurnId = asTurnId("computer-old-turn");
+        const newTurnId = asTurnId("computer-new-turn");
+        harness.emit({
+          type: "turn.started",
+          eventId: asEventId("computer-old-started"),
+          provider: "codex",
+          threadId,
+          turnId: oldTurnId,
+          createdAt: new Date().toISOString(),
+        });
+        await waitForThread(harness.engine, (thread) => thread.session?.activeTurnId === oldTurnId);
+        // The gateway has already admitted the next turn while ingestion is
+        // still catching up with the previous turn's terminal event.
+        await manager.withAgentActivity(
+          threadId,
+          () => manager.typeText(threadId, "new turn"),
+          undefined,
+          newTurnId,
+        );
+        harness.emit({
+          ...terminal,
+          eventId: asEventId("computer-old-completed"),
+          provider: "codex",
+          threadId,
+          turnId: oldTurnId,
+          createdAt: new Date().toISOString(),
+        });
+        await harness.drain();
+        await expect(manager.typeText("thread-2", "second")).rejects.toMatchObject({
+          code: "computer_controlled_by_other_thread",
+        });
+        harness.emit({
+          type: "turn.completed",
+          eventId: asEventId("computer-new-completed"),
+          provider: "codex",
+          threadId,
+          turnId: newTurnId,
+          createdAt: new Date().toISOString(),
+          payload: { state: "completed" },
+        });
+        await harness.drain();
+        await expect(manager.typeText("thread-2", "second")).resolves.toMatchObject({
+          action: "computer_type_text",
+        });
+      } finally {
+        await manager.dispose();
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "keeps computer control on an ambiguous turnless terminal (session ready: %s)",
+    async (sessionReady) => {
+      const manager = new ComputerManager({ backend: new FakeComputerBackend(), now: () => 0 });
+      try {
+        const harness = await createHarness({ computerManager: manager });
+        const threadId = asThreadId("thread-1");
+        for (const turnId of ["computer-overlap-one", "computer-overlap-two"]) {
+          harness.emit({
+            type: "turn.started",
+            eventId: asEventId(`${turnId}-started`),
+            provider: "codex",
+            threadId,
+            turnId: asTurnId(turnId),
+            createdAt: new Date().toISOString(),
+          });
+          await harness.drain();
+        }
+        if (sessionReady) {
+          harness.emit({
+            type: "session.state.changed",
+            eventId: asEventId("computer-overlap-session-ready"),
+            provider: "codex",
+            threadId,
+            createdAt: new Date().toISOString(),
+            payload: { state: "ready" },
+          });
+          await harness.drain();
+          await waitForThread(harness.engine, (thread) => thread.session?.activeTurnId === null);
+        }
+        await manager.withAgentActivity(
+          threadId,
+          () => manager.typeText(threadId, "active overlapping turn"),
+          undefined,
+          "computer-overlap-two",
+        );
+        harness.emit({
+          type: "turn.completed",
+          eventId: asEventId("computer-ambiguous-completed"),
+          provider: "codex",
+          threadId,
+          createdAt: new Date().toISOString(),
+          payload: { state: "completed" },
+        });
+        await harness.drain();
+        await expect(manager.typeText("thread-2", "second")).rejects.toMatchObject({
+          code: "computer_controlled_by_other_thread",
+        });
+      } finally {
+        await manager.dispose();
+      }
+    },
+  );
 
   it("REL-01C gate: replays output persisted before subscription without duplicate acceptance", async () => {
     const harness = await createHarness({ startIngestion: false });
@@ -1672,7 +1950,7 @@ describe("ProviderRuntimeIngestion", () => {
     );
   });
 
-  it.each(["pending", "responding", "uncertain"] as const)(
+  it.each(["pending", "uncertain"] as const)(
     "settles orphaned %s interactions when a provider session (re)starts",
     async (status) => {
       const harness = await createHarness();
@@ -1754,6 +2032,348 @@ describe("ProviderRuntimeIngestion", () => {
       expect(failuresAfter).toHaveLength(1);
     },
   );
+
+  it("settles a pending user-input request when its turn ends without a session restart", async () => {
+    const harness = await createHarness();
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-started-interrupted-user-input"),
+      provider: "codex",
+      createdAt: new Date().toISOString(),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-interrupted"),
+    });
+    emitPendingUserInputRequest(harness, {
+      eventId: "evt-user-input-requested-interrupted",
+      requestId: "req-interrupted-user-input",
+      turnId: "turn-interrupted",
+      lifecycleGeneration: "generation-interrupted",
+    });
+
+    const pendingThread = await waitForProjectedThread(
+      harness.readProjectedThread,
+      (thread) => thread.hasPendingUserInput === true,
+    );
+    expect(pendingInteractionStatus(pendingThread, "req-interrupted-user-input")).toBe("pending");
+
+    // A Stop rotates the lifecycle generation without emitting `session.started`,
+    // so the interrupted turn's terminal event is the only settlement signal
+    // left. Without it the row stayed `pending` forever and the sidebar kept
+    // showing "Awaiting Input" on an idle thread.
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-interrupted-user-input"),
+      provider: "codex",
+      createdAt: new Date().toISOString(),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-interrupted"),
+      payload: { state: "interrupted" },
+    });
+
+    const settledThread = await waitForProjectedThread(
+      harness.readProjectedThread,
+      (thread) => thread.hasPendingUserInput === false,
+    );
+    expect(pendingInteractionStatus(settledThread, "req-interrupted-user-input")).toBe("uncertain");
+    const failures = userInputFailureActivities(settledThread);
+    expect(failures).toHaveLength(1);
+    expect(failures[0]?.payload).toMatchObject({
+      requestId: "req-interrupted-user-input",
+      lifecycleGeneration: "generation-interrupted",
+      detail: expect.stringContaining(
+        "Stale pending user-input request: req-interrupted-user-input",
+      ),
+    });
+  });
+
+  it("keeps a Claude background approval answerable after foreground completion", async () => {
+    const harness = await createHarness();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("claude-foreground");
+    const requestId = ApprovalRequestId.makeUnsafe("claude-background-approval");
+    const common = {
+      provider: "claudeAgent" as const,
+      threadId,
+      turnId,
+      createdAt: new Date().toISOString(),
+      lifecycleGeneration: "claude-generation",
+    };
+    harness.emit({
+      ...common,
+      type: "turn.started",
+      eventId: asEventId("claude-started"),
+      payload: {},
+    });
+    harness.emit({
+      ...common,
+      type: "request.opened",
+      eventId: asEventId("claude-approval-opened"),
+      requestId,
+      payload: { requestType: "tool_approval", detail: "Background computer operation" },
+    });
+    await waitForProjectedThread(
+      harness.readProjectedThread,
+      (thread) => pendingInteractionStatus(thread, requestId) === "pending",
+    );
+    harness.emit({
+      ...common,
+      type: "turn.completed",
+      eventId: asEventId("claude-foreground-ended"),
+      payload: { state: "completed" },
+    });
+    await harness.drain();
+    const pending = await harness.readProjectedThread();
+    expect(pendingInteractionStatus(pending, requestId)).toBe("pending");
+
+    // Only the provider's live callback owner can settle this request.
+    harness.emit({
+      ...common,
+      type: "request.resolved",
+      eventId: asEventId("claude-approval-resolved"),
+      requestId,
+      payload: { requestType: "tool_approval", decision: "accept" },
+    });
+    await waitForProjectedThread(
+      harness.readProjectedThread,
+      (thread) => thread.hasPendingApprovals === false,
+    );
+  });
+
+  it("leaves a concurrent turn's pending user-input request open when another turn ends", async () => {
+    const harness = await createHarness();
+
+    // ProviderService permits overlapping sends on one thread, so two turns can
+    // share a lifecycle generation. A terminal event for one of them must not
+    // settle the other's still-answerable request.
+    emitPendingUserInputRequest(harness, {
+      eventId: "evt-user-input-requested-overlap-a",
+      requestId: "req-overlap-turn-a",
+      turnId: "turn-overlap-a",
+      lifecycleGeneration: "generation-overlap",
+    });
+    emitPendingUserInputRequest(harness, {
+      eventId: "evt-user-input-requested-overlap-b",
+      requestId: "req-overlap-turn-b",
+      turnId: "turn-overlap-b",
+      lifecycleGeneration: "generation-overlap",
+    });
+    await waitForProjectedThread(
+      harness.readProjectedThread,
+      (thread) => (thread.pendingInteractions?.length ?? 0) === 2,
+    );
+
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-overlap-a"),
+      provider: "codex",
+      createdAt: new Date().toISOString(),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-overlap-a"),
+      payload: { state: "interrupted" },
+    });
+
+    const settledThread = await waitForProjectedThread(
+      harness.readProjectedThread,
+      (thread) => pendingInteractionStatus(thread, "req-overlap-turn-a") === "uncertain",
+    );
+    expect(pendingInteractionStatus(settledThread, "req-overlap-turn-b")).toBe("pending");
+    expect(settledThread.hasPendingUserInput).toBe(true);
+    const failures = userInputFailureActivities(settledThread);
+    expect(failures).toHaveLength(1);
+    expect(failures[0]?.payload).toMatchObject({ requestId: "req-overlap-turn-a" });
+  });
+
+  it("settles a turnless pending approval when the thread's last turn ends", async () => {
+    const harness = await createHarness();
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-started-turnless-approval"),
+      provider: "codex",
+      createdAt: new Date().toISOString(),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-turnless-approval"),
+      lifecycleGeneration: "generation-turnless",
+    });
+    // The row carries no turn id at all, so a strictly turn-scoped filter can
+    // never match it. An interrupt emits no session.exited either, which left
+    // the row `pending` until the next server boot.
+    emitTurnlessPendingApprovalRequest(harness, {
+      eventId: "evt-request-opened-turnless",
+      requestId: "req-turnless-approval",
+      lifecycleGeneration: "generation-turnless",
+    });
+
+    const pendingThread = await waitForProjectedThread(
+      harness.readProjectedThread,
+      (thread) => pendingInteractionStatus(thread, "req-turnless-approval") === "pending",
+    );
+    expect(pendingThread.pendingInteractions?.[0]?.turnId ?? null).toBeNull();
+
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-turnless-approval"),
+      provider: "codex",
+      createdAt: new Date().toISOString(),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-turnless-approval"),
+      lifecycleGeneration: "generation-turnless",
+      payload: { state: "interrupted" },
+    });
+
+    const settledThread = await waitForProjectedThread(
+      harness.readProjectedThread,
+      (thread) => pendingInteractionStatus(thread, "req-turnless-approval") === "uncertain",
+    );
+    expect(settledThread.hasPendingApprovals).toBe(false);
+    const failures = approvalFailureActivities(settledThread);
+    expect(failures).toHaveLength(1);
+    expect(failures[0]?.payload).toMatchObject({
+      requestId: "req-turnless-approval",
+      lifecycleGeneration: "generation-turnless",
+    });
+  });
+
+  it("keeps a turnless pending approval open while another turn is still running", async () => {
+    const harness = await createHarness();
+
+    for (const turnId of ["turn-turnless-overlap-a", "turn-turnless-overlap-b"]) {
+      harness.emit({
+        type: "turn.started",
+        eventId: asEventId(`evt-turn-started-${turnId}`),
+        provider: "codex",
+        createdAt: new Date().toISOString(),
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId(turnId),
+        lifecycleGeneration: "generation-turnless-overlap",
+      });
+    }
+    emitTurnlessPendingApprovalRequest(harness, {
+      eventId: "evt-request-opened-turnless-overlap",
+      requestId: "req-turnless-overlap",
+      lifecycleGeneration: "generation-turnless-overlap",
+    });
+    await waitForProjectedThread(
+      harness.readProjectedThread,
+      (thread) => pendingInteractionStatus(thread, "req-turnless-overlap") === "pending",
+    );
+
+    // Overlapping sends share a generation, and the surviving turn may be the
+    // one blocked on this request, so the first terminal event must leave it
+    // answerable.
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-turnless-overlap-a"),
+      provider: "codex",
+      createdAt: new Date().toISOString(),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-turnless-overlap-a"),
+      lifecycleGeneration: "generation-turnless-overlap",
+      payload: { state: "interrupted" },
+    });
+    await harness.drain();
+    const untouchedThread = await harness.readProjectedThread();
+    expect(pendingInteractionStatus(untouchedThread, "req-turnless-overlap")).toBe("pending");
+    expect(approvalFailureActivities(untouchedThread)).toHaveLength(0);
+
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-turnless-overlap-b"),
+      provider: "codex",
+      createdAt: new Date().toISOString(),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-turnless-overlap-b"),
+      lifecycleGeneration: "generation-turnless-overlap",
+      payload: { state: "interrupted" },
+    });
+
+    const settledThread = await waitForProjectedThread(
+      harness.readProjectedThread,
+      (thread) => pendingInteractionStatus(thread, "req-turnless-overlap") === "uncertain",
+    );
+    expect(approvalFailureActivities(settledThread)).toHaveLength(1);
+  });
+
+  it("leaves a turnless pending approval from another generation answerable", async () => {
+    const harness = await createHarness();
+
+    emitTurnlessPendingApprovalRequest(harness, {
+      eventId: "evt-request-opened-turnless-generation-a",
+      requestId: "req-turnless-generation-a",
+      lifecycleGeneration: "generation-a",
+    });
+    await waitForProjectedThread(
+      harness.readProjectedThread,
+      (thread) => pendingInteractionStatus(thread, "req-turnless-generation-a") === "pending",
+    );
+
+    // A stale terminal event is accepted upstream when it still names the
+    // binding's active turn. It says nothing about a row a newer generation
+    // opened, so it must not settle it.
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-turnless-generation-b"),
+      provider: "codex",
+      createdAt: new Date().toISOString(),
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-turnless-generation-b"),
+      lifecycleGeneration: "generation-b",
+      payload: { state: "interrupted" },
+    });
+    await harness.drain();
+    const untouchedThread = await harness.readProjectedThread();
+    expect(pendingInteractionStatus(untouchedThread, "req-turnless-generation-a")).toBe("pending");
+    expect(approvalFailureActivities(untouchedThread)).toHaveLength(0);
+  });
+
+  it("scopes session.exited settlement to the exited lifecycle generation", async () => {
+    const harness = await createHarness();
+
+    emitPendingUserInputRequest(harness, {
+      eventId: "evt-user-input-requested-exit-generation",
+      requestId: "req-exit-generation-a",
+      turnId: "turn-exit-generation-a",
+      lifecycleGeneration: "generation-a",
+    });
+    await waitForProjectedThread(
+      harness.readProjectedThread,
+      (thread) => thread.hasPendingUserInput === true,
+    );
+
+    // A session.exited from a different generation says nothing about this
+    // row's runtime, so it must leave the request answerable.
+    harness.emit({
+      type: "session.exited",
+      eventId: asEventId("evt-session-exited-other-generation"),
+      provider: "codex",
+      createdAt: new Date().toISOString(),
+      threadId: asThreadId("thread-1"),
+      lifecycleGeneration: "generation-b",
+      payload: { reason: "exit from a different generation" },
+    });
+    await harness.drain();
+    const untouchedThread = await harness.readProjectedThread();
+    expect(pendingInteractionStatus(untouchedThread, "req-exit-generation-a")).toBe("pending");
+    expect(userInputFailureActivities(untouchedThread)).toHaveLength(0);
+
+    harness.emit({
+      type: "session.exited",
+      eventId: asEventId("evt-session-exited-matching-generation"),
+      provider: "codex",
+      createdAt: new Date().toISOString(),
+      threadId: asThreadId("thread-1"),
+      lifecycleGeneration: "generation-a",
+      payload: { reason: "exit from the owning generation" },
+    });
+
+    const settledThread = await waitForProjectedThread(
+      harness.readProjectedThread,
+      (thread) => pendingInteractionStatus(thread, "req-exit-generation-a") === "uncertain",
+    );
+    expect(settledThread.hasPendingUserInput).toBe(false);
+    expect(userInputFailureActivities(settledThread)).toHaveLength(1);
+  });
 
   it("clears running turn state when a stop emits turn.aborted without a turn id", async () => {
     const harness = await createHarness();
@@ -1851,100 +2471,6 @@ describe("ProviderRuntimeIngestion", () => {
         payload: expect.objectContaining({ state: "interrupted" }),
       }),
     );
-  });
-
-  it("appends generated-image markdown to the turn's assistant message when the turn settles", async () => {
-    const harness = await createHarness();
-    const turnId = asTurnId("turn-image");
-    const imagePath = "/tmp/provider-thread/call.png";
-
-    harness.emit({
-      type: "turn.started",
-      eventId: asEventId("evt-turn-started-image"),
-      provider: "codex",
-      createdAt: new Date().toISOString(),
-      threadId: asThreadId("thread-1"),
-      turnId,
-    });
-    harness.emit({
-      type: "content.delta",
-      eventId: asEventId("evt-image-answer-delta"),
-      provider: "codex",
-      createdAt: new Date().toISOString(),
-      threadId: asThreadId("thread-1"),
-      turnId,
-      itemId: asItemId("answer-image"),
-      payload: {
-        streamKind: "assistant_text",
-        delta: "Here is the generated result.",
-      },
-    });
-    harness.emit({
-      type: "item.completed",
-      eventId: asEventId("evt-image-answer-complete"),
-      provider: "codex",
-      createdAt: new Date().toISOString(),
-      threadId: asThreadId("thread-1"),
-      turnId,
-      itemId: asItemId("answer-image"),
-      payload: {
-        itemType: "assistant_message",
-        status: "completed",
-      },
-    });
-
-    await waitForThread(harness.engine, (thread) =>
-      thread.messages.some(
-        (message) =>
-          message.id === "assistant:answer-image" &&
-          message.text.includes("Here is the generated result.") &&
-          message.streaming === false,
-      ),
-    );
-
-    harness.emit({
-      type: "item.completed",
-      eventId: asEventId("evt-generated-image-complete"),
-      provider: "codex",
-      createdAt: new Date().toISOString(),
-      threadId: asThreadId("thread-1"),
-      turnId,
-      itemId: asItemId("call"),
-      payload: {
-        itemType: "image_generation",
-        status: "completed",
-        title: "Generated image",
-        detail: imagePath,
-        data: {
-          kind: "codex.generated_image",
-          path: imagePath,
-          callId: "call",
-        },
-      },
-    });
-    harness.emit({
-      type: "turn.completed",
-      eventId: asEventId("evt-turn-completed-image"),
-      provider: "codex",
-      createdAt: new Date().toISOString(),
-      threadId: asThreadId("thread-1"),
-      turnId,
-      payload: { state: "completed" },
-    });
-
-    const thread = await waitForThread(harness.engine, (entry) =>
-      entry.messages.some(
-        (message) =>
-          message.id === "assistant:answer-image" &&
-          message.text.includes("Here is the generated result.") &&
-          message.text.includes(`![Generated image](${imagePath})`) &&
-          message.streaming === false,
-      ),
-    );
-    const assistantMessage = thread.messages.find(
-      (message) => message.id === "assistant:answer-image",
-    );
-    expect(assistantMessage?.streaming).toBe(false);
   });
 
   it("prefers a persisted Studio copy over its provider-home image source", () => {
@@ -2276,60 +2802,6 @@ describe("ProviderRuntimeIngestion", () => {
     expect(occurrences).toBe(1);
   });
 
-  it("accepts claude turn lifecycle when seeded thread id is a synthetic placeholder", async () => {
-    const harness = await createHarness();
-    const seededAt = new Date().toISOString();
-
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.session.set",
-        commandId: CommandId.makeUnsafe("cmd-session-seed-claude-placeholder"),
-        threadId: ThreadId.makeUnsafe("thread-1"),
-        session: {
-          threadId: ThreadId.makeUnsafe("thread-1"),
-          status: "ready",
-          providerName: "claudeAgent",
-          runtimeMode: "approval-required",
-          activeTurnId: null,
-          updatedAt: seededAt,
-          lastError: null,
-        },
-        createdAt: seededAt,
-      }),
-    );
-
-    harness.emit({
-      type: "turn.started",
-      eventId: asEventId("evt-turn-started-claude-placeholder"),
-      provider: "claudeAgent",
-      createdAt: new Date().toISOString(),
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-claude-placeholder"),
-    });
-
-    await waitForThread(
-      harness.engine,
-      (thread) =>
-        thread.session?.status === "running" &&
-        thread.session?.activeTurnId === "turn-claude-placeholder",
-    );
-
-    harness.emit({
-      type: "turn.completed",
-      eventId: asEventId("evt-turn-completed-claude-placeholder"),
-      provider: "claudeAgent",
-      createdAt: new Date().toISOString(),
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-claude-placeholder"),
-      payload: { state: "completed" },
-    });
-
-    await waitForThread(
-      harness.engine,
-      (thread) => thread.session?.status === "ready" && thread.session?.activeTurnId === null,
-    );
-  });
-
   it("ignores auxiliary turn completions from a different provider thread", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
@@ -2381,117 +2853,6 @@ describe("ProviderRuntimeIngestion", () => {
       harness.engine,
       (thread) => thread.session?.status === "ready" && thread.session?.activeTurnId === null,
     );
-  });
-
-  it("ignores non-active turn completion when runtime omits thread id", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "turn.started",
-      eventId: asEventId("evt-turn-started-guarded"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-guarded-main"),
-    });
-
-    await waitForThread(
-      harness.engine,
-      (thread) =>
-        thread.session?.status === "running" &&
-        thread.session?.activeTurnId === "turn-guarded-main",
-    );
-
-    harness.emit({
-      type: "turn.completed",
-      eventId: asEventId("evt-turn-completed-guarded-other"),
-      provider: "codex",
-      createdAt: new Date().toISOString(),
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-guarded-other"),
-      payload: { state: "completed" },
-    });
-
-    await harness.drain();
-    const midReadModel = await Effect.runPromise(harness.engine.getReadModel());
-    const midThread = midReadModel.threads.find(
-      (entry) => entry.id === ThreadId.makeUnsafe("thread-1"),
-    );
-    expect(midThread?.session?.status).toBe("running");
-    expect(midThread?.session?.activeTurnId).toBe("turn-guarded-main");
-
-    harness.emit({
-      type: "turn.completed",
-      eventId: asEventId("evt-turn-completed-guarded-main"),
-      provider: "codex",
-      createdAt: new Date().toISOString(),
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-guarded-main"),
-      payload: { state: "completed" },
-    });
-
-    await waitForThread(
-      harness.engine,
-      (thread) => thread.session?.status === "ready" && thread.session?.activeTurnId === null,
-    );
-  });
-
-  it("maps canonical content delta/item completed into finalized assistant messages", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "content.delta",
-      eventId: asEventId("evt-message-delta-1"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-2"),
-      itemId: asItemId("item-1"),
-      payload: {
-        streamKind: "assistant_text",
-        delta: "hello",
-      },
-    });
-    harness.emit({
-      type: "content.delta",
-      eventId: asEventId("evt-message-delta-2"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-2"),
-      itemId: asItemId("item-1"),
-      payload: {
-        streamKind: "assistant_text",
-        delta: " world",
-      },
-    });
-    harness.emit({
-      type: "item.completed",
-      eventId: asEventId("evt-message-completed"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-2"),
-      itemId: asItemId("item-1"),
-      payload: {
-        itemType: "assistant_message",
-        status: "completed",
-      },
-    });
-
-    const thread = await waitForThread(harness.engine, (entry) =>
-      entry.messages.some(
-        (message: ProviderRuntimeTestMessage) =>
-          message.id === "assistant:item-1" && !message.streaming,
-      ),
-    );
-    const message = thread.messages.find(
-      (entry: ProviderRuntimeTestMessage) => entry.id === "assistant:item-1",
-    );
-    expect(message?.text).toBe("hello world");
-    expect(message?.streaming).toBe(false);
   });
 
   it("does not project reasoning content deltas into transcript work rows", async () => {
@@ -2855,7 +3216,6 @@ describe("ProviderRuntimeIngestion", () => {
       },
     });
   });
-
   it("settles and clears buffered Codex reasoning on runtime errors", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
@@ -3315,7 +3675,6 @@ describe("ProviderRuntimeIngestion", () => {
       ),
     ).toHaveLength(0);
   });
-
   it("does not project unsupported or unidentified reasoning lifecycle rows", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
@@ -3385,131 +3744,6 @@ describe("ProviderRuntimeIngestion", () => {
     ).toHaveLength(0);
   });
 
-  it("persists a compact per-model token breakdown on turn.completed activities", async () => {
-    const harness = await createHarness();
-
-    harness.setProviderSession({
-      threadId: asThreadId("thread-1"),
-      provider: "claudeAgent",
-      status: "running",
-      runtimeMode: "approval-required",
-      createdAt: "2026-03-01T10:00:00.000Z",
-      updatedAt: "2026-03-01T10:00:00.000Z",
-      activeTurnId: asTurnId("turn-1"),
-    });
-
-    harness.emit({
-      type: "turn.completed",
-      eventId: asEventId("evt-turn-completed-model-usage"),
-      provider: "claudeAgent",
-      createdAt: "2026-03-01T10:00:01.000Z",
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-1"),
-      payload: {
-        state: "completed",
-        modelUsage: {
-          "claude-fable-5": {
-            inputTokens: 100,
-            outputTokens: 40,
-            cacheReadInputTokens: 800,
-            cacheCreationInputTokens: 60,
-            webSearchRequests: 0,
-            costUSD: 0.12,
-            contextWindow: 200000,
-          },
-          "claude-haiku-4-5": {
-            inputTokens: 0,
-            outputTokens: 0,
-            cacheReadInputTokens: 0,
-            cacheCreationInputTokens: 0,
-            webSearchRequests: 0,
-            costUSD: 0,
-            contextWindow: 200000,
-          },
-        },
-      },
-    } as ProviderRuntimeEvent);
-
-    const thread = await waitForThread(harness.engine, (candidate) =>
-      candidate.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.id === "evt-turn-completed-model-usage",
-      ),
-    );
-
-    const activity = thread.activities.find(
-      (candidate: ProviderRuntimeTestActivity) => candidate.id === "evt-turn-completed-model-usage",
-    );
-    // Zero-usage models are dropped; cache reads/writes fold into inputTokens.
-    expect(activity).toMatchObject({
-      kind: "turn.completed",
-      payload: {
-        state: "completed",
-        modelUsage: {
-          "claude-fable-5": { inputTokens: 960, outputTokens: 40, totalTokens: 1000 },
-        },
-      },
-    });
-    const persistedModelUsage = (
-      activity?.payload as { modelUsage?: Record<string, unknown> } | undefined
-    )?.modelUsage;
-    expect(Object.keys(persistedModelUsage ?? {})).toEqual(["claude-fable-5"]);
-  });
-
-  it("projects MCP tool progress into thread activity with preserved tool metadata", async () => {
-    const harness = await createHarness();
-
-    harness.setProviderSession({
-      threadId: asThreadId("thread-1"),
-      provider: "codex",
-      status: "running",
-      runtimeMode: "approval-required",
-      createdAt: "2026-03-01T10:00:00.000Z",
-      updatedAt: "2026-03-01T10:00:00.000Z",
-      activeTurnId: asTurnId("turn-1"),
-    });
-
-    harness.emit({
-      type: "tool.progress",
-      eventId: asEventId("evt-mcp-progress"),
-      provider: "codex",
-      createdAt: "2026-03-01T10:00:01.000Z",
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-1"),
-      payload: {
-        toolUseId: "tool-1",
-        toolName: "mcp__codex_apps__github_fetch_pr",
-        summary: "Fetching PR details",
-        elapsedSeconds: 1.2,
-      },
-    } as ProviderRuntimeEvent);
-
-    const thread = await waitForThread(harness.engine, (candidate) =>
-      candidate.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.id === "evt-mcp-progress",
-      ),
-    );
-
-    const activity = thread.activities.find(
-      (candidate: ProviderRuntimeTestActivity) => candidate.id === "evt-mcp-progress",
-    );
-    expect(activity).toMatchObject({
-      kind: "tool.updated",
-      tone: "tool",
-      summary: "mcp__codex_apps__github_fetch_pr",
-      payload: {
-        itemType: "mcp_tool_call",
-        title: "MCP tool call",
-        detail: "Fetching PR details",
-        data: {
-          toolUseId: "tool-1",
-          toolName: "mcp__codex_apps__github_fetch_pr",
-          summary: "Fetching PR details",
-          elapsedSeconds: 1.2,
-        },
-      },
-    });
-  });
-
   it("uses assistant item completion detail when no assistant deltas were streamed", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
@@ -3540,36 +3774,6 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(message?.text).toBe("assistant-only final text");
     expect(message?.streaming).toBe(false);
-  });
-
-  it("projects completed plan items into first-class proposed plans", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "turn.proposed.completed",
-      eventId: asEventId("evt-plan-item-completed"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-plan-final"),
-      payload: {
-        planMarkdown: "## Ship plan\n\n- wire projection\n- render follow-up",
-      },
-    });
-
-    const thread = await waitForThread(harness.engine, (entry) =>
-      entry.proposedPlans.some(
-        (proposedPlan: ProviderRuntimeTestProposedPlan) =>
-          proposedPlan.id === "plan:thread-1:turn:turn-plan-final",
-      ),
-    );
-    const proposedPlan = thread.proposedPlans.find(
-      (entry: ProviderRuntimeTestProposedPlan) => entry.id === "plan:thread-1:turn:turn-plan-final",
-    );
-    expect(proposedPlan?.planMarkdown).toBe(
-      "## Ship plan\n\n- wire projection\n- render follow-up",
-    );
   });
 
   it("marks the source proposed plan implemented only after the target turn starts", async () => {
@@ -4143,96 +4347,6 @@ describe("ProviderRuntimeIngestion", () => {
     expect(proposedPlan?.planMarkdown).toBe("## Buffered plan\n\n- first\n- second");
   });
 
-  it("buffers assistant deltas until completion when buffered delivery is requested", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    // Unbound turns default to streaming; buffered requires an explicit request.
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.makeUnsafe("cmd-turn-start-buffered"),
-        threadId: asThreadId("thread-1"),
-        message: {
-          messageId: asMessageId("message-buffered-request"),
-          role: "user",
-          text: "hold my text",
-          attachments: [],
-        },
-        assistantDeliveryMode: "buffered",
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "approval-required",
-        createdAt: now,
-      }),
-    );
-    await harness.drain();
-
-    harness.emit({
-      type: "turn.started",
-      eventId: asEventId("evt-turn-started-buffered"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-buffered"),
-    });
-    await waitForThread(
-      harness.engine,
-      (thread) =>
-        thread.session?.status === "running" && thread.session?.activeTurnId === "turn-buffered",
-    );
-
-    harness.emit({
-      type: "content.delta",
-      eventId: asEventId("evt-message-delta-buffered"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-buffered"),
-      itemId: asItemId("item-buffered"),
-      payload: {
-        streamKind: "assistant_text",
-        delta: "buffer me",
-      },
-    });
-
-    await harness.drain();
-    const midReadModel = await Effect.runPromise(harness.engine.getReadModel());
-    const midThread = midReadModel.threads.find(
-      (entry) => entry.id === ThreadId.makeUnsafe("thread-1"),
-    );
-    expect(
-      midThread?.messages.some(
-        (message: ProviderRuntimeTestMessage) => message.id === "assistant:item-buffered",
-      ),
-    ).toBe(false);
-
-    harness.emit({
-      type: "item.completed",
-      eventId: asEventId("evt-message-completed-buffered"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-buffered"),
-      itemId: asItemId("item-buffered"),
-      payload: {
-        itemType: "assistant_message",
-        status: "completed",
-      },
-    });
-
-    const thread = await waitForThread(harness.engine, (entry) =>
-      entry.messages.some(
-        (message: ProviderRuntimeTestMessage) =>
-          message.id === "assistant:item-buffered" && !message.streaming,
-      ),
-    );
-    const message = thread.messages.find(
-      (entry: ProviderRuntimeTestMessage) => entry.id === "assistant:item-buffered",
-    );
-    expect(message?.text).toBe("buffer me");
-    expect(message?.streaming).toBe(false);
-  });
-
   it("ignores whitespace-only assistant deltas on completion in buffered delivery", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
@@ -4323,99 +4437,6 @@ describe("ProviderRuntimeIngestion", () => {
     );
     expect(message?.text).toBe("");
     expect(message?.streaming).toBe(false);
-  });
-
-  it("streams assistant deltas when thread.turn.start requests streaming mode", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.makeUnsafe("cmd-turn-start-streaming-mode"),
-        threadId: ThreadId.makeUnsafe("thread-1"),
-        message: {
-          messageId: asMessageId("message-streaming-mode"),
-          role: "user",
-          text: "stream please",
-          attachments: [],
-        },
-        assistantDeliveryMode: "streaming",
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "approval-required",
-        createdAt: now,
-      }),
-    );
-    await harness.drain();
-
-    harness.emit({
-      type: "turn.started",
-      eventId: asEventId("evt-turn-started-streaming-mode"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-streaming-mode"),
-    });
-    await waitForThread(
-      harness.engine,
-      (thread) =>
-        thread.session?.status === "running" &&
-        thread.session?.activeTurnId === "turn-streaming-mode",
-    );
-
-    harness.emit({
-      type: "content.delta",
-      eventId: asEventId("evt-message-delta-streaming-mode"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-streaming-mode"),
-      itemId: asItemId("item-streaming-mode"),
-      payload: {
-        streamKind: "assistant_text",
-        delta: "hello live",
-      },
-    });
-
-    const liveThread = await waitForThread(harness.engine, (entry) =>
-      entry.messages.some(
-        (message: ProviderRuntimeTestMessage) =>
-          message.id === "assistant:item-streaming-mode" &&
-          message.streaming &&
-          message.text === "hello live",
-      ),
-    );
-    const liveMessage = liveThread.messages.find(
-      (entry: ProviderRuntimeTestMessage) => entry.id === "assistant:item-streaming-mode",
-    );
-    expect(liveMessage?.streaming).toBe(true);
-
-    harness.emit({
-      type: "item.completed",
-      eventId: asEventId("evt-message-completed-streaming-mode"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-streaming-mode"),
-      itemId: asItemId("item-streaming-mode"),
-      payload: {
-        itemType: "assistant_message",
-        status: "completed",
-        detail: "hello live",
-      },
-    });
-
-    const finalThread = await waitForThread(harness.engine, (entry) =>
-      entry.messages.some(
-        (message: ProviderRuntimeTestMessage) =>
-          message.id === "assistant:item-streaming-mode" && !message.streaming,
-      ),
-    );
-    const finalMessage = finalThread.messages.find(
-      (entry: ProviderRuntimeTestMessage) => entry.id === "assistant:item-streaming-mode",
-    );
-    expect(finalMessage?.text).toBe("hello live");
-    expect(finalMessage?.streaming).toBe(false);
   });
 
   it("binds overlapping same-thread delivery modes in provider turn order", async () => {
@@ -6010,76 +6031,6 @@ describe("ProviderRuntimeIngestion", () => {
     expect(secondMessage?.streaming).toBe(true);
   });
 
-  it("maps canonical request events into approval activities with requestKind", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "request.opened",
-      eventId: asEventId("evt-request-opened"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      lifecycleGeneration: "approval-generation",
-      requestId: ApprovalRequestId.makeUnsafe("req-open"),
-      payload: {
-        requestType: "command_execution_approval",
-        detail: "pwd",
-      },
-    });
-
-    harness.emit({
-      type: "request.resolved",
-      eventId: asEventId("evt-request-resolved"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      lifecycleGeneration: "approval-generation",
-      requestId: ApprovalRequestId.makeUnsafe("req-open"),
-      payload: {
-        requestType: "command_execution_approval",
-        decision: "accept",
-      },
-    });
-
-    await waitForThread(
-      harness.engine,
-      (entry) =>
-        entry.activities.some(
-          (activity: ProviderRuntimeTestActivity) => activity.kind === "approval.requested",
-        ) &&
-        entry.activities.some(
-          (activity: ProviderRuntimeTestActivity) => activity.kind === "approval.resolved",
-        ),
-    );
-
-    const readModel = await Effect.runPromise(harness.engine.getReadModel());
-    const thread = readModel.threads.find((entry) => entry.id === ThreadId.makeUnsafe("thread-1"));
-    expect(thread).toBeDefined();
-
-    const requested = thread?.activities.find(
-      (activity: ProviderRuntimeTestActivity) => activity.id === "evt-request-opened",
-    );
-    const requestedPayload =
-      requested?.payload && typeof requested.payload === "object"
-        ? (requested.payload as Record<string, unknown>)
-        : undefined;
-    expect(requestedPayload?.requestKind).toBe("command");
-    expect(requestedPayload?.requestType).toBe("command_execution_approval");
-    expect(requestedPayload?.lifecycleGeneration).toBe("approval-generation");
-
-    const resolved = thread?.activities.find(
-      (activity: ProviderRuntimeTestActivity) => activity.id === "evt-request-resolved",
-    );
-    const resolvedPayload =
-      resolved?.payload && typeof resolved.payload === "object"
-        ? (resolved.payload as Record<string, unknown>)
-        : undefined;
-    expect(resolvedPayload?.requestKind).toBe("command");
-    expect(resolvedPayload?.requestType).toBe("command_execution_approval");
-    expect(resolvedPayload?.lifecycleGeneration).toBe("approval-generation");
-  });
-
   it("bounds large tool activity data while keeping command metadata", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
@@ -6270,73 +6221,6 @@ describe("ProviderRuntimeIngestion", () => {
     });
   });
 
-  it("hard-caps pathological tool activity data", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-    const wideData = Object.fromEntries(
-      Array.from({ length: 50 }, (_, index) => [`wideField${index}`, "x".repeat(5_000)]),
-    );
-
-    harness.emit({
-      type: "item.completed",
-      eventId: asEventId("evt-pathological-tool-data"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-pathological-tool-data"),
-      payload: {
-        itemType: "command_execution",
-        status: "completed",
-        title: "Ran noisy command",
-        data: wideData,
-      },
-    });
-
-    const thread = await waitForThread(harness.engine, (entry) =>
-      entry.activities.some((activity) => activity.id === "evt-pathological-tool-data"),
-    );
-    const activity = thread.activities.find((entry) => entry.id === "evt-pathological-tool-data");
-    const payload =
-      activity?.payload && typeof activity.payload === "object"
-        ? (activity.payload as Record<string, unknown>)
-        : {};
-    const data =
-      payload.data && typeof payload.data === "object"
-        ? (payload.data as Record<string, unknown>)
-        : {};
-
-    expect(data.__synaraTruncated).toBe(true);
-    expect(typeof data.preview).toBe("string");
-    expect(JSON.stringify(data).length).toBeLessThanOrEqual(16_000);
-  });
-
-  it("maps runtime.error into errored session state", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "runtime.error",
-      eventId: asEventId("evt-runtime-error"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-3"),
-      payload: {
-        message: "runtime exploded",
-      },
-    });
-
-    const thread = await waitForThread(
-      harness.engine,
-      (entry) =>
-        entry.session?.status === "error" &&
-        entry.session?.activeTurnId === "turn-3" &&
-        entry.session?.lastError === "runtime exploded",
-    );
-    expect(thread.session?.status).toBe("error");
-    expect(thread.session?.lastError).toBe("runtime exploded");
-  });
-
   it("keeps the session running when a runtime.warning arrives during an active turn", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
@@ -6379,100 +6263,6 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.status).toBe("running");
     expect(thread.session?.activeTurnId).toBe("turn-warning");
     expect(thread.session?.lastError).toBeNull();
-  });
-
-  it("labels OpenCode retry warnings with a provider-specific summary and visible detail", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "runtime.warning",
-      eventId: asEventId("evt-opencode-retry-warning"),
-      provider: "opencode",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-opencode"),
-      payload: {
-        message: "Provider request failed; retrying.",
-        detail: {
-          attempt: 2,
-        },
-      },
-      raw: {
-        source: "opencode.sdk.event",
-        payload: {
-          type: "session.next.retried",
-        },
-      },
-    });
-
-    const thread = await waitForThread(harness.engine, (entry) =>
-      entry.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.id === "evt-opencode-retry-warning",
-      ),
-    );
-
-    const warning = thread.activities.find(
-      (activity: ProviderRuntimeTestActivity) => activity.id === "evt-opencode-retry-warning",
-    );
-    const payload =
-      warning?.payload && typeof warning.payload === "object"
-        ? (warning.payload as Record<string, unknown>)
-        : undefined;
-    expect(warning).toMatchObject({
-      kind: "runtime.warning",
-      summary: "OpenCode retrying",
-    });
-    expect(payload).toMatchObject({
-      message: "Provider request failed; retrying.",
-      detail: "Provider request failed; retrying.",
-      nativeEventType: "session.next.retried",
-      data: {
-        attempt: 2,
-      },
-    });
-  });
-
-  it("labels Claude background moves as a background notice, not a runtime warning", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "runtime.warning",
-      eventId: asEventId("evt-background-move-notice"),
-      provider: "claudeAgent",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-background"),
-      payload: {
-        message: "sleep 120",
-        detail: {
-          type: "system",
-          subtype: "background_tasks_changed",
-          tasks: [{ task_id: "bg-1", task_type: "local_bash", description: "sleep 120" }],
-        },
-      },
-    });
-
-    const thread = await waitForThread(harness.engine, (entry) =>
-      entry.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.id === "evt-background-move-notice",
-      ),
-    );
-
-    const notice = thread.activities.find(
-      (activity: ProviderRuntimeTestActivity) => activity.id === "evt-background-move-notice",
-    );
-    expect(notice).toMatchObject({
-      kind: "runtime.warning",
-      summary: "Moved to background",
-      tone: "info",
-    });
-    expect(notice?.payload).toMatchObject({
-      message: "sleep 120",
-      detail: "sleep 120",
-      nativeEventType: "background_tasks_changed",
-    });
   });
 
   it("maps session/thread lifecycle and item.started into session/activity projections", async () => {
@@ -6798,60 +6588,6 @@ describe("ProviderRuntimeIngestion", () => {
     });
   });
 
-  it("projects context window updates into normalized thread activities", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "thread.token-usage.updated",
-      eventId: asEventId("evt-thread-token-usage-updated"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      payload: {
-        usage: {
-          usedTokens: 1075,
-          usedPercent: 0.83984375,
-          totalProcessedTokens: 10_200,
-          maxTokens: 128_000,
-          inputTokens: 1000,
-          cachedInputTokens: 500,
-          outputTokens: 50,
-          reasoningOutputTokens: 25,
-          lastUsedTokens: 1075,
-          lastInputTokens: 1000,
-          lastCachedInputTokens: 500,
-          lastOutputTokens: 50,
-          lastReasoningOutputTokens: 25,
-          compactsAutomatically: true,
-        },
-      },
-    });
-
-    const thread = await waitForThread(harness.engine, (entry) =>
-      entry.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.updated",
-      ),
-    );
-
-    const usageActivity = thread.activities.find(
-      (activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.updated",
-    );
-    expect(usageActivity).toBeDefined();
-    expect(usageActivity?.payload).toMatchObject({
-      usedTokens: 1075,
-      usedPercent: 0.83984375,
-      totalProcessedTokens: 10_200,
-      maxTokens: 128_000,
-      inputTokens: 1000,
-      cachedInputTokens: 500,
-      outputTokens: 50,
-      reasoningOutputTokens: 25,
-      lastUsedTokens: 1075,
-      compactsAutomatically: true,
-    });
-  });
-
   it("suppresses identical consecutive context window updates", async () => {
     const harness = await createHarness();
     const now = "2026-07-09T00:00:00.000Z";
@@ -6885,41 +6621,6 @@ describe("ProviderRuntimeIngestion", () => {
       "evt-context-changed",
       "evt-context-first",
     ]);
-  });
-
-  it("projects percent-only context window updates into normalized thread activities", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "thread.token-usage.updated",
-      eventId: asEventId("evt-thread-token-usage-updated-percent"),
-      provider: "cursor",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      payload: {
-        usage: {
-          usedTokens: 0,
-          usedPercent: 5.8,
-          compactsAutomatically: true,
-        },
-      },
-    });
-
-    const thread = await waitForThread(harness.engine, (entry) =>
-      entry.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.updated",
-      ),
-    );
-
-    const usageActivity = thread.activities.find(
-      (activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.updated",
-    );
-    expect(usageActivity?.payload).toMatchObject({
-      usedTokens: 0,
-      usedPercent: 5.8,
-      compactsAutomatically: true,
-    });
   });
 
   it("projects real zero-percent context window updates into normalized thread activities", async () => {
@@ -6957,136 +6658,6 @@ describe("ProviderRuntimeIngestion", () => {
     });
   });
 
-  it("projects configured Claude context windows into normalized thread activities", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "session.configured",
-      eventId: asEventId("evt-session-configured-context-window"),
-      provider: "claudeAgent",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      payload: {
-        config: {
-          model: "claude-opus-4-7[1m]",
-          contextWindow: "1m",
-        },
-      },
-    });
-
-    const thread = await waitForThread(harness.engine, (entry) =>
-      entry.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.configured",
-      ),
-    );
-
-    const configuredActivity = thread.activities.find(
-      (activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.configured",
-    );
-    expect(configuredActivity?.payload).toMatchObject({
-      contextWindow: "1m",
-      maxTokens: 1_000_000,
-    });
-  });
-
-  it("projects Codex camelCase token usage payloads into normalized thread activities", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "thread.token-usage.updated",
-      eventId: asEventId("evt-thread-token-usage-updated-camel"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      payload: {
-        usage: {
-          usedTokens: 126,
-          totalProcessedTokens: 11_839,
-          maxTokens: 258_400,
-          inputTokens: 120,
-          cachedInputTokens: 0,
-          outputTokens: 6,
-          reasoningOutputTokens: 0,
-          lastUsedTokens: 126,
-          lastInputTokens: 120,
-          lastCachedInputTokens: 0,
-          lastOutputTokens: 6,
-          lastReasoningOutputTokens: 0,
-          compactsAutomatically: true,
-        },
-      },
-    });
-
-    const thread = await waitForThread(harness.engine, (entry) =>
-      entry.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.updated",
-      ),
-    );
-
-    const usageActivity = thread.activities.find(
-      (activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.updated",
-    );
-    expect(usageActivity?.payload).toMatchObject({
-      usedTokens: 126,
-      totalProcessedTokens: 11_839,
-      maxTokens: 258_400,
-      inputTokens: 120,
-      cachedInputTokens: 0,
-      outputTokens: 6,
-      reasoningOutputTokens: 0,
-      lastUsedTokens: 126,
-      lastInputTokens: 120,
-      lastOutputTokens: 6,
-      compactsAutomatically: true,
-    });
-  });
-
-  it("projects Claude usage snapshots with context window into normalized thread activities", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "thread.token-usage.updated",
-      eventId: asEventId("evt-thread-token-usage-updated-claude-window"),
-      provider: "claudeAgent",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      payload: {
-        usage: {
-          usedTokens: 31_251,
-          lastUsedTokens: 31_251,
-          maxTokens: 200_000,
-          toolUses: 25,
-          durationMs: 43_567,
-        },
-      },
-      raw: {
-        source: "claude.sdk.message",
-        method: "claude/result/success",
-        payload: {},
-      },
-    });
-
-    const thread = await waitForThread(harness.engine, (entry) =>
-      entry.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.updated",
-      ),
-    );
-
-    const usageActivity = thread.activities.find(
-      (activity: ProviderRuntimeTestActivity) => activity.kind === "context-window.updated",
-    );
-    expect(usageActivity?.payload).toMatchObject({
-      usedTokens: 31_251,
-      lastUsedTokens: 31_251,
-      maxTokens: 200_000,
-      toolUses: 25,
-      durationMs: 43_567,
-    });
-  });
-
   it("projects compacted thread state into context compaction activities", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
@@ -7117,40 +6688,37 @@ describe("ProviderRuntimeIngestion", () => {
     expect(activity?.tone).toBe("info");
   });
 
-  it.each(["item.started", "item.updated"] as const)(
-    "projects context compaction progress from %s into thread activities",
-    async (type) => {
-      const harness = await createHarness();
-      const now = new Date().toISOString();
+  it("projects context compaction progress from item.started into thread activities", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
 
-      harness.emit({
-        type,
-        eventId: asEventId("evt-thread-compacting"),
-        provider: "codex",
-        createdAt: now,
-        threadId: asThreadId("thread-1"),
-        payload: {
-          itemType: "context_compaction",
-          status: "inProgress",
-          detail: "Compacting context",
-          data: { state: "compacting" },
-        },
-      });
+    harness.emit({
+      type: "item.started",
+      eventId: asEventId("evt-thread-compacting"),
+      provider: "codex",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      payload: {
+        itemType: "context_compaction",
+        status: "inProgress",
+        detail: "Compacting context",
+        data: { state: "compacting" },
+      },
+    });
 
-      const thread = await waitForThread(harness.engine, (entry) =>
-        entry.activities.some(
-          (activity: ProviderRuntimeTestActivity) =>
-            activity.kind === "context-compaction" && activity.summary === "Compacting context",
-        ),
-      );
+    const thread = await waitForThread(harness.engine, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.kind === "context-compaction" && activity.summary === "Compacting context",
+      ),
+    );
 
-      const activity = thread.activities.find(
-        (candidate: ProviderRuntimeTestActivity) =>
-          candidate.kind === "context-compaction" && candidate.summary === "Compacting context",
-      );
-      expect(activity?.tone).toBe("info");
-    },
-  );
+    const activity = thread.activities.find(
+      (candidate: ProviderRuntimeTestActivity) =>
+        candidate.kind === "context-compaction" && candidate.summary === "Compacting context",
+    );
+    expect(activity?.tone).toBe("info");
+  });
 
   it("projects context compaction completion and failure into thread activities", async () => {
     const harness = await createHarness();
@@ -7199,6 +6767,63 @@ describe("ProviderRuntimeIngestion", () => {
         candidate.summary === "Context compaction failed",
     );
     expect(failed?.tone).toBe("error");
+  });
+
+  it("keeps async question completion separate from independent streaming text", async () => {
+    const harness = await createHarness();
+    const createdAt = new Date().toISOString();
+    const threadId = asThreadId("thread-1");
+    const turnId = asTurnId("async-turn");
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("async-start"),
+      provider: "codex",
+      createdAt,
+      threadId,
+      turnId,
+      payload: {},
+    });
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("independent-text"),
+      provider: "codex",
+      createdAt,
+      threadId,
+      turnId,
+      itemId: RuntimeItemId.makeUnsafe("independent"),
+      payload: { streamKind: "assistant_text", delta: "Inspecting the code." },
+    });
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("async-question"),
+      provider: "codex",
+      createdAt,
+      threadId,
+      turnId,
+      itemId: RuntimeItemId.makeUnsafe("question"),
+      payload: {
+        itemType: "assistant_message",
+        detail: "When does it happen?",
+        asyncQuestions: [{ title: "When does it happen?", options: ["On launch", "On reconnect"] }],
+      },
+    });
+    const thread = await waitForThread(harness.engine, (entry) =>
+      entry.messages.some((message) => message.asyncUserInput !== undefined),
+    );
+    expect(thread.messages.find((message) => message.id === "assistant:question")).toMatchObject({
+      text: "When does it happen?",
+      streaming: false,
+      asyncUserInput: {
+        questions: [{ title: "When does it happen?", options: ["On launch", "On reconnect"] }],
+      },
+    });
+    expect(thread.messages.find((message) => message.id === "assistant:independent")).toMatchObject(
+      { text: "Inspecting the code.", streaming: true },
+    );
+    expect(thread.session?.status).toBe("running");
+    expect(thread.activities.some((activity) => activity.kind === "user-input.requested")).toBe(
+      false,
+    );
   });
 
   it("projects Codex task lifecycle chunks into thread activities", async () => {
@@ -7302,125 +6927,6 @@ describe("ProviderRuntimeIngestion", () => {
         (entry: ProviderRuntimeTestProposedPlan) => entry.id === "plan:thread-1:turn:turn-task-1",
       )?.planMarkdown,
     ).toBe("# Plan title");
-  });
-
-  it("still appends turn.completed activity when the provider omits cost metadata", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "turn.completed",
-      eventId: asEventId("evt-turn-completed-no-cost"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-no-cost"),
-      payload: {
-        state: "completed",
-      },
-    });
-
-    const thread = await waitForThread(harness.engine, (entry) =>
-      entry.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.id === "evt-turn-completed-no-cost",
-      ),
-    );
-
-    const completed = thread.activities.find(
-      (activity: ProviderRuntimeTestActivity) => activity.id === "evt-turn-completed-no-cost",
-    );
-    const completedPayload =
-      completed?.payload && typeof completed.payload === "object"
-        ? (completed.payload as Record<string, unknown>)
-        : undefined;
-
-    expect(completed?.kind).toBe("turn.completed");
-    expect(completed?.turnId).toBe("turn-no-cost");
-    expect(completedPayload?.state).toBe("completed");
-    expect(completedPayload?.totalCostUsd).toBeUndefined();
-  });
-
-  it("projects structured user input request and resolution as thread activities", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.emit({
-      type: "user-input.requested",
-      eventId: asEventId("evt-user-input-requested"),
-      provider: "codex",
-      createdAt: now,
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-user-input"),
-      lifecycleGeneration: "user-input-generation",
-      requestId: ApprovalRequestId.makeUnsafe("req-user-input-1"),
-      payload: {
-        questions: [
-          {
-            id: "sandbox_mode",
-            header: "Sandbox",
-            question: "Which mode should be used?",
-            options: [
-              {
-                label: "workspace-write",
-                description: "Allow workspace writes only",
-              },
-            ],
-          },
-        ],
-      },
-    });
-
-    harness.emit({
-      type: "user-input.resolved",
-      eventId: asEventId("evt-user-input-resolved"),
-      provider: "codex",
-      createdAt: new Date().toISOString(),
-      threadId: asThreadId("thread-1"),
-      turnId: asTurnId("turn-user-input"),
-      lifecycleGeneration: "user-input-generation",
-      requestId: ApprovalRequestId.makeUnsafe("req-user-input-1"),
-      payload: {
-        answers: {
-          sandbox_mode: "workspace-write",
-        },
-      },
-    });
-
-    const thread = await waitForThread(
-      harness.engine,
-      (entry) =>
-        entry.runtimeMode === "approval-required" &&
-        entry.activities.some(
-          (activity: ProviderRuntimeTestActivity) => activity.kind === "user-input.requested",
-        ) &&
-        entry.activities.some(
-          (activity: ProviderRuntimeTestActivity) => activity.kind === "user-input.resolved",
-        ),
-    );
-
-    const requested = thread.activities.find(
-      (activity: ProviderRuntimeTestActivity) => activity.id === "evt-user-input-requested",
-    );
-    expect(requested?.kind).toBe("user-input.requested");
-    expect(
-      requested?.payload && typeof requested.payload === "object"
-        ? (requested.payload as Record<string, unknown>).lifecycleGeneration
-        : undefined,
-    ).toBe("user-input-generation");
-
-    const resolved = thread.activities.find(
-      (activity: ProviderRuntimeTestActivity) => activity.id === "evt-user-input-resolved",
-    );
-    const resolvedPayload =
-      resolved?.payload && typeof resolved.payload === "object"
-        ? (resolved.payload as Record<string, unknown>)
-        : undefined;
-    expect(resolved?.kind).toBe("user-input.resolved");
-    expect(resolvedPayload?.answers).toEqual({
-      sandbox_mode: "workspace-write",
-    });
-    expect(resolvedPayload?.lifecycleGeneration).toBe("user-input-generation");
-    expect(thread.runtimeMode).toBe("approval-required");
   });
 
   it("creates and routes subagent runtime events into child threads", async () => {

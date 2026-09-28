@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { type AppSettings, AppSettingsSchema } from "~/appSettings";
+import { AppSettingsSchema, type AppSettings } from "~/appSettings";
 
 import {
   createProviderInstallResetPatch,
@@ -25,6 +25,7 @@ describe("isProviderInstallSettingsDirty", () => {
       { openCodeServerUrl: "http://127.0.0.1:5001" },
       { openCodeExperimentalWebSockets: true },
       { ompBinaryPath: "/opt/omp" },
+      { ompAgentDir: "/tmp/omp-agent" },
       { piBinaryPath: "/opt/pi" },
       { piAgentDir: "/tmp/pi-agent" },
     ] satisfies ReadonlyArray<Partial<AppSettings>>;
@@ -34,7 +35,6 @@ describe("isProviderInstallSettingsDirty", () => {
       expect(isProviderInstallSettingsDirty({ ...defaults, ...patch }, defaults)).toBe(true);
     }
   });
-
   it("uses configured flags instead of unreadable password values", () => {
     expect(
       isProviderInstallSettingsDirty({ ...defaults, openCodeServerPassword: "secret" }, defaults),
@@ -59,6 +59,7 @@ describe("createProviderInstallResetPatch", () => {
       [
         "antigravityBinaryPath",
         "claudeBinaryPath",
+        "claudeEnableArtifacts",
         "codexBinaryPath",
         "codexHomePath",
         "cursorApiEndpoint",
@@ -66,11 +67,12 @@ describe("createProviderInstallResetPatch", () => {
         "devinBinaryPath",
         "droidBinaryPath",
         "grokBinaryPath",
+        "ompAgentDir",
+        "ompBinaryPath",
         "openCodeBinaryPath",
         "openCodeExperimentalWebSockets",
         "openCodeServerPassword",
         "openCodeServerUrl",
-        "ompBinaryPath",
         "piAgentDir",
         "piBinaryPath",
       ].sort(),

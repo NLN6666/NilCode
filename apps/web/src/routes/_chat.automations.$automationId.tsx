@@ -83,7 +83,7 @@ import {
 } from "~/providerModelOptions";
 import { ensureNativeApi } from "~/nativeApi";
 import { useStore } from "~/store";
-import { createAllThreadsSelector } from "~/storeSelectors";
+import { createSidebarThreadSummariesSelector } from "~/storeSelectors";
 import {
   type AutomationsCopy,
   AutomationApprovalBanner,
@@ -115,7 +115,10 @@ export const Route = createFileRoute("/_chat/automations/$automationId")({
   component: AutomationDetailView,
 });
 
-const selectAllThreads = createAllThreadsSelector();
+// Sidebar summaries carry every field these surfaces read (id, projectId, title,
+// sidechatSourceThreadId) and do not rebuild on streamed message/activity deltas
+// the way the fully derived thread list does.
+const selectAllThreads = createSidebarThreadSummariesSelector();
 
 // Commit the trimmed text: the validators trim before checking, so committing the raw
 // draft would persist stray whitespace the validation never saw.
@@ -459,7 +462,7 @@ function AutomationDetailView() {
               className={cn("flex items-center gap-2 sm:gap-3", CHAT_SURFACE_HEADER_HEIGHT_CLASS)}
             >
               <SidebarHeaderNavigationControls />
-              <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm [-webkit-app-region:no-drag]">
+              <div className="flex min-w-0 flex-1 items-center gap-1.5 text-ui-lg [-webkit-app-region:no-drag]">
                 <button
                   type="button"
                   onClick={() => void navigate({ to: "/automations" })}
@@ -626,7 +629,7 @@ function AutomationDetailView() {
                 {stoppedExplanation ? (
                   <div className="mx-1.5 mt-1.5 flex flex-col gap-2 rounded-md border border-border bg-foreground/[0.03] p-2.5">
                     <div className="space-y-0.5">
-                      <p className="text-xs text-foreground">{stoppedExplanation}</p>
+                      <p className="text-ui leading-snug text-foreground">{stoppedExplanation}</p>
                       {definition.disabledAt ? (
                         <p className="text-[0.6875rem] text-muted-foreground">
                           {formatRunTimestamp(definition.disabledAt, copy.timestamp)}
@@ -970,7 +973,7 @@ function AutomationDetailView() {
                           type="button"
                           variant="ghost"
                           size="xs"
-                          className="h-5 shrink-0 px-1.5 text-[10px] text-muted-foreground/70"
+                          className="h-5 shrink-0 px-1.5 text-ui-xs text-muted-foreground/70"
                           onClick={() =>
                             void navigate({
                               to: "/$threadId",
@@ -1099,7 +1102,7 @@ function AutomationDetailView() {
               onChange={(event) =>
                 setPendingModeChange({ mode: "heartbeat", targetThreadId: event.target.value })
               }
-              className="w-full appearance-none rounded-md border border-border bg-transparent px-2 py-1.5 pr-6 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="w-full appearance-none rounded-md border border-border bg-transparent px-2 py-1.5 pr-6 text-ui leading-snug outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               {pendingModeChange.targetThreadId === "" ? (
                 <option value="">{copy.riskConfirm.pickThreadPlaceholder}</option>
@@ -1248,7 +1251,7 @@ function RunRow({
           : undefined
       }
       className={cn(
-        "group flex items-center gap-2 rounded-md px-1.5 py-1.5 text-xs transition-colors",
+        "group flex items-center gap-2 rounded-md px-1.5 py-1.5 text-ui leading-snug transition-colors",
         openable ? "cursor-pointer hover:bg-foreground/[0.03]" : undefined,
       )}
     >

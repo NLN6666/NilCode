@@ -45,6 +45,7 @@ import {
   type WorktreeSetupSnapshot,
   type WorktreeSetupStep,
 } from "../../types";
+import { AsyncUserInputCard } from "./AsyncUserInputCard";
 import ChatMarkdown from "../ChatMarkdown";
 import type { WorkingLabel } from "../ChatView.logic";
 import { InlineLinkChip } from "../InlineLinkChip";
@@ -67,7 +68,7 @@ import {
 import { pinActionLabel } from "~/lib/pin";
 import { syncAnimationsToTimelineOrigin } from "~/lib/animationTimelineSync";
 import { Button } from "../ui/button";
-import { composerOverlayScrollMaskImage } from "./composerOverlay";
+import { composerOverlayScrollFadeVars } from "./composerOverlay";
 import { CrossTaskOriginLabel, type CrossTaskOrigin } from "./CrossTaskOriginLabel";
 import { ForkSourceDivider, type ForkSourceReference } from "./ForkSourceDivider";
 import { SynaraThreadCreationCard } from "./SynaraThreadCreationCard";
@@ -106,6 +107,8 @@ import {
 import {
   canSubmitUserMessageEdit,
   capOpenWorkEntryRenderChunks,
+  isFoldedWorkEntryChunk,
+  resolveWorkEntryChunkFold,
   chunkCollapsedTurnItems,
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRows,
@@ -281,7 +284,7 @@ function UserDispatchModeChip({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1.5 self-end px-0 text-[11px] font-normal tracking-[0.01em] text-muted-foreground/78",
+        "inline-flex items-center gap-1.5 self-end px-0 text-ui-sm font-normal tracking-[0.01em] text-muted-foreground/78",
         hasLeadingMedia ? "mb-3" : "mb-1.5",
       )}
     >
@@ -345,7 +348,7 @@ function WorktreeSetupCard({
         <WorktreeIcon className="size-3.5 shrink-0 text-[var(--color-text-foreground-tertiary)]" />
         <span
           ref={syncAnimationsToTimelineOrigin}
-          className="shimmer text-[13px] font-medium text-[var(--color-text-foreground-secondary)]"
+          className="shimmer text-ui-lg font-medium text-[var(--color-text-foreground-secondary)]"
         >
           {m.chat.timeline.preparingWorktree}
         </span>
@@ -371,7 +374,7 @@ function WorktreeSetupCard({
               </span>
               <span
                 className={cn(
-                  "text-[13px] leading-5",
+                  "text-ui-lg leading-5",
                   step.status === "active" || step.status === "done"
                     ? "text-[var(--color-text-foreground)]"
                     : step.status === "error"
@@ -475,9 +478,14 @@ interface MessagesTimelineProps {
   onOpenThread?: (threadId: ThreadId) => void;
   /** Open an automation's detail page from a "created automation" transcript card. */
   onOpenAutomation?: (automationId: string) => void;
+  /** Whether the composer currently has computer control on; flips denial cards to their confirmed state. */
+  computerControlEnabled?: boolean;
+  /** Switch computer control on from a "computer control denied" transcript card. */
+  onEnableComputerControl?: () => void;
   revertTurnCountByUserMessageId: Map<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
   onUndoTurnFiles?: (turnCounts: readonly number[]) => void;
+  onRespondToAsyncUserInput?: (messageId: MessageId, answers: readonly string[]) => Promise<void>;
   onEditUserMessage?: (messageId: MessageId, text: string) => boolean | Promise<boolean>;
   /**
    * The user message the edit affordance may target, resolved by the owner from
@@ -564,10 +572,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenTurnDiff,
   onOpenThread,
   onOpenAutomation,
+  computerControlEnabled,
+  onEnableComputerControl,
   revertTurnCountByUserMessageId,
   onRevertUserMessage,
   onUndoTurnFiles,
   onEditUserMessage,
+  onRespondToAsyncUserInput,
   editableUserMessageId,
   activeTurnId,
   isRevertingCheckpoint,
@@ -644,9 +655,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // any right-edge overlay. Kept stable so LegendList isn't re-rendered on unrelated updates.
   // The bottom inset clears the floating composer the transcript scrolls under; it is
   // padding on the scroll viewport (not a taller footer) so the list's own footer-layout
-  // and initial-scroll machinery is never resized from outside. The mask dissolves rows
-  // as they pass behind the composer's glass so nothing remains visible behind its
-  // footer controls (see composerOverlayScrollMaskImage).
+  // and initial-scroll machinery is never resized from outside. The fade variables move
+  // the list's bottom edge fade up to the composer's top edge and add the dissolve that
+  // keeps content clear of its footer controls (see composerOverlayScrollFadeVars).
   const listScrollStyle = useMemo(() => {
     if (!contentInsetRightPx && !contentInsetBottomPx) {
       return undefined;
@@ -657,14 +668,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     if (contentInsetBottomPx) {
       style.paddingBottom = contentInsetBottomPx;
-      const maskImage = composerOverlayScrollMaskImage(
-        contentInsetBottomPx,
-        contentInsetBottomClearancePx,
+      Object.assign(
+        style,
+        composerOverlayScrollFadeVars(contentInsetBottomPx, contentInsetBottomClearancePx),
       );
-      if (maskImage) {
-        style.maskImage = maskImage;
-        style.WebkitMaskImage = maskImage;
-      }
     }
     return style;
   }, [contentInsetBottomClearancePx, contentInsetBottomPx, contentInsetRightPx]);
@@ -1196,11 +1203,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // guards apply. Left on, an approval request or a tool row is enough to snap a
   // reader out of scrollback.
   //
-  // So the permission is withdrawn as soon as a row that is not a message arrives —
-  // an approval request, a work or tool row, a setup card. That is the same rule the
-  // rest of the transcript follows: chrome is not new content and must never trigger
-  // the auto-stick path. Withdrawing on chrome rather than on any change matters for
-  // timing as much as for policy: chrome accompanies a send, so the transition lands
+  // So the permission is withdrawn once the initial scroll lands, or as soon as
+  // a row that is not a message arrives — an approval request, a work or tool
+  // row, a setup card. This matches the rest of the transcript: chrome is not
+  // new content and must never trigger the auto-stick path. Withdrawing on
+  // chrome rather than on any change matters for timing as much as for policy:
+  // chrome accompanies a send, so the transition lands
   // in the same commit that sets `tailAnchorMessageId` and the list sees one
   // coordinated change, instead of losing its preserved bottom-padding target while a
   // thread is merely hydrating — which shifts content under the next anchor slide.
@@ -1281,6 +1289,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       if (!state) {
         return;
       }
+      // Bootstrap has landed. Withdraw LegendList's standing end-scroll
+      // permission while the viewport is still at the end, before the reader
+      // can park in scrollback and a later send appends another message.
+      if (state.isAtEnd && withinBootstrapScrollWindow) {
+        setWithinBootstrapScrollWindow(false);
+      }
       tailExpansionScrollSuppressedRef.current = !state.isAtEnd;
       if (!state.isAtEnd) {
         clearTailExpansionScrollTimers();
@@ -1303,6 +1317,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onIsAtEndChange,
       onMessagesScroll,
       resolvedListRef,
+      withinBootstrapScrollWindow,
     ],
   );
   const suppressTailExpansionScroll = useCallback(() => {
@@ -1484,6 +1499,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               timestampFormat={timestampFormat}
               {...(onOpenAgentActivity ? { onOpenAgentActivity } : {})}
               {...(onOpenAutomation ? { onOpenAutomation } : {})}
+              {...(computerControlEnabled !== undefined ? { computerControlEnabled } : {})}
+              {...(onEnableComputerControl ? { onEnableComputerControl } : {})}
             />
           );
           const isLiveGroup =
@@ -1496,27 +1513,32 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             expanded: isExpanded,
             maxVisibleEntries: MAX_VISIBLE_WORK_LOG_ENTRIES,
             keep: "last",
+            // The capability-denied card carries the only affordance to unblock
+            // the agent, so it must never disappear behind the "Show more" cap.
+            shouldCapEntry: (workEntry) =>
+              !workEntry.computerControlDenied && !workEntry.computerSetupRequired,
           });
           const renderChunks = cappedRenderPlan.chunks;
-          const hasCollapsedChunk = renderChunks.some((chunk) => chunk.summary !== null);
+          const hasCollapsedChunk = renderChunks.some(isFoldedWorkEntryChunk);
           if (hasCollapsedChunk) {
             return (
               <div>
                 <div className="space-y-0.5">
                   {renderChunks.map((chunk) => {
-                    if (!chunk.summary) return chunk.entries.map(renderEntryRow);
-                    const summary = chunk.summary;
-                    const summaryKey = `${groupId}:${chunk.id}`;
+                    const fold = resolveWorkEntryChunkFold(chunk);
+                    if (!fold) return chunk.entries.map(renderEntryRow);
+                    const summaryKey = `${groupId}:${chunk.id}${fold.keySuffix}`;
                     return (
                       <ToolCallGroupSummaryRow
-                        key={`tool-summary:${summaryKey}`}
-                        summary={summary}
+                        key={`tool-summary:${groupId}:${chunk.id}`}
+                        summary={fold.summary}
+                        liveEntry={chunk.liveEntry}
                         open={toolGroupSummaryOverrides[summaryKey] ?? false}
                         onToggle={(open) => setToolGroupSummaryOpen(summaryKey, open)}
                         fontSizePx={normalizedChatFontSizePx}
                         renderChildren={() => (
                           <div className="space-y-0.5 pt-0.5">
-                            {chunk.entries.map(renderEntryRow)}
+                            {fold.entries.map(renderEntryRow)}
                           </div>
                         )}
                       />
@@ -1995,8 +2017,27 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               ),
             ).values(),
           ];
+          // Computer setup/denied cards carry the only affordance to unblock the
+          // agent, so a settled turn shows the latest of each after the answer
+          // instead of burying it inside the closed "Worked for" disclosure.
+          const collapsedComputerActionEntries = [
+            ...new Map(
+              (row.collapsedTurnItems ?? []).flatMap((item) =>
+                item.kind === "work" &&
+                (item.entry.computerSetupRequired || item.entry.computerControlDenied)
+                  ? [[item.entry.computerSetupRequired ? "setup" : "denied", item.entry] as const]
+                  : [],
+              ),
+            ).values(),
+          ];
           const collapsedTurnItems = row.collapsedTurnItems?.filter(
-            (item) => item.kind !== "work" || !item.entry.synaraThreadCreation,
+            (item) =>
+              item.kind !== "work" ||
+              !(
+                item.entry.synaraThreadCreation ||
+                item.entry.computerSetupRequired ||
+                item.entry.computerControlDenied
+              ),
           );
           const hasCollapsedWork = Boolean(collapsedTurnItems && collapsedTurnItems.length > 0);
           const isCollapsedWorkExpanded = hasCollapsedWork
@@ -2024,6 +2065,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 timestampFormat={timestampFormat}
                 {...(onOpenAgentActivity ? { onOpenAgentActivity } : {})}
                 {...(onOpenAutomation ? { onOpenAutomation } : {})}
+                {...(computerControlEnabled !== undefined ? { computerControlEnabled } : {})}
+                {...(onEnableComputerControl ? { onEnableComputerControl } : {})}
                 {...(turnSummary?.turnId ? { turnId: turnSummary.turnId } : {})}
               />
             );
@@ -2046,7 +2089,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               shouldCapEntry: (workEntry) => workEntry.tone === "tool",
             });
             const renderChunks = cappedRenderPlan.chunks;
-            const collapseAsSummary = renderChunks.some((chunk) => chunk.summary !== null);
+            const collapseAsSummary = renderChunks.some(isFoldedWorkEntryChunk);
             return (
               <>
                 {!hasCollapsedWork &&
@@ -2055,26 +2098,28 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     <div className={placement === "leading" ? "mb-1.5" : "mt-1.5"}>
                       <div className="space-y-px">
                         {renderChunks.map((chunk) => {
-                          if (!chunk.summary) {
+                          const fold = resolveWorkEntryChunkFold(chunk);
+                          if (!fold) {
                             // Narration-tone entries render in the status block
                             // below; here they only serve as run boundaries.
                             return chunk.entries
                               .filter((workEntry) => workEntry.tone === "tool")
                               .map(renderInlineToolRow);
                           }
-                          const summary = chunk.summary;
                           // Message ids stay stable while a live group's first-entry id can drift.
-                          const summaryOverrideKey = `${placement}:${row.message.id}:${chunk.id}`;
+                          const summaryRowKey = `${placement}:${row.message.id}:${chunk.id}`;
+                          const summaryOverrideKey = `${summaryRowKey}${fold.keySuffix}`;
                           return (
                             <ToolCallGroupSummaryRow
-                              key={`inline-tool-summary:${summaryOverrideKey}`}
-                              summary={summary}
+                              key={`inline-tool-summary:${summaryRowKey}`}
+                              summary={fold.summary}
+                              liveEntry={chunk.liveEntry}
                               open={toolGroupSummaryOverrides[summaryOverrideKey] ?? false}
                               onToggle={(open) => setToolGroupSummaryOpen(summaryOverrideKey, open)}
                               fontSizePx={normalizedChatFontSizePx}
                               renderChildren={() => (
                                 <div className="space-y-px pt-0.5">
-                                  {chunk.entries.map(renderInlineToolRow)}
+                                  {fold.entries.map(renderInlineToolRow)}
                                 </div>
                               )}
                             />
@@ -2150,6 +2195,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         timestampFormat={timestampFormat}
                         {...(onOpenAgentActivity ? { onOpenAgentActivity } : {})}
                         {...(onOpenAutomation ? { onOpenAutomation } : {})}
+                        {...(computerControlEnabled !== undefined
+                          ? { computerControlEnabled }
+                          : {})}
+                        {...(onEnableComputerControl ? { onEnableComputerControl } : {})}
                       />
                     ))}
                   </div>
@@ -2170,6 +2219,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 timestampFormat={timestampFormat}
                 {...(onOpenAgentActivity ? { onOpenAgentActivity } : {})}
                 {...(onOpenAutomation ? { onOpenAutomation } : {})}
+                {...(computerControlEnabled !== undefined ? { computerControlEnabled } : {})}
+                {...(onEnableComputerControl ? { onEnableComputerControl } : {})}
               />
             ) : (
               <div
@@ -2294,7 +2345,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               )}
               <div className="group min-w-0 py-0.5">
                 {renderWorkDisplay(leadingWorkDisplay, "leading")}
-                {messageText !== null ? (
+                {row.message.asyncUserInput ? (
+                  <AsyncUserInputCard
+                    key={row.message.id}
+                    messageId={row.message.id}
+                    input={row.message.asyncUserInput}
+                    onRespond={onRespondToAsyncUserInput}
+                  />
+                ) : messageText !== null ? (
                   <div
                     data-assistant-message-id={row.message.id}
                     data-chat-find-document-id={row.message.id}
@@ -2332,6 +2390,21 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     ))}
                   </div>
                 )}
+                {collapsedComputerActionEntries.map((workEntry) => (
+                  <div key={`computer-action:${row.message.id}:${workEntry.id}`} className="mt-2">
+                    <TimelineWorkEntryRow
+                      workEntry={workEntry}
+                      chatMetaFontSizePx={appTypographyScale.chatMetaPx}
+                      textFontSizePx={normalizedChatFontSizePx}
+                      density="compact"
+                      markdownCwd={markdownCwd}
+                      onImageExpand={onImageExpand}
+                      timestampFormat={timestampFormat}
+                      {...(computerControlEnabled !== undefined ? { computerControlEnabled } : {})}
+                      {...(onEnableComputerControl ? { onEnableComputerControl } : {})}
+                    />
+                  </div>
+                ))}
                 {!row.assistantTurnInProgress && row.showAssistantCopyButton
                   ? synaraThreadCreationRecaps.map((creation) => (
                       <div key={creation.operationId} className="mt-2 mb-4">
@@ -2686,8 +2759,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         // LegendList caches rendered rows, so every local expansion map that changes row content
         // has to be surfaced through extraData.
         extraData={timelineExtraData}
-        // Two independent guards on the same standing permission, both required:
-        // `withinBootstrapScrollWindow` withdraws it as soon as a chrome row arrives
+        // The standing permission must also be withdrawn when the reader takes
+        // scroll ownership. A send can append a message without adding a chrome
+        // row, so the bootstrap window alone cannot prevent LegendList from
+        // re-targeting the end beneath a reader parked in scrollback.
+        //
+        // The other two guards are both required:
+        // `withinBootstrapScrollWindow` withdraws it after landing or as chrome arrives
         // (see the comment on that state — chrome is not new content and must never
         // trigger the auto-stick path), and the anchor term is deliberately keyed off
         // the *inherited* anchor rather than `tailAnchorSlideInFlight`: LegendList
@@ -2696,7 +2774,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         // already-settled anchor has no slide to preserve, so bootstrapping at the end
         // is what we want.
         initialScrollAtEnd={
-          withinBootstrapScrollWindow && (tailAnchorMessageId === null || hasInheritedTailAnchor)
+          withinBootstrapScrollWindow &&
+          transcriptFollowsTail &&
+          (tailAnchorMessageId === null || hasInheritedTailAnchor)
         }
         {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
         maintainScrollAtEnd={followLiveOutput && !tailAnchorSlideInFlight}
@@ -2724,17 +2804,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         onWheel={handleMessagesWheel}
         data-chat-scroll-container="true"
         ListFooterComponent={listFooter}
-        // `scroll-fade-b` (vendored shadcn 4.12.0 util in index.css) masks the bottom
-        // edge so streamed content dissolves toward the composer. It is scroll-aware
-        // via `animation-timeline: scroll()`, so the fade clears at the live edge and a
-        // pinned or non-scrollable transcript stays crisp (no permanent shadow).
-        // With the floating composer the viewport bottom sits *behind* the frosted
-        // surface, so the scroll-aware fade is replaced by the fixed composer mask in
-        // `listScrollStyle`: rows dissolve through the glass over the editor region and
-        // are fully cut before the composer's footer controls.
+        // `scroll-edge-fade` (index.css) dissolves rows under the chat header and toward
+        // the composer instead of cutting them. It is scroll-aware via
+        // `animation-timeline: scroll()` and paint-only, so each edge clears once nothing
+        // is scrolled past it (a pinned or non-scrollable transcript stays crisp) without
+        // feeding back into auto-follow or list measurement. With the floating composer,
+        // `listScrollStyle` moves the bottom fade up to the composer's top edge and
+        // intersects the footer-controls dissolve.
         className={cn(
-          "h-full overflow-x-hidden overscroll-y-contain py-3 [scrollbar-gutter:stable] sm:py-4",
-          contentInsetBottomPx ? null : "scroll-fade-b",
+          "scroll-edge-fade h-full overflow-x-hidden overscroll-y-contain py-3 [scrollbar-gutter:stable] sm:py-4",
           ENVIRONMENT_CONTENT_INSET_MOTION_CLASS,
           CHAT_COLUMN_GUTTER_CLASS_NAME,
         )}

@@ -28,6 +28,9 @@ export const ClaudeServerProviderSettings = Schema.Struct({
   launchArgs: Schema.String.check(Schema.isMaxLength(4096)).pipe(
     Schema.withDecodingDefault(() => ""),
   ),
+  // Claude Code keeps Artifact publishing (and `/design`, `/slides`) off for
+  // Agent SDK sessions unless the host opts in.
+  enableArtifacts: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
 });
 export type ClaudeServerProviderSettings = typeof ClaudeServerProviderSettings.Type;
 
@@ -71,18 +74,18 @@ export const PiServerProviderSettings = Schema.Struct({
   agentDir: StringSetting.pipe(Schema.withDecodingDefault(() => "")),
 });
 export type PiServerProviderSettings = typeof PiServerProviderSettings.Type;
+export const OmpServerProviderSettings = Schema.Struct({
+  ...ProviderSettingsBase,
+  binaryPath: StringSetting.pipe(Schema.withDecodingDefault(() => "omp")),
+  agentDir: StringSetting.pipe(Schema.withDecodingDefault(() => "")),
+});
+export type OmpServerProviderSettings = typeof OmpServerProviderSettings.Type;
 
 export const DevinServerProviderSettings = Schema.Struct({
   ...ProviderSettingsBase,
   binaryPath: StringSetting.pipe(Schema.withDecodingDefault(() => "devin")),
 });
 export type DevinServerProviderSettings = typeof DevinServerProviderSettings.Type;
-
-export const OmpServerProviderSettings = Schema.Struct({
-  ...ProviderSettingsBase,
-  binaryPath: StringSetting.pipe(Schema.withDecodingDefault(() => "omp")),
-});
-export type OmpServerProviderSettings = typeof OmpServerProviderSettings.Type;
 
 const DisabledSkillNamesPatch = Schema.Array(Schema.String.check(Schema.isMaxLength(256)));
 const DisabledSkillNames = DisabledSkillNamesPatch.pipe(Schema.withDecodingDefault(() => []));
@@ -155,8 +158,8 @@ export const ServerSettings = Schema.Struct({
     grok: GrokServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     droid: DroidServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     opencode: OpenCodeServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
-    omp: OmpServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     pi: PiServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+    omp: OmpServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   }).pipe(Schema.withDecodingDefault(() => ({}))),
   skills: SkillsServerSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   network: NetworkServerSettings.pipe(Schema.withDecodingDefault(() => ({}))),
@@ -208,6 +211,7 @@ export const ServerSettingsPatch = Schema.Struct({
         Schema.Struct({
           ...ProviderSettingsBasePatch,
           launchArgs: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(4096))),
+          enableArtifacts: Schema.optionalKey(Schema.Boolean),
         }),
       ),
       cursor: Schema.optionalKey(
@@ -227,7 +231,6 @@ export const ServerSettingsPatch = Schema.Struct({
           experimentalWebSockets: Schema.optionalKey(Schema.Boolean),
         }),
       ),
-      omp: Schema.optionalKey(Schema.Struct(ProviderSettingsBasePatch)),
       pi: Schema.optionalKey(
         Schema.Struct({
           ...ProviderSettingsBasePatch,
@@ -236,6 +239,13 @@ export const ServerSettingsPatch = Schema.Struct({
         }),
       ),
       devin: Schema.optionalKey(Schema.Struct(ProviderSettingsBasePatch)),
+      omp: Schema.optionalKey(
+        Schema.Struct({
+          ...ProviderSettingsBasePatch,
+          binaryPath: Schema.optionalKey(StringSetting),
+          agentDir: Schema.optionalKey(StringSetting),
+        }),
+      ),
     }),
   ),
   skills: Schema.optionalKey(

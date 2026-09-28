@@ -91,7 +91,7 @@ export function ComposerSlashStatusDialog(props: {
           <DialogDescription>{copy.description}</DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-4">
-          <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/20 p-4 text-sm sm:grid-cols-2">
+          <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/20 p-4 text-ui-lg leading-snug sm:grid-cols-2">
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">{copy.model}</p>
               <p className="font-medium text-foreground">{selectedModel}</p>
@@ -151,7 +151,7 @@ export function ComposerSlashStatusDialog(props: {
                 />
               ) : null}
             </div>
-            <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <div className="grid gap-3 text-ui-lg leading-snug sm:grid-cols-2">
               {contextWindow ? (
                 <>
                   <div>

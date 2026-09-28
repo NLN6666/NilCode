@@ -104,7 +104,7 @@ import {
 import { cn, newCommandId, randomUUID } from "~/lib/utils";
 import { resolvePathLinkTarget } from "~/terminal-links";
 import { readNativeApi } from "~/nativeApi";
-import { createThreadSelector } from "~/storeSelectors";
+import { createThreadGitActionsMetadataSelector } from "~/storeSelectors";
 import { useStore } from "~/store";
 
 interface GitActionsControlProps {
@@ -273,8 +273,10 @@ export default function GitActionsControl({
     }),
     [settings.textGenerationModel, settings.textGenerationProvider],
   );
+  // Shell-only slice: the full derived Thread gets a new reference on every
+  // streamed delta, which re-rendered this always-mounted control per token.
   const activeThread = useStore(
-    useMemo(() => createThreadSelector(activeThreadId), [activeThreadId]),
+    useMemo(() => createThreadGitActionsMetadataSelector(activeThreadId), [activeThreadId]),
   );
   const setThreadWorkspaceAction = useStore((store) => store.setThreadWorkspace);
   const threadToastData = useMemo(
@@ -1550,12 +1552,12 @@ export default function GitActionsControl({
         </p>
       )}
       {isGitStatusRefreshDelayed && !isGitStatusOutOfSync && (
-        <p className="px-3 py-1.5 text-xs text-muted-foreground">
+        <p className="px-3 py-1.5 text-ui leading-snug text-muted-foreground">
           {isGitStatusFetching ? "Refreshing git status..." : "Git status refresh delayed."}
         </p>
       )}
       {gitStatusError && !isGitStatusRefreshDelayed && (
-        <p className="px-3 py-1.5 text-xs text-destructive">
+        <p className="px-3 py-1.5 text-ui leading-snug text-destructive">
           {gitStatusError instanceof Error ? gitStatusError.message : "Git status refresh failed."}
         </p>
       )}

@@ -34,8 +34,8 @@ export function SpaceEmptyState(props: {
 
   return (
     <div className="px-2 pt-4 pb-1 text-center">
-      <p className="text-[length:var(--app-font-size-ui,12px)] text-foreground/75">{title}</p>
-      <p className="mx-auto mt-1 max-w-52 text-[length:var(--app-font-size-ui-xs,10px)] leading-4 text-muted-foreground/55">
+      <p className="text-ui text-foreground/75">{title}</p>
+      <p className="mx-auto mt-1 max-w-52 text-ui-xs leading-4 text-muted-foreground/55">
         {props.space
           ? "Move projects here, or right-click a project to file it."
           : "New and unassigned projects appear here."}

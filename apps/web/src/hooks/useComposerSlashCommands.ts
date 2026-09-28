@@ -46,6 +46,8 @@ import { downloadUrlAsBlob } from "../lib/browserDownload";
 import { resolveWsHttpUrl } from "../lib/wsHttpUrl";
 import { useFeedbackDialogStore } from "../feedbackDialogStore";
 import { useComposerDraftStore } from "../composerDraftStore";
+import { useStore } from "../store";
+import { getThreadFromState } from "../threadDerivation";
 import { dispatchThreadGoal, dispatchThreadGoalPaused } from "../threadGoal";
 import {
   buildDraftThreadRenameCreateInput,
@@ -556,6 +558,7 @@ export function useComposerSlashCommands(input: {
             project: activeProject,
             sourceThread: activeThread,
             selectedModelSelection: sidechatModelSelection,
+            runtimeMode,
             initialPrompt,
             openSidechat: (sidechatThreadId) => {
               useRightDockStore.getState().openPane(activeThread.id, {
@@ -570,6 +573,10 @@ export function useComposerSlashCommands(input: {
             api,
             threadId: sidechatThreadId,
             selectedModelSelection: sidechatModelSelection,
+            runtimeMode:
+              useComposerDraftStore.getState().draftsByThreadId[sidechatThreadId]?.runtimeMode ??
+              getThreadFromState(useStore.getState(), sidechatThreadId)?.runtimeMode ??
+              runtimeMode,
             prompt,
           }),
         onCreationResult: (result) => {
@@ -597,7 +604,14 @@ export function useComposerSlashCommands(input: {
         },
       });
     },
-    [activeProject, activeThread, isServerThread, selectedModelSelection, syncServerShellSnapshot],
+    [
+      activeProject,
+      activeThread,
+      isServerThread,
+      runtimeMode,
+      selectedModelSelection,
+      syncServerShellSnapshot,
+    ],
   );
 
   // Publish a stable host capability. Composer drafts, attachments, and modes only
@@ -885,6 +899,16 @@ export function useComposerSlashCommands(input: {
       if (!slashInvocation || slashInvocation.command === "model") {
         return false;
       }
+      if (slashInvocation.command === "computer-use") {
+        if (slashInvocation.args) return false; // The normal send freezes one-turn activation.
+        toastManager.add({
+          type: "info",
+          title: "Add a task after /computer-use",
+          description: "For example: /computer-use open Calculator and calculate 123 × 45.",
+        });
+        editorActions.scheduleComposerFocus();
+        return true;
+      }
       if (slashInvocation.command === "clear") {
         editorActions.clearComposerSlashDraft();
         await handleClearConversation();
@@ -1161,6 +1185,21 @@ export function useComposerSlashCommands(input: {
         );
         if (wasPromptReplacementApplied(applied)) {
           editorActions.setComposerHighlightedItemId(null);
+        }
+        return;
+      }
+
+      if (item.command === "computer-use") {
+        const replacement = "/computer-use ";
+        const applied = editorActions.applyPromptReplacement(
+          trigger.rangeStart,
+          trigger.rangeEnd,
+          replacement,
+          { expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd) },
+        );
+        if (wasPromptReplacementApplied(applied)) {
+          editorActions.setComposerHighlightedItemId(null);
+          editorActions.scheduleComposerFocus();
         }
         return;
       }

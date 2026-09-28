@@ -240,15 +240,16 @@ export function buildOmpControlPlanePlan(input: {
   };
 }
 
-function resolveOmpControlPlanePaths(homeDir = homedir()): {
+function resolveOmpControlPlanePaths(homeDir = homedir(), configuredAgentDir?: string): {
   readonly globalConfigPaths: ReadonlyArray<string>;
   readonly overlayPath: string;
 } {
   const ompRoot = join(homeDir, ".omp");
-  const agentDir = join(ompRoot, "agent");
+  const profileDir = configuredAgentDir?.trim();
+  const agentDir = profileDir || join(ompRoot, "agent");
   return {
     globalConfigPaths: [join(agentDir, "config.yml"), join(agentDir, "config.yaml")],
-    overlayPath: join(ompRoot, "synara", "acp-provider.yml"),
+    overlayPath: join(profileDir ? agentDir : ompRoot, "synara", "acp-provider.yml"),
   };
 }
 
@@ -267,10 +268,11 @@ async function readFirstExisting(paths: ReadonlyArray<string>): Promise<string |
 export async function inspectOmpControlPlane(
   input: {
     readonly homeDir?: string;
+    readonly agentDir?: string;
     readonly env?: NodeJS.ProcessEnv;
   } = {},
 ): Promise<OmpControlPlanePlan> {
-  const paths = resolveOmpControlPlanePaths(input.homeDir);
+  const paths = resolveOmpControlPlanePaths(input.homeDir, input.agentDir);
   const globalConfigText = await readFirstExisting(paths.globalConfigPaths);
   const plan = buildOmpControlPlanePlan({
     overlayPath: paths.overlayPath,
@@ -312,6 +314,7 @@ async function writeOverlayAtomically(path: string, content: string): Promise<bo
 export async function prepareOmpControlPlane(
   input: {
     readonly homeDir?: string;
+    readonly agentDir?: string;
     readonly env?: NodeJS.ProcessEnv;
   } = {},
 ): Promise<PreparedOmpControlPlane> {

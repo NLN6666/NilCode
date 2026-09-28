@@ -53,8 +53,8 @@ export const pullRequests = {
     closeTitle: "Close pull request?",
     merge: "Merge",
     close: "Close",
-    mergeDescription: (number: number, method: string) =>
-      `This will merge #${number} using ${method}.`,
+    mergeDescription: (number: number, method: string, baseBranch?: string | null) =>
+      `This will merge #${number}${baseBranch ? ` into ${baseBranch}` : ""} using ${method}.`,
     closeDescription: (number: number) => `This will close #${number} without merging it.`,
     mergeStackTitle: (count: number) =>
       `Merge ${count} ${count === 1 ? "pull request" : "pull requests"}?`,
@@ -205,6 +205,28 @@ export const pullRequests = {
   /** Collapsible PR block inside the chat environment panel. */
   environment: {
     label: "Pull request",
+    menu: {
+      viewPr: "View PR",
+      openInGitHub: "Open in GitHub",
+      codeChanges: "Code changes",
+      checks: "Checks",
+      comments: "Comments",
+      retryChecks: "Retry loading checks",
+      retryComments: "Retry loading comments",
+      repair: "Repair",
+      failingChecks: "Failing checks",
+      mergeConflicts: "Merge conflicts",
+      everything: "Everything",
+      status: "Status",
+      reopen: "Reopen",
+      draft: "Draft",
+      readyForReview: "Ready for review",
+      closed: "Closed",
+      addToChat: "Add to chat",
+      loading: "Loading…",
+      unavailable: "Unavailable",
+      blocked: "Blocked",
+    },
     openFileChanges: "Open pull request file changes",
     resolveConflictsHint:
       "Drafts a prompt in the composer asking the agent to resolve the merge conflicts — review it, then send",

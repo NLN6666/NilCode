@@ -12,6 +12,10 @@ export const automations = {
   newAutomation: "New automation",
   editAutomation: "Edit automation",
   newResult: "New result",
+  railLanding: {
+    title: "Automations",
+    description: "Pick an automation from the sidebar, or create a new one.",
+  },
 
   empty: {
     title: "No automations yet",

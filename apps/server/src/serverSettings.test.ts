@@ -4,13 +4,17 @@ import {
   DEFAULT_DROID_GIT_TEXT_GENERATION_MODEL,
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_SERVER_SETTINGS,
   ServerSettings,
 } from "@synara/contracts";
 import { Effect, FileSystem, Layer, Schema } from "effect";
 import { describe, expect, it } from "vitest";
+import { providerDisabledSettingsMessage } from "./provider/enabledProviderAdapter";
 import { ServerConfig } from "./config";
 import {
+  gateBetaOnlyProviders,
   migrateLegacyDisabledSkills,
+  resolveTextGenerationProvider,
   ServerSettingsLive,
   ServerSettingsService,
 } from "./serverSettings";
@@ -73,7 +77,7 @@ describe("ServerSettingsService", () => {
     expect(result.updated.providers.codex.binaryPath).toBe("/usr/local/bin/codex");
     expect(result.parsed).toMatchObject({
       revision: 1,
-      migrationVersion: 2,
+      migrationVersion: 3,
       settings: {
         enableAssistantStreaming: true,
         enableProviderUpdateChecks: false,
@@ -88,7 +92,11 @@ describe("ServerSettingsService", () => {
     });
   });
 
-  it("migrates the previous Git writing default to GPT-5.6 Luna", async () => {
+  it.each([
+    [1, "gpt-5.4-mini", DEFAULT_GIT_TEXT_GENERATION_MODEL],
+    [2, "gpt-5.6-luna", DEFAULT_GIT_TEXT_GENERATION_MODEL],
+    [2, "gpt-5.5", "gpt-5.5"],
+  ])("updates saved Git writing selection %s/%s", async (migrationVersion, model, expected) => {
     const result = await runWithSettings(
       Effect.gen(function* () {
         const service = yield* ServerSettingsService;
@@ -99,11 +107,11 @@ describe("ServerSettingsService", () => {
           settingsPath,
           JSON.stringify({
             revision: 7,
-            migrationVersion: 1,
+            migrationVersion,
             settings: {
               textGenerationModelSelection: {
                 provider: "codex",
-                model: "gpt-5.4-mini",
+                model,
               },
             },
           }),
@@ -119,13 +127,9 @@ describe("ServerSettingsService", () => {
       }),
     );
 
-    expect(result.settings.textGenerationModelSelection.model).toBe(
-      DEFAULT_GIT_TEXT_GENERATION_MODEL,
-    );
-    expect(result.persisted.migrationVersion).toBe(2);
-    expect(result.persisted.settings.textGenerationModelSelection.model).toBe(
-      DEFAULT_GIT_TEXT_GENERATION_MODEL,
-    );
+    expect(result.settings.textGenerationModelSelection.model).toBe(expected);
+    expect(result.persisted.migrationVersion).toBe(3);
+    expect(result.persisted.settings.textGenerationModelSelection.model).toBe(expected);
   });
 
   it("migrates a removed Kilo text-generation selection to OpenCode", async () => {
@@ -328,5 +332,64 @@ describe("migrateLegacyDisabledSkills", () => {
       });
       expect(decoded.value.skills.disabled.omp).toEqual(["muted"]);
     }
+  });
+});
+
+const ompGatedOff = (feature: string) => feature !== "omp";
+
+describe("gateBetaOnlyProviders", () => {
+  const withOmpEnabled: ServerSettings = {
+    ...DEFAULT_SERVER_SETTINGS,
+    providers: {
+      ...DEFAULT_SERVER_SETTINGS.providers,
+      omp: { ...DEFAULT_SERVER_SETTINGS.providers.omp, enabled: true },
+    },
+  };
+
+  it("reads a gated-off provider as disabled without touching the others", () => {
+    const gated = gateBetaOnlyProviders(withOmpEnabled, ompGatedOff);
+    expect(gated.providers.omp.enabled).toBe(false);
+    expect(gated.providers.codex.enabled).toBe(true);
+    // The input object is untouched — the persisted value survives.
+    expect(withOmpEnabled.providers.omp.enabled).toBe(true);
+  });
+
+  it("returns the same object when nothing is gated", () => {
+    expect(gateBetaOnlyProviders(withOmpEnabled, () => true)).toBe(withOmpEnabled);
+  });
+
+  it("leaves an already-disabled provider unchanged", () => {
+    const settings: ServerSettings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      providers: {
+        ...DEFAULT_SERVER_SETTINGS.providers,
+        omp: { ...DEFAULT_SERVER_SETTINGS.providers.omp, enabled: false },
+      },
+    };
+    expect(gateBetaOnlyProviders(settings, ompGatedOff)).toBe(settings);
+  });
+
+  it("falls back to a non-gated provider for text generation", () => {
+    const settings: ServerSettings = {
+      ...DEFAULT_SERVER_SETTINGS,
+      textGenerationModelSelection: { provider: "omp", model: "omp-auto" },
+      providers: {
+        ...DEFAULT_SERVER_SETTINGS.providers,
+        omp: { ...DEFAULT_SERVER_SETTINGS.providers.omp, enabled: true },
+      },
+    };
+    const projected = resolveTextGenerationProvider(gateBetaOnlyProviders(settings, ompGatedOff));
+    expect(projected.textGenerationModelSelection.provider).not.toBe("omp");
+  });
+});
+
+describe("providerDisabledSettingsMessage", () => {
+  it("points Beta-only providers at Synara Beta instead of Settings", () => {
+    expect(providerDisabledSettingsMessage("omp", () => false)).toBe(
+      "Oh My Pi is available in Synara Beta.",
+    );
+    expect(providerDisabledSettingsMessage("codex", (f) => f !== "omp")).toBe(
+      "Codex is disabled in Settings > Providers.",
+    );
   });
 });

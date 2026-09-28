@@ -250,8 +250,10 @@ export function AppSnapShortcutControl({
                 {capturedModifiers.map((modifier) => (
                   <Kbd key={modifier}>{appSnapShortcutModifierLabel(modifier)}</Kbd>
                 ))}
-                <span className="text-xs text-muted-foreground">+</span>
-                <span className="animate-pulse px-0.5 text-xs text-muted-foreground">…</span>
+                <span className="text-ui leading-snug text-muted-foreground">+</span>
+                <span className="animate-pulse px-0.5 text-ui leading-snug text-muted-foreground">
+                  …
+                </span>
               </KbdGroup>
             ) : (
               <span className="animate-pulse px-1 text-xs font-medium text-muted-foreground">
@@ -261,7 +263,7 @@ export function AppSnapShortcutControl({
           ) : (
             <KbdGroup>
               <Kbd>{labels[0]}</Kbd>
-              <span className="text-xs text-muted-foreground">+</span>
+              <span className="text-ui leading-snug text-muted-foreground">+</span>
               <Kbd>{labels[1]}</Kbd>
             </KbdGroup>
           )}
@@ -283,7 +285,7 @@ export function AppSnapShortcutControl({
       <span
         role="status"
         className={cn(
-          "max-w-72 text-right text-[11px]",
+          "max-w-72 text-right text-ui-sm",
           checkState.availability?.available === false
             ? "text-destructive"
             : checkState.availability?.available === true

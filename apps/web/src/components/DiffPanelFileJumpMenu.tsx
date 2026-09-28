@@ -59,15 +59,13 @@ function DiffFileJumpRow(props: {
       </span>
       <div className="min-w-0 flex flex-1 items-center gap-2 overflow-hidden">
         <div className="min-w-0 flex flex-1 items-baseline gap-1.5 overflow-hidden">
-          <span className="shrink-0 text-[11.5px] font-medium text-foreground/85">{name}</span>
-          {dir ? (
-            <span className="truncate text-[11px] text-muted-foreground/55">{dir}</span>
-          ) : null}
+          <span className="shrink-0 text-ui-sm font-medium text-foreground/85">{name}</span>
+          {dir ? <span className="truncate text-ui-sm text-muted-foreground/55">{dir}</span> : null}
         </div>
         <DiffStat
           additions={stat.additions}
           deletions={stat.deletions}
-          className="shrink-0 text-[10px] tabular-nums"
+          className="shrink-0 text-ui-xs tabular-nums"
         />
       </div>
     </MenuItem>

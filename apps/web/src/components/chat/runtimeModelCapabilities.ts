@@ -3,19 +3,23 @@
 // Layer: Chat composer helpers
 // Exports: runtime model lookup and Codex capability overrides derived from provider discovery responses.
 
-import type {
-  EffortOption,
-  ModelCapabilities,
-  ProviderKind,
-  ProviderModelDescriptor,
+import {
+  MODEL_CAPABILITIES_INDEX,
+  type EffortOption,
+  type ModelCapabilities,
+  type ProviderKind,
+  type ProviderModelDescriptor,
 } from "@synara/contracts";
 import {
+  getClaudeContextWindowSuffix,
   getDefaultEffort,
   getModelCapabilities,
   normalizeModelSlug,
+  stripClaudeContextWindowSuffix,
   trimOrNull,
 } from "@synara/shared/model";
 import { normalizeCursorModelVariantBaseId } from "../../cursorModelVariants";
+import { normalizeClaudeModelOptionSlug } from "../../providerModelOptions";
 
 function runtimeEffortLabel(value: string): string {
   switch (value) {
@@ -58,7 +62,7 @@ export function resolveRuntimeModelDescriptor(input: {
     return undefined;
   }
 
-  return runtimeModels.find((candidate) => {
+  const exactMatch = runtimeModels.find((candidate) => {
     const normalizedCandidate = normalizeModelSlug(candidate.slug, provider) ?? candidate.slug;
     const normalizedResolvedModel =
       normalizeModelSlug(candidate.resolvedModel, provider) ?? candidate.resolvedModel;
@@ -71,6 +75,16 @@ export function resolveRuntimeModelDescriptor(input: {
         normalizeCursorModelVariantBaseId(normalizedModel)
     );
   });
+  if (exactMatch || provider !== "claudeAgent" || getClaudeContextWindowSuffix(model)) {
+    return exactMatch;
+  }
+
+  // The Claude picker hides context qualifiers and may replace an alias with
+  // a newer resolved id. Use the same projection to recover its metadata,
+  // while preserving exact matches and explicitly qualified selections above.
+  return runtimeModels.find(
+    (candidate) => normalizeClaudeModelOptionSlug(candidate) === normalizedModel,
+  );
 }
 
 // Reuses static capability flags but lets runtime-discovered models override exposed effort menus.
@@ -99,13 +113,21 @@ export function getRuntimeAwareModelCapabilities(input: {
   const runtimeEfforts = input.runtimeModel?.supportedReasoningEfforts;
   // Providers with dynamic catalogs, including Droid, expose model-specific effort ladders here.
   //
-  // Claude is the exception: its built-in ladders carry Synara-only prompt modes
-  // (`ultrathink`, `ultracode`) that no discovery source reports, so a curated
-  // ladder must never be replaced by a discovered one. A model the built-in
-  // table has never seen has no ladder at all — there the discovered ladder is
-  // the only thing standing between the user and an empty effort picker.
+  // Claude's explicitly catalogued ladders carry Synara-only prompt modes
+  // (`ultrathink`, `ultracode`) that discovery does not report. Newer models
+  // may borrow a family ladder while discovery is pending; once it arrives,
+  // the model's own reported ladder must replace that borrowed fallback.
+  const normalizedClaudeModel =
+    input.provider === "claudeAgent"
+      ? normalizeModelSlug(input.model, "claudeAgent")
+      : null;
   const keepsCuratedClaudeEfforts =
-    input.provider === "claudeAgent" && staticCapabilities.reasoningEffortLevels.length > 0;
+    normalizedClaudeModel !== null &&
+    staticCapabilities.reasoningEffortLevels.length > 0 &&
+    Object.hasOwn(
+      MODEL_CAPABILITIES_INDEX.claudeAgent,
+      stripClaudeContextWindowSuffix(normalizedClaudeModel),
+    );
   if (keepsCuratedClaudeEfforts || !runtimeEfforts || runtimeEfforts.length === 0) {
     return {
       ...staticCapabilities,

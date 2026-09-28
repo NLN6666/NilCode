@@ -6,6 +6,7 @@
 
 import type { Messages } from "./i18n/locales/en";
 import { rankProviderDiscoveryItems } from "~/lib/providerDiscovery";
+import { isBetaFeatureOn } from "./betaFeatures";
 import { settingRowAnchorId, type SettingsSectionId } from "./settingsNavigation";
 
 /** One searchable settings result. `target: null` marks panel-only or conditional rows. */
@@ -21,12 +22,11 @@ export interface SettingsSearchEntry {
   /** Match text: the English description plus synonyms in every supported language. */
   keywords: string;
   target?: string | null;
+  /** Omitted means "always"; conditional rows must not point at absent controls. */
+  applies?: () => boolean;
 }
 
-/**
- * DOM id a result deep-links to, or null for panel-level entries with no anchored row. Derived
- * from the locale-independent `id`; the row opts in by passing that same id as `anchorKey`.
- */
+/** DOM id a result deep-links to, derived from its stable locale-independent id. */
 export function settingsSearchEntryTarget(entry: SettingsSearchEntry): string | null {
   if (entry.target !== undefined) return entry.target;
   return settingRowAnchorId(entry.id);
@@ -56,6 +56,20 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     title: (m) => m.settings.general.coreDefaults.newThreads.title,
     keywords:
       "Pick the default workspace mode for newly created draft threads. local worktree environment 新建会话 本地 工作树",
+  },
+  {
+    id: "general:delete-worktree-on-archive",
+    section: "general",
+    title: (m) => m.settings.searchTitles.archiveWorktree,
+    keywords:
+      "After Archive's Undo period, remove a clean worktree only when its task has stopped and no other task uses it. Keep its branch for recovery. worktree archive cleanup disk space remove delete",
+  },
+  {
+    id: "general:sidebar-layout",
+    section: "general",
+    title: (m) => m.settings.searchTitles.sidebarLayout,
+    keywords: "sidebar layout classic rail panel navigation side bar 侧边栏 布局",
+    applies: () => isBetaFeatureOn("sidebarV2"),
   },
   {
     id: "general:welcome-tour",
@@ -287,6 +301,40 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "Input Monitoring and Screen Recording permissions for AppSnap in macOS System Settings. privacy security recheck grant",
     // Renders only in the macOS desktop app, so no stable anchor on other platforms.
     target: null,
+  },
+
+  // ── Computer use ──────────────────────────────────────────────────────────────
+  {
+    id: "computer:status",
+    section: "computer",
+    title: (m) => m.settings.searchTitles.computerStatus,
+    keywords:
+      "Whether agents can see and control this computer's desktop right now. desktop backend beta availability health kwin hyprland nested wayland linux mac macos screen recording accessibility computer use control status set up install plugin repair",
+    // The status row is conditional and its title is dynamic (Ready /
+    // Reconnecting / Unavailable), so link to the section rather than an
+    // anchored row.
+    target: null,
+  },
+  {
+    id: "computer:open-automatically",
+    section: "computer",
+    title: (m) => m.settings.searchTitles.computerPreview,
+    keywords:
+      "Show the in-chat Computer preview the first time an agent acts on the desktop, and choose its size. open automatically compact large. auto open computer use",
+  },
+  {
+    id: "computer:how-agents-use-the-desktop",
+    section: "computer",
+    title: (m) => m.settings.searchTitles.computerControl,
+    keywords:
+      "Let the agent use the desktop in any chat. Approval gates and Stop still apply. enable toggle permission desktop agent computer use control",
+  },
+  {
+    id: "computer:cursor-colors",
+    section: "computer",
+    title: (m) => m.settings.searchTitles.computerCursorColors,
+    keywords:
+      "The agent pointer's colors: stock monochrome by default, or custom fill and rim. agent cursor arrow pointer color hex custom",
   },
 
   // ── Behavior ──────────────────────────────────────────────────────────────────
@@ -532,7 +580,8 @@ export function rankSettingsSearchEntries(
   if (trimmed.length === 0) {
     return [];
   }
-  const ranked = rankProviderDiscoveryItems(SETTINGS_SEARCH_ENTRIES, trimmed, (entry) => [
+  const available = SETTINGS_SEARCH_ENTRIES.filter((entry) => entry.applies?.() ?? true);
+  const ranked = rankProviderDiscoveryItems(available, trimmed, (entry) => [
     { value: entry.title(m) },
     { value: entry.keywords, weight: 200 },
     { value: m.settingsNav.sections[entry.section].label, weight: 400 },

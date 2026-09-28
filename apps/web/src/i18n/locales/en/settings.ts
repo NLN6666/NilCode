@@ -25,6 +25,12 @@ export const settings = {
     codexMcpServers: "Codex MCP servers",
     claudeMcpServers: "Claude MCP servers",
     externalMcpIntegrations: "External MCP integrations",
+    archiveWorktree: "Delete worktree on archive",
+    sidebarLayout: "Sidebar layout",
+    computerStatus: "Computer status",
+    computerPreview: "Computer preview",
+    computerControl: "Computer control",
+    computerCursorColors: "Cursor colors",
   },
   controls: {
     resetTooltip: "Reset to default",
@@ -67,6 +73,13 @@ export const settings = {
         local: "Local",
         worktree: "New worktree",
       },
+      archiveWorktree: {
+        title: "Delete worktree on archive",
+        description:
+          "After Archive's Undo period, remove a clean worktree only if the task has stopped and no other task uses it. Its branch remains available for recovery.",
+        resetLabel: "delete worktree on archive",
+        ariaLabel: "Delete worktree on archive",
+      },
       welcomeTour: {
         title: "Welcome tour",
         description:
@@ -76,6 +89,14 @@ export const settings = {
     },
     sidebarOrganization: {
       title: "Sidebar organization",
+      layout: {
+        title: "Sidebar layout",
+        description:
+          "Classic keeps the single sidebar. Rail adds fixed icon tabs on the left, with projects and threads in a panel beside them.",
+        resetLabel: "sidebar layout",
+        ariaLabel: "Sidebar layout",
+        options: { classic: "Classic", rail: "Rail" },
+      },
       projectOrder: {
         title: "Project order",
         description: "Controls how projects are arranged in the main sidebar.",
@@ -544,6 +565,15 @@ export const settings = {
     deletedDescription: "The archived thread has been permanently removed.",
     deleteFailedTitle: "Could not delete thread",
     deleteFailedDescription: "Unable to delete the thread.",
+    count: (count: number) => `${count} archived ${pluralize(count, "thread")}`,
+    deleteAll: "Delete all",
+    deleteAllConfirm: (count: number) =>
+      `Permanently delete all ${count} archived ${pluralize(count, "thread")}?\n\nThis will remove them and their conversation history forever.`,
+    deleteAllSuccessTitle: "Archived threads deleted",
+    deleteAllSuccessDescription: (count: number) =>
+      `${count} archived ${pluralize(count, "thread was", "threads were")} permanently removed.`,
+    deleteAllFailedTitle: "Could not delete all archived threads",
+    deleteAllFailedDescription: "Unable to delete the threads.",
   },
   integrations: {
     connect: {
@@ -818,6 +848,11 @@ export const settings = {
         description: "Optional custom Codex home and config directory.",
       },
       claudeBinaryPath: { label: "Claude binary path", placeholder: "Claude binary path" },
+      claudeEnableArtifacts: {
+        label: "Artifacts, /design and /slides",
+        description:
+          "Claude Code keeps Artifacts off in embedded sessions. Turn this on so /design and /slides publish to claude.ai. Needs a claude.ai login on a Pro, Max, Team or Enterprise plan, and applies to new sessions.",
+      },
       cursorBinaryPath: {
         label: "Cursor binary path",
         placeholder: "Cursor Agent or Cursor CLI path",
@@ -853,6 +888,11 @@ export const settings = {
         label: "Oh My Pi binary path",
         placeholder: "Oh My Pi binary path",
       },
+      ompAgentDir: {
+        label: "Oh My Pi agent directory",
+        placeholder: "Oh My Pi agent directory",
+        description: "Optional custom Oh My Pi agent directory for auth, models, skills, and commands.",
+      },
       piBinaryPath: { label: "Pi binary path", placeholder: "Pi binary path" },
       piAgentDir: {
         label: "Pi agent directory",
@@ -867,6 +907,19 @@ export const settings = {
       enabledTitle: "Enabled providers",
       description:
         "Disabling a provider stops background checks, discovery, updates, and new turns. Existing threads stay visible and resume after re-enabling it; running turns are not interrupted.",
+      checkingSetup: "Checking setup",
+      refreshStatus: "Refresh status",
+      setupGuideLabel: "Setup guide",
+      setupGuide: (name: string) => `${name} setup guide`,
+      setupStatus: {
+        disabled: "Disabled · enable to check setup",
+        checking: "Checking setup",
+        unavailable: "Unavailable",
+        needsSignIn: "Needs sign-in",
+        needsAttention: "Needs attention",
+        unverifiedSignIn: "Installed · sign-in not verified",
+        connected: "Connected",
+      },
       saving: "Saving provider activity",
       enabledCount: (count: number, total: number) => `${count} of ${total} enabled`,
       resetLabel: "enabled providers",
@@ -975,6 +1028,27 @@ export const settings = {
           "Grant both permissions to Synara under System Settings → Privacy & Security, then recheck here. macOS may require relaunching the app after a change.",
       },
       recheck: "Recheck permissions",
+      rechecking: "Rechecking…",
+      grant: "Grant",
+      hideSteps: "Hide steps",
+      grantedTitle: "Permission granted",
+      grantedDescription: (pane: string, feature: string) => `${pane} is ready for ${feature}.`,
+      unchangedTitle: "Permissions unchanged",
+      unchangedDescription: "Use Grant next to a permission to walk through setup.",
+      checkFailedTitle: "Could not check permissions",
+      checkFailedDescription: "Permission check failed.",
+      guide: {
+        openSettings: (pane: string) => `Open ${pane} settings`,
+        listedApp: (app: string) =>
+          `If this copy of ${app} is already listed, turn it on. Otherwise, drag the app from the floating guide into the list, or use + to choose this installed copy, then turn it on.`,
+        macAuth:
+          "Complete any macOS authentication. If macOS asks you to quit and reopen, do so before checking again.",
+        watching: "Watching for the change — this page updates automatically.",
+        granted: "Permission granted.",
+        stillDenied:
+          "Still denied after an update or rebuild? Remove this app from the list and add this copy again. Complete any macOS authentication, and restart if macOS asks you to quit and reopen.",
+        restart: (app: string) => `Restart ${app}`,
+      },
       labels: {
         granted: "Granted",
         denied: "Denied",
@@ -1013,6 +1087,10 @@ export const settings = {
     mostUsedPlugins: "Most used plugins",
     noSkills: "No skills or agents used yet.",
     modelUsage: "Model usage",
+    modelUsageBasis: (metric: "tokens" | "turns") =>
+      `Share of ${metric === "tokens" ? "tracked tokens" : "turns"}.`,
+    providerUsageBasis: (percent: number, metric: "tokens" | "turns") =>
+      `${percent}% of ${metric === "tokens" ? "tracked tokens" : "turns"}`,
     noModelActivity: "No model activity yet.",
     /** Shown wherever a stat has no value yet; an em dash reads the same in every locale. */
     noValue: "—",
@@ -1134,6 +1212,56 @@ export const settings = {
     command: "Command",
     keybinding: "Keybinding",
     noMatches: (query: string) => `No shortcuts match “${query}”.`,
+  },
+  computer: {
+    availability: {
+      reconnectingTitle: "Reconnecting to the desktop",
+      reconnectingNote: "The desktop backend dropped out and is being reconnected.",
+      checkingTitle: "Checking computer availability",
+      checkingDescription: "Waiting for the desktop backend.",
+      grantedTitle: "All permissions granted",
+      grantedDescription: "Synara connects to the desktop the next time an agent uses it.",
+      uncheckedTitle: "Computer access has not been checked",
+      uncheckedDescription: "Choose Set up to check that Synara can see and control the desktop.",
+      captureTitle: "Screen capture is unavailable",
+      captureDescription:
+        "Desktop input is connected, but Synara cannot take screenshots. Choose Set up to check access.",
+      connectedTitle: "Connected to the desktop",
+      connectedDescription: "Synara can see and control the desktop through its computer tools.",
+      unavailableTitle: "Computer control is unavailable",
+      unsupportedDescription: (platform: string) =>
+        `This server is running on ${platform}. Computer control needs macOS, or a Wayland desktop on Linux — KWin or Hyprland, or Synara's own nested desktop.`,
+      needsPermissions: (permissions: string) => `Computer control needs ${permissions}`,
+      permissionLabels: {
+        accessibility: "Accessibility",
+        screenRecording: "Screen Recording",
+        inputMonitoring: "Input Monitoring",
+      },
+      listSeparator: ", ",
+      listAnd: " and ",
+    },
+    permissions: {
+      featureName: "Computer control",
+      accessibility: {
+        title: "Accessibility",
+        description:
+          "Lets Synara move the pointer, click, and type on your behalf. Nothing is driven unless you authorize a Computer task.",
+      },
+      screenRecording: {
+        title: "Screen Recording",
+        description: "Lets Synara capture windows and the desktop so the agent can see what it is driving.",
+      },
+      inputMonitoring: {
+        title: "Input Monitoring",
+        description:
+          "Lets Synara detect Escape and pause when you take over during a Computer task. This does not enable the AppSnap shortcut.",
+      },
+    },
+    resetLabels: {
+      control: "computer control",
+      preview: "computer preview",
+      cursorColors: "cursor colors",
+    },
   },
   providerUsage: {
     title: "Provider usage",

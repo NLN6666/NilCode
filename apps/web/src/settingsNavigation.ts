@@ -10,6 +10,7 @@ export const SETTINGS_SECTION_IDS = [
   "notifications",
   "behavior",
   "appsnap",
+  "computer",
   "shortcuts",
   "worktrees",
   "archived",
@@ -44,6 +45,8 @@ export type SettingsNavItem = {
   group: SettingsNavGroupId;
   /** Basename of a SVG under `/central-icons-reversed`. */
   icon: string;
+  /** Section maturity label (omitted for settled sections). */
+  badge?: "beta";
 };
 
 export const SETTINGS_NAV_GROUP_IDS = [
@@ -63,6 +66,7 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
   { id: "shortcuts", group: "personal", icon: "shortcut" },
   { id: "usage", group: "personal", icon: "gauge" },
   { id: "appsnap", group: "integrations", icon: "screen-capture" },
+  { id: "computer", group: "integrations", icon: "computer-use", badge: "beta" },
   // Sits immediately before Integrations so the two MCP pages are neighbours. The icon is
   // deliberately not `plugin-1` (Integrations owns that) — the pages point in opposite
   // directions and must be distinguishable at a glance.

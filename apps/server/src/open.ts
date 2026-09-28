@@ -6,10 +6,10 @@
  *
  * @module Open
  */
+import { createBatchExecutableResolver, resolveExecutable } from "@synara/shared/executable";
 import { spawnProcess } from "@synara/shared/processRuntime";
-import { constants, statSync } from "node:fs";
-import { access, stat } from "node:fs/promises";
-import { dirname, extname, join } from "node:path";
+import { statSync } from "node:fs";
+import { dirname, extname } from "node:path";
 import pathWin32 from "node:path/win32";
 
 import { EDITORS, type EditorId } from "@synara/contracts";
@@ -41,11 +41,6 @@ export interface OpenInEditorInput {
 export interface EditorLaunch {
   readonly command: string;
   readonly args: ReadonlyArray<string>;
-}
-
-interface CommandAvailabilityOptions {
-  readonly platform?: NodeJS.Platform;
-  readonly env?: NodeJS.ProcessEnv;
 }
 
 const TARGET_WITH_POSITION_PATTERN = /^(.*?):(\d+)(?::(\d+))?$/;
@@ -123,12 +118,12 @@ function resolveMacOpenArgs(
   return ["-a", appName, ...resolveMacApplicationArgs(editor, target)];
 }
 
-async function resolveAvailableCommand(
+function resolveAvailableCommand(
   commands: ReadonlyArray<string>,
-  options: CommandAvailabilityOptions = {},
-): Promise<string | null> {
+  resolve: (command: string) => string | null,
+): string | null {
   for (const command of commands) {
-    if (await isCommandAvailable(command, options)) {
+    if (resolve(command) !== null) {
       return command;
     }
   }
@@ -265,7 +260,7 @@ function resolveWindowsEditorUri(scheme: string, target: string): string {
   return `${scheme}://file${filePathSeparator}${encodedPath}${directorySuffix}${positionSuffix}`;
 }
 
-export function resolveWindowsEditorUriLaunch(
+function resolveWindowsEditorUriLaunch(
   editor: EditorDefinition,
   target: string,
   platform: NodeJS.Platform = process.platform,
@@ -280,183 +275,17 @@ export function resolveWindowsEditorUriLaunch(
   };
 }
 
-function stripWrappingQuotes(value: string): string {
-  return value.replace(/^"+|"+$/g, "");
-}
-
-function resolvePathEnvironmentVariable(env: NodeJS.ProcessEnv): string {
-  return env.PATH ?? env.Path ?? env.path ?? "";
-}
-
-function resolveWindowsPathExtensions(env: NodeJS.ProcessEnv): ReadonlyArray<string> {
-  const rawValue = env.PATHEXT;
-  const fallback = [".COM", ".EXE", ".BAT", ".CMD"];
-  if (!rawValue) return fallback;
-
-  const parsed = rawValue
-    .split(";")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)
-    .map((entry) => (entry.startsWith(".") ? entry.toUpperCase() : `.${entry.toUpperCase()}`));
-  return parsed.length > 0 ? Array.from(new Set(parsed)) : fallback;
-}
-
-function resolveCommandCandidates(
-  command: string,
-  platform: NodeJS.Platform,
-  windowsPathExtensions: ReadonlyArray<string>,
-): ReadonlyArray<string> {
-  if (platform !== "win32") return [command];
-  const extension = extname(command);
-  const normalizedExtension = extension.toUpperCase();
-
-  // Only the upper-case spelling is probed: Windows filesystems are
-  // case-insensitive, so `foo.EXE` already matches an on-disk `foo.exe`. Probing
-  // both spellings doubled the stat count for no additional reach.
-  if (extension.length > 0 && windowsPathExtensions.includes(normalizedExtension)) {
-    const commandWithoutExtension = command.slice(0, -extension.length);
-    return Array.from(new Set([command, `${commandWithoutExtension}${normalizedExtension}`]));
-  }
-
-  return Array.from(new Set(windowsPathExtensions.map((extension) => `${command}${extension}`)));
-}
-
-async function isExecutableFile(
-  filePath: string,
-  platform: NodeJS.Platform,
-  windowsPathExtensions: ReadonlyArray<string>,
-): Promise<boolean> {
-  try {
-    const stats = await stat(filePath);
-    if (!stats.isFile()) return false;
-    if (platform === "win32") {
-      const extension = extname(filePath);
-      if (extension.length === 0) return false;
-      return windowsPathExtensions.includes(extension.toUpperCase());
-    }
-    await access(filePath, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function resolvePathDelimiter(platform: NodeJS.Platform): string {
-  return platform === "win32" ? ";" : ":";
-}
-
-// A miss has to probe every PATH entry, so the probes run in batches rather than
-// one await at a time. The bound keeps a long PATH from flooding the libuv
-// threadpool and starving unrelated filesystem work on the same event loop.
-const PATH_PROBE_CONCURRENCY = 32;
-
-async function anyExecutableFile(
-  filePaths: ReadonlyArray<string>,
-  platform: NodeJS.Platform,
-  windowsPathExtensions: ReadonlyArray<string>,
-): Promise<boolean> {
-  for (let index = 0; index < filePaths.length; index += PATH_PROBE_CONCURRENCY) {
-    const batch = filePaths.slice(index, index + PATH_PROBE_CONCURRENCY);
-    const found = await Promise.all(
-      batch.map((filePath) => isExecutableFile(filePath, platform, windowsPathExtensions)),
-    );
-    if (found.includes(true)) return true;
-  }
-  return false;
-}
-
-interface CachedCommandAvailability {
-  readonly value: boolean;
-  readonly expiresAt: number;
-}
-
-// Short enough that installing an editor shows up without a restart, long enough
-// that a burst of config reads and reconnects costs one scan instead of dozens.
-const COMMAND_AVAILABILITY_CACHE_TTL_MS = 30_000;
-const commandAvailabilityCache = new Map<string, CachedCommandAvailability>();
-
-function resolveCommandAvailabilityCacheKey(
-  command: string,
-  platform: NodeJS.Platform,
-  env: NodeJS.ProcessEnv,
-): string {
-  return JSON.stringify({
-    command,
-    platform,
-    path: resolvePathEnvironmentVariable(env),
-    pathExt: env.PATHEXT ?? "",
-  });
-}
-
-function readCommandAvailabilityCache(key: string, now: number): boolean | undefined {
-  const cached = commandAvailabilityCache.get(key);
-  if (!cached) return undefined;
-  if (cached.expiresAt > now) return cached.value;
-  commandAvailabilityCache.delete(key);
-  return undefined;
-}
-
-export function clearCommandAvailabilityCache(): void {
-  commandAvailabilityCache.clear();
-}
-
-async function probeCommandAvailability(
-  command: string,
-  platform: NodeJS.Platform,
-  env: NodeJS.ProcessEnv,
-): Promise<boolean> {
-  const windowsPathExtensions = platform === "win32" ? resolveWindowsPathExtensions(env) : [];
-  const commandCandidates = resolveCommandCandidates(command, platform, windowsPathExtensions);
-
-  if (command.includes("/") || command.includes("\\")) {
-    return anyExecutableFile(commandCandidates, platform, windowsPathExtensions);
-  }
-
-  const pathValue = resolvePathEnvironmentVariable(env);
-  if (pathValue.length === 0) return false;
-  const pathEntries = pathValue
-    .split(resolvePathDelimiter(platform))
-    .map((entry) => stripWrappingQuotes(entry.trim()))
-    .filter((entry) => entry.length > 0);
-
-  return anyExecutableFile(
-    pathEntries.flatMap((pathEntry) =>
-      commandCandidates.map((candidate) => join(pathEntry, candidate)),
-    ),
-    platform,
-    windowsPathExtensions,
-  );
-}
-
-export async function isCommandAvailable(
-  command: string,
-  options: CommandAvailabilityOptions = {},
-): Promise<boolean> {
-  const platform = options.platform ?? process.platform;
-  const env = options.env ?? process.env;
-  const now = Date.now();
-  const cacheKey = resolveCommandAvailabilityCacheKey(command, platform, env);
-
-  const cached = readCommandAvailabilityCache(cacheKey, now);
-  if (cached !== undefined) return cached;
-
-  const value = await probeCommandAvailability(command, platform, env);
-  commandAvailabilityCache.set(cacheKey, {
-    value,
-    expiresAt: now + COMMAND_AVAILABILITY_CACHE_TTL_MS,
-  });
-  return value;
-}
-
 export async function resolveAvailableEditors(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ReadonlyArray<EditorId>> {
   const available: EditorId[] = [];
+  // One PATH scan for every editor: per-command probing is seconds of sync IO on Windows.
+  const resolve = createBatchExecutableResolver({ platform, env });
 
   for (const editor of EDITORS) {
     if (editor.commands !== null) {
-      if ((await resolveAvailableCommand(editor.commands, { platform, env })) !== null) {
+      if (resolveAvailableCommand(editor.commands, resolve) !== null) {
         available.push(editor.id);
         continue;
       }
@@ -480,7 +309,7 @@ export async function resolveAvailableEditors(
 
     if (editor.id === "file-manager") {
       const command = fileManagerCommandForPlatform(platform);
-      if (await isCommandAvailable(command, { platform, env })) {
+      if (resolve(command) !== null) {
         available.push(editor.id);
       }
     }
@@ -539,8 +368,8 @@ export const resolveEditorLaunch = Effect.fnUntraced(function* (
   }
 
   if (editorDef.commands) {
-    const command = yield* Effect.promise(() =>
-      resolveAvailableCommand(editorDef.commands ?? [], { platform, env }),
+    const command = resolveAvailableCommand(editorDef.commands, (candidate) =>
+      resolveExecutable(candidate, { platform, env }),
     );
     if (command) {
       return {
@@ -607,7 +436,7 @@ function launchDetachedWithEditorFallback(
 
 export const launchDetached = (launch: EditorLaunch) =>
   Effect.gen(function* () {
-    if (!(yield* Effect.promise(() => isCommandAvailable(launch.command)))) {
+    if (resolveExecutable(launch.command) === null) {
       return yield* new OpenError({ message: `Editor command not found: ${launch.command}` });
     }
 

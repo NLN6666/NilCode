@@ -56,4 +56,12 @@ export default defineConfig([
     entry: ["src/desktopHangWatchdogProcess.ts"],
     noExternal: (id) => id.startsWith("@synara/"),
   },
+  {
+    ...shared,
+    // The cross-platform driver host, deployable to a Windows/Linux target:
+    // `node dist-electron/cuaDriverHostStandalone.js --driver <path>`. It
+    // must bundle the shared protocol (no node_modules on the target).
+    entry: ["src/cuaDriverHostStandalone.ts"],
+    noExternal: (id) => id.startsWith("@synara/"),
+  },
 ]);

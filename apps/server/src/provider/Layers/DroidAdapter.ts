@@ -118,8 +118,8 @@ import {
   makeDroidAcpRuntime,
   type DroidAcpRuntimeSettings,
 } from "../acp/DroidAcpSupport.ts";
-import { makeDroidSessionTeardownGate } from "../acp/DroidSessionTeardownGate.ts";
-import { cancelDroidTurnAndWait } from "../acp/DroidTurnCancellation.ts";
+import { makeSessionTeardownGate } from "../acp/SessionTeardownGate.ts";
+import { cancelTurnAndWait } from "../acp/TurnCancellation.ts";
 import {
   elicitationQuestionsFromRequest,
   elicitationResponseFromAnswers,
@@ -226,6 +226,7 @@ interface PendingUserInput {
 
 interface DroidSessionContext {
   deliveredHarnessPolicyVersion?: string;
+  readonly enableComputerControl?: boolean;
   readonly gatewaySessionLease?: AgentGatewaySessionLease;
   readonly threadId: ThreadId;
   readonly lifecycleGeneration?: string;
@@ -418,7 +419,7 @@ export function makeDroidAdapter(
       options?.nativeEventLogger === undefined ? nativeEventLogger : undefined;
 
     const sessions = new Map<ThreadId, DroidSessionContext>();
-    const sessionTeardownGate = makeDroidSessionTeardownGate();
+    const sessionTeardownGate = makeSessionTeardownGate();
     const modelDiscoveryCache = new Map<
       string,
       { readonly expiresAt: number; readonly result: ProviderListModelsResult }
@@ -658,7 +659,7 @@ export function makeDroidAdapter(
       promptFiber: Fiber.Fiber<void, never> | undefined,
     ) =>
       Effect.gen(function* () {
-        const result = yield* cancelDroidTurnAndWait({
+        const result = yield* cancelTurnAndWait({
           cancel: ctx.acp.cancel,
           promptFiber,
           graceMs: DROID_CANCEL_GRACE_MS,
@@ -767,6 +768,7 @@ export function makeDroidAdapter(
             agentGatewayCredentials,
             input.threadId,
             PROVIDER,
+            input,
           );
           yield* Effect.addFinalizer(() =>
             sessionScopeTransferred ? Effect.void : Scope.close(sessionScope, Exit.void),
@@ -852,6 +854,9 @@ export function makeDroidAdapter(
                   runtimeMode: input.runtimeMode,
                   interactionMode: ctx?.activeInteractionMode,
                   options: params.options,
+                  computerControlEnabled: ctx?.enableComputerControl === true,
+                  activeTurn: ctx?.activeTurnId !== undefined,
+                  toolCall: params.toolCall,
                 });
                 if (policyOutcome !== undefined) {
                   if (policyOutcome.outcome === "selected") {
@@ -1017,6 +1022,7 @@ export function makeDroidAdapter(
           };
 
           ctx = {
+            enableComputerControl: input.enableComputerControl === true,
             threadId: input.threadId,
             ...(gatewaySessionLease ? { gatewaySessionLease } : {}),
             ...(input.lifecycleGeneration !== undefined

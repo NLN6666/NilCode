@@ -300,9 +300,7 @@ export function resolveAdjacentDiffFilePath(
   return filePaths[targetIndex] ?? null;
 }
 
-export function resolveDiffChangeMarkerKind(
-  changeType: FileDiffMetadata["type"],
-): DiffChangeMarkerKind {
+function resolveDiffChangeMarkerKind(changeType: FileDiffMetadata["type"]): DiffChangeMarkerKind {
   if (changeType === "new") {
     return "added";
   }

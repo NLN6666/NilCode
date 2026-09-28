@@ -11,7 +11,6 @@ describe("resolveThreadModelSummary", () => {
     expect(resolveThreadModelSummary(null, STATUS_LABELS)).toBeNull();
     expect(resolveThreadModelSummary(undefined, STATUS_LABELS)).toBeNull();
   });
-
   it("summarizes a codex selection with its reasoning effort", () => {
     const summary = resolveThreadModelSummary(
       {

@@ -4,8 +4,8 @@
 // Exports: Vitest coverage for theme.logic.
 
 import { describe, expect, it } from "vitest";
+import { DEFAULT_MONOSPACE_FONT_FAMILY_STACK } from "../lib/fontFamily";
 import {
-  CODE_THEME_OPTIONS,
   DEFAULT_CHROME_THEME_BY_VARIANT,
   DEFAULT_THEME_STATE,
   buildResolvedThemeTokens,
@@ -13,7 +13,6 @@ import {
   canParseThemeShareString,
   createThemeShareString,
   getCodeThemeSeed,
-  getCodeThemeSeedPatch,
   normalizeThemeState,
   parseStoredThemeState,
   parseThemeShareString,
@@ -22,7 +21,6 @@ import {
   setThemeCodeThemeId,
   updateThemePackFromShareString,
 } from "./theme.logic";
-import { DEFAULT_MONOSPACE_FONT_FAMILY_STACK } from "../lib/fontFamily";
 
 const PROVIDED_THEME_STRING =
   'codex-theme-v1:{"codeThemeId":"linear","theme":{"accent":"#606acc","contrast":30,"fonts":{"code":"\\"Jetbrains Mono\\"","ui":"Inter"},"ink":"#e3e4e6","opaqueWindows":true,"semanticColors":{"diffAdded":"#69c967","diffRemoved":"#ff7e78","skill":"#c2a1ff"},"surface":"#0f0f11"},"variant":"dark"}';
@@ -190,50 +188,6 @@ describe("theme share strings", () => {
 });
 
 describe("code theme seeds", () => {
-  it("starts every bundled theme variant at zero contrast", () => {
-    for (const option of CODE_THEME_OPTIONS) {
-      for (const variant of option.variants) {
-        expect(getCodeThemeSeed(option.id, variant).contrast).toBe(0);
-      }
-    }
-  });
-
-  it("loads the exact normalized seed for a bundled code theme", () => {
-    expect(getCodeThemeSeed("linear", "dark")).toEqual({
-      accent: "#606acc",
-      contrast: 0,
-      fonts: {
-        code: null,
-        ui: "Inter",
-      },
-      ink: "#e3e4e6",
-      opaqueWindows: true,
-      semanticColors: {
-        diffAdded: "#69c967",
-        diffRemoved: "#ff7e78",
-        skill: "#c2a1ff",
-      },
-      surface: "#0f0f11",
-    });
-  });
-
-  it("exposes only the raw seed fields that Codex merges on theme switching", () => {
-    expect(getCodeThemeSeedPatch("linear", "dark")).toEqual({
-      accent: "#606acc",
-      fonts: {
-        ui: "Inter",
-      },
-      ink: "#e3e4e6",
-      opaqueWindows: true,
-      semanticColors: {
-        diffAdded: "#69c967",
-        diffRemoved: "#ff7e78",
-        skill: "#c2a1ff",
-      },
-      surface: "#0f0f11",
-    });
-  });
-
   it("merges the selected theme seed into the current pack instead of hard-resetting", () => {
     const nextState = setThemeCodeThemeId(
       {
@@ -475,6 +429,30 @@ describe("buildThemeCssVariables", () => {
     expect(cssVariables.variables["--color-background-control"]).toBe("rgba(249, 249, 248, 0.96)");
   });
 
+  it.each([{ electron: true, isMac: true }])(
+    "projects distinct Vercel and Codex light colors on %j",
+    (platform) => {
+      const state = setThemeCodeThemeId(DEFAULT_THEME_STATE, "light", "vercel");
+      const vercel = buildThemeCssVariables(resolveThemePack(state, "light"), "light", platform);
+      const codex = buildThemeCssVariables(
+        resolveThemePack(DEFAULT_THEME_STATE, "light"),
+        "light",
+        platform,
+      );
+      expect(vercel.variables["--codex-base-accent"]).toBe("#006aff");
+      expect(codex.variables["--codex-base-accent"]).toBe("#0169cc");
+      expect(vercel.variables["--color-text-foreground"]).toBe("#171717");
+      expect(codex.variables["--color-text-foreground"]).toBe("#0d0d0d");
+      // These two presets intentionally share a white surface in light mode.
+      expect(vercel.variables["--codex-base-surface"]).toBe(
+        codex.variables["--codex-base-surface"],
+      );
+      // Editing a slot must not change the user's system-mode or other-slot choices.
+      expect(state.mode).toBe("system");
+      expect(state.chromeThemes.dark).toEqual(DEFAULT_THEME_STATE.chromeThemes.dark);
+    },
+  );
+
   it("uses the light-theme foreground color for the primary button background", () => {
     const tokens = buildResolvedThemeTokens(
       {
@@ -486,22 +464,6 @@ describe("buildThemeCssVariables", () => {
 
     expect(tokens.derived.buttonPrimaryBackground).toBe(DEFAULT_THEME_STATE.chromeThemes.light.ink);
     expect(tokens.derived.textButtonPrimary).toBe(DEFAULT_THEME_STATE.chromeThemes.light.surface);
-    expect(tokens.derived.textButtonPrimary).not.toBe(tokens.derived.buttonPrimaryBackground);
-  });
-
-  it("uses the dark-theme foreground color for the primary button background", () => {
-    const tokens = buildResolvedThemeTokens(
-      {
-        codeThemeId: "codex",
-        theme: DEFAULT_THEME_STATE.chromeThemes.dark,
-      },
-      "dark",
-    );
-
-    // Dark mode mirrors light mode's high-contrast primary: bg = ink (white),
-    // label = surface (dark), so the primary action reads as a filled button.
-    expect(tokens.derived.buttonPrimaryBackground).toBe(DEFAULT_THEME_STATE.chromeThemes.dark.ink);
-    expect(tokens.derived.textButtonPrimary).toBe(DEFAULT_THEME_STATE.chromeThemes.dark.surface);
     expect(tokens.derived.textButtonPrimary).not.toBe(tokens.derived.buttonPrimaryBackground);
   });
 

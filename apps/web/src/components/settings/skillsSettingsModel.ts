@@ -64,6 +64,7 @@ export const ORIGIN_SECTION_ORDER = [
   "opencode",
   "pi",
   "devin",
+  "omp",
   "agents",
   "project",
 ] as const;
@@ -97,6 +98,7 @@ const ORIGIN_OWNER_PROVIDER: Readonly<Record<string, ProviderKind>> = {
   // directory, so the owner lookup has to bridge `factory` back to the `droid` kind.
   factory: "droid",
   opencode: "opencode",
+  omp: "omp",
   pi: "pi",
   devin: "devin",
   antigravity: "antigravity",
@@ -113,6 +115,7 @@ export function skillOriginInfo(
   switch (scope) {
     case "synara":
       return { label: "Synara", provider: null };
+
     case "agents":
       return { label: labels.shared, provider: null };
     case "project":
@@ -215,12 +218,12 @@ export function buildSettingsSkillGroups(
     .sort((left, right) => left.displayName.localeCompare(right.displayName));
 }
 
-export function buildSettingsSkillSections(
-  skills: ReadonlyArray<ProviderSkillDescriptor>,
+export function buildSettingsSkillSectionsFromGroups(
+  groups: ReadonlyArray<SettingsSkillGroup>,
   labels: SettingsSkillLabels,
 ): SettingsSkillSection[] {
   const sections = new Map<string, SettingsSkillGroup[]>();
-  for (const group of buildSettingsSkillGroups(skills, labels)) {
+  for (const group of groups) {
     sections.set(group.section, [...(sections.get(group.section) ?? []), group]);
   }
 

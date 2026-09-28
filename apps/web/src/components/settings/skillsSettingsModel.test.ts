@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { en } from "../../i18n/locales/en";
 import {
   buildSettingsSkillGroups,
-  buildSettingsSkillSections,
+  buildSettingsSkillSectionsFromGroups,
   nextDisabledSkills,
   skillToggleState,
 } from "./skillsSettingsModel";
@@ -79,6 +79,9 @@ describe("buildSettingsSkillGroups", () => {
     const cursorOnly = groups.find((group) => group.key === "cursor-only");
     expect(cursorOnly?.section).toBe("cursor");
     expect(cursorOnly?.providers).toEqual(["cursor"]);
+    const sections = buildSettingsSkillSectionsFromGroups(groups, SKILL_LABELS);
+    expect(sections.map((section) => section.title)).toEqual(["Shared skills", "From Cursor"]);
+    expect(sections[0]?.groups.map((group) => group.key)).toEqual(["check-code"]);
   });
 
   // Reach, not ownership: Cursor and Droid read Codex's and Claude's folders, so a skill in
@@ -162,26 +165,29 @@ describe("buildSettingsSkillGroups", () => {
   });
 });
 
-describe("buildSettingsSkillSections", () => {
+describe("buildSettingsSkillSectionsFromGroups", () => {
   it("places shared skill groups before provider-only sections", () => {
-    const sections = buildSettingsSkillSections(
-      [
-        skill({
-          name: "logic-consolidator",
-          path: "/Users/test/.codex/skills/logic-consolidator/SKILL.md",
-          scope: "codex",
-        }),
-        skill({
-          name: "logic-consolidator",
-          path: "/Users/test/.claude/skills/logic-consolidator/SKILL.md",
-          scope: "claude",
-        }),
-        skill({
-          name: "cursor-only",
-          path: "/Users/test/.cursor/skills/cursor-only/SKILL.md",
-          scope: "cursor",
-        }),
-      ],
+    const sections = buildSettingsSkillSectionsFromGroups(
+      buildSettingsSkillGroups(
+        [
+          skill({
+            name: "logic-consolidator",
+            path: "/Users/test/.codex/skills/logic-consolidator/SKILL.md",
+            scope: "codex",
+          }),
+          skill({
+            name: "logic-consolidator",
+            path: "/Users/test/.claude/skills/logic-consolidator/SKILL.md",
+            scope: "claude",
+          }),
+          skill({
+            name: "cursor-only",
+            path: "/Users/test/.cursor/skills/cursor-only/SKILL.md",
+            scope: "cursor",
+          }),
+        ],
+        SKILL_LABELS,
+      ),
       SKILL_LABELS,
     );
 

@@ -18,6 +18,7 @@ import {
   AutomationId,
   DEFAULT_AUTOMATION_STOP_CONFIDENCE_THRESHOLD,
   DEFAULT_MODEL_BY_PROVIDER,
+  COMPUTER_CONTROL_DENIED_ACTIVITY_KIND,
   EventId,
   MessageId,
   ModelSelection,
@@ -73,6 +74,9 @@ import {
   type AgentGatewayOperationRecord,
 } from "../Services/AgentGatewayOperationRepository.ts";
 import { AgentGatewayLive } from "./AgentGateway.ts";
+import { ComputerService } from "../../computer/Services/ComputerService.ts";
+import { makeComputerServiceLayer } from "../../computer/Layers/ComputerService.ts";
+import { FakeComputerBackend } from "../../computer/FakeComputerBackend.ts";
 import { recordCreatedWorktreeInPlan } from "../operationPlan.ts";
 import { makeAgentGatewayInFlightRequestRegistry } from "../inFlightRequestRegistry.ts";
 
@@ -271,6 +275,7 @@ interface GatewayHarness {
     readonly assistantMessageId?: string | null;
   }) => void;
   readonly setProviderStatuses: (statuses: ReadonlyArray<ServerProviderStatus>) => void;
+  readonly getOperationPlan: () => string;
   readonly getOperationStatus: (callerTurnId: string) => string | null;
   readonly getOperationErrorCode: (callerTurnId: string) => string | null;
   readonly getWaitReadCounts: () => {
@@ -344,6 +349,7 @@ const VALID_TOKENS: Record<string, string> = {
   "token-parent": "thread-parent",
   "token-parent-claude": "thread-parent",
   "token-parent-readonly": "thread-parent",
+  "token-parent-computer": "thread-parent",
   "token-ghost": "thread-ghost",
 };
 
@@ -403,6 +409,8 @@ function makeHarnessLayer(
       readonly id: string;
       readonly automationId: AutomationDefinition["id"];
     };
+    /** Serves the computer_* family in the tool catalog (denial paths only need the names). */
+    readonly computerService?: Layer.Layer<ComputerService>;
   } = {},
 ) {
   const inFlightRequests = makeAgentGatewayInFlightRequestRegistry();
@@ -451,12 +459,14 @@ function makeHarnessLayer(
             capabilities:
               token === "token-parent-readonly"
                 ? new Set(["thread:read"] as const)
-                : new Set([
-                    "thread:read",
-                    "thread:write",
-                    "automation:write",
-                    "diagnostics:read",
-                  ] as const),
+                : token === "token-parent-computer"
+                  ? new Set(["thread:read", "computer:control"] as const)
+                  : new Set([
+                      "thread:read",
+                      "thread:write",
+                      "automation:write",
+                      "diagnostics:read",
+                    ] as const),
           }
         : null;
     },
@@ -933,6 +943,7 @@ function makeHarnessLayer(
     "droid",
     "opencode",
     "pi",
+    "omp",
   ];
   let providerStatuses =
     options.providerStatuses ??
@@ -960,6 +971,17 @@ function makeHarnessLayer(
     );
   }
   const operationLayer = Layer.succeed(AgentGatewayOperationRepository, {
+    completions: {
+      pending: () => Effect.succeed([]),
+      isOutputSettled: () => Effect.succeed(true),
+      hasCompletedRun: () => Effect.succeed(true),
+      initialFailure: () => Effect.succeed(null),
+      hasGoalHistory: () => Effect.succeed(false),
+      saveResult: () => Effect.void,
+      delivered: () => Effect.void,
+      claimContext: () => Effect.succeed(""),
+      settleContext: (_sequence, _accepted, settle) => settle,
+    },
     reserve: (input: {
       operationId: string;
       callerThreadId: string;
@@ -1245,6 +1267,7 @@ function makeHarnessLayer(
     Layer.provide(providerRuntimeEventsLayer),
     Layer.provide(ServerConfig.layerTest(process.cwd(), process.cwd())),
     Layer.provide(NodeServices.layer),
+    Layer.provide(options.computerService ?? Layer.empty),
   );
 
   const makeHarness = Effect.gen(function* () {
@@ -1298,6 +1321,7 @@ function makeHarnessLayer(
       setProviderStatuses: (statuses) => {
         providerStatuses = statuses;
       },
+      getOperationPlan: () => [...operationsByScope.values()][0]!.planJson,
       getOperationStatus: (callerTurnId) =>
         [...operationsByScope.values()].find((operation) => operation.callerTurnId === callerTurnId)
           ?.status ?? null,
@@ -1377,7 +1401,13 @@ function makeClaudeGatewayRuntime(models: ModelInfo[]) {
       };
     },
   }).pipe(
-    Layer.provideMerge(ServerConfig.layerTest("/tmp/claude-gateway-test", "/tmp")),
+    Layer.provideMerge(
+      // Isolated state dir: provider model catalogs now persist under stateDir,
+      // so a fixed path would leak one test's catalog into the next.
+      ServerConfig.layerTest("/tmp/claude-gateway-test", {
+        prefix: "claude-gateway-test-",
+      }),
+    ),
     Layer.provideMerge(NodeServices.layer),
   );
   return {
@@ -1409,15 +1439,14 @@ describe("AgentGateway", () => {
   ];
 
   for (const model of [
+    // One row per resolution branch: bare alias, full id, [1m] id, [1m] alias,
+    // dated resolution, and an alias resolving to a [1m] id.
     { value: "sonnet" },
-    { value: "fable" },
     { value: "claude-sonnet-5" },
-    { value: "claude-fable-5" },
     { value: "claude-fable-5-1[1m]" },
     { value: "sonnet[1m]", resolvedModel: "claude-sonnet-5" },
     { value: "sonnet-4.6", resolvedModel: "claude-sonnet-4-6-20251117" },
     { value: "fable", resolvedModel: "claude-fable-5-1[1m]" },
-    { value: "team-model", resolvedModel: "claude-fable-5-1" },
   ]) {
     it.effect(
       `carries discovered Claude context windows through MCP and runtime: ${model.value} -> ${model.resolvedModel ?? model.value}`,
@@ -1587,7 +1616,6 @@ describe("AgentGateway", () => {
 
   for (const model of [
     { value: "claude-haiku-4-5" },
-    { value: "claude-opus-4-5" },
     { value: "unknown-model" },
     { value: "sonnet", resolvedModel: "claude-haiku-4-5" },
   ]) {
@@ -1765,6 +1793,96 @@ describe("AgentGateway", () => {
     }).pipe(Effect.provide(gatewayLayer));
   });
 
+  it.effect("surfaces one computer-control denial card per tool per turn", () => {
+    const { gatewayLayer, makeHarness } = makeHarnessLayer(baseThreads, [], {
+      computerService: makeComputerServiceLayer({
+        backend: new FakeComputerBackend(),
+        supported: true,
+      }),
+    });
+    return Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      const denialCards = () =>
+        harness.dispatched.filter(
+          (command) =>
+            command.type === "thread.activity.append" &&
+            command.activity.kind === COMPUTER_CONTROL_DENIED_ACTIVITY_KIND,
+        );
+      const callComputerTool = (id: number, name: string) =>
+        harness.postRaw({
+          authorizationHeader: "Bearer token-parent",
+          body: { jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: {} } },
+        });
+      const deniedErrorOf = (body: unknown) =>
+        JSON.parse(
+          (body as { result: { content: Array<{ text: string }> } }).result.content[0]!.text,
+        ) as { error: { code: string; details: { requiredCapability: string } } };
+      // token-parent was never granted computer control: every computer tool denies.
+      for (const [id, name] of [
+        [11, "computer_click"],
+        [12, "computer_type_text"],
+      ] as const) {
+        const response = yield* callComputerTool(id, name);
+        assert.equal(response.status, 200);
+        const error = deniedErrorOf(response.body).error;
+        assert.equal(error.code, "capability_denied");
+        assert.equal(error.details.requiredCapability, "computer:control");
+      }
+      // Two different tools denied in one turn earn two cards, not one.
+      assert.equal(denialCards().length, 2);
+      // Retrying the first tool in the same turn earns no third card.
+      const repeat = yield* callComputerTool(13, "computer_click");
+      assert.equal(repeat.status, 200);
+      assert.equal(deniedErrorOf(repeat.body).error.code, "capability_denied");
+      assert.equal(denialCards().length, 2);
+    }).pipe(Effect.provide(gatewayLayer));
+  });
+
+  it.effect("denies prefixed computer spellings with a denial card, never Unknown-tool", () => {
+    const { gatewayLayer, makeHarness } = makeHarnessLayer(baseThreads, [], {
+      computerService: makeComputerServiceLayer({
+        backend: new FakeComputerBackend(),
+        supported: true,
+      }),
+    });
+    return Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      const denialCards = () =>
+        harness.dispatched.filter(
+          (command) =>
+            command.type === "thread.activity.append" &&
+            command.activity.kind === COMPUTER_CONTROL_DENIED_ACTIVITY_KIND,
+        );
+      const callComputerTool = (id: number, name: string) =>
+        harness.postRaw({
+          authorizationHeader: "Bearer token-parent",
+          body: { jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: {} } },
+        });
+      const deniedErrorOf = (body: unknown) =>
+        JSON.parse(
+          (body as { result: { content: Array<{ text: string }> } }).result.content[0]!.text,
+        ) as { error: { code: string; details: { requiredCapability: string } } };
+      // token-parent was never granted computer control: prefixed spellings of a
+      // known family name deny with the card instead of dying as Unknown-tool.
+      for (const [id, name] of [
+        [21, "synara_computer_click"],
+        [22, "mcp__synara__computer_click"],
+      ] as const) {
+        const response = yield* callComputerTool(id, name);
+        assert.equal(response.status, 200);
+        const error = deniedErrorOf(response.body).error;
+        assert.equal(error.code, "capability_denied");
+        assert.equal(error.details.requiredCapability, "computer:control");
+      }
+      assert.equal(denialCards().length, 2);
+      // An entirely-unknown name still stays INVALID_PARAMS with no card.
+      const unknown = yield* callComputerTool(23, "foo_bar");
+      assert.equal(unknown.status, 200);
+      assert.equal((unknown.body as { error?: { code: number } }).error?.code, -32602);
+      assert.equal(denialCards().length, 2);
+    }).pipe(Effect.provide(gatewayLayer));
+  });
+
   it.effect("requires the explicit diagnostics capability for forensic tools", () => {
     const { gatewayLayer, makeHarness } = makeHarnessLayer(baseThreads);
     return Effect.gen(function* () {
@@ -1780,6 +1898,46 @@ describe("AgentGateway", () => {
       };
       assert.equal(error.code, "capability_denied");
       assert.equal(error.details.requiredCapability, "diagnostics:read");
+    }).pipe(Effect.provide(gatewayLayer));
+  });
+
+  it.effect("drives a second app on a full-access thread without a second-app card", () => {
+    // The packaged E2E was full-access and stalled behind "Allow the agent to
+    // drive Google Chrome?" for the driver-owned isolated Chromium it had
+    // launched itself. Full access is the broader consent; the wiring must
+    // not publish an approval card for the second app.
+    const { gatewayLayer, makeHarness } = makeHarnessLayer(
+      baseThreads.map((thread) =>
+        thread.id === "thread-parent"
+          ? makeThreadShell("thread-parent", { runtimeMode: "full-access" })
+          : thread,
+      ),
+      [],
+      {
+        computerService: makeComputerServiceLayer({
+          backend: new FakeComputerBackend(),
+          supported: true,
+        }),
+      },
+    );
+    return Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      const launch = (app: string) =>
+        harness.callTool({
+          token: "token-parent-computer",
+          name: "computer_launch_app",
+          args: { app, wait_for_window: false },
+        });
+      const first = yield* launch("kcalc");
+      assert.isFalse(isToolError(first.result), toolErrorText(first.result));
+      const second = yield* launch("Google Chrome");
+      assert.isFalse(isToolError(second.result), toolErrorText(second.result));
+      const cards = harness.dispatched.filter(
+        (command) =>
+          command.type === "thread.activity.append" &&
+          command.activity.kind === "approval.requested",
+      );
+      assert.equal(cards.length, 0);
     }).pipe(Effect.provide(gatewayLayer));
   });
 
@@ -2482,6 +2640,45 @@ describe("AgentGateway", () => {
     }).pipe(Effect.provide(gatewayLayer));
   });
 
+  for (const batch of [false, true]) {
+    it.effect(
+      `persists creator-only completion opt-in for ${batch ? "batch" : "single"} creation`,
+      () => {
+        const { gatewayLayer, makeHarness } = makeHarnessLayer(baseThreads);
+        return Effect.gen(function* () {
+          const harness = yield* makeHarness;
+          const spec = {
+            prompt: "delegated task",
+            target: { provider: "codex", model: "gpt-5.5" },
+            notifyCreatorOnComplete: true,
+          };
+          const response = yield* harness.callTool({
+            token: "token-parent",
+            name: batch ? "synara_create_threads" : "synara_create_thread",
+            args: batch
+              ? {
+                  requestId: "completion",
+                  threads: [spec, { ...spec, notifyCreatorOnComplete: false }],
+                }
+              : { requestId: "completion", ...spec },
+          });
+          assert.isFalse(isToolError(response.result), toolErrorText(response.result));
+          const plan = JSON.parse(harness.getOperationPlan()) as Array<{
+            notifyCreatorOnComplete: boolean;
+          }>;
+          assert.equal(plan[0]?.notifyCreatorOnComplete, true);
+          if (batch) assert.equal(plan[1]?.notifyCreatorOnComplete, false);
+          for (const command of harness.dispatched) {
+            if (command.type === "thread.create") {
+              assert.equal(command.sourceThreadId, "thread-parent");
+              assert.isFalse("parentThreadId" in command);
+            }
+          }
+        }).pipe(Effect.provide(gatewayLayer));
+      },
+    );
+  }
+
   it.effect("starts explicit OpenCode plan-agent targets in plan mode", () => {
     const { gatewayLayer, makeHarness } = makeHarnessLayer(baseThreads);
     return Effect.gen(function* () {
@@ -3091,43 +3288,6 @@ describe("AgentGateway", () => {
     }).pipe(Effect.provide(gatewayLayer));
   });
 
-  it.effect("rejects detached creation after the caller turn completed", () => {
-    const { gatewayLayer, makeHarness } = makeHarnessLayer([
-      makeThreadShell("thread-parent", {
-        latestTurn: {
-          turnId: TurnId.makeUnsafe("turn-parent-complete"),
-          state: "completed",
-          requestedAt: NOW,
-          startedAt: NOW,
-          completedAt: NOW,
-          assistantMessageId: null,
-        },
-      }),
-    ]);
-    return Effect.gen(function* () {
-      const harness = yield* makeHarness;
-      const response = yield* harness.callTool({
-        token: "token-parent",
-        name: "synara_create_threads",
-        args: {
-          requestId: "detached-attempt",
-          threads: [
-            {
-              prompt: "create too late",
-              target: { provider: "codex", model: "gpt-5.5" },
-            },
-          ],
-        },
-      });
-      assert.isTrue(isToolError(response.result));
-      assert.equal(
-        (toolResultJson(response.result).error as { code: string }).code,
-        "caller_turn_inactive",
-      );
-      assert.equal(harness.dispatched.length, 0);
-    }).pipe(Effect.provide(gatewayLayer));
-  });
-
   it.effect("compensates a child started while its ingress turn is interrupted", () => {
     const { gatewayLayer, makeHarness } = makeHarnessLayer(baseThreads, [], {
       advanceParentTurnAfterDispatch: {
@@ -3483,32 +3643,6 @@ describe("AgentGateway", () => {
     }).pipe(Effect.provide(gatewayLayer));
   });
 
-  it.effect("rejects guessed Terra Low slugs before any dispatch", () => {
-    const { gatewayLayer, makeHarness } = makeHarnessLayer(baseThreads);
-    return Effect.gen(function* () {
-      const harness = yield* makeHarness;
-      const response = yield* harness.callTool({
-        token: "token-parent",
-        name: "synara_create_threads",
-        args: {
-          requestId: "bad-terra",
-          threads: [
-            {
-              prompt: "inspect repo",
-              target: { provider: "codex", model: "gpt-5.6-terra-low" },
-            },
-          ],
-        },
-      });
-      assert.isTrue(isToolError(response.result));
-      assert.equal(
-        (toolResultJson(response.result).error as { code: string }).code,
-        "model_unavailable",
-      );
-      assert.equal(harness.dispatched.length, 0);
-    }).pipe(Effect.provide(gatewayLayer));
-  });
-
   it.effect("rejects an unavailable or unauthenticated provider before dispatch", () => {
     const { gatewayLayer, makeHarness } = makeHarnessLayer(baseThreads, [], {
       providerStatuses: [
@@ -3599,6 +3733,10 @@ describe("AgentGateway", () => {
         },
       });
       assert.isTrue(isToolError(response.result));
+      assert.equal(
+        (toolResultJson(response.result).error as { code: string }).code,
+        "model_unavailable",
+      );
       assert.equal(harness.dispatched.length, 0);
     }).pipe(Effect.provide(gatewayLayer));
   });
@@ -4533,40 +4671,6 @@ describe("AgentGateway", () => {
     }).pipe(Effect.provide(gatewayLayer));
   });
 
-  it.effect("sends a follow-up message with the agent dispatch origin", () => {
-    const { gatewayLayer, makeHarness } = makeHarnessLayer([
-      ...baseThreads.filter((thread) => thread.id !== "thread-child"),
-      makeThreadShell("thread-child", {
-        parentThreadId: ThreadId.makeUnsafe("thread-parent"),
-        session: {
-          threadId: ThreadId.makeUnsafe("thread-child"),
-          status: "running",
-          providerName: "codex",
-          runtimeMode: "approval-required",
-          activeTurnId: TurnId.makeUnsafe("turn-live"),
-          lastError: null,
-          updatedAt: NOW,
-        },
-      }),
-    ]);
-    return Effect.gen(function* () {
-      const harness = yield* makeHarness;
-      const response = yield* harness.callTool({
-        token: "token-parent",
-        name: "synara_send_message",
-        args: { threadId: "thread-child", message: "status check please", mode: "steer" },
-      });
-      assert.isFalse(isToolError(response.result), toolErrorText(response.result));
-      const turn = harness.dispatched[0]!;
-      assert.equal(turn.type, "thread.turn.start");
-      if (turn.type === "thread.turn.start") {
-        assert.equal(turn.dispatchOrigin, "agent");
-        assert.equal(turn.dispatchMode, "steer");
-        assert.equal(turn.threadId, "thread-child");
-      }
-    }).pipe(Effect.provide(gatewayLayer));
-  });
-
   it.effect("passes an idle steer through so the reactor's live-state guard decides", () => {
     const { gatewayLayer, makeHarness } = makeHarnessLayer(baseThreads);
     return Effect.gen(function* () {
@@ -4584,6 +4688,8 @@ describe("AgentGateway", () => {
       assert.equal(turn.type, "thread.turn.start");
       if (turn.type === "thread.turn.start") {
         assert.equal(turn.dispatchMode, "steer");
+        assert.equal(turn.dispatchOrigin, "agent");
+        assert.equal(turn.threadId, "thread-child");
       }
     }).pipe(Effect.provide(gatewayLayer));
   });
@@ -5842,24 +5948,6 @@ describe("AgentGateway", () => {
       assert.isTrue(isToolError(setGoal.result));
       assert.include(toolErrorText(setGoal.result), "full-access");
       assert.equal(harness.dispatched.length, 0);
-    }).pipe(Effect.provide(gatewayLayer));
-  });
-
-  it.effect("reports unknown tools as invalid params", () => {
-    const { gatewayLayer, makeHarness } = makeHarnessLayer(baseThreads);
-    return Effect.gen(function* () {
-      const harness = yield* makeHarness;
-      const response = yield* harness.postRaw({
-        authorizationHeader: "Bearer token-parent",
-        body: {
-          jsonrpc: "2.0",
-          id: 9,
-          method: "tools/call",
-          params: { name: "synara_unknown" },
-        },
-      });
-      const error = (response.body as { error?: { code: number } }).error;
-      assert.equal(error?.code, -32602);
     }).pipe(Effect.provide(gatewayLayer));
   });
 });

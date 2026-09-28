@@ -11,7 +11,9 @@ export const ComposerPlanFollowUpBanner = function ComposerPlanFollowUpBanner({
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm">{copy.ready}</span>
         {planTitle ? (
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">{planTitle}</span>
+          <span className="min-w-0 flex-1 truncate text-ui-lg leading-snug font-medium">
+            {planTitle}
+          </span>
         ) : null}
       </div>
       {/* <div className="mt-2 text-xs text-muted-foreground">

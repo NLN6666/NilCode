@@ -230,7 +230,7 @@ export function createFreshDraftThreadSeed(input: {
 }
 
 // Detect whether the caller wants to override stored draft context before reuse.
-export function hasDraftContextOverrides(options?: NewThreadOptions): boolean {
+function hasDraftContextOverrides(options?: NewThreadOptions): boolean {
   return (
     options?.branch !== undefined ||
     options?.worktreePath !== undefined ||

@@ -443,8 +443,8 @@ function BrowserRuntimePreview(props: { title: string; detail: string }) {
           </div>
         </div>
         <div className="mt-4 min-w-0 text-center">
-          <p className="text-xs font-medium text-foreground">{copy.restoringRuntime}</p>
-          <p className="mt-1 truncate text-[11px] text-muted-foreground" title={props.detail}>
+          <p className="text-ui font-medium text-foreground">{copy.restoringRuntime}</p>
+          <p className="mt-1 truncate text-ui-sm text-muted-foreground" title={props.detail}>
             {props.title}
           </p>
         </div>
@@ -461,8 +461,8 @@ function BrowserRuntimeError(props: { message: string; onReload: () => void }) {
     >
       <div className="flex max-w-xs flex-col items-center">
         <CircleAlertIcon className="size-7 text-white/35" aria-hidden="true" />
-        <p className="mt-3 text-sm font-medium text-white/80">This page could not be loaded</p>
-        <p className="mt-1 text-xs text-white/45">{props.message}</p>
+        <p className="mt-3 text-ui-lg font-medium text-white/80">This page could not be loaded</p>
+        <p className="mt-1 text-ui leading-snug text-white/45">{props.message}</p>
         <Button
           type="button"
           variant="secondary"
@@ -559,14 +559,14 @@ function BrowserLocalServersHome({
             {loading ? (
               <>
                 <RefreshCwIcon className="mb-4 size-12 animate-spin text-white/20" />
-                <p className="text-base font-semibold text-white">{copy.scanning}</p>
-                <p className="mt-2 text-sm text-white/35">{copy.checkingPorts}</p>
+                <p className="text-ui-lg font-semibold text-white">{copy.scanning}</p>
+                <p className="mt-2 text-ui text-white/35">{copy.checkingPorts}</p>
               </>
             ) : (
               <>
                 <GlobeIcon className="mb-4 size-16 stroke-[1.5] text-white/30" />
-                <p className="text-base font-semibold text-white">{copy.none}</p>
-                <p className="mt-2 text-sm text-white/35">{copy.tryAnother}</p>
+                <p className="text-ui-lg font-semibold text-white">{copy.none}</p>
+                <p className="mt-2 text-ui text-white/35">{copy.tryAnother}</p>
               </>
             )}
           </div>
@@ -2210,7 +2210,7 @@ export function BrowserPanel({
                 <button
                   key={suggestion.id}
                   type="button"
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-[var(--sidebar-accent)] hover:text-foreground"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-ui leading-snug text-foreground transition-colors hover:bg-[var(--sidebar-accent)] hover:text-foreground"
                   onMouseDown={(event) => {
                     event.preventDefault();
                     onChooseSuggestion(suggestion);
@@ -2227,7 +2227,7 @@ export function BrowserPanel({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{suggestion.title}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
+                    <span className="block truncate text-ui-sm text-muted-foreground">
                       {suggestion.detail}
                     </span>
                   </span>

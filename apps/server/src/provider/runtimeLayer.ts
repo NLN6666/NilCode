@@ -20,6 +20,7 @@ import { makeGrokAdapterLive } from "./Layers/GrokAdapter";
 import { makeOpenCodeAdapterLive } from "./Layers/OpenCodeAdapter";
 import { makeOhMyPiAdapterLive } from "./Layers/OhMyPiAdapter";
 import { makePiAdapterLive } from "./Layers/PiAdapter";
+import { makeOmpAdapterLive } from "./Layers/OmpAdapter";
 import { ProviderAdapterRegistryLive } from "./Layers/ProviderAdapterRegistry";
 import { ProviderDiscoveryServiceLive } from "./Layers/ProviderDiscoveryService";
 import { makeDurableProviderServiceLive } from "./Layers/ProviderService";
@@ -90,6 +91,10 @@ export function makeServerProviderLayer(
     const ohMyPiAdapterLayer = makeOhMyPiAdapterLive().pipe(
       Layer.provide(agentGatewayCredentialsLayer),
     );
+    const ompAdapterLayer = makeOmpAdapterLive(
+      {},
+      nativeEventLogger ? { nativeEventLogger } : undefined,
+    ).pipe(Layer.provide(agentGatewayCredentialsLayer));
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(claudeAdapterLayer),
@@ -100,6 +105,7 @@ export function makeServerProviderLayer(
       Layer.provide(droidAdapterLayer),
       Layer.provide(openCodeAdapterLayer),
       Layer.provide(ohMyPiAdapterLayer),
+      Layer.provide(ompAdapterLayer),
       Layer.provide(piAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );
