@@ -24,11 +24,7 @@ import { type MessageId } from "@synara/contracts";
 import { type LegendListRef } from "@legendapp/list/react";
 import { useLayoutEffect, useRef, type RefObject } from "react";
 
-import {
-  ANCHOR_SLIDE_DURATION_MS,
-  anchorSlideOffsetPx,
-  getTranscriptScrollContainer,
-} from "./transcriptScroll";
+import { ANCHOR_SLIDE_DURATION_MS, anchorSlideOffsetPx } from "./transcriptScroll";
 
 // Absolute bound on the slide plus its hold, so a transcript that never stops
 // moving can never hold the auto-follow pause open.
@@ -58,8 +54,10 @@ const ANCHOR_OVERFLOW_SLACK_PX = 8;
 // row's content position to repeat, but no longer than this.
 const ANCHOR_POSITION_CONFIRM_MAX_MS = 150;
 
+type ScrollableListRef = RefObject<Pick<LegendListRef, "getScrollableNode"> | null>;
+
 interface UseTailAnchorScrollOptions {
-  listRef: RefObject<LegendListRef | null>;
+  listRef: ScrollableListRef;
   timelineRootRef: RefObject<HTMLElement | null>;
   /** User message currently anchored at the viewport top; null releases the hook. */
   anchorMessageId: MessageId | null;
@@ -71,10 +69,17 @@ interface UseTailAnchorScrollOptions {
   anchorScrollInFlightRef?: RefObject<boolean> | undefined;
   /** Lets the list suspend its own end-follow until the anchor slide is settled. */
   onAnchorSlideFinished?: ((messageId: MessageId) => void) | undefined;
-  /** Changes whenever transcript content may have moved the anchor row. */
+  /** Changes whenever transcript geometry may have moved the anchor row. */
   contentChangeSignal?: unknown;
+  /** Changes only when a real transcript message is added or updated. */
+  messageChangeSignal?: unknown;
   /** Normal sends slide; steering an already-streaming turn anchors immediately. */
   animateAnchorSlide?: boolean | undefined;
+}
+
+function getScrollContainer(listRef: ScrollableListRef): HTMLElement | null {
+  const node: unknown = listRef.current?.getScrollableNode?.();
+  return node instanceof HTMLElement ? node : null;
 }
 
 /**
@@ -123,9 +128,11 @@ export function useTailAnchorScroll({
   anchorScrollInFlightRef,
   onAnchorSlideFinished,
   contentChangeSignal,
+  messageChangeSignal,
   animateAnchorSlide = true,
 }: UseTailAnchorScrollOptions): void {
   const anchorSlideCorrectionRef = useRef<(() => void) | null>(null);
+  const lastContentChangeAtRef = useRef(0);
   const animateAnchorSlideRef = useRef(animateAnchorSlide);
 
   // Capture the mode selected for each new anchor without restarting an active
@@ -235,7 +242,7 @@ export function useTailAnchorScroll({
       }
       const elapsedMs = now - startedAt;
 
-      const container = getTranscriptScrollContainer(listRef);
+      const container = getScrollContainer(listRef);
       if (container) {
         observeOwnedScroll(container);
       }
@@ -379,7 +386,9 @@ export function useTailAnchorScroll({
       }
 
       const minHoldMs = easeToAnchor ? 0 : STEER_ANCHOR_MIN_SETTLE_MS;
-      const quiet = hasLanded && now - lastCorrectionAt >= ANCHOR_HOLD_QUIET_MS;
+      const quiet =
+        hasLanded &&
+        now - Math.max(lastCorrectionAt, lastContentChangeAtRef.current) >= ANCHOR_HOLD_QUIET_MS;
       if ((!quiet || elapsedMs < minHoldMs) && elapsedMs < ANCHOR_SLIDE_MAX_MS) {
         return false;
       }
@@ -430,6 +439,19 @@ export function useTailAnchorScroll({
       }
     };
   }, [anchorMessageId, anchorScrollInFlightRef, listRef, onAnchorSlideFinished, timelineRootRef]);
+
+  // Only real message changes should restart the quiet-period hold. Tool and
+  // work activity also update the full timeline, but they must not extend the
+  // live-output anchor past the message-stream settle window.
+  //
+  // This effect is declared before the geometry correction so that, when a new
+  // message and a content change land in the same commit, the timestamp updates
+  // before the correction runs. If the correction ran first it could observe
+  // the old timestamp, finish the hold, and stop the slide before the new
+  // message gets a chance to extend ownership.
+  useLayoutEffect(() => {
+    lastContentChangeAtRef.current = performance.now();
+  }, [messageChangeSignal]);
 
   // React commits streamed text before paint. Re-apply the current slide
   // coordinate in that layout window so a chunk landing above the anchor cannot

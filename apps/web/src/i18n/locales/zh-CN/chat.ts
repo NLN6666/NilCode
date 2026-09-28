@@ -315,9 +315,9 @@ export const chat: Chat = {
 
   selection: {
     label: "选区操作",
-    highlight: "高亮",
-    underline: "下划线",
     addToChat: "添加到对话",
+    addToSide: "添加到侧聊",
+    addToNewChat: "添加到新对话",
   },
 
   image: {
@@ -447,6 +447,7 @@ export const chat: Chat = {
     reasons: {
       "conversation-rebuilt": "对话已重建",
       "fresh-session": "新的提供商会话",
+      "interrupt-escalation": "停止当前回合升级为重启会话",
       "native-history-unavailable": "原生历史不可用",
       "native-resume-failed": "原生会话恢复失败",
     },

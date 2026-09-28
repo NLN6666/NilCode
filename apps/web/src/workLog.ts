@@ -9,6 +9,7 @@ import {
   type AdvisorDeliveryChannel,
   type AdvisorObservationReason,
   type AdvisorSeverity,
+  type MessageId,
   type OrchestrationLatestTurnState,
   type OrchestrationThreadActivity,
   type ProviderKind,
@@ -30,7 +31,7 @@ import {
   stripTrailingToolExitCode,
   summarizeToolRawOutput,
 } from "@synara/shared/toolOutputSummary";
-import { pluralize } from "@synara/shared/text";
+import { pluralize, stripTerminalControlSequences } from "@synara/shared/text";
 import { PROVIDER_DESCRIPTORS } from "@synara/shared/providerMetadata";
 import {
   deriveReadableToolTitle,
@@ -62,6 +63,7 @@ const SESSION_CONTEXT_RECAP_PREVIEW_MAX_CHARS = 600;
 export type ProviderContextLifecycleReason =
   | "conversation-rebuilt"
   | "fresh-session"
+  | "interrupt-escalation"
   | "native-history-unavailable"
   | "native-resume-failed";
 
@@ -628,6 +630,7 @@ function isProviderContextLifecycleReason(value: unknown): value is ProviderCont
   return (
     value === "conversation-rebuilt" ||
     value === "fresh-session" ||
+    value === "interrupt-escalation" ||
     value === "native-history-unavailable" ||
     value === "native-resume-failed"
   );
@@ -716,7 +719,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
   if (payload && typeof payload.detail === "string" && payload.detail.length > 0) {
-    const detail = stripTrailingExitCode(payload.detail).output;
+    const detail = stripTrailingExitCode(stripTerminalControlSequences(payload.detail)).output;
     if (detail) {
       entry.detail = detail;
     }
@@ -724,11 +727,11 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   const outputDetail =
     activity.kind === "provider.event.unmapped" ? null : summarizeToolPayloadOutput(payload);
   if (outputDetail && (!entry.detail || toolStatus === "failed")) {
-    entry.detail = outputDetail;
+    entry.detail = stripTerminalControlSequences(outputDetail);
   }
   const collabTaskOutputDetail = extractCollabTaskOutputDetail(payload);
   if (collabTaskOutputDetail) {
-    entry.detail = collabTaskOutputDetail;
+    entry.detail = stripTerminalControlSequences(collabTaskOutputDetail);
   }
   const nativeEventType =
     payload && typeof payload.nativeEventType === "string" && payload.nativeEventType.length > 0
@@ -741,7 +744,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     activity.kind === "runtime.warning" &&
     typeof payload?.message === "string" &&
     payload.message.trim().length > 0
-      ? payload.message.trim()
+      ? stripTerminalControlSequences(payload.message).trim()
       : undefined;
   if (runtimeWarningMessage) {
     entry.detail = runtimeWarningMessage;
@@ -1254,6 +1257,9 @@ function mergeRuntimeWarningEntries(
   return {
     ...previous,
     ...next,
+    id: previous.id,
+    createdAt: previous.createdAt,
+    ...(previous.sequence !== undefined ? { sequence: previous.sequence } : {}),
     runtimeWarningRepeatCount: repeatCount,
     ...(runtimeWarningMessage ? { runtimeWarningMessage } : {}),
     detail: repeatPreview,
@@ -1275,14 +1281,22 @@ function mergeTaskListEntries(
   if (previous.taskListHasTasks && !next.taskListHasTasks) {
     return previous;
   }
-  return { ...next, id: previous.id, createdAt: previous.createdAt };
+  return {
+    ...next,
+    id: previous.id,
+    createdAt: previous.createdAt,
+    ...(previous.sequence !== undefined ? { sequence: previous.sequence } : {}),
+  };
 }
 
-// Ingestion emits compaction progress ("Compacting conversation...") and its
+// Ingestion emits compaction progress ("Compacting context") and its
 // terminal row ("Context compacted" / "... failed" / "... manually") as separate
 // activities; fold the terminal row into the in-progress one so the work log
 // shows a single resolving compaction entry instead of a stale spinner row.
-const CONTEXT_COMPACTION_PROGRESS_LABEL = "Compacting conversation...";
+function isContextCompactionProgressLabel(label: string): boolean {
+  // Keep resolving progress rows persisted by older servers, too.
+  return label === "Compacting context" || label === "Compacting conversation...";
+}
 
 function shouldCollapseContextCompactionEntries(
   previous: DerivedWorkLogEntry,
@@ -1299,7 +1313,7 @@ function shouldCollapseContextCompactionEntries(
   }
   // Only merge into a row that is still in progress; a terminal row belongs to
   // an earlier compaction and must not swallow the next one's progress row.
-  return previous.label === CONTEXT_COMPACTION_PROGRESS_LABEL;
+  return isContextCompactionProgressLabel(previous.label);
 }
 
 function shouldCollapseToolLifecycleEntries(
@@ -1383,6 +1397,8 @@ function mergeDerivedWorkLogEntries(
   const reasoningStatus = next.reasoningStatus ?? previous.reasoningStatus;
   const liveActivity = mergeWorkLogLiveActivity(previous.liveActivity, next.liveActivity);
   const toolDetails = mergeWorkLogToolDetails(previous.toolDetails, next.toolDetails);
+  // Keep the visual anchor below, but let the latest known turn own lifecycle
+  // settlement and live composer state when a background tool spans turns.
   const turnId = next.turnId ?? previous.turnId;
   return {
     ...previous,
@@ -1390,6 +1406,9 @@ function mergeDerivedWorkLogEntries(
     ...(preservePreviousToolSemantics
       ? { label: previous.label, activityKind: previous.activityKind }
       : {}),
+    id: previous.id,
+    createdAt: previous.createdAt,
+    ...(previous.sequence !== undefined ? { sequence: previous.sequence } : {}),
     ...(turnId !== undefined ? { turnId } : {}),
     ...(detail ? { detail } : {}),
     ...(command ? { command } : {}),
@@ -2423,7 +2442,7 @@ function compareActivitiesByOrder(
 }
 
 function contextCompactionOrderRank(summary: string): number {
-  return summary === CONTEXT_COMPACTION_PROGRESS_LABEL ? 0 : 1;
+  return isContextCompactionProgressLabel(summary) ? 0 : 1;
 }
 
 function compareActivityLifecycleRank(kind: string): number {
@@ -2440,6 +2459,7 @@ function compareActivityLifecycleRank(kind: string): number {
 }
 
 function timelineEntrySequence(entry: TimelineEntry): number | undefined {
+  if (entry.kind === "message") return entry.sequence ?? entry.message.textSegments?.[0]?.sequence;
   return "sequence" in entry ? entry.sequence : undefined;
 }
 
@@ -2447,9 +2467,11 @@ function compareTimelineEntriesByCreatedAt(left: TimelineEntry, right: TimelineE
   return left.createdAt.localeCompare(right.createdAt);
 }
 
+type TimelineComparator = (left: TimelineEntry, right: TimelineEntry) => number;
+
 function areTimelineEntriesOrdered(
   entries: ReadonlyArray<TimelineEntry>,
-  compare: (left: TimelineEntry, right: TimelineEntry) => number,
+  compare: TimelineComparator,
 ): boolean {
   for (let index = 1; index < entries.length; index += 1) {
     if (compare(entries[index - 1]!, entries[index]!) > 0) {
@@ -2459,10 +2481,11 @@ function areTimelineEntriesOrdered(
   return true;
 }
 
-function sortedTimelineEntriesByCreatedAt(entries: TimelineEntry[]): TimelineEntry[] {
-  return areTimelineEntriesOrdered(entries, compareTimelineEntriesByCreatedAt)
-    ? entries
-    : entries.toSorted(compareTimelineEntriesByCreatedAt);
+function sortedTimelineEntries(
+  entries: TimelineEntry[],
+  compare: TimelineComparator,
+): TimelineEntry[] {
+  return areTimelineEntriesOrdered(entries, compare) ? entries : entries.toSorted(compare);
 }
 
 function mergeTimelineEntriesByCreatedAt(
@@ -2513,6 +2536,91 @@ function orderSequencedTimelineSlots(timestampSlots: TimelineEntry[]): TimelineE
   return timestampSlots.map((entry) =>
     timelineEntrySequence(entry) === undefined ? entry : orderedSequencedEntries[sequencedIndex++]!,
   );
+}
+
+// Keep one grouping per source message; obsolete snapshots can be collected.
+const coalescedMessageCache = new WeakMap<
+  ChatMessage,
+  { readonly signature: string; readonly displayMessage: ChatMessage }
+>();
+
+/** Old snapshots can contain one segment per token. Only a visible intervening
+ * row warrants another Markdown document; keep the persisted text untouched. */
+function coalesceAdjacentMessageSegments(entries: TimelineEntry[]): TimelineEntry[] {
+  if (
+    !entries.some((entry, index) => {
+      const previous = entries[index - 1];
+      return (
+        entry.kind === "message-segment" &&
+        previous?.kind === "message-segment" &&
+        entry.message === previous.message &&
+        entry.segmentIndex === previous.segmentIndex + 1
+      );
+    })
+  ) {
+    return entries;
+  }
+  type SegmentEntry = Extract<TimelineEntry, { kind: "message-segment" }>;
+  const groupsByMessage = new Map<ChatMessage, SegmentEntry[][]>();
+  const runs: Array<TimelineEntry | SegmentEntry[]> = [];
+  for (const entry of entries) {
+    const previous = runs.at(-1);
+    if (entry.kind !== "message-segment") {
+      runs.push(entry);
+    } else if (
+      Array.isArray(previous) &&
+      previous[0]!.message === entry.message &&
+      previous.at(-1)!.segmentIndex + 1 === entry.segmentIndex
+    ) {
+      previous.push(entry);
+    } else {
+      const group = [entry];
+      runs.push(group);
+      const groups = groupsByMessage.get(entry.message) ?? [];
+      groups.push(group);
+      groupsByMessage.set(entry.message, groups);
+    }
+  }
+
+  const replacements = new Map<SegmentEntry[], TimelineEntry>();
+  for (const [message, groups] of groupsByMessage) {
+    if (!groups.some((group) => group.length > 1)) continue;
+    const signature = groups
+      .map((group) => `${group[0]!.segmentIndex}:${group.at(-1)!.segmentIndex}`)
+      .join(",");
+    const cached = coalescedMessageCache.get(message);
+    let displayMessage = cached?.signature === signature ? cached.displayMessage : undefined;
+    if (displayMessage === undefined) {
+      const textSegments = groups.map((group) => {
+        const first = message.textSegments![group[0]!.segmentIndex]!;
+        const last = message.textSegments![group.at(-1)!.segmentIndex]!;
+        return {
+          ...first,
+          endedAt: last.endedAt,
+          text: group.map((entry) => message.textSegments![entry.segmentIndex]!.text).join(""),
+        };
+      });
+      displayMessage =
+        groups.length === 1 && textSegments[0]!.text === message.text
+          ? message
+          : { ...message, textSegments };
+      coalescedMessageCache.set(message, { signature, displayMessage });
+    }
+    if (displayMessage === message) {
+      replacements.set(groups[0]!, {
+        id: message.id,
+        kind: "message",
+        createdAt: groups[0]![0]!.createdAt,
+        message,
+      });
+      continue;
+    }
+    const coalescedMessage = displayMessage;
+    groups.forEach((group, segmentIndex) => {
+      replacements.set(group, { ...group[0]!, message: coalescedMessage, segmentIndex });
+    });
+  }
+  return runs.map((run) => (Array.isArray(run) ? (replacements.get(run) ?? run[0]!) : run));
 }
 
 export function deriveTimelineEntries(
@@ -2568,9 +2676,6 @@ export function deriveTimelineEntries(
         id: displayMessage.id,
         kind: "message",
         createdAt: displayMessage.createdAt,
-        ...(textSegments?.[0]?.sequence !== undefined
-          ? { sequence: textSegments[0].sequence }
-          : {}),
         message: displayMessage,
       },
     ];
@@ -2610,10 +2715,60 @@ export function deriveTimelineEntries(
 
   const timestampSlots = mergeTimelineEntriesByCreatedAt(
     mergeTimelineEntriesByCreatedAt(
-      sortedTimelineEntriesByCreatedAt(messageRows),
-      sortedTimelineEntriesByCreatedAt(proposedPlanRows),
+      sortedTimelineEntries(messageRows, compareTimelineEntriesByCreatedAt),
+      sortedTimelineEntries(proposedPlanRows, compareTimelineEntriesByCreatedAt),
     ),
-    sortedTimelineEntriesByCreatedAt(workRows),
+    sortedTimelineEntries(workRows, compareTimelineEntriesByCreatedAt),
   );
-  return orderSequencedTimelineSlots(timestampSlots);
+  const userStarts: string[] = [];
+  const messageOrder = new Map<MessageId, number>();
+  const turnOrder = new Map<string, number>();
+  const messagesOrdered = messages.every(
+    (message, index) =>
+      index === 0 || messages[index - 1]!.createdAt.localeCompare(message.createdAt) <= 0,
+  );
+  const orderedMessages = messagesOrdered
+    ? messages
+    : messages.toSorted((left, right) => left.createdAt.localeCompare(right.createdAt));
+  for (const message of orderedMessages) {
+    const startsNewTurn =
+      message.startsNewTurn ??
+      (message.dispatchMode !== "steer" ||
+        (message.turnId !== null && message.turnId !== undefined));
+    if (message.role === "user" && startsNewTurn) userStarts.push(message.createdAt);
+    const order = userStarts.length;
+    messageOrder.set(message.id, order);
+    if (message.turnId && !turnOrder.has(message.turnId)) turnOrder.set(message.turnId, order);
+  }
+  const chronologicalOrder = (createdAt: string): number => {
+    let low = 0;
+    let high = userStarts.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (userStarts[middle]!.localeCompare(createdAt) <= 0) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  };
+  // A delayed tool update stays in the turn that owns it. Preserve fork causal
+  // ordering inside each turn without a non-transitive timestamp/sequence comparator.
+  const blocks: TimelineEntry[][] = Array.from({ length: userStarts.length + 1 }, () => []);
+  for (const entry of timestampSlots) {
+    const chronological = chronologicalOrder(entry.createdAt);
+    let order = chronological;
+    if (entry.kind === "message" || entry.kind === "message-segment") {
+      order = messageOrder.get(entry.message.id) ?? chronological;
+    } else {
+      const turnId =
+        entry.kind === "work"
+          ? entry.entry.turnId
+          : entry.kind === "proposed-plan"
+            ? entry.proposedPlan.turnId
+            : undefined;
+      const turnBlock = turnId ? turnOrder.get(turnId) : undefined;
+      if (turnBlock !== undefined) order = Math.min(turnBlock, chronological);
+    }
+    blocks[order]!.push(entry);
+  }
+  return coalesceAdjacentMessageSegments(blocks.flatMap(orderSequencedTimelineSlots));
 }

@@ -16,6 +16,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { useOnboardingDialogStore } from "../onboarding/onboardingDialogStore";
 import { CentralIcon } from "../lib/central-icons";
 import { Button } from "./ui/button";
 import {
@@ -47,6 +48,11 @@ export function AppSnapWelcomeDialog() {
   );
   const [open, setOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
+  // Both startup dialogs probe asynchronously; without arbitration a fresh macOS install
+  // could stack this sheet on the welcome tour. Wait for the tour's gate and its close.
+  const onboardingBlocking = useOnboardingDialogStore(
+    (store) => !store.startupGateSettled || store.isOpen,
+  );
 
   useEffect(() => {
     if (storage.acknowledged) {
@@ -93,7 +99,7 @@ export function AppSnapWelcomeDialog() {
 
   // Derived instead of synced: acknowledging closes the dialog in the same
   // render, so the effect never needs a synchronous setOpen(false).
-  const dialogOpen = open && !storage.acknowledged;
+  const dialogOpen = open && !storage.acknowledged && !onboardingBlocking;
 
   return (
     <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>

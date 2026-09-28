@@ -361,9 +361,9 @@ export const chat = {
   /** Floating toolbar shown over a transcript text selection. */
   selection: {
     label: "Selection actions",
-    highlight: "Highlight",
-    underline: "Underline",
     addToChat: "Add to chat",
+    addToSide: "Add to side",
+    addToNewChat: "Add to new chat",
   },
 
   /** Expanded image lightbox and generated-image affordances. */
@@ -512,6 +512,7 @@ export const chat = {
     reasons: {
       "conversation-rebuilt": "Conversation rebuilt",
       "fresh-session": "Fresh provider session",
+      "interrupt-escalation": "Turn stop escalated to a session restart",
       "native-history-unavailable": "Native history unavailable",
       "native-resume-failed": "Native resume failed",
     },

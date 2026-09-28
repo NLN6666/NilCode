@@ -14,8 +14,8 @@ import DurableProviderCommandDeliveryMigration from "./Migrations/064_DurablePro
 import ProjectionThreadsGatewayProvenanceMigration from "./Migrations/071_ProjectionThreadsGatewayProvenance.ts";
 import ProjectPullRequestPinsMigration from "./Migrations/069_ProjectPullRequestPins.ts";
 import SpacesMigration from "./Migrations/079_Spaces.ts";
-import BrowserSharingMigration from "./Migrations/100_ProjectionProjectsBrowserSharing.ts";
-import AdvisorEnabledMigration from "./Migrations/101_ProjectionThreadsAdvisorEnabled.ts";
+import BrowserSharingMigration from "./Migrations/104_ProjectionProjectsBrowserSharing.ts";
+import AdvisorEnabledMigration from "./Migrations/105_ProjectionThreadsAdvisorEnabled.ts";
 
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
 
@@ -303,60 +303,71 @@ managedAttachmentsLegacyLayer("managed attachment migration after private migrat
         [97, "ProjectionThreadsSidechatLifecycle"],
         [98, "MigrateKiloToOpenCode"],
         [99, "InvalidateProjectionThreadsCursor"],
-        [100, "ProjectionProjectsBrowserSharing"],
-        [101, "ProjectionThreadsAdvisorEnabled"],
+        [100, "MessageTextChunks"],
+        [101, "RemoveTranscriptMarkers"],
+        [102, "ProjectionThreadMessagesTurnBoundary"],
+        [103, "ClaudeTokenAccounting"],
+[104, "ProjectionProjectsBrowserSharing"],
+        [105, "ProjectionThreadsAdvisorEnabled"],
       ]);
 
       const tracker = yield* trackerRows(sql);
-      assert.deepStrictEqual(tracker.slice(-47), [
-        { migration_id: 55, name: "ManagedAttachments" },
-        { migration_id: 56, name: "CommandReceiptFingerprints" },
-        { migration_id: 57, name: "ThreadScopedProjectionMessageIdentity" },
-        { migration_id: 58, name: "ThreadScopedPendingApprovalIdentity" },
-        { migration_id: 59, name: "ProviderSessionLifecycleGeneration" },
-        { migration_id: 60, name: "PendingApprovalLifecycleGeneration" },
-        { migration_id: 61, name: "PendingApprovalSettlementState" },
-        { migration_id: 62, name: "PendingInteractionSettlementParity" },
-        { migration_id: 63, name: "ProjectionMessageCausalSequence" },
-        { migration_id: 64, name: "DurableProviderCommandDeliveryCutover" },
-        { migration_id: 65, name: "DurableQueuedTurnPromotions" },
-        { migration_id: 66, name: "DurableProviderRuntimeEvents" },
-        { migration_id: 67, name: "ProviderDeliveryReconciliation" },
-        { migration_id: 68, name: "GitHandoffOperations" },
-        { migration_id: 69, name: "ProjectPullRequestPins" },
-        { migration_id: 70, name: "AgentGatewayOperations" },
-        { migration_id: 71, name: "ProjectionThreadsGatewayProvenance" },
-        { migration_id: 72, name: "AgentGatewayOperationRetention" },
-        { migration_id: 73, name: "OperationalDiagnostics" },
-        { migration_id: 74, name: "ExternalMcpIntegrations" },
-        { migration_id: 75, name: "ExternalMcpActiveCapacity" },
-        { migration_id: 76, name: "ExternalMcpHardening" },
-        { migration_id: 77, name: "ExternalMcpCompensatingCapacity" },
-        { migration_id: 78, name: "ExternalMcpLiveTurnCapacity" },
-        { migration_id: 79, name: "Spaces" },
-        { migration_id: 80, name: "ExternalMcpProjectScope" },
-        { migration_id: 81, name: "AutomationProposals" },
-        { migration_id: 82, name: "AutomationMemory" },
-        { migration_id: 83, name: "AutomationHeartbeatEligibility" },
-        { migration_id: 84, name: "AutomationNotificationPolicy" },
-        { migration_id: 85, name: "AutomationSettings" },
-        { migration_id: 86, name: "NormalizeStudioThreadWorkspaces" },
-        { migration_id: 87, name: "DropUnusedOrchestrationEventIndexes" },
-        { migration_id: 88, name: "ProjectionThreadsSettledAt" },
-        { migration_id: 89, name: "RecoverRetentionHiddenThreads" },
-        { migration_id: 90, name: "ProjectionThreadMessageTextSegments" },
-        { migration_id: 91, name: "AutomationFailureTolerance" },
-        { migration_id: 92, name: "BackfillAutomationRunThreadSource" },
-        { migration_id: 93, name: "BackfillMaxIterationsDisabledReason" },
-        { migration_id: 94, name: "ProjectionThreadsGoal" },
-        { migration_id: 95, name: "ProjectionThreadsGoalTiming" },
-        { migration_id: 96, name: "ProjectionThreadsGoalAchievements" },
-        { migration_id: 97, name: "ProjectionThreadsSidechatLifecycle" },
-        { migration_id: 98, name: "MigrateKiloToOpenCode" },
-        { migration_id: 99, name: "InvalidateProjectionThreadsCursor" },
-        { migration_id: 100, name: "ProjectionProjectsBrowserSharing" },
-        { migration_id: 101, name: "ProjectionThreadsAdvisorEnabled" },
-      ]);
+      assert.deepStrictEqual(
+        tracker.filter((row) => row.migration_id >= 55),
+        [
+          { migration_id: 55, name: "ManagedAttachments" },
+          { migration_id: 56, name: "CommandReceiptFingerprints" },
+          { migration_id: 57, name: "ThreadScopedProjectionMessageIdentity" },
+          { migration_id: 58, name: "ThreadScopedPendingApprovalIdentity" },
+          { migration_id: 59, name: "ProviderSessionLifecycleGeneration" },
+          { migration_id: 60, name: "PendingApprovalLifecycleGeneration" },
+          { migration_id: 61, name: "PendingApprovalSettlementState" },
+          { migration_id: 62, name: "PendingInteractionSettlementParity" },
+          { migration_id: 63, name: "ProjectionMessageCausalSequence" },
+          { migration_id: 64, name: "DurableProviderCommandDeliveryCutover" },
+          { migration_id: 65, name: "DurableQueuedTurnPromotions" },
+          { migration_id: 66, name: "DurableProviderRuntimeEvents" },
+          { migration_id: 67, name: "ProviderDeliveryReconciliation" },
+          { migration_id: 68, name: "GitHandoffOperations" },
+          { migration_id: 69, name: "ProjectPullRequestPins" },
+          { migration_id: 70, name: "AgentGatewayOperations" },
+          { migration_id: 71, name: "ProjectionThreadsGatewayProvenance" },
+          { migration_id: 72, name: "AgentGatewayOperationRetention" },
+          { migration_id: 73, name: "OperationalDiagnostics" },
+          { migration_id: 74, name: "ExternalMcpIntegrations" },
+          { migration_id: 75, name: "ExternalMcpActiveCapacity" },
+          { migration_id: 76, name: "ExternalMcpHardening" },
+          { migration_id: 77, name: "ExternalMcpCompensatingCapacity" },
+          { migration_id: 78, name: "ExternalMcpLiveTurnCapacity" },
+          { migration_id: 79, name: "Spaces" },
+          { migration_id: 80, name: "ExternalMcpProjectScope" },
+          { migration_id: 81, name: "AutomationProposals" },
+          { migration_id: 82, name: "AutomationMemory" },
+          { migration_id: 83, name: "AutomationHeartbeatEligibility" },
+          { migration_id: 84, name: "AutomationNotificationPolicy" },
+          { migration_id: 85, name: "AutomationSettings" },
+          { migration_id: 86, name: "NormalizeStudioThreadWorkspaces" },
+          { migration_id: 87, name: "DropUnusedOrchestrationEventIndexes" },
+          { migration_id: 88, name: "ProjectionThreadsSettledAt" },
+          { migration_id: 89, name: "RecoverRetentionHiddenThreads" },
+          { migration_id: 90, name: "ProjectionThreadMessageTextSegments" },
+          { migration_id: 91, name: "AutomationFailureTolerance" },
+          { migration_id: 92, name: "BackfillAutomationRunThreadSource" },
+          { migration_id: 93, name: "BackfillMaxIterationsDisabledReason" },
+          { migration_id: 94, name: "ProjectionThreadsGoal" },
+          { migration_id: 95, name: "ProjectionThreadsGoalTiming" },
+          { migration_id: 96, name: "ProjectionThreadsGoalAchievements" },
+          { migration_id: 97, name: "ProjectionThreadsSidechatLifecycle" },
+          { migration_id: 98, name: "MigrateKiloToOpenCode" },
+          { migration_id: 99, name: "InvalidateProjectionThreadsCursor" },
+          { migration_id: 100, name: "MessageTextChunks" },
+          { migration_id: 101, name: "RemoveTranscriptMarkers" },
+          { migration_id: 102, name: "ProjectionThreadMessagesTurnBoundary" },
+          { migration_id: 103, name: "ClaudeTokenAccounting" },
+{ migration_id: 104, name: "ProjectionProjectsBrowserSharing" },
+          { migration_id: 105, name: "ProjectionThreadsAdvisorEnabled" },
+        ],
+      );
       const preserved = yield* sql<{ readonly count: number }>`
         SELECT COUNT(*) AS count FROM orchestration_consumer_state
       `;
@@ -447,8 +458,12 @@ agentGatewayRetentionLegacyLayer(
           [97, "ProjectionThreadsSidechatLifecycle"],
           [98, "MigrateKiloToOpenCode"],
           [99, "InvalidateProjectionThreadsCursor"],
-          [100, "ProjectionProjectsBrowserSharing"],
-          [101, "ProjectionThreadsAdvisorEnabled"],
+          [100, "MessageTextChunks"],
+          [101, "RemoveTranscriptMarkers"],
+          [102, "ProjectionThreadMessagesTurnBoundary"],
+          [103, "ClaudeTokenAccounting"],
+[104, "ProjectionProjectsBrowserSharing"],
+        [105, "ProjectionThreadsAdvisorEnabled"],
         ]);
 
         const columns = yield* sql<{ readonly name: string }>`
@@ -543,13 +558,17 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
         [97, "ProjectionThreadsSidechatLifecycle"],
         [98, "MigrateKiloToOpenCode"],
         [99, "InvalidateProjectionThreadsCursor"],
-        [100, "ProjectionProjectsBrowserSharing"],
-        [101, "ProjectionThreadsAdvisorEnabled"],
+        [100, "MessageTextChunks"],
+        [101, "RemoveTranscriptMarkers"],
+        [102, "ProjectionThreadMessagesTurnBoundary"],
+        [103, "ClaudeTokenAccounting"],
+[104, "ProjectionProjectsBrowserSharing"],
+        [105, "ProjectionThreadsAdvisorEnabled"],
       ]);
 
       const tracker = yield* trackerRows(sql);
       assert.deepStrictEqual(
-        tracker.slice(-31).map((row) => [row.migration_id, row.name]),
+        tracker.filter((row) => row.migration_id >= 71).map((row) => [row.migration_id, row.name]),
         [
           [71, "ProjectionThreadsGatewayProvenance"],
           [72, "AgentGatewayOperationRetention"],
@@ -580,8 +599,12 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
           [97, "ProjectionThreadsSidechatLifecycle"],
           [98, "MigrateKiloToOpenCode"],
           [99, "InvalidateProjectionThreadsCursor"],
-          [100, "ProjectionProjectsBrowserSharing"],
-          [101, "ProjectionThreadsAdvisorEnabled"],
+          [100, "MessageTextChunks"],
+          [101, "RemoveTranscriptMarkers"],
+          [102, "ProjectionThreadMessagesTurnBoundary"],
+          [103, "ClaudeTokenAccounting"],
+[104, "ProjectionProjectsBrowserSharing"],
+        [105, "ProjectionThreadsAdvisorEnabled"],
         ],
       );
 
@@ -671,13 +694,17 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
         [97, "ProjectionThreadsSidechatLifecycle"],
         [98, "MigrateKiloToOpenCode"],
         [99, "InvalidateProjectionThreadsCursor"],
-        [100, "ProjectionProjectsBrowserSharing"],
-        [101, "ProjectionThreadsAdvisorEnabled"],
+        [100, "MessageTextChunks"],
+        [101, "RemoveTranscriptMarkers"],
+        [102, "ProjectionThreadMessagesTurnBoundary"],
+        [103, "ClaudeTokenAccounting"],
+[104, "ProjectionProjectsBrowserSharing"],
+        [105, "ProjectionThreadsAdvisorEnabled"],
       ]);
 
       const tracker = yield* trackerRows(sql);
       assert.deepStrictEqual(
-        tracker.slice(-27).map((row) => [row.migration_id, row.name]),
+        tracker.filter((row) => row.migration_id >= 75).map((row) => [row.migration_id, row.name]),
         [
           [75, "ExternalMcpActiveCapacity"],
           [76, "ExternalMcpHardening"],
@@ -704,8 +731,12 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
           [97, "ProjectionThreadsSidechatLifecycle"],
           [98, "MigrateKiloToOpenCode"],
           [99, "InvalidateProjectionThreadsCursor"],
-          [100, "ProjectionProjectsBrowserSharing"],
-          [101, "ProjectionThreadsAdvisorEnabled"],
+          [100, "MessageTextChunks"],
+          [101, "RemoveTranscriptMarkers"],
+          [102, "ProjectionThreadMessagesTurnBoundary"],
+          [103, "ClaudeTokenAccounting"],
+[104, "ProjectionProjectsBrowserSharing"],
+        [105, "ProjectionThreadsAdvisorEnabled"],
         ],
       );
       const preservedSpaces = yield* sql<{ readonly spaceId: string }>`
@@ -1049,7 +1080,7 @@ forkUpgradeLayer("v0.7.3 dev migration upgrade", (it) => {
       const executed = yield* runMigrations();
       assert.deepStrictEqual(
         executed.map(([id]) => id),
-        [97, 98, 99, 100, 101],
+        [97, 98, 99, 100, 101, 102, 103, 104, 105],
       );
       const columns = yield* projectionThreadsColumnNames(sql);
       assert.include(columns, "sidechat_source_thread_id");
@@ -1065,6 +1096,56 @@ forkUpgradeLayer("v0.7.3 dev migration upgrade", (it) => {
         SELECT browser_sharing FROM projection_projects WHERE project_id = 'fork-project'
       `;
       assert.strictEqual(project?.browser_sharing, "shared");
+      assert.deepStrictEqual(
+        (yield* trackerRows(sql)).map((row) => [row.migration_id, row.name]),
+        migrationEntries.map(([id, name]) => [id, name]),
+      );
+      assert.deepStrictEqual(yield* runMigrations(), []);
+    }),
+  );
+});
+
+forkUpgradeLayer("v0.8.3 dev migration upgrade", (it) => {
+  it.effect("runs upstream 100–103 over the previously occupied fork slots without losing fork data", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 99 });
+      yield* BrowserSharingMigration;
+      yield* AdvisorEnabledMigration;
+      yield* sql`
+        INSERT INTO effect_sql_migrations (migration_id, name) VALUES
+          (100, 'ProjectionProjectsBrowserSharing'),
+          (101, 'ProjectionThreadsAdvisorEnabled')
+      `;
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id, title, workspace_root, scripts_json, created_at, updated_at, browser_sharing
+        ) VALUES (
+          'fork-project', 'Fork project', '/repo', '[]',
+          '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'shared'
+        )
+      `;
+      yield* sql`
+        INSERT INTO projection_threads (
+          thread_id, project_id, title, created_at, updated_at, advisor_enabled
+        ) VALUES (
+          'fork-thread', 'fork-project', 'Keep this conversation',
+          '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 0
+        )
+      `;
+
+      assert.deepStrictEqual(
+        (yield* runMigrations()).map(([id]) => id),
+        [100, 101, 102, 103, 104, 105],
+      );
+      const [project] = yield* sql<{ readonly browser_sharing: string }>`
+        SELECT browser_sharing FROM projection_projects WHERE project_id = 'fork-project'
+      `;
+      const [thread] = yield* sql<{ readonly title: string; readonly advisor_enabled: number }>`
+        SELECT title, advisor_enabled FROM projection_threads WHERE thread_id = 'fork-thread'
+      `;
+      assert.strictEqual(project?.browser_sharing, "shared");
+      assert.deepStrictEqual(thread, { title: "Keep this conversation", advisor_enabled: 0 });
       assert.deepStrictEqual(
         (yield* trackerRows(sql)).map((row) => [row.migration_id, row.name]),
         migrationEntries.map(([id, name]) => [id, name]),

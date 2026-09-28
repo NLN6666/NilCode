@@ -10,15 +10,13 @@ import { normalizeProjectDirectoryName } from "@synara/shared/projectDirectoryNa
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { isElectron } from "../env";
-import {
-  isDroppedComposerDirectory,
-  resolveDroppedFileAbsolutePath,
-} from "../lib/composerDropPaths";
+import { useWindowFolderDrop } from "../hooks/useWindowFolderDrop";
 import { VOID_SPACE_KEY, spaceKey, toSpaceIconName } from "../lib/spaceGrouping";
 import { createSpace } from "../lib/spaces";
 import { readNativeApi } from "../nativeApi";
 import { randomUUID } from "../lib/utils";
 import { joinProjectPath } from "../lib/projectPaths";
+import { isDroppedComposerDirectory, resolveDroppedFileAbsolutePath } from "../lib/composerDropPaths";
 import type { Space } from "../types";
 import { useVoidSpace } from "../voidSpaceStore";
 import { cn } from "~/lib/utils";
@@ -129,7 +127,6 @@ export function CreateProjectDialog(props: {
    */
   const [createdSpace, setCreatedSpace] = useState<Space | null>(null);
   const [isPickingFolder, setIsPickingFolder] = useState(false);
-  const [isDropTarget, setIsDropTarget] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const openedRef = useRef(false);
@@ -164,7 +161,6 @@ export function CreateProjectDialog(props: {
     setSpaceEditorOpen(false);
     setCreatedSpace(null);
     setIsPickingFolder(false);
-    setIsDropTarget(false);
     setSubmitting(false);
     setFormError(null);
     // Deferred a frame: the dialog moves focus itself on open, so focusing the
@@ -246,52 +242,13 @@ export function CreateProjectDialog(props: {
     setIsPickingFolder(false);
   };
 
-  // While the dialog is open it is the only interactive surface, so accept a
-  // folder drop anywhere in the window (capture phase). A tiny drop zone is
-  // easy to miss and a stray drop outside it would otherwise vanish silently.
-  useEffect(() => {
-    if (!props.open || !isElectron || source !== "local") return;
-    let dragDepth = 0;
-    const handleDragEnter = (event: globalThis.DragEvent) => {
-      if (!isFileDrag(event)) return;
-      dragDepth += 1;
-      setIsDropTarget(true);
-    };
-    const handleDragOver = (event: globalThis.DragEvent) => {
-      if (!isFileDrag(event)) return;
-      event.preventDefault();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-    };
-    const handleDragLeave = (event: globalThis.DragEvent) => {
-      if (!isFileDrag(event)) return;
-      dragDepth = Math.max(0, dragDepth - 1);
-      if (dragDepth === 0) setIsDropTarget(false);
-    };
-    const handleDrop = (event: globalThis.DragEvent) => {
-      if (!isFileDrag(event)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      dragDepth = 0;
-      setIsDropTarget(false);
-      const dropped = event.dataTransfer ? resolveDroppedFolder(event.dataTransfer) : null;
-      if (!dropped) return;
-      if ("error" in dropped) {
-        setFormError(dropped.error);
-        return;
-      }
-      applyPickedFolder(dropped.path);
-    };
-    window.addEventListener("dragenter", handleDragEnter, true);
-    window.addEventListener("dragover", handleDragOver, true);
-    window.addEventListener("dragleave", handleDragLeave, true);
-    window.addEventListener("drop", handleDrop, true);
-    return () => {
-      window.removeEventListener("dragenter", handleDragEnter, true);
-      window.removeEventListener("dragover", handleDragOver, true);
-      window.removeEventListener("dragleave", handleDragLeave, true);
-      window.removeEventListener("drop", handleDrop, true);
-    };
-  }, [applyPickedFolder, props.open, source]);
+  // While the dialog is open it is the only interactive surface, so a folder dropped
+  // anywhere in the window counts (see useWindowFolderDrop).
+  const isDropTarget = useWindowFolderDrop({
+    enabled: props.open && isElectron && source === "local",
+    onFolder: applyPickedFolder,
+    onError: setFormError,
+  });
 
   const submit = async () => {
     if (submitting) return;

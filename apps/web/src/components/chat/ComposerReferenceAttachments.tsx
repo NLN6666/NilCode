@@ -1,6 +1,6 @@
 // FILE: ComposerReferenceAttachments.tsx
-// Purpose: Render assistant-selection, file-comment, browser-element, pasted-text, file,
-//   and image composer attachments in one reusable row.
+// Purpose: Render assistant-selection, file-comment, pasted-text, pull-request-context,
+//   browser-element, file, and image composer attachments in one reusable row.
 // Layer: Chat composer presentation
 
 import {
@@ -11,6 +11,7 @@ import { type BrowserElementDraft } from "../../lib/browserElementContext";
 import { type BrowserAnnotationDraft } from "../../lib/browserAnnotations";
 import { type PastedTextDraft } from "../../lib/composerPastedText";
 import { type FileCommentDraft } from "../../lib/fileComments";
+import { type PullRequestContextDraft } from "../../lib/pullRequestContext";
 import { type ChatAssistantSelectionAttachment } from "../../types";
 import { type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { AssistantSelectionsSummaryChip } from "./AssistantSelectionsSummaryChip";
@@ -18,6 +19,7 @@ import { ComposerBrowserElementChips } from "./ComposerBrowserElementChips";
 import { ComposerImageAttachmentChip } from "./ComposerImageAttachmentChip";
 import { FileAttachmentChip } from "./FileAttachmentChip";
 import { ComposerPastedTextCard } from "./PastedTextChip";
+import { ComposerPullRequestContextCard } from "./PullRequestContextCard";
 import { FileCommentsSummaryChip } from "./FileCommentsSummaryChip";
 import { BrowserAnnotationStrip } from "./BrowserAnnotationStrip";
 
@@ -27,6 +29,7 @@ interface ComposerReferenceAttachmentsProps {
   fileComments: ReadonlyArray<FileCommentDraft>;
   browserElements?: ReadonlyArray<BrowserElementDraft>;
   pastedTexts?: ReadonlyArray<PastedTextDraft>;
+  pullRequestContexts?: ReadonlyArray<PullRequestContextDraft>;
   files: ReadonlyArray<ComposerFileAttachment>;
   images: ReadonlyArray<ComposerImageAttachment>;
   nonPersistedImageIdSet: ReadonlySet<string>;
@@ -37,6 +40,7 @@ interface ComposerReferenceAttachmentsProps {
   onRemoveBrowserElement?: (elementId: string) => void;
   onRemovePastedText?: (pastedTextId: string) => void;
   onShowPastedTextInField?: (pastedTextId: string) => void;
+  onRemovePullRequestContext?: (contextId: string) => void;
   onRemoveFile: (fileId: string) => void;
   onRemoveImage: (imageId: string) => void;
 }
@@ -49,6 +53,7 @@ export function ComposerReferenceAttachments({
   fileComments,
   pastedTexts: pastedTextsProp,
   browserElements: browserElementsProp,
+  pullRequestContexts: pullRequestContextsProp,
   files,
   images,
   nonPersistedImageIdSet,
@@ -59,17 +64,20 @@ export function ComposerReferenceAttachments({
   onRemoveBrowserElement,
   onRemovePastedText,
   onShowPastedTextInField,
+  onRemovePullRequestContext,
   onRemoveFile,
   onRemoveImage,
 }: ComposerReferenceAttachmentsProps) {
   const pastedTexts = pastedTextsProp ?? [];
   const browserElements = browserElementsProp ?? NO_BROWSER_ELEMENTS;
+  const pullRequestContexts = pullRequestContextsProp ?? [];
   if (
     assistantSelections.length === 0 &&
     browserAnnotations.length === 0 &&
     fileComments.length === 0 &&
     browserElements.length === 0 &&
     pastedTexts.length === 0 &&
+    pullRequestContexts.length === 0 &&
     files.length === 0 &&
     images.length === 0
   ) {
@@ -101,6 +109,15 @@ export function ComposerReferenceAttachments({
           metrics={{ lineCount: pasted.lineCount, charCount: pasted.charCount }}
           onShowInTextField={() => onShowPastedTextInField?.(pasted.id)}
           onRemove={() => onRemovePastedText?.(pasted.id)}
+        />
+      ))}
+      {pullRequestContexts.map((context) => (
+        <ComposerPullRequestContextCard
+          key={context.id}
+          scope={context.scope}
+          title={context.title}
+          subtitle={context.subtitle}
+          onRemove={() => onRemovePullRequestContext?.(context.id)}
         />
       ))}
       {files.map((file) => (

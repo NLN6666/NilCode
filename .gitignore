@@ -52,3 +52,5 @@ TODO.md
 
 # Python runtime cache the server drops next to itself (~35 MB of .tmp/.job files).
 apps/server/Python/
+# Generated ASAR smoke fixture (bundled from scripts/betterwright-smoke.ts)
+.smoke/

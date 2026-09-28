@@ -27,6 +27,8 @@ export const diff = {
     unstaged: "Unstaged",
     staged: "Staged",
     branch: "Branch",
+    ref: "Compare with",
+    compareRef: (ref: string) => `vs ${ref}`,
   },
 
   turnDiff: "Turn diff",
@@ -42,6 +44,8 @@ export const diff = {
   actions: {
     copyDiff: "Copy diff",
     copiedDiff: "Copied diff",
+    copyPartialDiff: "Copy partial diff",
+    copiedPartialDiff: "Copied partial diff",
     expandAll: "Expand all files",
     collapseAll: "Collapse all files",
     hideFileTree: "Hide file tree",

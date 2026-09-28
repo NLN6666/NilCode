@@ -21,6 +21,15 @@ export const settings: Settings = {
     resetTooltip: "重置为默认值",
     resetAriaLabel: (label) => `将${label}重置为默认值`,
   },
+  resetConfirmation: {
+    title: "恢复默认设置？",
+    description: (labels) => `这将重置：${labels.join("、")}。`,
+    themePack: (variant) => `${variant === "dark" ? "深色" : "浅色"}主题包`,
+    appSnapShortcut: "AppSnap 快捷键",
+    providerInstalls: "提供商安装设置",
+    providerVisibility: "提供商可见性",
+    providerOrder: "提供商顺序",
+  },
   general: {
     codeAndStatus: "代码与状态",
     contextAndNotes: "上下文与备注",
@@ -45,6 +54,11 @@ export const settings: Settings = {
         resetLabel: "新建会话",
         local: "本地",
         worktree: "新建工作树",
+      },
+      welcomeTour: {
+        title: "欢迎导览",
+        description: "重新体验首次使用引导：功能介绍、提供商选择、外观设置和创建第一个项目。",
+        open: "打开欢迎导览",
       },
     },
     sidebarOrganization: {
@@ -139,12 +153,6 @@ export const settings: Settings = {
         description: "在环境面板中显示置顶消息清单。",
         resetLabel: "置顶消息板块",
         ariaLabel: "在环境面板中显示置顶消息板块",
-      },
-      markers: {
-        title: "文本标记",
-        description: "在环境面板中显示已高亮和已加下划线的对话文本。",
-        resetLabel: "文本标记板块",
-        ariaLabel: "在环境面板中显示文本标记板块",
       },
       instructions: {
         title: "项目指令",
@@ -264,6 +272,13 @@ export const settings: Settings = {
       description: "在回复生成过程中逐 token 显示输出。",
       resetLabel: "助手输出",
       ariaLabel: "流式显示助手消息",
+    },
+    effortSlider: {
+      title: "推理档位滑块",
+      description:
+        "对话开始后，在输入框的模型菜单中以滑块调整推理档位，并同时显示快速模式和模型列表。新对话仍使用独立的模型与推理档位选择器。",
+      resetLabel: "推理档位滑块",
+      ariaLabel: "在输入框中显示推理档位滑块",
     },
     diffLineWrapping: {
       title: "差异自动换行",

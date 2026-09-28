@@ -34,7 +34,7 @@ interface KanbanTaskExtrasMenuProps {
 /**
  * The composer `+` analog: a single chrome icon button hosting the task's quick
  * toggles (Plan mode and Local/Worktree environment), mirroring how the
- * composer's ComposerExtrasMenu collapses mode switches behind one `+`.
+ * composer's extras panel groups mode switches behind one `+`.
  */
 export function KanbanTaskExtrasMenu({
   interactionMode,

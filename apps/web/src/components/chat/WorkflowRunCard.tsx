@@ -34,6 +34,7 @@ import {
 } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { useNowMs } from "~/hooks/useNowMs";
 import { formatClockDuration } from "../../session-logic";
 import { Button } from "../ui/button";
 import { DisclosureChevron } from "../ui/DisclosureChevron";
@@ -59,7 +60,6 @@ import { useMessages } from "~/i18n/context";
 
 interface WorkflowRunCardProps {
   workflowRun: WorkflowRunState;
-  nowMs: number;
   compact: boolean;
   onCompactChange: (compact: boolean) => void;
   onOpenThread: (threadId: ThreadId) => void;
@@ -280,7 +280,6 @@ function WorkflowAgentRowView({
 
 export function WorkflowRunCard({
   workflowRun,
-  nowMs,
   compact,
   onCompactChange,
   onOpenThread,
@@ -290,6 +289,7 @@ export function WorkflowRunCard({
   onDismiss,
   attachedToPrevious: attachedToPreviousProp,
 }: WorkflowRunCardProps) {
+  const nowMs = useNowMs(!workflowRun.settled);
   const copy = useMessages().chat.workflow;
   const attachedToPrevious = attachedToPreviousProp ?? false;
   const { copyToClipboard, isCopied } = useCopyToClipboard();

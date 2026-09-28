@@ -4,9 +4,10 @@
 // Exports: ChatMarkdown
 
 import { CheckIcon, CopyIcon, TextWrapIcon } from "~/lib/icons";
-import type { ProviderMentionReference, ThreadMarker } from "@synara/contracts";
+import type { ProviderMentionReference } from "@synara/contracts";
 import { isLocalAbsolutePath } from "@synara/shared/path";
 import "katex/dist/katex.min.css";
+import { matchWikiLinkAt, remarkWikiLinks } from "../lib/remarkWikiLinks";
 import React, {
   Children,
   createContext,
@@ -127,11 +128,11 @@ class CodeHighlightErrorBoundary extends React.Component<
 interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
+  wikiLinkRoot?: string | undefined;
   isStreaming?: boolean;
   className?: string | undefined;
   style?: CSSProperties | undefined;
   onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
-  markers?: readonly ThreadMarker[] | undefined;
   /** Case-insensitive substring to wrap while in-thread find is open. */
   findQuery?: string | undefined;
   /** Active occurrence in this markdown body; other hits stay dimmer. */
@@ -222,7 +223,7 @@ const USER_MARKDOWN_REMARK_PLUGINS: MarkdownRemarkPlugins = [remarkGfm, remarkBr
 const USER_MARKDOWN_REHYPE_PLUGINS: MarkdownRehypePlugins = [];
 const LITERAL_DOLLAR_PLACEHOLDER = "\uE000";
 // `\$` is two source characters that render as a single `$`. Collapsing it to one placeholder used
-// to shorten the protected string, which shifted every downstream offset (thread-marker positions
+// to shorten the protected string, which shifted every downstream source offset (find positions
 // are resolved against the raw text but applied against the parsed mdast positions). A two-character
 // placeholder keeps `protectLiteralMarkdownDollars` length-preserving so those offsets stay aligned;
 // it is restored ahead of the single-char placeholder (the two share no characters, so order is
@@ -283,132 +284,6 @@ type MarkdownParentNode = {
 type MarkdownNode = MarkdownTextNode | MarkdownParentNode | Record<string, unknown>;
 const CHAT_FIND_TEXT_TAG_NAME = "chat-find-text";
 const CHAT_FIND_TEXT_START_ATTRIBUTE = "data-chat-find-text-start";
-type TextRangeFragmentContinuity = {
-  readonly continuesBefore: boolean;
-  readonly continuesAfter: boolean;
-};
-
-type MarkdownRangeDecoration = {
-  startOffset: number;
-  endOffset: number;
-  nodeType: string;
-  classNameFor: (continuity: TextRangeFragmentContinuity) => string;
-  properties: Record<string, string>;
-};
-
-type RenderableThreadMarker = ThreadMarker & { className: string };
-
-// The "active" ring (a transient deep-link highlight) is applied imperatively by the timeline so
-// it never re-parses the markdown tree; this className is the stable, parse-time-only part.
-function markerClassNameFor(marker: ThreadMarker) {
-  return [
-    "thread-marker",
-    marker.style === "highlight" ? "thread-marker-highlight" : "thread-marker-underline",
-    `thread-marker-${marker.color}`,
-    marker.done ? "thread-marker-done" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function rangeFragmentClassName(
-  className: string,
-  continuity: TextRangeFragmentContinuity,
-  continuesBeforeClass: string,
-  continuesAfterClass: string,
-): string {
-  return [
-    className,
-    continuity.continuesBefore ? continuesBeforeClass : "",
-    continuity.continuesAfter ? continuesAfterClass : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function normalizeRenderableMarkers(input: {
-  text: string;
-  markers: readonly ThreadMarker[] | undefined;
-}): RenderableThreadMarker[] {
-  const markers = input.markers ?? [];
-  const result: RenderableThreadMarker[] = [];
-  let previousEnd = -1;
-  for (const marker of markers.toSorted((left, right) => left.startOffset - right.startOffset)) {
-    if (marker.startOffset < previousEnd) {
-      continue;
-    }
-    if (marker.endOffset <= marker.startOffset || marker.endOffset > input.text.length) {
-      continue;
-    }
-    if (input.text.slice(marker.startOffset, marker.endOffset) !== marker.selectedText) {
-      continue;
-    }
-    result.push({
-      ...marker,
-      className: markerClassNameFor(marker),
-    });
-    previousEnd = marker.endOffset;
-  }
-  return result;
-}
-
-function threadMarkerDecorations(input: {
-  text: string;
-  markers: readonly ThreadMarker[] | undefined;
-}): MarkdownRangeDecoration[] {
-  return normalizeRenderableMarkers(input).map((marker) => ({
-    startOffset: marker.startOffset,
-    endOffset: marker.endOffset,
-    nodeType: "threadMarker",
-    classNameFor: (continuity) =>
-      rangeFragmentClassName(
-        marker.className,
-        continuity,
-        "thread-marker-continues-before",
-        "thread-marker-continues-after",
-      ),
-    properties: {
-      "data-thread-marker-id": marker.id,
-      "data-thread-marker-style": marker.style,
-      "data-thread-marker-color": marker.color,
-    },
-  }));
-}
-
-function collapseOverlappingDecorations(
-  decorations: readonly MarkdownRangeDecoration[],
-): MarkdownRangeDecoration[] {
-  const result: MarkdownRangeDecoration[] = [];
-  let previousEnd = -1;
-  for (const decoration of decorations.toSorted(
-    (left, right) => left.startOffset - right.startOffset || right.endOffset - left.endOffset,
-  )) {
-    if (decoration.startOffset < previousEnd) {
-      continue;
-    }
-    if (decoration.endOffset <= decoration.startOffset) {
-      continue;
-    }
-    result.push(decoration);
-    previousEnd = decoration.endOffset;
-  }
-  return result;
-}
-
-function createTextRangeRemarkPlugin(
-  decorations: readonly MarkdownRangeDecoration[],
-  colorSwatches: boolean,
-) {
-  const usable = collapseOverlappingDecorations(decorations);
-  return () => (tree: MarkdownNode) => {
-    if (usable.length > 0) {
-      applyRangeDecorationsToNode(tree, usable);
-    }
-    if (colorSwatches) applyColorSwatchesToNode(tree);
-    wrapFindableTextNodes(tree);
-  };
-}
-
 function wrapFindableTextNodes(node: MarkdownNode): void {
   if (!node || typeof node !== "object" || !("children" in node) || !Array.isArray(node.children)) {
     return;
@@ -438,98 +313,8 @@ function wrapFindableTextNode(node: MarkdownTextNode): MarkdownNode {
   };
 }
 
-function applyRangeDecorationsToNode(
-  node: MarkdownNode,
-  decorations: readonly MarkdownRangeDecoration[],
-) {
-  if (!node || typeof node !== "object" || !("children" in node) || !Array.isArray(node.children)) {
-    return;
-  }
-
-  const parent = node as MarkdownParentNode;
-  // The guard above already proved `children` is an array; `?? []` only satisfies the optional type.
-  parent.children = (parent.children ?? []).flatMap((child) => {
-    if (child && typeof child === "object" && "type" in child && child.type === "text") {
-      return splitTextNodeWithRangeDecorations(child as MarkdownTextNode, decorations);
-    }
-    applyRangeDecorationsToNode(child, decorations);
-    return [child];
-  });
-}
-
-function splitTextNodeWithRangeDecorations(
-  node: MarkdownTextNode,
-  decorations: readonly MarkdownRangeDecoration[],
-): MarkdownNode[] {
-  const startOffset = node.position?.start?.offset;
-  const endOffset = node.position?.end?.offset;
-  if (startOffset === undefined || endOffset === undefined) {
-    return [node];
-  }
-  const overlapping: MarkdownRangeDecoration[] = [];
-  for (const decoration of decorations) {
-    if (decoration.endOffset <= startOffset) {
-      continue;
-    }
-    if (decoration.startOffset >= endOffset) {
-      break;
-    }
-    overlapping.push(decoration);
-  }
-  if (overlapping.length === 0) {
-    return [node];
-  }
-
-  const nodes: MarkdownNode[] = [];
-  let cursor = 0;
-  for (const decoration of overlapping) {
-    const rangeStart = Math.max(0, decoration.startOffset - startOffset);
-    const rangeEnd = Math.min(node.value.length, decoration.endOffset - startOffset);
-    if (rangeStart < cursor || rangeEnd > node.value.length) {
-      continue;
-    }
-    const absoluteFragmentStart = startOffset + rangeStart;
-    const absoluteFragmentEnd = startOffset + rangeEnd;
-    if (rangeStart > cursor) {
-      nodes.push(
-        createPositionedTextNode(
-          node.value.slice(cursor, rangeStart),
-          startOffset + cursor,
-          absoluteFragmentStart,
-        ),
-      );
-    }
-    nodes.push({
-      type: decoration.nodeType,
-      data: {
-        hName: "span",
-        hProperties: {
-          className: decoration.classNameFor({
-            continuesBefore: absoluteFragmentStart > decoration.startOffset,
-            continuesAfter: absoluteFragmentEnd < decoration.endOffset,
-          }),
-          ...decoration.properties,
-        },
-      },
-      children: [
-        createPositionedTextNode(
-          node.value.slice(rangeStart, rangeEnd),
-          absoluteFragmentStart,
-          absoluteFragmentEnd,
-        ),
-      ],
-    });
-    cursor = rangeEnd;
-  }
-  if (cursor < node.value.length) {
-    nodes.push(createPositionedTextNode(node.value.slice(cursor), startOffset + cursor, endOffset));
-  }
-  return nodes.length > 0 ? nodes : [node];
-}
 // ---------------------------------------------------------------------------
-// Inline hex color swatches (remark layer, same layer as the thread-marker
-// plugin above). MUST run after the marker plugin: markers resolve character
-// offsets against the raw text, and swatch insertion splits text nodes.
+// Inline hex color swatches are inserted before find-text wrappers in prose.
 // ---------------------------------------------------------------------------
 
 const COLOR_SWATCH_CLASS_NAME = "chat-color-swatch";
@@ -756,14 +541,24 @@ function looksLikeInlineMath(content: string): boolean {
   if (INLINE_MATH_HINT_REGEX.test(trimmed)) {
     return true;
   }
-  return /^[A-Za-z][A-Za-z0-9]{0,15}$/.test(trimmed);
+  return /^(?:\d+(?:\.\d+)?)?[A-Za-z][A-Za-z0-9]{0,15}$/.test(trimmed);
 }
 
 // Reject obvious literal/currency dollars before searching for a closing math delimiter.
 function canOpenInlineMath(value: string, index: number): boolean {
   const next = value[index + 1];
-  if (!next || /\s|\d/.test(next)) {
+  if (!next || /\s/.test(next)) {
     return false;
+  }
+  if (/\d/.test(next)) {
+    const closingIndex = findInlineMathClosingDollar(value, index + 1);
+    if (closingIndex === -1 || /\d/.test(value[closingIndex + 1] ?? "")) {
+      return false;
+    }
+    // A numeric prefix can be a coefficient. Require a complete expression
+    // on this line; do not pair prices across lines or consume `$5-$10`.
+    const content = value.slice(index + 1, closingIndex);
+    return !/[\r\n]/.test(content) && looksLikeInlineMath(content);
   }
   return true;
 }
@@ -784,6 +579,16 @@ function findInlineMathClosingDollar(value: string, index: number): number {
       cursor += 2;
       continue;
     }
+    const linkEnd = findInlineMarkdownLinkEnd(value, cursor);
+    if (linkEnd !== -1) {
+      // Dollars in Markdown links/images cannot close preceding literal text.
+      // Dollar-free [f](x) remains valid inside a TeX expression.
+      if (value.slice(cursor, linkEnd).includes("$")) {
+        return -1;
+      }
+      cursor = linkEnd;
+      continue;
+    }
     if (value[cursor] === "$") {
       return canCloseInlineMath(value, cursor) ? cursor : -1;
     }
@@ -792,7 +597,7 @@ function findInlineMathClosingDollar(value: string, index: number): number {
   return -1;
 }
 
-function protectLiteralDollarsInPlainText(value: string): string {
+function protectLiteralDollarsInMarkdownLinks(value: string): string {
   let result = "";
   let cursor = 0;
 
@@ -800,6 +605,16 @@ function protectLiteralDollarsInPlainText(value: string): string {
     if (value[cursor] === "\\" && value[cursor + 1] === "$") {
       result += ESCAPED_DOLLAR_PLACEHOLDER;
       cursor += 2;
+      continue;
+    }
+
+    // Scan links and math together: splitting at every `[` breaks TeX such as
+    // \left[...\right] before its closing dollars can be found. A math span is
+    // consumed whole below, so brackets inside it never enter link detection.
+    const linkEnd = findInlineMarkdownLinkEnd(value, cursor);
+    if (linkEnd !== -1) {
+      result += value.slice(cursor, linkEnd).replaceAll("$", LITERAL_DOLLAR_PLACEHOLDER);
+      cursor = linkEnd;
       continue;
     }
 
@@ -891,6 +706,8 @@ function findMarkdownParenEnd(value: string, startIndex: number): number {
 }
 
 function findInlineMarkdownLinkEnd(value: string, index: number): number {
+  const wikiLink = matchWikiLinkAt(value, index);
+  if (wikiLink) return index + wikiLink[0].length;
   const bracketStart = value[index] === "!" && value[index + 1] === "[" ? index + 1 : index;
   if (value[bracketStart] !== "[") {
     return -1;
@@ -903,38 +720,6 @@ function findInlineMarkdownLinkEnd(value: string, index: number): number {
 
   const parenEnd = findMarkdownParenEnd(value, bracketEnd + 1);
   return parenEnd === -1 ? -1 : parenEnd + 1;
-}
-
-function protectLiteralDollarsInMarkdownLinks(value: string): string {
-  let result = "";
-  let cursor = 0;
-
-  while (cursor < value.length) {
-    const isLinkStart =
-      value[cursor] === "[" || (value[cursor] === "!" && value[cursor + 1] === "[");
-    if (!isLinkStart) {
-      const nextLinkStart = value.indexOf("[", cursor);
-      const nextImageStart = value.indexOf("![", cursor);
-      const candidates = [nextLinkStart, nextImageStart].filter((candidate) => candidate >= 0);
-      const nextIndex = candidates.length > 0 ? Math.min(...candidates) : value.length;
-      result += protectLiteralDollarsInPlainText(value.slice(cursor, nextIndex));
-      cursor = nextIndex;
-      continue;
-    }
-
-    const linkEnd = findInlineMarkdownLinkEnd(value, cursor);
-    if (linkEnd === -1) {
-      result += protectLiteralDollarsInPlainText(value[cursor] ?? "");
-      cursor += 1;
-      continue;
-    }
-
-    // Inline links are parsed after math, so protect route params like `_chat.$threadId.tsx`.
-    result += value.slice(cursor, linkEnd).replaceAll("$", LITERAL_DOLLAR_PLACEHOLDER);
-    cursor = linkEnd;
-  }
-
-  return result;
 }
 
 // Tighten single-dollar math so currency and escaped dollars stay literal without touching code spans.
@@ -1459,7 +1244,7 @@ const MARKDOWN_COMPONENTS: Components = {
       <OpenableFileChip
         targetPath={targetPath}
         theme={resolvedTheme}
-        label={nodeToPlainText(children)}
+        label={children}
         {...(restoredHref ? { href: restoredHref } : {})}
       />
     );
@@ -1662,11 +1447,11 @@ const MARKDOWN_COMPONENTS: Components = {
 function ChatMarkdown({
   text,
   cwd,
+  wikiLinkRoot,
   isStreaming: isStreamingProp,
   className: classNameProp,
   style,
   onImageExpand,
-  markers,
   findQuery: findQueryProp,
   findActiveRange: findActiveRangeProp,
   onTaskToggle,
@@ -1703,8 +1488,7 @@ function ChatMarkdown({
   const smoothedText = useSmoothStreamedText(text, isStreaming);
   // The dollar rewrite exists to disambiguate math from currency; the user
   // variant has no math, so its text must stay byte-for-byte what was typed.
-  // Table repair runs first and can change text length, so the thread-marker
-  // plugin below must resolve offsets against the same repaired text.
+  // Table repair runs first so find offsets use the same normalized text.
   const normalizedText = useMemo(
     () =>
       isUserVariant
@@ -1722,18 +1506,14 @@ function ChatMarkdown({
     () => (isUserVariant ? text : repairMarkdownTableDelimiters(text)),
     [isUserVariant, text],
   );
-  // Marker offsets are applied against mdast positions, which come from the
-  // repaired text — validate them against the same string. A marker recorded
-  // after a repaired delimiter row fails its `selectedText` check and is
-  // dropped instead of highlighting a shifted range.
-  const markerSourceText = markers?.length ? sourceText : "";
   const hasHexCandidate = renderedText.includes("#");
-  const rangeDecorationRemarkPlugin = useMemo(() => {
-    return createTextRangeRemarkPlugin(
-      threadMarkerDecorations({ text: markerSourceText, markers }),
-      hasHexCandidate,
-    );
-  }, [hasHexCandidate, markers, markerSourceText]);
+  const textDecorationRemarkPlugin = useMemo(
+    () => () => (tree: MarkdownNode) => {
+      if (hasHexCandidate) applyColorSwatchesToNode(tree);
+      wrapFindableTextNodes(tree);
+    },
+    [hasHexCandidate],
+  );
   const composerChipsRemarkPlugin = useMemo(
     () =>
       isUserVariant
@@ -1749,14 +1529,14 @@ function ChatMarkdown({
   );
   const remarkPlugins = useMemo<MarkdownRemarkPlugins>(() => {
     if (composerChipsRemarkPlugin) {
-      return [
-        ...USER_MARKDOWN_REMARK_PLUGINS,
-        composerChipsRemarkPlugin,
-        rangeDecorationRemarkPlugin,
-      ];
+      return [...USER_MARKDOWN_REMARK_PLUGINS, composerChipsRemarkPlugin, textDecorationRemarkPlugin];
     }
-    return [...MARKDOWN_REMARK_PLUGINS, rangeDecorationRemarkPlugin];
-  }, [composerChipsRemarkPlugin, rangeDecorationRemarkPlugin]);
+    return [
+      ...MARKDOWN_REMARK_PLUGINS,
+      [remarkWikiLinks, { root: wikiLinkRoot ?? cwd }],
+      textDecorationRemarkPlugin,
+    ];
+  }, [composerChipsRemarkPlugin, wikiLinkRoot, cwd, textDecorationRemarkPlugin]);
   const rehypePlugins = isUserVariant ? USER_MARKDOWN_REHYPE_PLUGINS : MARKDOWN_REHYPE_PLUGINS;
   const rootRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {

@@ -326,6 +326,18 @@ describe("MessagesTimeline tail anchor", () => {
         handle().growStream(SECOND_STREAMING_MESSAGE_ID, 4);
         await settleFrames(2);
       }
+      // The reveal smoother can still be draining delivered text when the
+      // reserve first reaches zero. Measure overflow after all response lines
+      // are actually painted, not after a predicted number of animation frames.
+      await expect
+        .poll(
+          () =>
+            document
+              .querySelector(`[data-message-id="${SECOND_STREAMING_MESSAGE_ID}"]`)
+              ?.textContent?.match(/Streamed line of response text\./g)?.length ?? 0,
+          { timeout: 5_000 },
+        )
+        .toBe(40);
       await expect.poll(() => reservePx(), { timeout: 5_000 }).toBe(0);
       await expect
         .poll(() => distanceFromBottomPx(handle()), { timeout: 5_000 })
@@ -371,6 +383,10 @@ describe("MessagesTimeline tail anchor", () => {
           handle().finishTurn();
         }
         await settleFrames(1);
+        // Sample after the frame's other rAF callbacks and mutation observers.
+        // Reading inside rAF can catch a row reposition before its pre-paint
+        // anchor correction, even though that intermediate position never paints.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
         const offset = anchorTopOffsetPx(handle(), FIRST_SENT_MESSAGE_ID);
         if (offset !== null) {
           offsets.push(offset);

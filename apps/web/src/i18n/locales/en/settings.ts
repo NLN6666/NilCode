@@ -31,6 +31,16 @@ export const settings = {
     /** A function, not a template with a placeholder: word order around `label` differs per language. */
     resetAriaLabel: (label: string) => `Reset ${label} to default`,
   },
+  resetConfirmation: {
+    title: "Restore default settings?",
+    description: (labels: readonly string[]) => `This will reset: ${labels.join(", ")}.`,
+    themePack: (variant: "dark" | "light") =>
+      `${variant === "dark" ? "Dark" : "Light"} theme pack`,
+    appSnapShortcut: "AppSnap shortcut",
+    providerInstalls: "Provider installs",
+    providerVisibility: "Provider visibility",
+    providerOrder: "Provider order",
+  },
   general: {
     codeAndStatus: "Code and status",
     contextAndNotes: "Context and notes",
@@ -56,6 +66,12 @@ export const settings = {
         resetLabel: "new threads",
         local: "Local",
         worktree: "New worktree",
+      },
+      welcomeTour: {
+        title: "Welcome tour",
+        description:
+          "Replay the first-run setup: feature tour, provider selection, appearance, and first project.",
+        open: "Open welcome tour",
       },
     },
     sidebarOrganization: {
@@ -152,12 +168,6 @@ export const settings = {
         description: "Show the pinned-messages checklist in the Environment panel.",
         resetLabel: "pinned messages section",
         ariaLabel: "Show the Pinned messages section in the Environment panel",
-      },
-      markers: {
-        title: "Text markers",
-        description: "Show highlighted and underlined transcript text in the Environment panel.",
-        resetLabel: "text markers section",
-        ariaLabel: "Show the Text markers section in the Environment panel",
       },
       instructions: {
         title: "Project instructions",
@@ -283,6 +293,13 @@ export const settings = {
       description: "Show token-by-token output while a response is in progress.",
       resetLabel: "assistant output",
       ariaLabel: "Stream assistant messages",
+    },
+    effortSlider: {
+      title: "Effort slider",
+      description:
+        "Once a chat has started, show reasoning effort as a slider in the composer's model menu, with fast mode and the model list alongside it. New chats keep the separate model and effort pickers.",
+      resetLabel: "effort slider",
+      ariaLabel: "Show effort slider in the composer",
     },
     diffLineWrapping: {
       title: "Diff line wrapping",

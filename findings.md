@@ -662,3 +662,21 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - Web 全量为 4782 passed / 1 failed，唯一失败是动态导入 ChatMarkdown 的超时；该文件独立运行 35/35。服务端广域首轮 2987 passed / 52 failed：6 个合并相关失败修复后，其余 46 个失败名称分别在合并前或上游原版复现。shared 的 1 个失败、desktop 的 21 个失败也分别由合并前或上游 Windows 对照复现。不能称全仓测试全绿。
 - 最终 `bun fmt`、`bun lint` 通过；`bun typecheck --continue` 为 5/7 workspace 通过，CLI 和 desktop 仍有合并前已有类型问题。强制无缓存生产构建 4/4 通过；隔离 Node 服务启动及中文设置搜索、单一 Provider 选择器、OMP/Devin 展示、主题预览与实时查找均已实际验证。报告保存在 `D:/Codes/NilCode-merge-evidence-20260907`，未运行真实模型回合或替换已安装应用。
 - Playwright 更新后要求尚未安装的 headless-shell 1234；改用已安装 Chrome 的隔离 profile，并固定 `en-US` 运行英文浏览器断言，不额外下载浏览器。Windows 临时 worktree 的 `.git`/`gitdir` 指针被写为反斜杠，导致 Git 把 `.git` 当作 worktree 根；仅修正本轮临时指针为正斜杠后正常清理。生成文件的 CRLF/stat 噪声须先确认空 diff，再刷新其索引，不能使用强制删除掩盖未知改动。
+
+## 2026-09-28 main 0.8.4 合入 dev
+
+- 来源为本地缓存 `origin/main` 的 `70f5ed0e4`；本地 main 快进后合入 dev，合并前为 `79c4af8ba`，保留 `backup/dev-premerge-20260928`。未 fetch、push 或修改已安装应用。
+- fork 的 100/101 与上游已发布迁移冲突：保留上游 100–103，把 fork 移至 104/105，并区分旧 fork tracker 名称，保证上游占用的历史编号重新执行。迁移测试 22 项通过；新隔离服务成功执行完整迁移链。
+- ChatView 已被上游拆成多组 hooks，而 fork 保留单体控制器。按冲突块混拼会破坏状态所有权并产生大量未定义绑定；保留一个完整控制器，再逐项接入上游行为。特别核对拆分之后的 autosave 提交前屏障，不能只审查 ChatView 本文件的提交历史。
+- 两个 ProviderService 冲突块把 fork 用例名与另一侧测试体拼在一起。恢复双方完整的 compaction 与 idle retry 用例，而不是降低断言；完整 ProviderService 文件最终 116 项通过。Codex compaction acknowledgement 不等于 compaction 完成，继续保留 fork 的活动回合保护。
+- 时间线的 turn 分组和 fork 因果排序不可二选一：先按归属 turn 分组，再在组内排序有 sequence 的槽位，避免迟到旧工具行越过新用户请求，同时避免混用时间/sequence 的非传递比较器。完整 workLog 文件 137 项通过。
+- 隔离基线使用独立 `bun install --offline --frozen-lockfile`；直接原生 TypeScript 编译的 server 75 条、desktop 17 条错误，路径/诊断集合与合并前完全一致。桌面 browserManager 的两项 file URL 失败在基线以同命令复现，不作为合并回归。
+- Web 全量首轮 5077 passed / 7 failed / 3 skipped；修复 timeline 与 React Compiler 依赖问题后，完整 workLog 137 项及 Compiler/Markdown/Sidebar 三文件 101 项通过；最终全量限制为 4 workers，5084 passed / 3 skipped，原生 Web TypeScript 编译成功。未执行未授权的 `bun fmt`、`bun lint`、`bun typecheck`。
+- 浏览器 runner 缺少指定版本 headless shell，改用本机 Chrome 并固定 en-US；首次旧缓存 Chromium 批次长时间没有完成，取消后的 node 子进程仍占用 51100，按命令行确认属于本任务后精确清理，不触碰其他实例。7 个完整 browser 文件最终 50 项通过。
+- tail-anchor 测试在仅约 8 段已显示时就采样 40 段响应：`reserve=0` 且位于底部不能证明平滑揭示已经完成。临时探针测得 anchor 偏移从 `3.75` 到全部文本显示后的 `-952.25`，实际跟随正确。永久测试等待全部 40 段可见后保留原有 reserve、底部距离和 anchor 出屏断言，没有调低几何阈值或延长超时。
+- 隔离真实应用已验证共享 extras 面板、三态 Advisor、Goal 插入及中文标签。验证构建解包运行有 7 个自有进程，HTTP 200、标题 Synara，实际 SQLite migration 100–105 正确。最终安装包在合并提交后重新生成，路径和校验信息另存 `D:/Codes/NilCode-merge-evidence-20260928`。未发送真实模型回合，未替换已安装应用。
+- 完整 ChatView 浏览器用例暴露 Goal 编辑仍使用旧的 `/goal text` 拼接：`clear/pause/resume/edit` 会被解析为操作而非目标文本，已统一使用现有 `buildGoalSlashCommandPrompt`。选区新会话也必须接入原有队列的 ready 状态、有限重试和失败乐观消息清理，而不只是接上新工具条按钮。
+- 分支回滚探针证明实际发送了 `feature/current → feature/finished`，随后却由 BranchToolbar 再次写回 current。根因不是回滚逻辑，而是浏览器 RPC fixture 的 shell snapshot 漏传 `settledAt`；新恢复流程刷新后把已结算线程误标成未结算。补齐协议 fixture 字段，保留原分支回滚和错误后草稿恢复断言。
+- 保留单一 ChatView 控制器后，确认上游拆分出的 19 个控制器 hooks 及 4 个专用辅助模块没有运行时调用方，删除这条孤立依赖链，而非保留第二套失效实现；同步移除仅指向这些已删除模块的 Compiler 检查条目，实际 ChatView、时间线及输入组件的编译门禁不变。
+- 最终完整 ChatView 浏览器文件为 125 passed / 2 failed / 12 skipped；两项失败名称（access-mode reversal、cycle provider model）与合并前同命令对照完全一致。Goal 字面量编辑、选区新会话及重试、分支失败回滚、near-cap 输入性能和查找后的滚动跟随均在这次完整运行中通过。中间轮次 near-cap 曾出现活动计数与时延比波动，不据一次成功声称消除所有时序波动。
+- Git Bash 未能执行 `.bin/effect-tsgo.exe` shim；其 `@effect/tsgo` 目标只是 Effect 配置工具，不接受 `--noEmit`。本仓实际原生编译器是已安装的 `@typescript/native/lib/tsc.js`，应直接调用它，不猜 `native-preview` 包名或重新下载编译器。

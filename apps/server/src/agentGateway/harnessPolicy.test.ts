@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import { AUTOMATION_AUTHORING_GUIDANCE } from "./automationAuthoringGuidance.ts";
 
 import {
   renderSynaraHarnessPolicy,
@@ -11,6 +12,83 @@ import {
 } from "./harnessPolicy.ts";
 
 describe("Synara harness policy", () => {
+  it("defers duplicate automation authoring text while preserving tool routing and run rules", () => {
+    const inline = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
+    const deferred = renderSynaraHarnessPolicy({
+      gatewayControlAvailable: true,
+      automationAuthoring: "tool-descriptions",
+    });
+    assert.equal(deferred, inline.replace(`${AUTOMATION_AUTHORING_GUIDANCE}\n`, ""));
+    assert.include(deferred, "synara_create_automation");
+    assert.include(deferred, "synara_view_automation");
+    assert.include(deferred, "synara_report_automation_result");
+  });
+  it("includes honest completion evidence and opt-in delegated E2E testing", () => {
+    const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
+    for (const text of [
+      "completion report",
+      "artifactPath",
+      "![Result description]",
+      "explicitly asked",
+      "synara_e2e_review",
+      "Do not load it for unrelated work",
+    ]) {
+      assert.include(policy, text);
+    }
+    assert.notInclude(
+      renderSynaraHarnessPolicy({ gatewayControlAvailable: false }),
+      "browser_screenshot({kind:'proof'})",
+    );
+  });
+  it("identifies Synara and explains exact batch coordination when MCP is available", () => {
+    const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
+    assert.include(policy, SYNARA_HARNESS_POLICY_MARKER);
+    assert.include(policy, "Synara is the host and harness");
+    assert.include(policy, "one exact synara_create_threads plan");
+    assert.include(policy, "before returning an operationId");
+    assert.include(policy, "synara_wait_for_threads");
+    assert.include(policy, "synara_set_thread_pull_request");
+    assert.include(policy, "current thread's own deliverable");
+    assert.include(policy, "only reviews, references, or discusses");
+    assert.include(policy, "use browser_* autonomously");
+    assert.include(policy, "canonical, complete control surface");
+    assert.include(policy, "never substitute Chrome");
+    assert.include(policy, "user's active chat");
+    assert.include(policy, "Detailed rules live in each tool description");
+    assert.notInclude(policy, "BrowserInterruptedByHuman");
+    assert.notInclude(policy, "start with browser_open");
+    assert.include(policy, "do not create Synara threads");
+    assert.include(policy, "specific 3–8 word outcome label");
+    assert.include(policy, "Assume no chat context");
+    assert.include(policy, "notify-versus-silent criteria");
+    assert.include(policy, 'later manual follow-up such as "continue"');
+    assert.include(policy, "Never call this tool for a manual follow-up turn");
+  });
+
+  it("asks agents to emit known absolute file URLs instead of invented relative links", () => {
+    const gateway = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
+    const identityOnly = renderSynaraHarnessPolicy({ gatewayControlAvailable: false });
+
+    for (const policy of [gateway, identityOnly]) {
+      assert.include(policy, "[config.ts](file:///absolute/path/config.ts)");
+      assert.include(policy, "Relative links are only for the session working directory");
+      assert.include(policy, "use plain text and never invent a path");
+    }
+  });
+
+  it("keeps final answers self-contained when intermediate progress is collapsed", () => {
+    const gateway = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
+    const identityOnly = renderSynaraHarnessPolicy({ gatewayControlAvailable: false });
+
+    for (const policy of [gateway, identityOnly]) {
+      assert.include(policy, 'under "Worked for..."');
+      assert.include(policy, "Final responses must restate every needed scope");
+      assert.include(policy, 'Never request approval using "this", "the above"');
+      assert.include(policy, "structured user-input tool");
+      assert.include(policy, "include all decision context");
+    }
+  });
+
   it("never advertises gateway mutation to providers without scoped MCP", () => {
     const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: false });
     assert.include(policy, "Synara MCP control is unavailable");

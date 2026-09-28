@@ -25,6 +25,8 @@ export const diff: Messages["diff"] = {
     unstaged: "未暂存",
     staged: "已暂存",
     branch: "分支",
+    ref: "对比引用",
+    compareRef: (ref) => `与 ${ref} 对比`,
   },
 
   turnDiff: "轮次差异",
@@ -40,6 +42,8 @@ export const diff: Messages["diff"] = {
   actions: {
     copyDiff: "复制差异",
     copiedDiff: "已复制差异",
+    copyPartialDiff: "复制部分差异",
+    copiedPartialDiff: "已复制部分差异",
     expandAll: "展开所有文件",
     collapseAll: "折叠所有文件",
     hideFileTree: "隐藏文件树",

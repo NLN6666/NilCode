@@ -115,8 +115,12 @@ import Migration0096 from "./Migrations/096_ProjectionThreadsGoalAchievements.ts
 import Migration0097 from "./Migrations/097_ProjectionThreadsSidechatLifecycle.ts";
 import Migration0098 from "./Migrations/098_MigrateKiloToOpenCode.ts";
 import Migration0099 from "./Migrations/099_InvalidateProjectionThreadsCursor.ts";
-import Migration0100 from "./Migrations/100_ProjectionProjectsBrowserSharing.ts";
-import Migration0101 from "./Migrations/101_ProjectionThreadsAdvisorEnabled.ts";
+import Migration0100 from "./Migrations/100_MessageTextChunks.ts";
+import Migration0101 from "./Migrations/101_RemoveTranscriptMarkers.ts";
+import Migration0102 from "./Migrations/102_ProjectionThreadMessagesTurnBoundary.ts";
+import ClaudeTokenAccountingMigration from "./Migrations/103_ClaudeTokenAccounting.ts";
+import Migration0104 from "./Migrations/104_ProjectionProjectsBrowserSharing.ts";
+import Migration0105 from "./Migrations/105_ProjectionThreadsAdvisorEnabled.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -231,8 +235,13 @@ export const migrationEntries = [
   [97, "ProjectionThreadsSidechatLifecycle", Migration0097],
   [98, "MigrateKiloToOpenCode", Migration0098],
   [99, "InvalidateProjectionThreadsCursor", Migration0099],
-  [100, "ProjectionProjectsBrowserSharing", Migration0100],
-  [101, "ProjectionThreadsAdvisorEnabled", Migration0101],
+  [100, "MessageTextChunks", Migration0100],
+  [101, "RemoveTranscriptMarkers", Migration0101],
+  [102, "ProjectionThreadMessagesTurnBoundary", Migration0102],
+  // Keep this ID literal: scripts/check-migration-lineage.ts parses this list.
+  [103, "ClaudeTokenAccounting", ClaudeTokenAccountingMigration],
+  [104, "ProjectionProjectsBrowserSharing", Migration0104],
+  [105, "ProjectionThreadsAdvisorEnabled", Migration0105],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>
@@ -343,7 +352,7 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // migrations there). Its current slot follows the released upstream range.
     historicalId: 88,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 100,
+    currentId: 104,
     historicalSlotRequiresRerun: false,
   },
   {
@@ -351,7 +360,7 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // moved for the same reason as the ProjectionProjectsBrowserSharing alias.
     historicalId: 91,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 101,
+    currentId: 105,
     historicalSlotRequiresRerun: false,
   },
   {
@@ -359,13 +368,28 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // migrations now occupying those slots have never run on that database.
     historicalId: 97,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 100,
+    currentId: 104,
     historicalSlotRequiresRerun: true,
   },
   {
     historicalId: 98,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 101,
+    currentId: 105,
+    historicalSlotRequiresRerun: true,
+  },
+  {
+    // v0.8.3 dev used 100/101 before upstream released v0.8.4 with new
+    // migrations in those slots. The fork columns already exist, but upstream
+    // migrations must still run; the relocated fork migrations are idempotent.
+    historicalId: 100,
+    historicalName: "ProjectionProjectsBrowserSharing",
+    currentId: 104,
+    historicalSlotRequiresRerun: true,
+  },
+  {
+    historicalId: 101,
+    historicalName: "ProjectionThreadsAdvisorEnabled",
+    currentId: 105,
     historicalSlotRequiresRerun: true,
   },
 ];

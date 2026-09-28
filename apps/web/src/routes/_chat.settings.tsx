@@ -7,6 +7,7 @@ import { PROVIDER_DISPLAY_NAMES, type ProviderKind } from "@synara/contracts";
 import { PROVIDER_DESCRIPTORS } from "@synara/shared/providerMetadata";
 import { sameAppSnapShortcut } from "@synara/shared/appSnapShortcut";
 import { isLocale, SUPPORTED_LOCALES } from "@synara/shared/i18n";
+import { SafariAccessSetupButton } from "../components/SafariAccessOnboarding";
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 
@@ -84,6 +85,7 @@ import {
   AutocompletePopup,
 } from "../components/ui/autocomplete";
 import { Button } from "../components/ui/button";
+import { useOnboardingDialogStore } from "../onboarding/onboardingDialogStore";
 import { Input } from "../components/ui/input";
 import { SelectItem } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
@@ -96,7 +98,7 @@ import { useTheme } from "../hooks/useTheme";
 import { isUiDensity } from "../lib/appDensity";
 import { isChatWidthMode, type ChatWidthMode } from "../lib/chatWidth";
 import { isElectron } from "../env";
-import { RotateCcwIcon } from "../lib/icons";
+import { ResetIcon } from "../lib/icons";
 import {
   cn,
   getNavigatorPlatform,
@@ -271,69 +273,100 @@ function SettingsRouteView() {
   }, [activeSection, settingsTarget]);
 
   const changedSettingLabels = [
-    ...(theme !== "system" ? ["Theme"] : []),
-    ...(!isDefaultActiveTheme ? [`${resolvedTheme === "dark" ? "Dark" : "Light"} theme pack`] : []),
-    ...(settings.defaultProvider !== defaults.defaultProvider ? ["Default provider"] : []),
-    ...(settings.defaultThreadEnvMode !== defaults.defaultThreadEnvMode ? ["New thread mode"] : []),
+    ...(theme !== "system" ? [m.settings.appearance.theme.title] : []),
+    ...(!isDefaultActiveTheme ? [m.settings.resetConfirmation.themePack(resolvedTheme)] : []),
+    ...(settings.defaultProvider !== defaults.defaultProvider
+      ? [m.settings.general.coreDefaults.defaultProvider.title]
+      : []),
+    ...(settings.defaultThreadEnvMode !== defaults.defaultThreadEnvMode
+      ? [m.settings.general.coreDefaults.newThreads.title]
+      : []),
     ...(settings.sidebarProjectSortOrder !== defaults.sidebarProjectSortOrder
-      ? ["Project sort order"]
+      ? [m.settings.general.sidebarOrganization.projectOrder.title]
       : []),
     ...(settings.sidebarThreadSortOrder !== defaults.sidebarThreadSortOrder
-      ? ["Thread sort order"]
+      ? [m.settings.general.sidebarOrganization.threadOrder.title]
       : []),
-    ...(settings.showChatsSection !== defaults.showChatsSection ? ["Chats section"] : []),
-    ...(settings.showStudioSection !== defaults.showStudioSection ? ["Studio section"] : []),
+    ...(settings.showChatsSection !== defaults.showChatsSection
+      ? [m.settings.general.sidebarSections.chats.title]
+      : []),
+    ...(settings.showStudioSection !== defaults.showStudioSection
+      ? [m.settings.general.sidebarSections.studio.title]
+      : []),
     ...(settings.showAutomationRunThreads !== defaults.showAutomationRunThreads
-      ? ["Automation runs"]
+      ? [m.settings.general.sidebarSections.automationRuns.title]
       : []),
-    ...(settings.uiDensity !== defaults.uiDensity ? ["UI density"] : []),
-    ...(settings.chatWidth !== defaults.chatWidth ? ["Chat width"] : []),
-    ...(settings.desktopAppIcon !== defaults.desktopAppIcon ? ["App icon"] : []),
+    ...(settings.uiDensity !== defaults.uiDensity ? [m.settings.appearance.uiDensity.title] : []),
+    ...(settings.chatWidth !== defaults.chatWidth ? [m.settings.appearance.chatWidth.title] : []),
+    ...(settings.desktopAppIcon !== defaults.desktopAppIcon
+      ? [m.settings.appearance.appIcon.title]
+      : []),
     ...(customTitleBarPreferenceDirty ? [m.settings.appearance.customTitleBar.title] : []),
-    ...(settings.chatFontSizePx !== defaults.chatFontSizePx ? ["Base font size"] : []),
-    ...(settings.terminalFontSizePx !== defaults.terminalFontSizePx ? ["Terminal font size"] : []),
-    ...(settings.terminalFontFamily !== defaults.terminalFontFamily ? ["Terminal font"] : []),
+    ...(settings.chatFontSizePx !== defaults.chatFontSizePx
+      ? [m.settings.appearance.baseFontSize.title]
+      : []),
+    ...(settings.terminalFontSizePx !== defaults.terminalFontSizePx
+      ? [m.settings.appearance.terminalFontSize.title]
+      : []),
+    ...(settings.terminalFontFamily !== defaults.terminalFontFamily
+      ? [m.settings.appearance.terminalFont.title]
+      : []),
     ...(shouldShowFontSmoothing &&
     settings.enableNativeFontSmoothing !== defaults.enableNativeFontSmoothing
-      ? ["Font smoothing"]
+      ? [m.settings.appearance.fontSmoothing.title]
       : []),
-    ...(settings.timestampFormat !== defaults.timestampFormat ? ["Time format"] : []),
+    ...(settings.timestampFormat !== defaults.timestampFormat
+      ? [m.settings.appearance.timeFormat.title]
+      : []),
     ...(settings.enableTaskCompletionToasts !== defaults.enableTaskCompletionToasts
-      ? ["Activity toasts"]
+      ? [m.settings.notifications.toasts.title]
       : []),
     ...(settings.enableSystemTaskCompletionNotifications !==
     defaults.enableSystemTaskCompletionNotifications
-      ? ["Desktop notifications"]
+      ? [m.settings.notifications.desktop.title]
       : []),
     ...(settings.enableAssistantStreaming !== defaults.enableAssistantStreaming
-      ? ["Assistant output"]
+      ? [m.settings.behavior.assistantOutput.title]
       : []),
-    ...(settings.followUpBehavior !== defaults.followUpBehavior ? ["Follow-up behavior"] : []),
+    ...(settings.composerEffortSlider !== defaults.composerEffortSlider
+      ? [m.settings.behavior.effortSlider.title]
+      : []),
+    ...(settings.followUpBehavior !== defaults.followUpBehavior
+      ? [m.settings.behavior.followUpBehavior.title]
+      : []),
     ...(settings.autoOpenDevicePane !== defaults.autoOpenDevicePane
       ? [m.settings.behavior.autoOpenDevicePane.title]
       : []),
-    ...(settings.enableAppSnap !== defaults.enableAppSnap ? ["AppSnap"] : []),
+    ...(settings.enableAppSnap !== defaults.enableAppSnap
+      ? [m.settings.appSnap.capture.enable.title]
+      : []),
     ...(!sameAppSnapShortcut(settings.appSnapShortcut, defaults.appSnapShortcut)
-      ? ["AppSnap shortcut"]
+      ? [m.settings.resetConfirmation.appSnapShortcut]
       : []),
-    ...(settings.appSnapPlaySound !== defaults.appSnapPlaySound ? ["AppSnap capture sound"] : []),
+    ...(settings.appSnapPlaySound !== defaults.appSnapPlaySound
+      ? [m.settings.appSnap.capture.sound.title]
+      : []),
     ...(settings.enableProviderUpdateChecks !== defaults.enableProviderUpdateChecks
-      ? ["Provider update checks"]
+      ? [m.settings.providers.updates.autoChecks.title]
       : []),
-    ...(settings.diffWordWrap !== defaults.diffWordWrap ? ["Diff line wrapping"] : []),
+    ...(settings.diffWordWrap !== defaults.diffWordWrap
+      ? [m.settings.behavior.diffLineWrapping.title]
+      : []),
     ...(settings.showPullRequestDiffColors !== defaults.showPullRequestDiffColors
-      ? ["Pull request diff colors"]
+      ? [m.settings.behavior.pullRequestDiffColors.title]
       : []),
     ...(settings.confirmThreadDelete !== defaults.confirmThreadDelete
-      ? ["Delete confirmation"]
+      ? [m.settings.behavior.deleteConfirmation.title]
       : []),
     ...(settings.confirmThreadArchive !== defaults.confirmThreadArchive
-      ? ["Archive confirmation"]
+      ? [m.settings.behavior.archiveConfirmation.title]
       : []),
     ...(settings.confirmTerminalTabClose !== defaults.confirmTerminalTabClose
-      ? ["Terminal close confirmation"]
+      ? [m.settings.behavior.terminalCloseConfirmation.title]
       : []),
-    ...(isGitTextGenerationModelDirty ? ["Git writing model"] : []),
+    ...(isGitTextGenerationModelDirty
+      ? [m.settings.models.generationDefaults.gitWritingModel.title]
+      : []),
     ...(settings.customCodexModels.length > 0 ||
     settings.customClaudeModels.length > 0 ||
     settings.customCursorModels.length > 0 ||
@@ -343,12 +376,12 @@ function SettingsRouteView() {
     settings.customOpenCodeModels.length > 0 ||
     settings.customOmpModels.length > 0 ||
     settings.customPiModels.length > 0
-      ? ["Custom models"]
+      ? [m.settings.models.custom.title]
       : []),
-    ...(isInstallSettingsDirty ? ["Provider installs"] : []),
-    ...(isProviderActivityDirty ? ["Provider activity"] : []),
-    ...(hiddenProviderCount > 0 ? ["Provider visibility"] : []),
-    ...(isProviderOrderDirty ? ["Provider order"] : []),
+    ...(isInstallSettingsDirty ? [m.settings.resetConfirmation.providerInstalls] : []),
+    ...(isProviderActivityDirty ? [m.settings.providers.activity.title] : []),
+    ...(hiddenProviderCount > 0 ? [m.settings.resetConfirmation.providerVisibility] : []),
+    ...(isProviderOrderDirty ? [m.settings.resetConfirmation.providerOrder] : []),
   ];
 
   async function restoreDefaults() {
@@ -356,9 +389,10 @@ function SettingsRouteView() {
 
     const api = readNativeApi();
     const confirmed = await (api ?? ensureNativeApi()).dialogs.confirm(
-      ["Restore default settings?", `This will reset: ${changedSettingLabels.join(", ")}.`].join(
-        "\n",
-      ),
+      [
+        m.settings.resetConfirmation.title,
+        m.settings.resetConfirmation.description(changedSettingLabels),
+      ].join("\n"),
     );
     if (!confirmed) return;
 
@@ -418,6 +452,7 @@ function SettingsRouteView() {
 
   const renderGeneralPanel = () => (
     <div className="space-y-6">
+      <SafariAccessSetupButton />
       <SettingsSection title={m.settings.general.coreDefaults.title}>
         <SettingsRow
           anchorKey="general:language"
@@ -528,6 +563,20 @@ function SettingsRouteView() {
                 {m.settings.general.coreDefaults.newThreads.worktree}
               </SelectItem>
             </SettingsSelectControl>
+          }
+        />
+
+        <SettingsRow
+          anchorKey="general:welcome-tour"
+          title={m.settings.general.coreDefaults.welcomeTour.title}
+          description={m.settings.general.coreDefaults.welcomeTour.description}
+          control={
+            <Button
+              variant="outline"
+              onClick={() => useOnboardingDialogStore.getState().openDialog()}
+            >
+              {m.settings.general.coreDefaults.welcomeTour.open}
+            </Button>
           }
         />
       </SettingsSection>
@@ -687,12 +736,6 @@ function SettingsRouteView() {
             settingKey: "showEnvironmentPinned",
             anchorKey: "general:environment-pinned",
             ...m.settings.general.environmentPanel.pinned,
-          })}
-
-          {renderBooleanSettingRow({
-            settingKey: "showEnvironmentMarkers",
-            anchorKey: "general:environment-markers",
-            ...m.settings.general.environmentPanel.markers,
           })}
 
           {renderBooleanSettingRow({
@@ -1151,6 +1194,12 @@ function SettingsRouteView() {
         })}
 
         {renderBooleanSettingRow({
+          settingKey: "composerEffortSlider",
+          anchorKey: "behavior:effort-slider",
+          ...m.settings.behavior.effortSlider,
+        })}
+
+        {renderBooleanSettingRow({
           settingKey: "autoOpenDevicePane",
           ...m.settings.behavior.autoOpenDevicePane,
         })}
@@ -1269,7 +1318,7 @@ function SettingsRouteView() {
                     disabled={changedSettingLabels.length === 0}
                     onClick={() => void restoreDefaults()}
                   >
-                    <RotateCcwIcon className="size-3.5" />
+                    <ResetIcon className="size-3.5" />
                     {m.settings.appearance.restoreDefaults}
                   </Button>
                 </div>

@@ -152,6 +152,13 @@ function ProfileContent({
       </div>
 
       {/* Heatmap */}
+      {stats.providerModels.some((entry) => entry.provider === "claudeAgent") ||
+      tokenStats?.providers.includes("claudeAgent") ? (
+        <p className="text-xs text-muted-foreground">
+          Claude token totals use verifiable records. Older history and unfinished turns may be
+          incomplete.
+        </p>
+      ) : null}
       <section className="flex min-w-0 flex-col gap-3">
         <h3 className="text-sm font-medium">{m.settings.profile.activity}</h3>
         {tokensPending ? (

@@ -16,6 +16,10 @@ import {
 import { extractTrailingPastedTexts, type ParsedPastedTextEntry } from "./composerPastedText";
 import { stripAvailableMcpToolsBlock } from "./mcpToolReferences";
 import { stripTrailingGitHubReferenceContext } from "./githubComposerReferences";
+import {
+  extractTrailingPullRequestContexts,
+  type ParsedPullRequestContextEntry,
+} from "./pullRequestContext";
 
 export interface TerminalContextSelection {
   terminalId: string;
@@ -48,6 +52,7 @@ export interface DisplayedUserMessageState {
   fileComments: ParsedFileCommentEntry[];
   browserElements: ParsedBrowserElementEntry[];
   pastedTexts: ParsedPastedTextEntry[];
+  pullRequestContexts: ParsedPullRequestContextEntry[];
   browserAnnotations: BrowserAnnotationDraft[];
 }
 
@@ -64,6 +69,7 @@ export const IMAGE_ONLY_VISIBLE_PLACEHOLDER = "(No Content)";
 const TRAILING_TERMINAL_CONTEXT_BLOCK_PATTERN =
   /\n*<terminal_context>\n([\s\S]*?)\n<\/terminal_context>\s*$/;
 const TRAILING_SERIALIZED_COMPOSER_BLOCK_PATTERNS = [
+  /\n*(<pull_request_context>\n[\s\S]*?\n<\/pull_request_context>)\s*$/u,
   /\n*(<pasted_text>\n[\s\S]*?\n<\/pasted_text>)\s*$/u,
   /\n*(<browser_elements>\n[\s\S]*?\n<\/browser_elements>)\s*$/u,
   /\n*(<file_comments>\n[\s\S]*?\n<\/file_comments>)\s*$/u,
@@ -307,21 +313,17 @@ export function deriveDisplayedUserMessageState(
   prompt: string,
   options: DisplayedUserMessageOptions,
 ): DisplayedUserMessageState {
-  // Trailing blocks are serialized in order: assistant selections, then terminal
-  // contexts, then file comments, then browser elements, then pasted text, then
-  // browser annotations (outermost). Strip them in reverse so each extractor sees
-  // its block at the end of the remaining text.
-  //
-  // The `<available-mcp-tools>` block sits outside all of them — send appends it last, after the
-  // composer has already serialized its own blocks — so it comes off first. It carries no parsed
-  // state: the `&` chips in the body already say which tools were referenced.
+  // Peel serialized context from the outside inward, preserving both fork and upstream blocks.
   const promptWithoutMcpTools = stripAvailableMcpToolsBlock(prompt);
   const promptWithoutGitHubReferences = stripTrailingGitHubReferenceContext(promptWithoutMcpTools);
   const extractedBrowserAnnotations =
     options.messageId === undefined
       ? { promptText: promptWithoutGitHubReferences, annotations: [] }
       : extractTrailingBrowserAnnotations(promptWithoutGitHubReferences, options.messageId);
-  const extractedPastedTexts = extractTrailingPastedTexts(extractedBrowserAnnotations.promptText);
+  const extractedPullRequestContexts = extractTrailingPullRequestContexts(
+    extractedBrowserAnnotations.promptText,
+  );
+  const extractedPastedTexts = extractTrailingPastedTexts(extractedPullRequestContexts.promptText);
   const extractedBrowserElements = extractTrailingBrowserElements(extractedPastedTexts.promptText);
   const extractedFileComments = extractTrailingFileComments(extractedBrowserElements.promptText);
   const extractedContexts = extractTrailingTerminalContexts(extractedFileComments.promptText);
@@ -344,6 +346,7 @@ export function deriveDisplayedUserMessageState(
     fileComments: extractedFileComments.comments,
     browserElements: extractedBrowserElements.elements,
     pastedTexts: extractedPastedTexts.pastedTexts,
+    pullRequestContexts: extractedPullRequestContexts.pullRequestContexts,
     browserAnnotations: extractedBrowserAnnotations.annotations,
   };
 }

@@ -58,6 +58,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "Pick the default workspace mode for newly created draft threads. local worktree environment 新建会话 本地 工作树",
   },
   {
+    id: "general:welcome-tour",
+    section: "general",
+    title: (m) => m.settings.general.coreDefaults.welcomeTour.title,
+    keywords:
+      "Replay the first-run setup: feature tour, provider selection, appearance, and first project. onboarding welcome wizard getting started setup 欢迎导览 首次使用 引导",
+  },
+  {
     id: "general:project-order",
     section: "general",
     title: (m) => m.settings.general.sidebarOrganization.projectOrder.title,
@@ -137,13 +144,6 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "general",
     title: (m) => m.settings.general.environmentPanel.pinned.title,
     keywords: "Show the pinned-messages checklist in the Environment panel. 置顶消息 环境面板",
-  },
-  {
-    id: "general:environment-markers",
-    section: "general",
-    title: (m) => m.settings.general.environmentPanel.markers.title,
-    keywords:
-      "Show highlighted and underlined transcript text in the Environment panel. 文本标记 高亮 环境面板",
   },
   {
     id: "general:environment-instructions",
@@ -302,6 +302,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "behavior",
     title: (m) => m.settings.behavior.assistantOutput.title,
     keywords: "Show token-by-token output while a response is in progress. streaming 助手输出 流式",
+  },
+  {
+    id: "behavior:effort-slider",
+    section: "behavior",
+    title: (m) => m.settings.behavior.effortSlider.title,
+    keywords:
+      "Show reasoning effort as a slider in the composer model menu once a chat has started. fast mode reasoning thinking level picker 推理档位 滑块 快速模式",
   },
   {
     id: "behavior:auto-open-simulator",

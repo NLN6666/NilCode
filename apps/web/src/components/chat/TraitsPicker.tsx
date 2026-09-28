@@ -10,7 +10,6 @@ import {
   type ProviderModelDescriptor,
   type ThreadId,
 } from "@synara/contracts";
-import { applyClaudePromptEffortPrefix } from "@synara/shared/model";
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDownIcon, FastModeIcon, FastModeOutlineIcon, SettingsIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
@@ -24,12 +23,7 @@ import {
   MenuSeparator as MenuDivider,
   MenuTrigger,
 } from "../ui/menu";
-import { useComposerDraftStore } from "../../composerDraftStore";
-import {
-  buildNextProviderOptions,
-  buildProviderOptionPatch,
-  type ProviderOptions,
-} from "../../providerModelOptions";
+import { type ProviderOptions } from "../../providerModelOptions";
 import { COMPOSER_PICKER_TRIGGER_TEXT_CLASS_NAME } from "./composerPickerStyles";
 import { ComposerPickerMenuPopup } from "./ComposerPickerMenuPopup";
 import {
@@ -37,16 +31,17 @@ import {
   composerEffortOptionId,
   getComposerTraitSelection,
   hasVisibleComposerTraitControls,
+  planComposerEffortChange,
   resolveComposerTraitStatusLabel,
   showsComposerFastModeBadge,
   supportsComposerFastModeControl,
   type ComposerTraitStatusLabels,
 } from "./composerTraits";
+import { useComposerTraitCommit } from "./useComposerTraitCommit";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ShortcutKbd } from "../ui/shortcut-kbd";
 import { useMessages } from "~/i18n/context";
-
-const ULTRATHINK_PROMPT_PREFIX = "Ultrathink:\n";
+import { useComposerDraftStore } from "~/composerDraftStore";
 
 function defaultAgentForProvider(provider: ProviderKind): string | null {
   if (provider === "opencode") return "build";
@@ -69,6 +64,18 @@ function getSelectedAgentValue(
   if (!defaultAgent) return null;
   const selectedAgent = (modelOptions as OpenCodeModelOptions | undefined)?.agent?.trim();
   return selectedAgent && selectedAgent.length > 0 ? selectedAgent : defaultAgent;
+}
+
+// Whether the Agent radio section renders for this provider/runtime pair; lets
+// hosts decide on separators before TraitsMenuContent mounts.
+export function hasComposerAgentControls(
+  provider: ProviderKind,
+  runtimeAgents: ReadonlyArray<ProviderAgentDescriptor> | null | undefined,
+): boolean {
+  return (
+    getAgentOptions(provider, runtimeAgents).length > 0 &&
+    defaultAgentForProvider(provider) !== null
+  );
 }
 
 function findAgentLabel(
@@ -147,12 +154,22 @@ export function resolveTraitsTriggerSummary(options: {
   };
 }
 
-// Compact icon toggle for fast mode, docked at the far right of the Effort
-// section header. Outline zap (Central reversed set) = default speed, filled
-// zap (Central fill set) = fast mode on. Toggling keeps the menu open so the
-// state flip is visible in place.
-function FastModeToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
+// Compact icon toggle for fast mode. Outline zap (Central reversed set) = default
+// speed, filled zap (Central fill set) = fast mode on. Toggling keeps the menu
+// open so the state flip is visible in place. `tone="muted"` docks at the far
+// right of the Effort section header; `tone="accent"` is the slider card's
+// larger, accent-colored variant.
+export function FastModeToggle({
+  enabled,
+  onToggle,
+  tone: toneProp,
+}: {
+  enabled: boolean;
+  onToggle: () => void;
+  tone?: "muted" | "accent";
+}) {
   const copy = useMessages().chat.traits;
+  const tone = toneProp ?? "muted";
   const Icon = enabled ? FastModeIcon : FastModeOutlineIcon;
   return (
     <Tooltip>
@@ -162,7 +179,10 @@ function FastModeToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () 
             type="button"
             aria-label={copy.fastMode}
             aria-pressed={enabled}
-            className="-my-1 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_6%,transparent)]"
+            className={cn(
+              "flex shrink-0 cursor-pointer items-center justify-center transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_6%,transparent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--color-border-focus)]/60",
+              tone === "accent" ? "size-6 rounded-lg" : "-my-1 size-5 rounded-md",
+            )}
             onClick={onToggle}
           />
         }
@@ -171,7 +191,11 @@ function FastModeToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () 
           aria-hidden="true"
           className={cn(
             "size-3.5",
-            enabled ? "text-[hsl(var(--chart-4))]" : "text-muted-foreground/70",
+            enabled
+              ? tone === "accent"
+                ? "text-[var(--color-text-accent)]"
+                : "text-[hsl(var(--chart-4))]"
+              : "text-muted-foreground/70",
           )}
         />
       </TooltipTrigger>
@@ -267,6 +291,9 @@ export interface TraitsMenuContentProps {
   prompt: string;
   onPromptChange: (prompt: string) => void;
   includeFastMode?: boolean;
+  // Drop the Effort ladder and the Speed section; the slider card renders both
+  // itself and only needs the remaining trait sections (thinking, context, agent).
+  excludeEffort?: boolean;
   modelOptions?: ProviderOptions | null | undefined;
   onSelectionComplete?: () => void;
 }
@@ -280,28 +307,30 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   prompt,
   onPromptChange,
   includeFastMode: includeFastModeProp,
+  excludeEffort: excludeEffortProp,
   modelOptions,
   onSelectionComplete,
 }: TraitsMenuContentProps) {
   const copy = useMessages().chat.traits;
-  const includeFastMode = includeFastModeProp ?? true;
   const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
+  const excludeEffort = excludeEffortProp ?? false;
+  const includeFastMode = (includeFastModeProp ?? true) && !excludeEffort;
+  const selection = getComposerTraitSelection(provider, model, prompt, modelOptions, runtimeModel);
   const {
     caps,
     defaultEffort,
     effort,
-    effortLevels,
     thinkingEnabled,
     fastModeEnabled,
     contextWindowOptions,
     contextWindow,
     defaultContextWindow,
     contextWindowDescriptor,
-    ultrathinkPromptControlled,
     primarySelectDescriptor,
+    ultrathinkPromptControlled,
     fastModeDescriptor,
-    promptInjectedValues,
-  } = getComposerTraitSelection(provider, model, prompt, modelOptions, runtimeModel);
+  } = selection;
+  const effortLevels = excludeEffort ? [] : selection.effortLevels;
   const hasVisibleControls = hasVisibleComposerTraitControls(
     { caps, effortLevels, thinkingEnabled, contextWindowOptions, fastModeDescriptor },
     { includeFastMode },
@@ -326,22 +355,17 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   const hasPriorFastModeSection =
     thinkingEnabled !== null || effortLevels.length > 0 || contextWindowOptions.length > 1;
 
-  // Single home for committing a trait change: merge the patch into the provider
-  // options, persist it as sticky, and close the menu. Every section funnels here.
-  // The fast-mode header toggle passes `keepMenuOpen` so its state flip stays visible.
+  const commitTraitOptions = useComposerTraitCommit({ threadId, provider, model, modelOptions });
+  // Commit a trait change and close the menu. Every section funnels here; the
+  // fast-mode header toggle passes `keepMenuOpen` so its state flip stays visible.
   const commitTrait = useCallback(
     (patch: Record<string, unknown>, options?: { keepMenuOpen?: boolean }) => {
-      setProviderModelOptions(
-        threadId,
-        provider,
-        buildNextProviderOptions(provider, modelOptions, patch),
-        { ...(model !== undefined ? { model } : {}), persistSticky: true },
-      );
+      commitTraitOptions(patch);
       if (!options?.keepMenuOpen) {
         onSelectionComplete?.();
       }
     },
-    [threadId, provider, modelOptions, model, setProviderModelOptions, onSelectionComplete],
+    [commitTraitOptions, onSelectionComplete],
   );
 
   // Deliberately not wrapped in `useCallback`: its inputs all come out of one
@@ -349,21 +373,14 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   // hand-written dependency list can match it and the validator refuses to compile the component at
   // all. Letting the compiler own this memoization is what gets the whole file optimized.
   const handleEffortChange = (value: string) => {
-    if (ultrathinkPromptControlled) return;
-    if (!value) return;
-    const nextOption = effortLevels.find((option) => option.value === value);
-    if (!nextOption) return;
-    if (promptInjectedValues.includes(nextOption.value)) {
-      const nextPrompt =
-        prompt.trim().length === 0
-          ? ULTRATHINK_PROMPT_PREFIX
-          : applyClaudePromptEffortPrefix(prompt, "ultrathink");
-      onPromptChange(nextPrompt);
+    const plan = planComposerEffortChange({ provider, selection, prompt, value });
+    if (!plan) return;
+    if (plan.kind === "prompt") {
+      onPromptChange(plan.prompt);
       onSelectionComplete?.();
       return;
     }
-    const optionId = composerEffortOptionId(provider, primarySelectDescriptorId);
-    commitTrait(buildProviderOptionPatch(provider, optionId, nextOption.value));
+    commitTrait(plan.patch);
   };
 
   if (!hasVisibleControls && !hasAgentControls) {

@@ -55,6 +55,27 @@ function expectSchemaValidActivities(event: ProviderRuntimeEvent, sessionSequenc
   }
 }
 
+it.each(["info", "warning", "error"])("projects Pi %s notifications as notices", (type) => {
+  const [activity] = projectProviderRuntimeActivities(
+    runtimeEvent({
+      provider: "pi",
+      type: "runtime.warning",
+      eventId: "pi-notification",
+      turnId: TURN_ID,
+      payload: { message: "Extension notification", detail: { type } },
+      raw: { source: "pi.sdk.event", method: "extension/ui/notify", payload: { type } },
+    }),
+  );
+
+  expect(activity).toMatchObject({
+    tone: "info",
+    kind: "runtime.warning",
+    summary: type === "info" ? "Pi extension" : "Runtime warning",
+    payload: { message: "Extension notification", detail: "Extension notification" },
+  });
+  expect(() => decodeActivityAppendCommand(activity!)).not.toThrow();
+});
+
 describe("projected activities satisfy the orchestration command schema", () => {
   it("projects typed OMP advisor notes onto the existing advisor surface", () => {
     const [activity] = projectProviderRuntimeActivities(
@@ -752,6 +773,8 @@ describe("provider runtime activity projection", () => {
         turnId: TURN_ID,
         payload: {
           state: "completed",
+          tokenAccountingVersion: 1,
+          mainLoopTokens: 1_000,
           modelUsage: {
             "claude-fable-5": {
               inputTokens: 100,
@@ -768,8 +791,17 @@ describe("provider runtime activity projection", () => {
       kind: "turn.completed",
       payload: {
         state: "completed",
+        provider: "claudeAgent",
+        tokenAccountingVersion: 1,
+        mainLoopTokens: 1_000,
         modelUsage: {
-          "claude-fable-5": { inputTokens: 960, outputTokens: 40, totalTokens: 1_000 },
+          "claude-fable-5": {
+            inputTokens: 960,
+            outputTokens: 40,
+            totalTokens: 1_000,
+            cacheReadInputTokens: 800,
+            cacheCreationInputTokens: 60,
+          },
         },
       },
     });
