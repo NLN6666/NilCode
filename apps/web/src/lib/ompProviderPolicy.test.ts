@@ -7,6 +7,8 @@ describe("projectOmpProviderPolicy", () => {
   it("projects configured ownership and degradation without inventing live state", () => {
     const status = {
       provider: "omp",
+      instanceId: "omp",
+      driver: "omp",
       available: true,
       status: "ready",
       authStatus: "authenticated",
@@ -65,6 +67,8 @@ describe("projectOmpProviderPolicy", () => {
     expect(
       projectOmpProviderPolicy({
         provider: "codex",
+        instanceId: "codex",
+        driver: "codex",
         available: true,
         status: "ready",
         authStatus: "authenticated",
@@ -77,6 +81,8 @@ describe("projectOmpProviderPolicy", () => {
   it("exposes negotiated typed runtime state without treating policy as live state", () => {
     const status = {
       provider: "omp",
+      instanceId: "omp",
+      driver: "omp",
       available: true,
       status: "ready",
       authStatus: "authenticated",

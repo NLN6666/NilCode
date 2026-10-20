@@ -295,7 +295,8 @@ export const composer = {
       deviceTask: {
         prompt: "Allow Device for this task?",
         acceptLabel: "Allow Device for this task",
-        acceptDescription: "Continue routine device actions until this response ends. Stop cancels access.",
+        acceptDescription:
+          "Continue routine device actions until this response ends. Stop cancels access.",
         declineLabel: "Decline",
         declineDescription: "Stop device control for this turn; agent continues without tools",
         cancelLabel: "Cancel this request",
@@ -328,11 +329,16 @@ export const composer = {
     uncertainTitle: "Request status is uncertain",
     compactTitle: "Compaction will read the expired context",
     expiredTitle: "Claude’s prompt cache likely expired",
+    expiredSession: (duration: string, tokens: string) =>
+      `This session is ${duration} old and ${tokens} tokens.`,
+    resumeDescription:
+      "Compacting reads the full history once, then resumes from its summary. Continuing with full context keeps the existing history.",
     uncertainDescription:
       "Claude may have accepted the request. Sending is paused until its status can be confirmed.",
     contextUnknown: "the conversation’s context",
     contextTokens: (tokens: string) => `about ${tokens} tokens`,
-    compactDescription: "Compacting also processes the full history once. Later requests use its summary.",
+    compactDescription:
+      "Compacting also processes the full history once. Later requests use its summary.",
     submitFailed: "Could not submit this choice. Try again.",
     compactExistingLabel: "Compact this conversation",
     continueLabel: "Continue with full context",
@@ -342,6 +348,8 @@ export const composer = {
     compactThenSendDescription: "Summarize this conversation before sending the saved message",
     cancelLabel: "Cancel this send",
     cancelDescription: "Keep this conversation without sending the held message",
+    neverLabel: "Don't ask me again",
+    neverDescription: "Resume as-is now and stop asking. Turn it back on in Settings → Providers",
   },
   threadMentionDrop: {
     unavailableTitle: "Could not reference this chat",
@@ -369,6 +377,7 @@ export const composer = {
   },
 
   voice: {
+    startingMicrophone: "Starting microphone…",
     record: "Record voice note",
     transcribing: "Transcribing voice note",
     stop: (duration: string) => `Stop voice note (${duration})`,

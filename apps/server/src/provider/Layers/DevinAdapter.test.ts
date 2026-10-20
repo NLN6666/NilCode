@@ -6,7 +6,18 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type * as Acp from "@agentclientprotocol/sdk";
 import { ThreadId, TurnId } from "@synara/contracts";
-import { Deferred, Effect, Exit, Fiber, Layer, Queue, Scope, Semaphore, Stream } from "effect";
+import {
+  Cause,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Queue,
+  Scope,
+  Semaphore,
+  Stream,
+} from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AcpRequestError, AcpTransportError } from "../acp/AcpErrors.ts";
@@ -14,8 +25,13 @@ import { ProviderAdapterProcessError } from "../Errors.ts";
 import { ServerConfig } from "../../config.ts";
 import * as AcpErrors from "../acp/AcpErrors.ts";
 import type { AcpSessionRuntimeShape } from "../acp/AcpSessionRuntime.ts";
+import { makeFakeAcpSessionRuntime } from "../acp/testing/fakeAcpSessionRuntime.ts";
 import type { DevinAcpRuntimeInput } from "../acp/DevinAcpSupport.ts";
-import type { AcpParsedSessionEvent } from "../acp/AcpRuntimeModel.ts";
+import type { AcpParsedSessionEvent, AcpToolCallState } from "../acp/AcpRuntimeModel.ts";
+import {
+  AgentGatewayCredentials,
+  type AgentGatewayCredentialsShape,
+} from "../../agentGateway/Services/AgentGatewayCredentials.ts";
 import { DevinAdapter } from "../Services/DevinAdapter.ts";
 import {
   applyDevinSessionConfiguration,
@@ -70,55 +86,12 @@ function makeFakeAcpRuntime(initialModeState?: {
 }
 
 function makeLifecycleAcpRuntime(
-  prompt: AcpSessionRuntimeShape["prompt"] = () =>
-    Effect.succeed({ stopReason: "end_turn" } as Acp.PromptResponse),
+  prompt?: AcpSessionRuntimeShape["prompt"],
 ): AcpSessionRuntimeShape {
-  const registerHandler = () => Effect.void;
-  return {
-    handleRequestPermission: registerHandler,
-    handleElicitation: registerHandler,
-    handleReadTextFile: registerHandler,
-    handleWriteTextFile: registerHandler,
-    handleCreateTerminal: registerHandler,
-    handleTerminalOutput: registerHandler,
-    handleTerminalWaitForExit: registerHandler,
-    handleTerminalKill: registerHandler,
-    handleTerminalRelease: registerHandler,
-    handleSessionUpdate: registerHandler,
-    handleElicitationComplete: registerHandler,
-    handleExtRequest: registerHandler,
-    handleExtNotification: registerHandler,
-    start: () =>
-      Effect.succeed({
-        sessionId: "devin-test-session",
-        initializeResult: {} as Acp.InitializeResponse,
-        sessionSetupResult: {} as Acp.NewSessionResponse,
-        modelConfigId: undefined,
-        sessionSetupMethod: "new",
-      }),
-    awaitExit: Effect.never,
-    getEvents: () => Stream.never,
-    sessionUpdatesEnqueuedCount: Effect.succeed(0),
-    supportsSessionFork: Effect.succeed(false),
-    supportsSessionRecovery: Effect.succeed(true),
-    getModeState: Effect.succeed({
-      currentModeId: "bypass",
-      availableModes: [{ id: "bypass", name: "Full Access" }],
-    }),
-    getSessionEpoch: () => Effect.succeed(0 as never),
-    getPendingSessionNotificationCount: () => Effect.succeed(0),
-    getConfigOptions: Effect.succeed([]),
-    getAvailableCommands: Effect.succeed([]),
-    awaitLoadReplayReady: Effect.void,
-    prompt,
-    cancel: Effect.void,
-    setMode: () => Effect.succeed({} as Acp.SetSessionModeResponse),
-    setConfigOption: () => Effect.succeed({} as Acp.SetSessionConfigOptionResponse),
-    setModel: () => Effect.void,
-    forkSession: () => Effect.succeed({} as Acp.ForkSessionResponse),
-    request: () => Effect.succeed({}),
-    notify: () => Effect.void,
-  } as AcpSessionRuntimeShape;
+  return makeFakeAcpSessionRuntime({
+    sessionId: "devin-test-session",
+    ...(prompt ? { prompt } : {}),
+  });
 }
 
 function makeEventAcpRuntime(prompt: AcpSessionRuntimeShape["prompt"]) {
@@ -147,10 +120,14 @@ function makeEventAcpRuntime(prompt: AcpSessionRuntimeShape["prompt"]) {
           }),
         ),
     } as AcpSessionRuntimeShape,
-    emitToolCall: (toolCallId: string, status: "pending" | "inProgress" | "completed" | "failed") =>
+    emitToolCall: (
+      toolCallId: string,
+      status: "pending" | "inProgress" | "completed" | "failed",
+      extra?: Partial<AcpToolCallState>,
+    ) =>
       emit({
         _tag: "ToolCallUpdated",
-        toolCall: { toolCallId, status, data: {} },
+        toolCall: { toolCallId, status, data: {}, ...extra },
         rawPayload: { toolCallId, status },
       }),
     emitProgress: (text = "progress") =>
@@ -1248,6 +1225,24 @@ describe("resolveRequestedModeId", () => {
       ),
     ).resolves.toBe("bypass");
   });
+
+  it("applies Ask Everytime when Code is absent from the Devin catalog", async () => {
+    const harness = makeFakeAcpRuntime({
+      currentModeId: "full-access",
+      availableModes: [
+        { id: "full-access", name: "Full Access" },
+        { id: "ask-everytime", name: "Ask Everytime" },
+      ],
+    });
+    await Effect.runPromise(
+      applyDevinSessionConfiguration({
+        runtime: harness.runtime,
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+      }),
+    );
+    expect(harness.calls).toEqual([{ method: "setMode", args: ["ask-everytime"] }]);
+  });
 });
 
 describe("resolveDevinStartModel", () => {
@@ -1785,6 +1780,70 @@ describe("closeDevinSessionResources", () => {
   });
 });
 
+describe("Devin startup timeout recovery", () => {
+  it.each([false, true])(
+    "requires successful cleanup before rejecting startup (cleanup fails: %s)",
+    async (cleanupFails) => {
+      const timeout = new AcpRequestError({
+        code: -32001,
+        errorMessage: "ACP agent did not respond to initialize within 20s.",
+        data: { reason: "acp-startup-timeout", step: "initialize", timeoutMs: 20_000 },
+      });
+      let cleanedUp = false;
+      const cleanupError = new Error("process exit unproven");
+      const runtime = { ...makeLifecycleAcpRuntime(), start: () => Effect.fail(timeout) };
+      const layer = makeDevinAdapterLive(
+        {},
+        {
+          makeAcpRuntime: () =>
+            Effect.gen(function* () {
+              yield* Effect.addFinalizer(() =>
+                Effect.sync(() => {
+                  if (cleanupFails) throw cleanupError;
+                  cleanedUp = true;
+                }),
+              );
+              return runtime;
+            }),
+        },
+      ).pipe(
+        Layer.provideMerge(
+          ServerConfig.layerTest(process.cwd(), { prefix: "devin-startup-test-" }),
+        ),
+        Layer.provideMerge(NodeServices.layer),
+      );
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const adapter = yield* DevinAdapter;
+          const threadId = ThreadId.makeUnsafe("devin-startup-timeout");
+          const exit = yield* adapter
+            .startSession({
+              provider: "devin",
+              threadId,
+              runtimeMode: "full-access",
+              cwd: process.cwd(),
+            })
+            .pipe(Effect.exit);
+          expect(Exit.isFailure(exit)).toBe(true);
+          if (Exit.isFailure(exit)) {
+            if (cleanupFails) {
+              expect(Cause.pretty(exit.cause)).toContain("process exit unproven");
+            } else {
+              expect(Cause.squash(exit.cause)).toMatchObject({
+                _tag: "ProviderAdapterProcessError",
+                reason: "startup-failed",
+                cause: timeout,
+              });
+            }
+          }
+          expect(cleanedUp).toBe(!cleanupFails);
+          expect(yield* adapter.hasSession(threadId)).toBe(false);
+        }).pipe(Effect.provide(layer)),
+      );
+    },
+  );
+});
+
 describe("Devin stale resume classification", () => {
   it.each([
     {
@@ -1845,6 +1904,820 @@ describe("Devin stale resume classification", () => {
         );
         expect(yield* adapter.hasSession(threadId)).toBe(false);
       }).pipe(Effect.provide(makeDevinAdapterTestLayer(runtime))),
+    );
+  });
+});
+
+describe("Devin resume model pinning", () => {
+  const sessionId = "devin-test-session";
+  const startWith = (input: { resumeCursor?: unknown; modelVariant?: string }) => {
+    const spawns: Array<Pick<DevinAcpRuntimeInput, "devinSettings" | "resumeSessionId">> = [];
+    const layer = makeDevinAdapterLive(
+      {},
+      {
+        makeAcpRuntime: (runtimeInput) =>
+          Effect.sync(() => {
+            spawns.push(runtimeInput);
+            return makeLifecycleAcpRuntime();
+          }),
+        timeouts: { turnIdleMs: 30, toolIdleMs: 60 },
+      },
+    ).pipe(
+      Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "devin-resume-model-" })),
+      Layer.provideMerge(NodeServices.layer),
+    );
+    return Effect.runPromise(
+      Effect.gen(function* () {
+        const adapter = yield* DevinAdapter;
+        const threadId = ThreadId.makeUnsafe("thread-devin-resume-model");
+        const result = yield* adapter
+          .startSession({
+            provider: "devin",
+            threadId,
+            runtimeMode: "full-access",
+            cwd: process.cwd(),
+            ...(input.modelVariant
+              ? {
+                  modelSelection: {
+                    provider: "devin",
+                    model: "gpt-6-astra",
+                    options: { modelVariant: input.modelVariant },
+                  },
+                }
+              : {}),
+            ...(input.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
+          })
+          .pipe(Effect.result);
+        const live = yield* adapter.hasSession(threadId);
+        yield* adapter.stopAll();
+        return { result, live, spawns };
+      }).pipe(Effect.provide(layer)),
+    );
+  };
+
+  it("records the concrete model and reloads only a session created for it", async () => {
+    const fresh = await startWith({ modelVariant: "gpt-6-astra-xhigh-priority" });
+    expect(fresh.result._tag).toBe("Success");
+    const cursor = fresh.result._tag === "Success" ? fresh.result.success.resumeCursor : undefined;
+    expect(cursor).toEqual({
+      schemaVersion: 1,
+      sessionId,
+      model: "gpt-6-astra-xhigh-priority",
+    });
+
+    const reloaded = await startWith({
+      modelVariant: "gpt-6-astra-xhigh-priority",
+      resumeCursor: cursor,
+    });
+    expect(reloaded.result._tag).toBe("Success");
+    expect(reloaded.spawns.map((spawn) => spawn.resumeSessionId)).toEqual([sessionId]);
+    expect(reloaded.result._tag === "Success" && reloaded.result.success.resumeCursor).toEqual(
+      cursor,
+    );
+  });
+
+  it.each([
+    {
+      name: "a session created for another variant (Fast turned off)",
+      resumeCursor: { schemaVersion: 1, sessionId, model: "gpt-6-astra-xhigh-priority" },
+    },
+    {
+      name: "a legacy cursor that never recorded its model",
+      resumeCursor: { schemaVersion: 1, sessionId },
+    },
+  ])("refuses to reload $name before spawning Devin", async ({ resumeCursor }) => {
+    const { result, live, spawns } = await startWith({
+      modelVariant: "gpt-6-astra-xhigh",
+      resumeCursor,
+    });
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure).toBeInstanceOf(ProviderAdapterProcessError);
+      expect(result.failure).toMatchObject({ reason: "resume-state-unavailable" });
+    }
+    expect(spawns).toEqual([]);
+    expect(live).toBe(false);
+  });
+
+  it("keeps reloading a legacy cursor when no model is requested", async () => {
+    const { result, spawns } = await startWith({
+      resumeCursor: { schemaVersion: 1, sessionId },
+    });
+    expect(result._tag).toBe("Success");
+    expect(spawns.map((spawn) => spawn.resumeSessionId)).toEqual([sessionId]);
+  });
+});
+
+function makePermissionRuntime() {
+  let permissionHandler:
+    | ((
+        request: Acp.RequestPermissionRequest,
+      ) => Effect.Effect<Acp.RequestPermissionResponse, AcpErrors.AcpError>)
+    | undefined;
+  // Permission requests must arrive while a turn is still active: an
+  // immediately-completing prompt clears the interaction mode and the policy
+  // layer would cancel the request before it ever reaches the approval card.
+  const handles = makeEventAcpRuntime(() => Effect.never as Effect.Effect<Acp.PromptResponse>);
+  const runtime = {
+    ...handles.runtime,
+    // Approval-required sessions resolve their ACP mode id from the reported
+    // modes, so the harness must advertise one besides "bypass".
+    getModeState: Effect.succeed({
+      currentModeId: "code",
+      availableModes: [
+        { id: "code", name: "Accept Edits" },
+        { id: "bypass", name: "Full Access" },
+      ],
+    }),
+    handleRequestPermission: (
+      handler: (
+        request: Acp.RequestPermissionRequest,
+      ) => Effect.Effect<Acp.RequestPermissionResponse, AcpErrors.AcpError>,
+    ) =>
+      Effect.sync(() => {
+        permissionHandler = handler;
+      }),
+  } as AcpSessionRuntimeShape;
+  return {
+    runtime,
+    emitToolCall: handles.emitToolCall,
+    completeProcessedEvent: handles.completeProcessedEvent,
+    requestPermission: (request: Acp.RequestPermissionRequest) =>
+      permissionHandler === undefined
+        ? Effect.fail(
+            new AcpRequestError({
+              code: -32603,
+              errorMessage: "permission handler was not registered",
+            }),
+          )
+        : permissionHandler(request),
+  };
+}
+
+const makePermissionParams = (
+  toolCallId: string,
+  toolCall?: Partial<Acp.RequestPermissionRequest["toolCall"]>,
+): Acp.RequestPermissionRequest => ({
+  sessionId: "devin-test-session",
+  toolCall: { toolCallId, kind: "other", ...toolCall },
+  options: [
+    { optionId: "allow-once", kind: "allow_once", name: "Allow once" },
+    { optionId: "allow-always", kind: "allow_always", name: "Always allow" },
+    { optionId: "reject-once", kind: "reject_once", name: "Reject" },
+  ],
+});
+
+function makeFakeAgentGatewayCredentials(): AgentGatewayCredentialsShape {
+  return {
+    mcpEndpointUrl: "http://127.0.0.1:9/mcp",
+    setListeningPort: () => undefined,
+    issueSessionToken: () => "session-token",
+    verifySessionToken: () => null,
+    verifySession: () => null,
+    issueStdioBootstrapToken: () => "bootstrap-token",
+    exchangeStdioBootstrapToken: () => null,
+    bindWriteAuthority: () => null,
+    verifyWriteAuthority: () => false,
+    registerInFlightRequest: () => () => undefined,
+    cancelInFlightRequests: () => ({ count: 0, settled: Promise.resolve() }),
+    cancelSessionTurnRequests: () => Promise.resolve(),
+    retireSessionTurn: () => Promise.resolve(),
+    revokeSessionToken: () => undefined,
+    connectionForThread: () => ({
+      url: "http://127.0.0.1:9/mcp",
+      bearerToken: "bearer-token",
+    }),
+    stdioProxy: { command: "/bin/true", args: [] },
+  };
+}
+
+describe("Devin permission requests", () => {
+  it("labels the approval card with the tracked tool name and arguments", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const handles = makePermissionRuntime();
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const adapter = yield* DevinAdapter;
+        const threadId = ThreadId.makeUnsafe("thread-devin-permission-detail");
+        const runtimeEvents: Array<{
+          type: string;
+          requestId?: unknown;
+          payload?: Record<string, unknown>;
+        }> = [];
+        yield* adapter.streamEvents.pipe(
+          Stream.runForEach((event) =>
+            Effect.sync(() => {
+              runtimeEvents.push({
+                type: event.type,
+                requestId: event.requestId,
+                payload: event.payload as Record<string, unknown>,
+              });
+            }),
+          ),
+          Effect.forkScoped,
+        );
+        yield* adapter.startSession({
+          provider: "devin",
+          threadId,
+          runtimeMode: "approval-required",
+          cwd: process.cwd(),
+        });
+        yield* adapter.sendTurn({ threadId, input: "work", attachments: [] });
+        yield* handles.emitToolCall("call-1", "pending", {
+          title: "synara_list_threads",
+          kind: "other",
+          data: {
+            rawInput: {
+              _toolName: "synara_list_threads",
+              arguments: { limit: 5 },
+            },
+          },
+        });
+        handles.completeProcessedEvent();
+
+        // Devin's request_permission toolCall is sparse: only toolCallId + kind.
+        const pending = yield* handles
+          .requestPermission(makePermissionParams("call-1"))
+          .pipe(Effect.forkChild);
+        yield* flushTimers();
+        const opened = runtimeEvents.find((event) => event.type === "request.opened");
+        expect(opened).toBeDefined();
+        expect(opened?.payload?.requestType).toBe("tool_approval");
+        expect(opened?.payload?.detail).toBe('synara_list_threads: {"limit":5}');
+        const openedArgs = opened?.payload?.args as Record<string, unknown> | undefined;
+        expect(openedArgs?.toolName).toBe("synara_list_threads");
+        expect(openedArgs?.input).toEqual({ limit: 5 });
+
+        yield* adapter.respondToRequest(threadId, opened!.requestId as never, "accept");
+        const response = yield* Fiber.join(pending);
+        expect(response).toEqual({
+          outcome: { outcome: "selected", optionId: "allow-once" },
+        });
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          makeDevinAdapterTestLayer(handles.runtime, handles.completeProcessedEvent, {
+            turnIdleMs: 3_600_000,
+            toolIdleMs: 3_600_000,
+          }),
+        ),
+      ),
+    );
+  });
+
+  it("falls back to the session label only when no tool state exists", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const handles = makePermissionRuntime();
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const adapter = yield* DevinAdapter;
+        const threadId = ThreadId.makeUnsafe("thread-devin-permission-fallback");
+        const runtimeEvents: Array<{
+          type: string;
+          requestId?: unknown;
+          payload?: Record<string, unknown>;
+        }> = [];
+        yield* adapter.streamEvents.pipe(
+          Stream.runForEach((event) =>
+            Effect.sync(() => {
+              runtimeEvents.push({
+                type: event.type,
+                requestId: event.requestId,
+                payload: event.payload as Record<string, unknown>,
+              });
+            }),
+          ),
+          Effect.forkScoped,
+        );
+        yield* adapter.startSession({
+          provider: "devin",
+          threadId,
+          runtimeMode: "approval-required",
+          cwd: process.cwd(),
+        });
+        yield* adapter.sendTurn({ threadId, input: "work", attachments: [] });
+
+        const pending = yield* handles
+          .requestPermission(makePermissionParams("untracked-call"))
+          .pipe(Effect.forkChild);
+        yield* flushTimers();
+        const opened = runtimeEvents.find((event) => event.type === "request.opened");
+        expect(String(opened?.payload?.detail)).toContain("Session devin-test-session");
+        yield* adapter.respondToRequest(threadId, opened!.requestId as never, "cancel");
+        const response = yield* Fiber.join(pending);
+        expect(response).toEqual({ outcome: { outcome: "cancelled" } });
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          makeDevinAdapterTestLayer(handles.runtime, handles.completeProcessedEvent, {
+            turnIdleMs: 3_600_000,
+            toolIdleMs: 3_600_000,
+          }),
+        ),
+      ),
+    );
+  });
+
+  it("sticks 'Always allow this session' to the exact command or tool approved", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const handles = makePermissionRuntime();
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const adapter = yield* DevinAdapter;
+        const threadId = ThreadId.makeUnsafe("thread-devin-session-allow");
+        const runtimeEvents: Array<{
+          type: string;
+          requestId?: unknown;
+          payload?: Record<string, unknown>;
+        }> = [];
+        yield* adapter.streamEvents.pipe(
+          Stream.runForEach((event) =>
+            Effect.sync(() => {
+              runtimeEvents.push({
+                type: event.type,
+                requestId: event.requestId,
+                payload: event.payload as Record<string, unknown>,
+              });
+            }),
+          ),
+          Effect.forkScoped,
+        );
+        yield* adapter.startSession({
+          provider: "devin",
+          threadId,
+          runtimeMode: "approval-required",
+          cwd: process.cwd(),
+        });
+        yield* adapter.sendTurn({ threadId, input: "work", attachments: [] });
+
+        const openedCount = () =>
+          runtimeEvents.filter((event) => event.type === "request.opened").length;
+
+        // Approving `ls` for the session …
+        const first = yield* handles
+          .requestPermission(
+            makePermissionParams("call-1", {
+              kind: "execute",
+              rawInput: { command: "ls" },
+            }),
+          )
+          .pipe(Effect.forkChild);
+        yield* flushTimers();
+        const opened = runtimeEvents.find((event) => event.type === "request.opened");
+        expect(opened?.payload?.requestType).toBe("exec_command_approval");
+        yield* adapter.respondToRequest(threadId, opened!.requestId as never, "acceptForSession");
+        expect(yield* Fiber.join(first)).toEqual({
+          outcome: { outcome: "selected", optionId: "allow-always" },
+        });
+
+        // … approves the exact same command without prompting …
+        const second = yield* handles.requestPermission(
+          makePermissionParams("call-2", {
+            kind: "execute",
+            rawInput: { command: "ls" },
+          }),
+        );
+        expect(second).toEqual({
+          outcome: { outcome: "selected", optionId: "allow-always" },
+        });
+        expect(openedCount()).toBe(1);
+
+        // … but never a different command on the same kind — `rm -rf` still
+        // prompts even though `ls` was always-allowed.
+        const destructive = yield* handles
+          .requestPermission(
+            makePermissionParams("call-3", {
+              kind: "execute",
+              rawInput: { command: "rm -rf x" },
+            }),
+          )
+          .pipe(Effect.forkChild);
+        yield* flushTimers();
+        expect(openedCount()).toBe(2);
+        const rmOpened = runtimeEvents.findLast((event) => event.type === "request.opened");
+        yield* adapter.respondToRequest(threadId, rmOpened!.requestId as never, "acceptForSession");
+        expect(yield* Fiber.join(destructive)).toEqual({
+          outcome: { outcome: "selected", optionId: "allow-always" },
+        });
+
+        // An execute request with no command string can never be remembered:
+        // an unnamed command is not a stable identity, so it always prompts.
+        const unnamed = yield* handles
+          .requestPermission(makePermissionParams("call-4", { kind: "execute" }))
+          .pipe(Effect.forkChild);
+        yield* flushTimers();
+        expect(openedCount()).toBe(3);
+        const unnamedOpened = runtimeEvents.findLast((event) => event.type === "request.opened");
+        yield* adapter.respondToRequest(
+          threadId,
+          unnamedOpened!.requestId as never,
+          "acceptForSession",
+        );
+        expect(yield* Fiber.join(unnamed)).toEqual({
+          outcome: { outcome: "selected", optionId: "allow-always" },
+        });
+        const unnamedAgain = yield* handles
+          .requestPermission(makePermissionParams("call-5", { kind: "execute" }))
+          .pipe(Effect.forkChild);
+        yield* flushTimers();
+        expect(openedCount()).toBe(4);
+        const unnamedAgainOpened = runtimeEvents.findLast(
+          (event) => event.type === "request.opened",
+        );
+        yield* adapter.respondToRequest(threadId, unnamedAgainOpened!.requestId as never, "cancel");
+        expect(yield* Fiber.join(unnamedAgain)).toEqual({
+          outcome: { outcome: "cancelled" },
+        });
+
+        // Approving one MCP tool never approves another — the remembered key
+        // is (kind + exact tool name), not the broad request kind.
+        const firstMcp = yield* handles
+          .requestPermission(
+            makePermissionParams("call-6", {
+              kind: "other",
+              rawInput: { _toolName: "mcp__github__list_issues", arguments: {} },
+            }),
+          )
+          .pipe(Effect.forkChild);
+        yield* flushTimers();
+        const firstMcpOpened = runtimeEvents.findLast((event) => event.type === "request.opened");
+        yield* adapter.respondToRequest(
+          threadId,
+          firstMcpOpened!.requestId as never,
+          "acceptForSession",
+        );
+        expect(yield* Fiber.join(firstMcp)).toEqual({
+          outcome: { outcome: "selected", optionId: "allow-always" },
+        });
+
+        const otherMcp = yield* handles
+          .requestPermission(
+            makePermissionParams("call-7", {
+              kind: "other",
+              rawInput: { _toolName: "mcp__github__create_issue", arguments: {} },
+            }),
+          )
+          .pipe(Effect.forkChild);
+        yield* flushTimers();
+        expect(runtimeEvents.filter((event) => event.type === "request.opened").length).toBe(6);
+        const otherMcpOpened = runtimeEvents.findLast((event) => event.type === "request.opened");
+        yield* adapter.respondToRequest(threadId, otherMcpOpened!.requestId as never, "cancel");
+        expect(yield* Fiber.join(otherMcp)).toEqual({ outcome: { outcome: "cancelled" } });
+
+        // The same tool resolves without prompting again.
+        const sameMcp = yield* handles.requestPermission(
+          makePermissionParams("call-8", {
+            kind: "other",
+            rawInput: { _toolName: "mcp__github__list_issues", arguments: {} },
+          }),
+        );
+        expect(sameMcp).toEqual({
+          outcome: { outcome: "selected", optionId: "allow-always" },
+        });
+        expect(runtimeEvents.filter((event) => event.type === "request.opened").length).toBe(6);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          makeDevinAdapterTestLayer(handles.runtime, handles.completeProcessedEvent, {
+            turnIdleMs: 3_600_000,
+            toolIdleMs: 3_600_000,
+          }),
+        ),
+      ),
+    );
+  });
+
+  it("never remembers destructive or network request kinds for the session", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const handles = makePermissionRuntime();
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const adapter = yield* DevinAdapter;
+        const threadId = ThreadId.makeUnsafe("thread-devin-session-no-memory");
+        const runtimeEvents: Array<{ type: string; requestId?: unknown }> = [];
+        yield* adapter.streamEvents.pipe(
+          Stream.runForEach((event) =>
+            Effect.sync(() => {
+              runtimeEvents.push({ type: event.type, requestId: event.requestId });
+            }),
+          ),
+          Effect.forkScoped,
+        );
+        yield* adapter.startSession({
+          provider: "devin",
+          threadId,
+          runtimeMode: "approval-required",
+          cwd: process.cwd(),
+        });
+        yield* adapter.sendTurn({ threadId, input: "work", attachments: [] });
+
+        for (const kind of ["delete", "move", "fetch"] as const) {
+          const before = runtimeEvents.filter((event) => event.type === "request.opened").length;
+          const first = yield* handles
+            .requestPermission(
+              makePermissionParams(`${kind}-1`, {
+                kind,
+                rawInput: { _toolName: `mcp__fs__${kind}_file`, arguments: {} },
+              }),
+            )
+            .pipe(Effect.forkChild);
+          yield* flushTimers();
+          const opened = runtimeEvents.findLast((event) => event.type === "request.opened");
+          expect(opened).toBeDefined();
+          yield* adapter.respondToRequest(threadId, opened!.requestId as never, "acceptForSession");
+          expect(yield* Fiber.join(first)).toEqual({
+            outcome: { outcome: "selected", optionId: "allow-always" },
+          });
+
+          // The identical request still prompts — these kinds are never
+          // written into the session allow-list.
+          const second = yield* handles
+            .requestPermission(
+              makePermissionParams(`${kind}-2`, {
+                kind,
+                rawInput: { _toolName: `mcp__fs__${kind}_file`, arguments: {} },
+              }),
+            )
+            .pipe(Effect.forkChild);
+          yield* flushTimers();
+          expect(runtimeEvents.filter((event) => event.type === "request.opened").length).toBe(
+            before + 2,
+          );
+          const secondOpened = runtimeEvents.findLast((event) => event.type === "request.opened");
+          yield* adapter.respondToRequest(threadId, secondOpened!.requestId as never, "cancel");
+          expect(yield* Fiber.join(second)).toEqual({ outcome: { outcome: "cancelled" } });
+        }
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          makeDevinAdapterTestLayer(handles.runtime, handles.completeProcessedEvent, {
+            turnIdleMs: 3_600_000,
+            toolIdleMs: 3_600_000,
+          }),
+        ),
+      ),
+    );
+  });
+
+  it("auto-approves Synara gateway tools for coordinator threads only", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const handles = makePermissionRuntime();
+    const credentialsLayer = Layer.succeed(
+      AgentGatewayCredentials,
+      makeFakeAgentGatewayCredentials(),
+    );
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const adapter = yield* DevinAdapter;
+        const threadId = ThreadId.makeUnsafe("thread-devin-gateway-auto");
+        const runtimeEvents: Array<{
+          type: string;
+          requestId?: unknown;
+          payload?: Record<string, unknown>;
+        }> = [];
+        yield* adapter.streamEvents.pipe(
+          Stream.runForEach((event) =>
+            Effect.sync(() => {
+              runtimeEvents.push({
+                type: event.type,
+                requestId: event.requestId,
+                payload: event.payload as Record<string, unknown>,
+              });
+            }),
+          ),
+          Effect.forkScoped,
+        );
+        yield* adapter.startSession({
+          provider: "devin",
+          threadId,
+          runtimeMode: "approval-required",
+          cwd: process.cwd(),
+          autoApproveSynaraTools: true,
+        });
+        yield* adapter.sendTurn({ threadId, input: "coordinate", attachments: [] });
+
+        // A Synara gateway tool call resolves without ever surfacing a prompt.
+        const gateway = yield* handles.requestPermission(
+          makePermissionParams("call-gw", {
+            kind: "other",
+            rawInput: {
+              _toolName: "synara_list_threads",
+              arguments: { limit: 3 },
+            },
+          }),
+        );
+        expect(gateway).toEqual({
+          outcome: { outcome: "selected", optionId: "allow-once" },
+        });
+        expect(runtimeEvents.some((event) => event.type === "request.opened")).toBe(false);
+
+        // A non-gateway tool still prompts.
+        const regular = yield* handles
+          .requestPermission(
+            makePermissionParams("call-regular", {
+              kind: "other",
+              rawInput: { _toolName: "github_list_issues", arguments: {} },
+            }),
+          )
+          .pipe(Effect.forkChild);
+        yield* flushTimers();
+        const opened = runtimeEvents.find((event) => event.type === "request.opened");
+        expect(opened).toBeDefined();
+        yield* adapter.respondToRequest(threadId, opened!.requestId as never, "accept");
+        expect(yield* Fiber.join(regular)).toEqual({
+          outcome: { outcome: "selected", optionId: "allow-once" },
+        });
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          makeDevinAdapterTestLayer(handles.runtime, handles.completeProcessedEvent, {
+            turnIdleMs: 3_600_000,
+            toolIdleMs: 3_600_000,
+          }).pipe(Layer.provideMerge(credentialsLayer)),
+        ),
+      ),
+    );
+  });
+
+  it("never auto-approves an execute kind, an unknown catalog name, or a title-only name", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const handles = makePermissionRuntime();
+    const credentialsLayer = Layer.succeed(
+      AgentGatewayCredentials,
+      makeFakeAgentGatewayCredentials(),
+    );
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const adapter = yield* DevinAdapter;
+        const threadId = ThreadId.makeUnsafe("thread-devin-gateway-spoof");
+        const runtimeEvents: Array<{
+          type: string;
+          requestId?: unknown;
+          payload?: Record<string, unknown>;
+        }> = [];
+        yield* adapter.streamEvents.pipe(
+          Stream.runForEach((event) =>
+            Effect.sync(() => {
+              runtimeEvents.push({
+                type: event.type,
+                requestId: event.requestId,
+                payload: event.payload as Record<string, unknown>,
+              });
+            }),
+          ),
+          Effect.forkScoped,
+        );
+        yield* adapter.startSession({
+          provider: "devin",
+          threadId,
+          runtimeMode: "approval-required",
+          cwd: process.cwd(),
+          autoApproveSynaraTools: true,
+        });
+        yield* adapter.sendTurn({ threadId, input: "coordinate", attachments: [] });
+
+        const openedCount = () =>
+          runtimeEvents.filter((event) => event.type === "request.opened").length;
+        const promptCases: Array<{
+          toolCallId: string;
+          toolCall: Partial<Acp.RequestPermissionRequest["toolCall"]>;
+        }> = [
+          // An execute request titled like a gateway tool is a shell command —
+          // the kind alone must keep it off the auto-approve path.
+          {
+            toolCallId: "spoof-title-execute",
+            toolCall: { kind: "execute", title: "mcp__synara__x; rm -rf y" },
+          },
+          // Even a real catalog name on an execute-kind request keeps the
+          // normal prompt path.
+          {
+            toolCallId: "spoof-kind-execute",
+            toolCall: {
+              kind: "execute",
+              rawInput: { _toolName: "synara_list_threads", command: "rm -rf y" },
+            },
+          },
+          // The mcp__synara__ prefix alone names nothing: the part after it
+          // must be a real catalog tool.
+          {
+            toolCallId: "spoof-catalog",
+            toolCall: {
+              kind: "other",
+              rawInput: { _toolName: "mcp__synara__not_a_gateway_tool" },
+            },
+          },
+          // A gateway-looking title with no tool name in rawInput/metadata is
+          // presentational text — it never authorizes anything.
+          {
+            toolCallId: "spoof-title-only",
+            toolCall: { kind: "other", title: "mcp__synara__synara_list_threads" },
+          },
+        ];
+        for (const promptCase of promptCases) {
+          const before = openedCount();
+          const pending = yield* handles
+            .requestPermission(makePermissionParams(promptCase.toolCallId, promptCase.toolCall))
+            .pipe(Effect.forkChild);
+          yield* flushTimers();
+          expect(openedCount(), promptCase.toolCallId).toBe(before + 1);
+          const opened = runtimeEvents.findLast((event) => event.type === "request.opened");
+          yield* adapter.respondToRequest(threadId, opened!.requestId as never, "cancel");
+          expect(yield* Fiber.join(pending)).toEqual({ outcome: { outcome: "cancelled" } });
+        }
+
+        // Control: a real catalog name on a non-execute request still
+        // auto-approves.
+        const gateway = yield* handles.requestPermission(
+          makePermissionParams("call-gw", {
+            kind: "other",
+            rawInput: { _toolName: "synara_list_threads", arguments: {} },
+          }),
+        );
+        expect(gateway).toEqual({
+          outcome: { outcome: "selected", optionId: "allow-once" },
+        });
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          makeDevinAdapterTestLayer(handles.runtime, handles.completeProcessedEvent, {
+            turnIdleMs: 3_600_000,
+            toolIdleMs: 3_600_000,
+          }).pipe(Layer.provideMerge(credentialsLayer)),
+        ),
+      ),
+    );
+  });
+
+  it("still prompts for gateway tools when autoApproveSynaraTools is unset", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const handles = makePermissionRuntime();
+    const credentialsLayer = Layer.succeed(
+      AgentGatewayCredentials,
+      makeFakeAgentGatewayCredentials(),
+    );
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const adapter = yield* DevinAdapter;
+        const threadId = ThreadId.makeUnsafe("thread-devin-gateway-manual");
+        const runtimeEvents: Array<{
+          type: string;
+          requestId?: unknown;
+          payload?: Record<string, unknown>;
+        }> = [];
+        yield* adapter.streamEvents.pipe(
+          Stream.runForEach((event) =>
+            Effect.sync(() => {
+              runtimeEvents.push({
+                type: event.type,
+                requestId: event.requestId,
+                payload: event.payload as Record<string, unknown>,
+              });
+            }),
+          ),
+          Effect.forkScoped,
+        );
+        yield* adapter.startSession({
+          provider: "devin",
+          threadId,
+          runtimeMode: "approval-required",
+          cwd: process.cwd(),
+        });
+        yield* adapter.sendTurn({ threadId, input: "work", attachments: [] });
+
+        const pending = yield* handles
+          .requestPermission(
+            makePermissionParams("call-gw", {
+              kind: "other",
+              rawInput: {
+                _toolName: "synara_list_threads",
+                arguments: { limit: 3 },
+              },
+            }),
+          )
+          .pipe(Effect.forkChild);
+        yield* flushTimers();
+        const opened = runtimeEvents.find((event) => event.type === "request.opened");
+        expect(opened).toBeDefined();
+        yield* adapter.respondToRequest(threadId, opened!.requestId as never, "accept");
+        expect(yield* Fiber.join(pending)).toEqual({
+          outcome: { outcome: "selected", optionId: "allow-once" },
+        });
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          makeDevinAdapterTestLayer(handles.runtime, handles.completeProcessedEvent, {
+            turnIdleMs: 3_600_000,
+            toolIdleMs: 3_600_000,
+          }).pipe(Layer.provideMerge(credentialsLayer)),
+        ),
+      ),
     );
   });
 });

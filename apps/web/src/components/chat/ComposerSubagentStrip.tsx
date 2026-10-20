@@ -11,7 +11,6 @@ import { useState } from "react";
 
 import type { ThreadId } from "@synara/contracts";
 
-
 import {
   BackgroundTrayIcon,
   BackToParentIcon,
@@ -63,7 +62,6 @@ interface ComposerSubagentStripProps {
   onBackgroundItem?: (item: ComposerSubagentStripItem) => void;
   onStopItem?: (item: ComposerSubagentStripItem) => void;
   onStopAll?: () => void;
-  attachedToPrevious?: boolean;
 }
 
 function SubagentStripRow({
@@ -187,11 +185,9 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
   onBackgroundItem,
   onStopItem,
   onStopAll,
-  attachedToPrevious: attachedToPreviousProp,
 }: ComposerSubagentStripProps) {
   const copy = useMessages().composer.subagents;
   const [settledExpanded, setSettledExpanded] = useState(false);
-  const attachedToPrevious = attachedToPreviousProp ?? false;
   const { parentRow, liveRows, settledRows } = partitionComposerSubagentStripRows(items);
   const subagentCount = liveRows.length + settledRows.length;
   const runningCount = liveRows.filter((item) => item.isActive).length;
@@ -199,11 +195,7 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
   const settledDisclosureLabel = settledExpanded ? copy.hideSettled : copy.showSettled;
 
   return (
-    <ComposerStackedPanel
-      passthroughSideMargins
-      attachedToPrevious={attachedToPrevious}
-      data-testid="composer-subagent-strip"
-    >
+    <ComposerStackedPanel data-testid="composer-subagent-strip">
       <ComposerStackedPanelHeaderRow>
         <ComposerStackedPanelRowMain>
           {compact && runningCount > 0 ? (

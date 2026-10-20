@@ -10,6 +10,7 @@ import { resolveSubagentPresentationForThread } from "~/lib/subagentPresentation
 import { basenameOfPath } from "~/file-icons";
 import type { LucideIcon } from "~/lib/icons";
 import {
+  BotIcon,
   DeviceMobileIcon,
   DiffIcon,
   FileIcon,
@@ -53,6 +54,7 @@ const RIGHT_DOCK_PANE_ICONS: Record<RightDockPaneKind, LucideIcon> = {
   git: GitCommitIcon,
   pullRequest: GitPullRequestIcon,
   services: ServerIcon,
+  subagents: BotIcon,
 };
 
 // Always resolve pane meta through this helper instead of indexing the map

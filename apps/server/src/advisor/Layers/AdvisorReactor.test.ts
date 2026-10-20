@@ -1,4 +1,4 @@
-import { ProviderKind } from "@synara/contracts";
+import { DEFAULT_SERVER_SETTINGS } from "@synara/contracts";
 import type { AdvisorVerdict, OrchestrationCommand, OrchestrationEvent } from "@synara/contracts";
 import { Effect, Layer, Option, Queue, Stream } from "effect";
 import { describe, expect, it } from "vitest";
@@ -129,14 +129,11 @@ async function withReactor<A>(
 
         const settings = {
           getSettings: Effect.succeed({
+            ...DEFAULT_SERVER_SETTINGS,
             advisor: {
               enabled: options.advisorEnabled ?? true,
               modelSelection: { provider: "codex", model: "gpt-5.1-codex" },
             },
-            // The reactor resolves CLI paths out of these for the advisor's
-            // inference process; every provider key has to exist, as it does
-            // in a decoded ServerSettings.
-            providers: Object.fromEntries(ProviderKind.literals.map((provider) => [provider, {}])),
           }),
         } as unknown as import("../../serverSettings.ts").ServerSettingsShape;
 

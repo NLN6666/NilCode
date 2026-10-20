@@ -5,6 +5,7 @@ import {
   type ModelSlug,
   type ProviderNativeCommandDescriptor,
   type ProviderMentionReference,
+  type ProviderInstanceId,
   type ProviderKind,
   type ProviderPluginDescriptor,
   type ProviderSkillDescriptor,
@@ -36,7 +37,12 @@ import { cn } from "~/lib/utils";
 import { resolveAgentChipColor } from "../composerInlineChip";
 import { FileEntryIcon } from "./FileEntryIcon";
 import { ProviderIcon } from "../ProviderIcon";
-import { ComposerMenuPanel, COMPOSER_MENU_PANEL_GLYPH_CLASS_NAME, type ComposerMenuPanelGroup } from "./ComposerMenuPanel";
+import {
+  ComposerMenuPanel,
+  COMPOSER_MENU_PANEL_GLYPH_CLASS_NAME,
+  type ComposerMenuPanelGroup,
+} from "./ComposerMenuPanel";
+import { ConnectorIcon } from "../ConnectorIcon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useMessages } from "~/i18n/context";
 import type { Messages } from "~/i18n/locales/en";
@@ -100,6 +106,10 @@ function commandMenuTrailingMeta(
     return copy.plugin;
   }
 
+  if (item.type === "connector") {
+    return "Connector";
+  }
+
   if (item.type === "thread") {
     return null;
   }
@@ -155,6 +165,7 @@ function commandMenuSecondaryText(item: ComposerCommandItem): string | null {
 
   if (
     item.type === "plugin" ||
+    item.type === "connector" ||
     item.type === "skill" ||
     item.type === "local-root" ||
     item.type === "color-preview" ||
@@ -246,6 +257,7 @@ export type ComposerCommandItem =
       id: string;
       type: "model";
       provider: ProviderKind;
+      instanceId: ProviderInstanceId;
       model: ModelSlug;
       label: string;
       description: string;
@@ -263,6 +275,15 @@ export type ComposerCommandItem =
       type: "thread";
       threadId: string;
       provider: ProviderKind;
+      mention: ProviderMentionReference;
+      label: string;
+      description: string;
+    }
+  | {
+      id: string;
+      type: "connector";
+      /** Display name, also what picks the brand mark or favicon. */
+      connectorName: string;
       mention: ProviderMentionReference;
       label: string;
       description: string;
@@ -311,6 +332,7 @@ export function groupCommandItems(
   labels: CommandMenuCopy["groups"],
 ): ComposerCommandGroupModel[] {
   if (triggerKind === "mention") {
+    const connectorItems = items.filter((item) => item.type === "connector");
     const pluginItems = items.filter((item) => item.type === "plugin");
     const threadItems = items.filter((item) => item.type === "thread");
     const localItems = items.filter((item) => item.type === "local-root" || item.type === "path");
@@ -322,6 +344,7 @@ export function groupCommandItems(
     const modeItems = items.filter((item) => item.type === "color-preview");
     const otherItems = items.filter(
       (item) =>
+        item.type !== "connector" &&
         item.type !== "plugin" &&
         item.type !== "thread" &&
         item.type !== "local-root" &&
@@ -331,6 +354,9 @@ export function groupCommandItems(
     );
 
     const groups: ComposerCommandGroupModel[] = [];
+    if (connectorItems.length > 0) {
+      groups.push({ id: "connectors", label: "Connectors", items: connectorItems });
+    }
     if (pluginItems.length > 0) {
       groups.push({ id: "plugins", label: labels.plugins, items: pluginItems });
     }
@@ -577,6 +603,8 @@ function commandMenuItemGlyph(item: ComposerCommandItem, theme: "light" | "dark"
       return <PluginIcon className={cls} />;
     case "thread":
       return <ProviderIcon provider={item.provider} className={cls} />;
+    case "connector":
+      return <ConnectorIcon name={item.connectorName} className={cls} />;
     case "skill":
       return <SkillCubeIcon className={cls} />;
     case "mcp-tool":

@@ -694,3 +694,24 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - Web 全量首轮 16 项失败集中于 provider 模型发现、Timeline、React Compiler 及文字/源码快照断言；修复后第二轮 413 个文件通过，唯一失败为 Provider 列表测试中误写了两次 `omp` 的完整数组断言。删除该易碎枚举/文案断言，保留 OMP/Pi 可用且无重复项的行为约束，随后 session-logic/runtimeModelCapabilities 57 项通过。ChatView React Compiler 最初因合并导致 CFG 栈溢出，将 44 个 action 订阅提为保持细粒度 selector 的 hook，footer 提入现有组件，并修正六个漏列的 computer-control memo 依赖；编译门禁 20 项通过。未执行未授权的 `bun fmt`、`bun lint`、`bun typecheck`。
 - 浏览器 Playwright 所需 headless-shell 未安装；使用本机 Chrome 的临时测试配置，完成真实挂载 ChatView 的发送、scrollback、重新打开线程、模型选择和 composer 面板用例。定位新回归：用户滚到旧消息后发送仍跳到底部，`scrollTo` 调用栈来自 LegendList 的 `initialScrollAtEnd` 被反复重定向。让 bootstrap 在首次实际落底后即撤销 permission，且阅读者接管滚动时关闭该权限；同文件的三项滚动/锚点浏览器回归转绿，MessagesTimeline 单元测试 112 项通过。保留首次线程打开的底部定位，未用延时掩盖问题。
 - 本轮 `bun run build:desktop` 4/4 全新构建成功（web、CLI、desktop 依赖图）；额外的最后 web 修改单独重新构建。上游导入的 CUA patch 和测试证据原文包含尾随空白，`git diff --cached --check` 对这些上游原件报告空白警告；不能全库自动重写上游 patch 文本。
+
+## 2026-10-19 main 合入 dev
+
+- 来源 `299fd573b1d6520c323a87c78d30be74e87e53e1`，旧 dev `a96ca72bc4111dfbed51938bf925fee150bd37e4` 保留为 `backup/dev-premerge-20261019`。第一次普通合并受 CRLF/LF 差异放大为 290 个冲突文件；只撤销本轮尚未编辑的合并，使用 `-Xrenormalize` 后处理 243 个冲突路径，不重写无关文件。
+- `@effect/platform-node-shared` 补丁的后续 hunk 新侧起始行没有扣除前一 hunk 行数变化。Bun 安装没有报错，却把 `windowsHide` 插入生成器正文，真实 `NodeServices` 导入报语法错误。修正 JS/TS 新侧偏移后重新 frozen 安装，实际服务、Windows 真实 shutdown 集成及 MCP 启动恢复；只导入 `NodeRuntime` 不会加载出错的 spawner，不能作为补丁证明。
+- 新增 RPC 与 fork RPC 合并使 contracts 声明生成触发 TS7056。沿用现有分组方式，把服务器管理 RPC 分为 `WsServerRpcGroup`，同步服务器、Web 和 packaged-client 三个消费者；没有保留临时 provider 分组或兼容别名。完整声明及生产构建通过，实际浏览器设置读取、保存及 provider 列表 RPC 已运行。
+- 上游 runtime journal 与 orchestration sequence 不是统一时钟。因果重排限定在同一 owning turn 内的槽位；不同回合和无 sequence 的时间位置保持原有归属。最终 Web 全量 6062 passed / 3 skipped，原生 Web 类型检查成功。
+- Windows 显式指定的 dev-runner 端口不会被 dry-run 探测；390xx 保留端口在无 listener 时仍可能报 EADDRINUSE。使用 IPv4/IPv6 都可绑定的空闲端口、隔离 HOME/USERPROFILE 和数据目录，真实 Node 服务执行完整迁移链。停服后读取实际 SQLite，确认上游 135 后是 fork browser sharing 136、Advisor 137。
+- Windows hang-dump 保留测试连续写入四个文件时可能得到相同 mtime，进入 ID tie-breaker，不能据写入顺序推断新旧。fixture 使用显式递增时间戳；保留原有删除旧 incident、保留新 incident 和不碰无关文件的断言。Windows shutdown/watchdog/hang-dump 三文件最终 25 项通过。
+- MCP probe 的旧本地 PATH/PATHEXT 和同步 existsSync 实现违反上游新增的 fs budget。改用现有共享 process plan/spawn，保留 launcher 的树清理；协议测试 18 项通过，真实带空格路径的 `.cmd` MCP 服务完成 initialize/tools-list，且结束后该自有 child PID 已不存在。未调用任何 MCP 工具。
+- 隔离浏览器已验证终端的 PowerShell 提示符、classic/rail 切换、中文设置和十个互不重复且禁用的 provider 条目；没有 JavaScript 错误。未运行真实模型回合、安装、push 或部署。测试证据位于 `D:/Codes/NilCode-merge-evidence-20261019`；不能把构建成功当成签名安装包验证。
+- 服务端完整首轮为 9139 passed / 237 failed / 101 skipped；使用独立旧 dev 和 main 对照，而不是按失败总数归因。两个对照的 server `test` script 本身已带 `--maxWorkers=1 --no-file-parallelism`，再次追加会被 Vitest 拒绝，必须先读取 script 再传额外选项。
+- Advisor 的九个失败来自旧 fixture 把每个 decoded provider setting 填成 `{}`；新 helper 在读取 accounts 之前就失败，旧 helper 也无法读取 binaryPath。fixture 使用真实默认设置，保留开关、线程覆盖、投递和请求过滤断言；Advisor/网关/旧设置迁移三文件 68 项通过，没有放松生产 gate。
+- 子代理 reasoning 的同名场景在两个 parent 分支各自通过、在组合树失败：fork 的流式预览与上游已完成 buffer 消费相遇，活动 ID 仍从原始父线程事件派生。预览及最终 projection 都绑定逻辑 owner thread，常规同线程事件不额外复制；用例同时检查只保留一个 child-owned 已完成 reasoning 行。完整 ingestion 185 项通过。
+- 原生 Claude 压缩已经验证命令能力，不能再等待仅普通提示词会使用的子代理目录扫描。压缩跳过该扫描，普通提示词仍使用 composer 同源目录；完整 ClaudeAdapter 293 项通过。移除旧的 prompt 转发/实时预算 setter 调用快照，保留新原生压缩、安全取消、恢复和 token 会计约束；会计用例不再固定无关的默认窗口。
+- 网关提示词在两边各自不超预算，合并后达到 6147 字符。合并重复能力指导并缩短守护进程/证据说明，保留全部规则，实际渲染为 6023 字符（visuals 为 6139），版本更新为 `2026-10-19.1`；预算和每版本投递门禁 16 项通过。模型缓存用例明确等到手动刷新可用，保留上游防刷新风暴节流；缓存 25 项通过。
+- 最终 `lint` 通过，321 个本轮代码文件的格式检查通过；全仓 formatter 仍报告上游/Windows 行尾存量问题。原生 Web 类型检查通过，server 72 条和 desktop 17 条诊断没有新增相对于合并前的诊断类型/消息（忽略行号及 TypeScript 展开成员计数）。最后 CLI 已重新构建，并在独立 HOME/USERPROFILE、production Stable 模式启动，浏览器实际加载隔离项目且无 JavaScript 错误；验证服务和标签均已关闭。
+- main 的广域对照提前退出，未生成完整 JSON；只使用已完成条目的精确文件名/唯一用例名证据，再定向补查缺失场景，不冒称整套上游检查完成。修复及移除过时断言后，首轮剩余 202 个失败名称均有父分支对照：111 个在旧 dev、11 个在 main 已完成片段、80 个在 main 补查中复现。未在最终修复后重跑整个服务端套件。
+- 最后一个大 diff 真实 Git 场景重复报临时目录 `EBUSY`：suite 共享 GitCore 服务的后台 upstream refresh 可以晚于 fixture 仓库释放。仅让该用例持有独立 scoped GitCore，并先关闭其后台任务、再释放临时仓库；没有延时、重试或吞异常，也没有改慢生产 Git 路径。原有内容校验、提交、本地 bare remote 推送及 up-to-date 跳过断言全部保留，聚焦场景通过。最终 server 类型检查仍为 72 条既有错误、无新增诊断，`lint` 通过。
+- OMP 实例健康检查的 Windows fixture 将 `omp.exe` 与解析出的 `omp.EXE` 按字符串比较；`realpathSync` 也不会自动统一其大小写。改为比较实际文件的卷号/文件 ID，继续断言选中实例的 PATH、实例标记及 ready 状态，定向用例通过。服务端类型检查从 package 目录执行时诊断路径为 `src/...`，与根目录执行产生的 `apps/server/src/...` 统一前缀后没有新增诊断，仍为 72 条。
+- 两个任务专用对照 worktree 的 `mockServiceWorker.js` 在 `status` 中显示修改，但普通 `git diff --exit-code` 均为空；仅对该生成文件刷新各自 index，再普通移除 worktree 成功，没有使用 `--force`，保留回退分支。

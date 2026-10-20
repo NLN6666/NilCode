@@ -6,6 +6,7 @@ import type { Messages } from "../en";
 export const workspace: Messages["workspace"] = {
   kanban: {
     columns: {
+      awaitingYou: "等待你处理",
       draft: "草稿",
       inProgress: "进行中",
       done: "已完成",

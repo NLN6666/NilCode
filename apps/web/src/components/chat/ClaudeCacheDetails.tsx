@@ -25,7 +25,16 @@ export function ClaudeCacheDetails({
     <div className="space-y-1.5 border-t border-border/50 pt-2 text-ui leading-snug text-muted-foreground">
       <div className="font-medium text-foreground">{copy.state(label)}</div>
       {observation?.ttlSeconds !== undefined ? (
-        <div>{copy.observedLifetime(formatCacheDuration(observation.ttlSeconds, copy))}</div>
+        <div>
+          {copy.observedLifetime(
+            observation.partialTtlSeconds !== undefined
+              ? copy.lifetimeRange(
+                  formatCacheDuration(observation.partialTtlSeconds, copy),
+                  formatCacheDuration(observation.ttlSeconds, copy),
+                )
+              : formatCacheDuration(observation.ttlSeconds, copy),
+          )}
+        </div>
       ) : (
         <div>{copy.lifetimeUnknown}</div>
       )}
@@ -62,7 +71,7 @@ function formatCacheTokens(value: number | undefined, copy: CacheCopy): string {
   return value === undefined ? copy.unavailable : copy.tokens(formatContextWindowTokens(value));
 }
 
-function formatCacheDuration(seconds: number, copy: CacheCopy): string {
+export function formatCacheDuration(seconds: number, copy: CacheCopy): string {
   if (seconds < 60) return copy.lessThanMinute;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return copy.minutes(minutes);

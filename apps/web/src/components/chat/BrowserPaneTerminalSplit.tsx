@@ -177,7 +177,7 @@ export function BrowserPaneTerminalSplit(props: {
       <div className="flex shrink-0 flex-col bg-[var(--color-background-surface)]">
         <button
           type="button"
-          className="flex h-7 shrink-0 items-center gap-1.5 px-2 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+          className="flex h-7 shrink-0 items-center gap-1.5 px-2 text-ui-xs text-muted-foreground transition-colors hover:text-foreground"
           aria-expanded={expanded}
           aria-label={expanded ? copy.collapse : copy.expand}
           title={expanded ? copy.collapse : copy.expand}
@@ -207,30 +207,13 @@ export function BrowserPaneTerminalSplit(props: {
               threadId={scopeId}
               cwd={cwd}
               runtimeEnv={runtimeEnv}
-              height={resolvedTerminalHeight}
-              presentationMode="workspace"
               isVisible
-              terminalIds={terminalState.terminalIds}
               terminalLabelsById={terminalState.terminalLabelsById}
               terminalTitleOverridesById={terminalState.terminalTitleOverridesById}
               terminalCliKindsById={terminalState.terminalCliKindsById}
-              terminalAttentionStatesById={terminalState.terminalAttentionStatesById ?? {}}
-              runningTerminalIds={terminalState.runningTerminalIds}
               activeTerminalId={terminalState.activeTerminalId}
-              terminalGroups={terminalState.terminalGroups}
-              activeTerminalGroupId={terminalState.activeTerminalGroupId}
               focusRequestId={terminal.focusRequestId}
-              onSplitTerminal={terminal.splitRight}
-              onSplitTerminalDown={terminal.splitDown}
-              onNewTerminal={terminal.newTerminalGroup}
-              onNewTerminalTab={terminal.createTerminalTab}
-              onMoveTerminalToGroup={terminal.moveTerminalToNewGroup}
-              onActiveTerminalChange={terminal.activateTerminal}
-              onCloseTerminal={terminal.closeTerminal}
               onTerminalSessionExited={terminal.handleTerminalSessionExited}
-              onCloseTerminalGroup={terminal.closeTerminalGroup}
-              onHeightChange={terminal.setTerminalHeight}
-              onResizeTerminalSplit={terminal.resizeTerminalSplit}
               onTerminalMetadataChange={terminal.setTerminalMetadata}
               onTerminalActivityChange={terminal.setTerminalActivity}
               onAddTerminalContext={composerTarget}

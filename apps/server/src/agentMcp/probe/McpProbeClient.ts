@@ -2,15 +2,14 @@
 // Purpose: Minimal MCP client that asks one configured server what tools it exposes.
 // Layer: Agent MCP tool discovery
 // Exports: McpProbeToolDescriptor, McpProbeError, MCP_PROBE_TIMEOUT_MS, probeMcpServerTools,
-//          runMcpProbeSession, resolveMcpProbeSpawnTarget, McpProbeKillProcessTree
+//          runMcpProbeSession, McpProbeKillProcessTree
 //
 // Only `initialize`, `notifications/initialized` and `tools/list` are ever sent. `tools/call` is
 // deliberately absent: typing `&` in the composer must never be able to execute anything.
 
 import { redactMcpUrl } from "@synara/shared/mcp/redact";
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { extname, join } from "node:path";
+import { prepareProcess } from "@synara/shared/platformProcess";
+import { spawnPlannedProcess } from "@synara/shared/processRuntime";
 
 import { defaultProcessTreeKiller } from "../../terminal/processTreeKiller";
 import {
@@ -77,9 +76,8 @@ export interface McpProbeChildProcess {
   readonly stdout: McpProbeReadable | null;
   readonly pid?: number | undefined;
   /**
-   * Set by the spawn seam when the direct child is a cmd.exe wrapper rather than the server
-   * itself. Windows has no process groups, so `kill()` would reap the wrapper and orphan the
-   * server it forked; `dispose` terminates the whole tree by pid instead.
+   * Set by the spawn seam when the platform runtime interposes a launcher. Killing only the
+   * launcher would orphan the server it forked; `dispose` terminates the whole tree by pid.
    */
   readonly shellWrapped?: boolean;
   on(event: "error", listener: (error: Error) => void): unknown;
@@ -215,100 +213,18 @@ export async function runMcpProbeSession(
 
 // ── stdio transport ───────────────────────────────────────────────────
 
-const WINDOWS_SHELL_EXTENSIONS = new Set([".CMD", ".BAT"]);
-const WINDOWS_DEFAULT_PATH_EXTENSIONS = [".COM", ".EXE", ".BAT", ".CMD"];
-
-function readWindowsPathExtensions(env: NodeJS.ProcessEnv): ReadonlyArray<string> {
-  const parsed = (env.PATHEXT ?? "")
-    .split(";")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0)
-    .map((entry) => (entry.startsWith(".") ? entry : `.${entry}`).toUpperCase());
-  return parsed.length > 0 ? [...new Set(parsed)] : WINDOWS_DEFAULT_PATH_EXTENSIONS;
-}
-
-// cmd.exe has no escape character: a literal quote is written by doubling it.
-function quoteWindowsShellArgument(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`;
-}
-
-export interface McpProbeSpawnTarget {
-  readonly command: string;
-  readonly args: ReadonlyArray<string>;
-  readonly shell: boolean;
-}
-
-/**
- * Resolves how a configured `command` must actually be launched.
- *
- * On POSIX this is the identity. On Windows a bare `npx` names `npx.cmd`, which `spawn` neither
- * finds (it ignores PATHEXT) nor is allowed to execute directly (Node refuses `.cmd`/`.bat`
- * without a shell since the 2024 argument-injection fix), so the command is resolved against
- * PATH and, when it turns out to be a batch wrapper, routed through cmd.exe with every argument
- * quoted. An unresolvable command is passed through untouched so the spawn failure — not a
- * guess — is what the user sees.
- */
-export function resolveMcpProbeSpawnTarget(input: {
-  readonly command: string;
-  readonly args: ReadonlyArray<string>;
-  readonly platform: NodeJS.Platform;
-  readonly env: NodeJS.ProcessEnv;
-}): McpProbeSpawnTarget {
-  if (input.platform !== "win32") {
-    return { command: input.command, args: input.args, shell: false };
-  }
-
-  const extensions = readWindowsPathExtensions(input.env);
-  const hasKnownExtension = WINDOWS_SHELL_EXTENSIONS.has(extname(input.command).toUpperCase());
-  const candidates =
-    extname(input.command).length > 0
-      ? [input.command]
-      : [input.command, ...extensions.map((extension) => `${input.command}${extension}`)];
-  const directories =
-    input.command.includes("/") || input.command.includes("\\")
-      ? [""]
-      : (input.env.PATH ?? input.env.Path ?? "")
-          .split(";")
-          .map((entry) => entry.trim().replace(/^"|"$/g, ""))
-          .filter((entry) => entry.length > 0);
-
-  const resolved =
-    directories
-      .flatMap((directory) =>
-        candidates.map((candidate) => (directory ? join(directory, candidate) : candidate)),
-      )
-      .find((candidate) => existsSync(candidate)) ?? (hasKnownExtension ? input.command : null);
-
-  if (resolved === null) {
-    return { command: input.command, args: input.args, shell: false };
-  }
-  if (!WINDOWS_SHELL_EXTENSIONS.has(extname(resolved).toUpperCase())) {
-    return { command: resolved, args: input.args, shell: false };
-  }
-  return {
-    command: quoteWindowsShellArgument(resolved),
-    args: input.args.map(quoteWindowsShellArgument),
-    shell: true,
-  };
-}
-
 const defaultSpawn: McpProbeSpawn = ({ command, args, env }) => {
-  const target = resolveMcpProbeSpawnTarget({
-    command,
-    args,
-    platform: process.platform,
-    env: process.env,
-  });
-  const child = spawn(target.command, [...target.args], {
+  const childEnv = { ...process.env, ...env };
+  const plan = prepareProcess(command, args, { env: childEnv });
+  const child = spawnPlannedProcess(plan, {
     // stderr is discarded rather than piped: nothing reads it, and an unread pipe would
     // eventually block a chatty server mid-handshake.
     stdio: ["pipe", "pipe", "ignore"],
-    env: { ...process.env, ...env },
-    shell: target.shell,
-    windowsHide: true,
+    env: childEnv,
   });
-  // Only the spawn seam knows a shell was interposed, and `dispose` has to know to take the tree.
-  return target.shell ? Object.assign(child, { shellWrapped: true as const }) : child;
+  return plan.command !== plan.resolvedCommand
+    ? Object.assign(child, { shellWrapped: true as const })
+    : child;
 };
 
 /**

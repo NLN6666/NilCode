@@ -6,7 +6,6 @@ import {
   probeMcpServerTools,
   readJsonRpcMessages,
   readToolDescriptors,
-  resolveMcpProbeSpawnTarget,
   runMcpProbeSession,
   type McpProbeChildProcess,
   type McpProbeFetch,
@@ -450,44 +449,5 @@ describe("probeMcpServerTools over http", () => {
     await expect(
       probeMcpServerTools({ connection: HTTP_CONNECTION, fetch: leakyFetch }),
     ).rejects.toThrow(/https:\/\/mcp\.example\.com\/mcp \(<redacted>\)/);
-  });
-});
-
-describe("resolveMcpProbeSpawnTarget", () => {
-  it("is the identity on posix", () => {
-    expect(
-      resolveMcpProbeSpawnTarget({
-        command: "npx",
-        args: ["-y", "pkg"],
-        platform: "linux",
-        env: {},
-      }),
-    ).toEqual({ command: "npx", args: ["-y", "pkg"], shell: false });
-  });
-
-  it("passes an unresolvable Windows command through so the spawn error is the real one", () => {
-    expect(
-      resolveMcpProbeSpawnTarget({
-        command: "definitely-not-installed",
-        args: ["a b"],
-        platform: "win32",
-        env: { PATH: "", PATHEXT: ".COM;.EXE;.CMD" },
-      }),
-    ).toEqual({ command: "definitely-not-installed", args: ["a b"], shell: false });
-  });
-
-  it("routes an explicit .cmd through cmd.exe with quoted arguments", () => {
-    expect(
-      resolveMcpProbeSpawnTarget({
-        command: "C:\\tools\\npx.cmd",
-        args: ["-y", 'a "quoted" arg'],
-        platform: "win32",
-        env: { PATH: "", PATHEXT: ".COM;.EXE;.CMD" },
-      }),
-    ).toEqual({
-      command: '"C:\\tools\\npx.cmd"',
-      args: ['"-y"', '"a ""quoted"" arg"'],
-      shell: true,
-    });
   });
 });

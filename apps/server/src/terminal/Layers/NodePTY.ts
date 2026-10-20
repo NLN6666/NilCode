@@ -142,14 +142,18 @@ export const makeNodePtyLayer = (loadNodePtyModule: NodePtyLoader = () => import
           yield* ensureNodePtySpawnHelperExecutableCached;
           const ptyProcess = yield* Effect.try({
             try: () =>
-              nodePty.spawn(input.shell, input.args ?? [], {
-                cwd: input.cwd,
-                cols: input.cols,
-                rows: input.rows,
-                env: input.env,
-                name: globalThis.process.platform === "win32" ? "xterm-color" : "xterm-256color",
-                ...ptyPlatformSpawnOptions(globalThis.process.platform),
-              }),
+              nodePty.spawn(
+                input.shell,
+                input.windowsVerbatimArguments ? (input.args ?? []).join(" ") : (input.args ?? []),
+                {
+                  cwd: input.cwd,
+                  cols: input.cols,
+                  rows: input.rows,
+                  env: input.env,
+                  name: globalThis.process.platform === "win32" ? "xterm-color" : "xterm-256color",
+                  ...ptyPlatformSpawnOptions(globalThis.process.platform),
+                },
+              ),
             catch: (cause) =>
               new PtySpawnError({
                 adapter: "node-pty",

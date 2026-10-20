@@ -4,6 +4,7 @@
 
 import {
   GROK_REASONING_EFFORT_OPTIONS,
+  ProviderInstanceId,
   ProviderKind,
   type ClaudeCodeEffort,
   type CodexReasoningEffort,
@@ -33,7 +34,10 @@ import {
   composerContextWindowOptionId,
   composerEffortOptionId,
 } from "./components/chat/composerTraits";
-import type { ComposerThreadDraftState } from "./composerDraftDomain";
+import type {
+  ComposerThreadDraftState,
+  ModelSelectionByProviderInstance,
+} from "./composerDraftDomain";
 import { classifyProviderReasoningEffortSupport } from "./lib/codexReasoningEffort";
 
 export const COMPOSER_PROVIDER_KINDS = [
@@ -50,6 +54,7 @@ export const COMPOSER_PROVIDER_KINDS = [
 ] as const satisfies readonly ProviderKind[];
 
 const isProviderKind = Schema.is(ProviderKind);
+const isProviderInstanceId = Schema.is(ProviderInstanceId);
 
 const GROK_REASONING_EFFORT_SET = new Set<string>(GROK_REASONING_EFFORT_OPTIONS);
 
@@ -83,17 +88,39 @@ function mergeProviderModelOptionsFromSelections(
   return Object.keys(result).length > 0 ? (result as ProviderModelOptions) : null;
 }
 
+function modelSelectionMatchesProviderInstance(
+  selection: ModelSelection | null | undefined,
+  provider: ProviderKind,
+  instanceId: ProviderInstanceId | null | undefined,
+): selection is ModelSelection {
+  if (!selection || selection.provider !== provider) {
+    return false;
+  }
+  return (selection.instanceId ?? selection.provider) === (instanceId ?? provider);
+}
+
 function deriveEffectiveComposerModelOptions(input: {
   draft:
     | Pick<ComposerThreadDraftState, "modelSelectionByProvider" | "activeProvider">
     | null
     | undefined;
+  selectedProvider: ProviderKind;
+  selectedProviderInstanceId?: ProviderInstanceId | null | undefined;
   threadModelSelection: ModelSelection | null | undefined;
   projectModelSelection: ModelSelection | null | undefined;
 }): ProviderModelOptions | null {
+  const selectionForTarget = (selection: ModelSelection | null | undefined) =>
+    selection?.provider !== input.selectedProvider ||
+    modelSelectionMatchesProviderInstance(
+      selection,
+      input.selectedProvider,
+      input.selectedProviderInstanceId,
+    )
+      ? selection
+      : null;
   const baseOptions = mergeProviderModelOptionsFromSelections(
-    input.projectModelSelection,
-    input.threadModelSelection,
+    selectionForTarget(input.projectModelSelection),
+    selectionForTarget(input.threadModelSelection),
   );
   const draftSelections = input.draft?.modelSelectionByProvider;
   if (!draftSelections) {
@@ -103,10 +130,19 @@ function deriveEffectiveComposerModelOptions(input: {
   const result: Partial<Record<ProviderKind, ProviderModelOptions[ProviderKind]>> = baseOptions
     ? { ...baseOptions }
     : {};
-  for (const [provider, selection] of Object.entries(draftSelections) as Array<
-    [ProviderKind, ModelSelection | undefined]
-  >) {
+  for (const selection of Object.values(draftSelections)) {
     if (!selection) continue;
+    const provider = selection.provider;
+    if (
+      provider === input.selectedProvider &&
+      !modelSelectionMatchesProviderInstance(
+        selection,
+        input.selectedProvider,
+        input.selectedProviderInstanceId,
+      )
+    ) {
+      continue;
+    }
     if (selection.options) {
       result[provider] = selection.options;
     } else {
@@ -134,6 +170,42 @@ function trimStringOrUndefined(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+export function normalizeProviderInstanceId(value: unknown): ProviderInstanceId | undefined {
+  const trimmed = trimStringOrUndefined(value);
+  return trimmed !== undefined && isProviderInstanceId(trimmed) ? trimmed : undefined;
+}
+
+export function providerInstanceModelSelectionKey(
+  provider: ProviderKind,
+  instanceId?: ProviderInstanceId | null | undefined,
+): ProviderInstanceId {
+  return normalizeProviderInstanceId(instanceId) ?? (provider as ProviderInstanceId);
+}
+
+export function modelSelectionStorageKey(selection: ModelSelection): ProviderInstanceId {
+  return providerInstanceModelSelectionKey(selection.provider, selection.instanceId);
+}
+
+export function readModelSelectionForProviderInstance(
+  selections: ModelSelectionByProviderInstance | null | undefined,
+  provider: ProviderKind,
+  instanceId?: ProviderInstanceId | null | undefined,
+): ModelSelection | undefined {
+  return selections?.[providerInstanceModelSelectionKey(provider, instanceId)];
+}
+
+export function normalizeModelSelectionMapByInstance(
+  selections: ModelSelectionByProviderInstance,
+): ModelSelectionByProviderInstance {
+  const result: ModelSelectionByProviderInstance = {};
+  for (const selection of Object.values(selections)) {
+    if (selection) {
+      result[modelSelectionStorageKey(selection)] = selection;
+    }
+  }
+  return result;
+}
+
 function booleanOrUndefined(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
@@ -147,12 +219,15 @@ export function makeModelSelection(
   model: string,
   options?: ProviderModelOptions[ProviderKind],
   supportsAutoMode?: boolean,
+  instanceId?: ProviderInstanceId | null | undefined,
 ): ModelSelection {
+  const instance = normalizeProviderInstanceId(instanceId);
   switch (provider) {
     case "antigravity":
       return {
         provider,
         model,
+        ...(instance ? { instanceId: instance } : {}),
         ...(options
           ? {
               options: options as Extract<ModelSelection, { provider: "antigravity" }>["options"],
@@ -163,6 +238,7 @@ export function makeModelSelection(
       return {
         provider,
         model,
+        ...(instance ? { instanceId: instance } : {}),
         ...(options
           ? { options: options as Extract<ModelSelection, { provider: "codex" }>["options"] }
           : {}),
@@ -171,6 +247,7 @@ export function makeModelSelection(
       return {
         provider,
         model,
+        ...(instance ? { instanceId: instance } : {}),
         ...(options
           ? {
               options: options as Extract<ModelSelection, { provider: "claudeAgent" }>["options"],
@@ -182,6 +259,7 @@ export function makeModelSelection(
       return {
         provider,
         model,
+        ...(instance ? { instanceId: instance } : {}),
         ...(options
           ? { options: options as Extract<ModelSelection, { provider: "cursor" }>["options"] }
           : {}),
@@ -190,6 +268,7 @@ export function makeModelSelection(
       return {
         provider,
         model,
+        ...(instance ? { instanceId: instance } : {}),
         ...(options
           ? { options: options as Extract<ModelSelection, { provider: "devin" }>["options"] }
           : {}),
@@ -198,6 +277,7 @@ export function makeModelSelection(
       return {
         provider,
         model,
+        ...(instance ? { instanceId: instance } : {}),
         ...(options
           ? { options: options as Extract<ModelSelection, { provider: "grok" }>["options"] }
           : {}),
@@ -206,6 +286,7 @@ export function makeModelSelection(
       return {
         provider,
         model,
+        ...(instance ? { instanceId: instance } : {}),
         ...(options
           ? { options: options as Extract<ModelSelection, { provider: "droid" }>["options"] }
           : {}),
@@ -214,6 +295,7 @@ export function makeModelSelection(
       return {
         provider,
         model,
+        ...(instance ? { instanceId: instance } : {}),
         ...(options
           ? { options: options as Extract<ModelSelection, { provider: "opencode" }>["options"] }
           : {}),
@@ -222,6 +304,7 @@ export function makeModelSelection(
       return {
         provider,
         model,
+        ...(instance ? { instanceId: instance } : {}),
         ...(options
           ? { options: options as Extract<ModelSelection, { provider: "pi" }>["options"] }
           : {}),
@@ -230,6 +313,7 @@ export function makeModelSelection(
       return {
         provider,
         model,
+        ...(instance ? { instanceId: instance } : {}),
         ...(options
           ? { options: options as Extract<ModelSelection, { provider: "omp" }>["options"] }
           : {}),
@@ -458,6 +542,7 @@ export function normalizeModelSelection(
   if (typeof rawModel !== "string") {
     return null;
   }
+  const instanceId = normalizeProviderInstanceId(candidate?.instanceId);
   const antigravityLegacyMatch =
     provider === "antigravity" ? rawModel.trim().match(/^(.*?)\s+\(([^()]+)\)$/u) : null;
   const antigravityLegacyEffort = antigravityLegacyMatch?.[2]?.trim().toLowerCase();
@@ -516,6 +601,7 @@ export function normalizeModelSelection(
     provider === "claudeAgent" && typeof candidate?.supportsAutoMode === "boolean"
       ? candidate.supportsAutoMode
       : undefined,
+    instanceId,
   );
 }
 
@@ -523,7 +609,10 @@ export function reconcileProviderScopedModelSelection(
   requested: ModelSelection,
   current: ModelSelection | null | undefined,
 ): ModelSelection {
-  if (requested.options !== undefined || current?.provider !== requested.provider) {
+  if (
+    requested.options !== undefined ||
+    !modelSelectionMatchesProviderInstance(current, requested.provider, requested.instanceId)
+  ) {
     return requested;
   }
   if (current.model === requested.model) {
@@ -536,6 +625,7 @@ export function reconcileProviderScopedModelSelection(
       requested.provider === "claudeAgent"
         ? (requested.supportsAutoMode ?? currentSupportsAutoMode)
         : undefined,
+      requested.instanceId,
     );
   }
   if (
@@ -573,6 +663,7 @@ export function reconcileProviderScopedModelSelection(
     requested.model,
     preservedOptions,
     requested.provider === "claudeAgent" ? requested.supportsAutoMode : undefined,
+    requested.instanceId,
   );
 }
 
@@ -592,6 +683,7 @@ export function legacySyncModelSelectionOptions(
     modelSelection.model,
     normalizedOptions,
     modelSelection.provider === "claudeAgent" ? modelSelection.supportsAutoMode : undefined,
+    modelSelection.instanceId,
   );
 }
 
@@ -630,8 +722,8 @@ function legacyReplaceProviderModelOptions(
 export function legacyToModelSelectionByProvider(
   modelSelection: ModelSelection | null,
   modelOptions: ProviderModelOptions | null | undefined,
-): Partial<Record<ProviderKind, ModelSelection>> {
-  const result: Partial<Record<ProviderKind, ModelSelection>> = {};
+): ModelSelectionByProviderInstance {
+  const result: ModelSelectionByProviderInstance = {};
   // Add entries from the options bag (for non-active providers)
   if (modelOptions) {
     for (const provider of COMPOSER_PROVIDER_KINDS) {
@@ -640,7 +732,7 @@ export function legacyToModelSelectionByProvider(
         const model =
           modelSelection?.provider === provider ? modelSelection.model : getDefaultModel(provider);
         if (model) {
-          result[provider] = makeModelSelection(
+          result[providerInstanceModelSelectionKey(provider)] = makeModelSelection(
             provider,
             model,
             provider === "grok" ? normalizeGrokModelOptions(model, modelOptions.grok) : options,
@@ -651,7 +743,7 @@ export function legacyToModelSelectionByProvider(
   }
   // Add/overwrite the active selection (it's authoritative for its provider)
   if (modelSelection) {
-    result[modelSelection.provider] = modelSelection;
+    result[modelSelectionStorageKey(modelSelection)] = modelSelection;
   }
   return result;
 }
@@ -662,6 +754,7 @@ export function deriveEffectiveComposerModelState(input: {
     | null
     | undefined;
   selectedProvider: ProviderKind;
+  selectedProviderInstanceId?: ProviderInstanceId | null | undefined;
   threadModelSelection: ModelSelection | null | undefined;
   projectModelSelection: ModelSelection | null | undefined;
   customModelsByProvider: Record<ProviderKind, readonly string[]>;
@@ -669,6 +762,14 @@ export function deriveEffectiveComposerModelState(input: {
     Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>
   >;
 }): EffectiveComposerModelState {
+  const selectionMatchesSelectedInstance = (
+    selection: ModelSelection | null | undefined,
+  ): selection is ModelSelection =>
+    modelSelectionMatchesProviderInstance(
+      selection,
+      input.selectedProvider,
+      input.selectedProviderInstanceId,
+    );
   const resolveAvailableModel = (candidate: string | null | undefined): ModelSlug | null => {
     const availableOptions = input.availableModelOptionsByProvider?.[input.selectedProvider];
     if (!availableOptions || availableOptions.length === 0) {
@@ -678,25 +779,48 @@ export function deriveEffectiveComposerModelState(input: {
   };
   const baseModel = resolveModelSlugForProvider(
     input.selectedProvider,
-    (input.threadModelSelection?.provider === input.selectedProvider
+    (selectionMatchesSelectedInstance(input.threadModelSelection)
       ? input.threadModelSelection.model
       : null) ??
-      (input.projectModelSelection?.provider === input.selectedProvider
+      (selectionMatchesSelectedInstance(input.projectModelSelection)
         ? input.projectModelSelection.model
         : null) ??
       getDefaultModel(input.selectedProvider),
   );
-  const persistedThreadModel =
-    input.threadModelSelection?.provider === input.selectedProvider
-      ? (normalizeModelSlug(input.threadModelSelection.model, input.selectedProvider) ??
-        input.threadModelSelection.model)
-      : null;
-  const persistedProjectModel =
-    input.projectModelSelection?.provider === input.selectedProvider
-      ? (normalizeModelSlug(input.projectModelSelection.model, input.selectedProvider) ??
-        input.projectModelSelection.model)
-      : null;
-  const activeSelection = input.draft?.modelSelectionByProvider?.[input.selectedProvider];
+  const persistedThreadModel = selectionMatchesSelectedInstance(input.threadModelSelection)
+    ? (normalizeModelSlug(input.threadModelSelection.model, input.selectedProvider) ??
+      input.threadModelSelection.model)
+    : null;
+  const persistedProjectModel = selectionMatchesSelectedInstance(input.projectModelSelection)
+    ? (normalizeModelSlug(input.projectModelSelection.model, input.selectedProvider) ??
+      input.projectModelSelection.model)
+    : null;
+  const activeSelection = readModelSelectionForProviderInstance(
+    input.draft?.modelSelectionByProvider,
+    input.selectedProvider,
+    input.selectedProviderInstanceId,
+  );
+  // OMP selections are explicit, potentially opaque selectors, not catalog
+  // rankings. Keep the requested model ahead of older selections and defaults,
+  // including obsolete picker-only role keys: the picker explains the required
+  // selection, and the OMP send boundary rejects them rather than substituting.
+  if (input.selectedProvider === "omp") {
+    const requestedSelection =
+      (selectionMatchesSelectedInstance(activeSelection) ? activeSelection : null) ??
+      (selectionMatchesSelectedInstance(input.threadModelSelection)
+        ? input.threadModelSelection
+        : null) ??
+      (selectionMatchesSelectedInstance(input.projectModelSelection)
+        ? input.projectModelSelection
+        : null);
+    if (requestedSelection) {
+      return {
+        selectedModel:
+          normalizeModelSlug(requestedSelection.model, "omp") ?? requestedSelection.model,
+        modelOptions: deriveEffectiveComposerModelOptions(input),
+      };
+    }
+  }
   const selectedDraftModel = activeSelection?.model
     ? resolveAppModelSelection(
         input.selectedProvider,
@@ -711,12 +835,12 @@ export function deriveEffectiveComposerModelState(input: {
   const selectedModel =
     resolveAvailableModel(activeSelection?.model) ??
     resolveAvailableModel(
-      input.threadModelSelection?.provider === input.selectedProvider
+      selectionMatchesSelectedInstance(input.threadModelSelection)
         ? input.threadModelSelection.model
         : null,
     ) ??
     resolveAvailableModel(
-      input.projectModelSelection?.provider === input.selectedProvider
+      selectionMatchesSelectedInstance(input.projectModelSelection)
         ? input.projectModelSelection.model
         : null,
     ) ??
@@ -746,49 +870,87 @@ export function resolvePreferredComposerModelSelection(input: {
   defaultProvider?: ProviderKind | null | undefined;
   /** User-configured per-provider defaults; consulted only after draft/thread/project. */
   defaultModelByProvider?: ReadonlyArray<DefaultModelRef> | null | undefined;
+  resolveProviderForInstanceId?: (
+    instanceId: ProviderInstanceId,
+  ) => ProviderKind | null | undefined;
 }): ModelSelection {
   // The draft's selection is the user's most recently used target: a fresh draft
   // is seeded from the sticky (last-used) state, so this precedence is what
   // makes a new chat reopen with the model and options used last time. Project
   // and global defaults only apply when nothing has been used yet.
-  const draftProviderWithSelection =
-    COMPOSER_PROVIDER_KINDS.find(
-      (provider) => input.draft?.modelSelectionByProvider?.[provider] !== undefined,
-    ) ?? null;
+  const activeInstanceId = input.draft?.activeProvider ?? null;
+  const activeDraftSelection = activeInstanceId
+    ? input.draft?.modelSelectionByProvider[activeInstanceId]
+    : undefined;
+  const draftProviderWithSelection = activeDraftSelection?.provider ?? null;
+  const activeInstanceProvider = activeInstanceId
+    ? (activeDraftSelection?.provider ??
+      input.resolveProviderForInstanceId?.(activeInstanceId) ??
+      normalizeProviderKind(activeInstanceId))
+    : null;
   const preferredProvider =
-    input.draft?.activeProvider ??
+    activeInstanceProvider ??
     draftProviderWithSelection ??
     input.threadModelSelection?.provider ??
     input.projectModelSelection?.provider ??
     input.defaultProvider ??
     "codex";
 
-  // Pi and OMP have no built-in default model; fall back to Codex only when no
-  // draft, thread, or project selection remembers their provider's model.
+  const preferredPersistedSelection =
+    input.threadModelSelection?.provider === preferredProvider
+      ? input.threadModelSelection
+      : input.projectModelSelection?.provider === preferredProvider
+        ? input.projectModelSelection
+        : null;
+  const preferredInstanceId = providerInstanceModelSelectionKey(
+    preferredProvider,
+    activeInstanceProvider === preferredProvider
+      ? activeInstanceId
+      : preferredPersistedSelection?.instanceId,
+  );
+  const persistedSelection =
+    (modelSelectionMatchesProviderInstance(
+      input.threadModelSelection,
+      preferredProvider,
+      preferredInstanceId,
+    )
+      ? input.threadModelSelection
+      : null) ??
+    (modelSelectionMatchesProviderInstance(
+      input.projectModelSelection,
+      preferredProvider,
+      preferredInstanceId,
+    )
+      ? input.projectModelSelection
+      : null);
+  const draftSelection = readModelSelectionForProviderInstance(
+    input.draft?.modelSelectionByProvider,
+    preferredProvider,
+    preferredInstanceId,
+  );
+
+  // Pi and OMP have no static default model, so an empty draft falls back to Codex.
   const fallbackProvider =
     preferredProvider === "pi" || preferredProvider === "omp" ? "codex" : preferredProvider;
+  const fallbackInstanceId =
+    fallbackProvider === preferredProvider ? preferredInstanceId : fallbackProvider;
+
   const userDefault = resolveDefaultModelRef(input.defaultModelByProvider, fallbackProvider);
   const userDefaultModel = userDefault?.slug ?? null;
   const defaultTraitOptions = defaultModelTraitOptions(fallbackProvider, userDefault);
 
   return (
-    input.draft?.modelSelectionByProvider?.[preferredProvider] ??
-    (input.threadModelSelection?.provider === preferredProvider
-      ? input.threadModelSelection
-      : null) ??
-    (input.projectModelSelection?.provider === preferredProvider
-      ? input.projectModelSelection
-      : null) ??
-    ({
-      provider: fallbackProvider,
-      model:
-        (userDefaultModel
-          ? (normalizeModelSlug(userDefaultModel, fallbackProvider) ?? userDefaultModel)
-          : null) ?? getDefaultModel(fallbackProvider),
-      // Only reached when nothing earlier in the chain remembered a model, so the
-      // stored traits apply to the model chosen right above and to no other.
-      ...(defaultTraitOptions ? { options: defaultTraitOptions } : {}),
-    } as ModelSelection)
+    draftSelection ??
+    persistedSelection ??
+    makeModelSelection(
+      fallbackProvider,
+      userDefaultModel
+        ? (normalizeModelSlug(userDefaultModel, fallbackProvider) ?? userDefaultModel)
+        : getDefaultModel(fallbackProvider),
+      defaultTraitOptions,
+      undefined,
+      fallbackInstanceId,
+    )
   );
 }
 

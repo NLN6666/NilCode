@@ -32,6 +32,19 @@ export interface AgentActivityTimelineState {
 }
 
 const REASONING_GROUP_PREFIX = "agent-reasoning";
+const SUBAGENT_PROGRESS_GROUP_PREFIX = "subagent-progress";
+
+// A subagent's own progress reported to its launcher: its current step,
+// attributed to that subagent, never the launcher's reasoning.
+export function isSubagentProgressWorkEntry(
+  entry: Pick<WorkLogEntry, "subagentProgress">,
+): boolean {
+  return entry.subagentProgress !== undefined;
+}
+
+function subagentProgressTitle(entry: Pick<WorkLogEntry, "subagentProgress">): string {
+  return entry.subagentProgress?.title ?? "Subagent";
+}
 
 /**
  * Label/toolTitle written onto the reasoning rows this module synthesizes.
@@ -63,7 +76,7 @@ export function isReasoningUpdateWorkEntry(
 }
 
 export function isCodexActivityStatusWorkEntry(entry: WorkLogEntry): boolean {
-  if (isReasoningUpdateWorkEntry(entry)) {
+  if (isReasoningUpdateWorkEntry(entry) || entry.activityKind === "tool.summary") {
     return true;
   }
   const isStatusOnlyCommand =
@@ -80,14 +93,21 @@ export function isPlainRuntimeNoticeWorkEntry(
   entry: Pick<WorkLogEntry, "activityKind" | "nativeEventType" | "providerContextLifecycle">,
 ): boolean {
   return (
-    entry.activityKind === "runtime.warning" &&
-    entry.nativeEventType !== "background_tasks_changed" &&
-    !entry.providerContextLifecycle
+    entry.activityKind === "auth.status" ||
+    (entry.activityKind === "runtime.warning" &&
+      entry.nativeEventType !== "background_tasks_changed" &&
+      entry.nativeEventType !== "monitor_event" &&
+      !entry.providerContextLifecycle)
   );
 }
 
 export function isAgentActivityWorkEntry(entry: WorkLogEntry): boolean {
-  return entry.itemType === "collab_agent_tool_call" || isReasoningUpdateWorkEntry(entry);
+  return (
+    entry.itemType === "collab_agent_tool_call" ||
+    entry.activityKind === "tool.summary" ||
+    isReasoningUpdateWorkEntry(entry) ||
+    isSubagentProgressWorkEntry(entry)
+  );
 }
 
 // Unmapped provider events keep their native type as the title and a safe detail as preview.
@@ -98,6 +118,9 @@ export function isUnmappedProviderEventWorkEntry(
 }
 
 export function formatAgentActivityEntryTitle(entry: WorkLogEntry): AgentActivityEntryTitle {
+  if (isSubagentProgressWorkEntry(entry)) {
+    return { kind: "text", text: subagentProgressTitle(entry) };
+  }
   if (isReasoningUpdateWorkEntry(entry)) {
     return { kind: "reasoning" };
   }
@@ -119,6 +142,11 @@ export function formatAgentActivityEntryPreview(entry: WorkLogEntry): string | n
     const fallbackLabel = isReasoningTraceTitleKey(entry.label) ? undefined : entry.label;
     return cleanReasoningProgressText(entry.preview ?? entry.detail ?? fallbackLabel);
   }
+  if (isSubagentProgressWorkEntry(entry)) {
+    // Progress lines are present tense ("Running …"); the step reads the same
+    // once the subagent settles, so drop the tense prefix.
+    return cleanReasoningProgressText(entry.preview ?? entry.detail);
+  }
 
   if (entry.itemType === "collab_agent_tool_call") {
     return (
@@ -133,7 +161,7 @@ export function formatAgentActivityEntryPreview(entry: WorkLogEntry): string | n
 }
 
 export function formatAgentActivityEntrySummary(entry: WorkLogEntry): string | null {
-  if (isReasoningUpdateWorkEntry(entry)) {
+  if (isReasoningUpdateWorkEntry(entry) || isSubagentProgressWorkEntry(entry)) {
     return formatAgentActivityEntryPreview(entry);
   }
 
@@ -169,8 +197,10 @@ export function deriveAgentActivityTimelineState(
     const updateCount = groupEntries.length;
     // The "N updates - <preview>" line is assembled in the component layer from
     // `reasoningUpdateCount` + `preview`, so the count phrasing can translate.
+    const { sequence: _latestSequence, ...latestContent } = latest;
     const displayEntry: WorkLogEntry = {
-      ...latest,
+      ...latestContent,
+      ...(first.sequence !== undefined ? { sequence: first.sequence } : {}),
       id: groupId,
       createdAt: first.createdAt,
       label: REASONING_TRACE_TITLE_KEY,
@@ -184,11 +214,70 @@ export function deriveAgentActivityTimelineState(
     detailById.set(groupId, buildAgentActivityDetail(groupId, displayEntry, groupEntries));
   };
 
+  // One row per subagent invocation per turn, anchored at its first update:
+  // parallel subagents interleave their updates, and a turn boundary or a
+  // different subagent always starts a new group.
+  const subagentProgressGroups = new Map<string, { index: number; entries: WorkLogEntry[] }>();
+  const upsertSubagentProgressGroup = (entry: WorkLogEntry) => {
+    const key = `${entry.turnId ?? "no-turn"}\u001f${entry.subagentProgress!.toolUseId}\u001f${entry.subagentProgress!.invocationId ?? "legacy"}`;
+    const group = subagentProgressGroups.get(key);
+    const groupEntries = group ? [...group.entries, entry] : [entry];
+    const first = groupEntries[0]!;
+    const groupId = `${SUBAGENT_PROGRESS_GROUP_PREFIX}:${first.id}`;
+    const latestStep = findLatestPreview(groupEntries);
+    // A subagent that was stopped or failed says so; its last step is not done.
+    const outcome = entry.subagentProgress?.outcome;
+    const outcomeLabel =
+      outcome === "stopped" ? "Stopped" : outcome === "failed" ? "Failed" : undefined;
+    const latestPreview =
+      outcomeLabel !== undefined
+        ? latestStep
+          ? `${outcomeLabel} - ${latestStep}`
+          : outcomeLabel
+        : latestStep;
+    const displayPreview =
+      groupEntries.length > 1
+        ? latestPreview
+          ? `${groupEntries.length} updates - ${latestPreview}`
+          : `${groupEntries.length} updates`
+        : latestPreview;
+    const title = subagentProgressTitle(entry);
+    const displayEntry: WorkLogEntry = {
+      ...entry,
+      id: groupId,
+      createdAt: first.createdAt,
+      ...(first.sequence !== undefined ? { sequence: first.sequence } : {}),
+      label: title,
+      toolTitle: title,
+      // Not a tool call: keep it out of "Ran N tool calls" summaries.
+      tone: outcome === "failed" ? "error" : "info",
+      ...(displayPreview ? { preview: displayPreview, detail: displayPreview } : {}),
+    };
+    if (group) {
+      timelineWorkEntries[group.index] = displayEntry;
+      group.entries = groupEntries;
+    } else {
+      subagentProgressGroups.set(key, { index: timelineWorkEntries.length, entries: groupEntries });
+      timelineWorkEntries.push(displayEntry);
+    }
+    detailById.set(groupId, buildAgentActivityDetail(groupId, displayEntry, groupEntries));
+  };
+
   for (const entry of entries) {
+    if (isSubagentProgressWorkEntry(entry)) {
+      flushReasoningEntries();
+      upsertSubagentProgressGroup(entry);
+      continue;
+    }
     // Legacy providers emit free-standing reasoning updates with no item id;
     // keep compacting those. Canonical Codex reasoning carries toolCallId, so
-    // each completed provider item remains its own visible row.
+    // each completed provider item remains its own visible row. A group never
+    // spans two turns.
     if (isReasoningUpdateWorkEntry(entry) && !entry.toolCallId) {
+      const previous = pendingReasoningEntries.at(-1);
+      if (previous && (previous.turnId ?? null) !== (entry.turnId ?? null)) {
+        flushReasoningEntries();
+      }
       pendingReasoningEntries.push(entry);
       continue;
     }

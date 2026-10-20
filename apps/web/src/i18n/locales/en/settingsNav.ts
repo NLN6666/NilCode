@@ -75,6 +75,10 @@ export const settingsNav = {
       label: "MCP connections",
       description: "Give Codex, Claude, and other local agents scoped access to Synara tasks.",
     },
+    connectors: {
+      label: "Connectors",
+      description: "Connect external services to supported provider accounts.",
+    },
     providers: {
       label: "Agent providers",
       description: "Choose visible coding agents and manage their installed CLI tools.",

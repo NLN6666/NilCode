@@ -11,6 +11,7 @@ import { createThreadSelector } from "../storeSelectors";
 import { useStore } from "../store";
 import { isThreadActivelyWorking } from "./Sidebar.logic";
 import { resolveSubagentPresentationForThread } from "../lib/subagentPresentation";
+import { useThreadHasPendingDraft } from "../composerDraftStore";
 import { resolveThreadHandoffBadgeLabel } from "../lib/threadHandoff";
 import { SIDEBAR_ROW_LABEL_TEXT_CLASS_NAME } from "../sidebarRowStyles";
 import type { SidebarThreadSummary } from "../types";
@@ -19,6 +20,7 @@ import { cn } from "../lib/utils";
 import { ProviderIcon } from "./ProviderIcon";
 import { SidebarGlyph } from "./sidebarGlyphs";
 import { useMessages } from "~/i18n/context";
+import { SidebarDraftGlyph } from "./SidebarStatusTrailingGlyph";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 export interface SidebarThreadTerminalStatus {
@@ -171,7 +173,6 @@ function SidebarSubagentLabel({
     settled,
   });
 }
-
 export function SidebarThreadRowContent({
   thread,
   terminalEntryPoint,
@@ -179,9 +180,9 @@ export function SidebarThreadRowContent({
   terminalCount,
   isActive,
   variant,
-  subagentIndentPx: subagentIndentPxProp,
   pendingStatusColorClass,
   suffix,
+  subagentIndentPx: subagentIndentPxProp,
 }: {
   thread: SidebarThreadSummary;
   terminalEntryPoint: boolean;
@@ -189,9 +190,9 @@ export function SidebarThreadRowContent({
   terminalCount: number;
   isActive: boolean;
   variant: "pinned" | "standard";
-  subagentIndentPx?: number;
   pendingStatusColorClass?: string | null | undefined;
   suffix?: ReactNode;
+  subagentIndentPx?: number;
 }) {
   const m = useMessages();
   const subagentIndentPx = subagentIndentPxProp ?? 0;
@@ -213,6 +214,8 @@ export function SidebarThreadRowContent({
   // A finished subagent is history — drop its accent so the eye lands on the ones
   // still working. The row currently open keeps its color so it stays findable.
   const isSettledSubagent = isSubagentThread && !isActive && !isThreadActivelyWorking(thread);
+
+  const hasPendingDraft = useThreadHasPendingDraft(thread.id);
 
   return (
     <>
@@ -241,19 +244,13 @@ export function SidebarThreadRowContent({
           terminalCount={terminalCount}
         />
       ) : null}
-      <div
-        className={cn(
-          "flex min-w-0 flex-1 items-center text-left",
-          variant === "standard" && isSubagentThread ? "gap-[5px]" : "gap-1.5",
-        )}
-      >
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
         <span
           className={cn(
-            "min-w-0 flex-1 truncate-fade text-ui",
+            // Pinned rows size the title from its text so the suffix yields width first.
+            "min-w-0 truncate-fade text-ui leading-5",
+            variant === "pinned" ? "flex-auto" : "flex-1",
             isActive ? "text-foreground" : SIDEBAR_ROW_LABEL_TEXT_CLASS_NAME,
-            variant === "standard" && isSubagentThread
-              ? "leading-[18px] text-foreground/80"
-              : "leading-5",
           )}
           data-testid={variant === "pinned" ? `thread-title-${thread.id}` : undefined}
         >
@@ -267,7 +264,8 @@ export function SidebarThreadRowContent({
             thread.title
           )}
         </span>
-        {!isSubagentThread && pendingStatusColorClass ? (
+        {hasPendingDraft ? <SidebarDraftGlyph /> : null}
+        {pendingStatusColorClass ? (
           <span
             aria-label={m.sidebar.thread.pendingApproval}
             className={cn("shrink-0 text-[10px] font-medium", pendingStatusColorClass)}
@@ -275,8 +273,9 @@ export function SidebarThreadRowContent({
             {m.sidebar.thread.pendingBadge}
           </span>
         ) : null}
+        {variant === "pinned" ? suffix : null}
       </div>
-      {suffix}
+      {variant === "pinned" ? null : suffix}
     </>
   );
 }

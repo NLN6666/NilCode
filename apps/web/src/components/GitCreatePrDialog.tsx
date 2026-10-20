@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Checkbox } from "~/components/ui/checkbox";
 import { DiffStat } from "~/components/ui/diff-stat";
-import { SubmitShortcutKbd } from "~/components/ui/kbd";
+import { getSubmitShortcutKeyShortcuts, SubmitShortcutKbd } from "~/components/ui/kbd";
 import {
   type CreatePrBrowserPreparation,
   type GitDialogContext,
@@ -23,7 +23,7 @@ import {
   GitDialogHeading,
   GitDialogShell,
 } from "./GitDialogChrome";
-import { ArrowUpRightIcon, GitPullRequestDraftIcon, GitPullRequestIcon } from "~/lib/icons";
+import { CreatePullRequestIcon, ExternalLinkIcon, GitPullRequestDraftIcon } from "~/lib/icons";
 import { useMessages } from "~/i18n/context";
 import { cn } from "~/lib/utils";
 
@@ -149,14 +149,15 @@ export function GitCreatePrDialog({
         <GitDialogActionRow
           highlighted
           disabled={!canCreate}
-          icon={<GitPullRequestIcon />}
+          icon={<CreatePullRequestIcon />}
           label={copy.actions.createPr}
           trailing={<SubmitShortcutKbd />}
+          aria-keyshortcuts={getSubmitShortcutKeyShortcuts()}
           onClick={() => submit(false)}
         />
         <GitDialogActionRow
           disabled={!canOpenInBrowser}
-          icon={<ArrowUpRightIcon />}
+          icon={<ExternalLinkIcon />}
           label={copy.createPrDialog.openPrInBrowser}
           onClick={() => onOpenInBrowser({ preparation: browserPreparation, includeLocalChanges })}
         />

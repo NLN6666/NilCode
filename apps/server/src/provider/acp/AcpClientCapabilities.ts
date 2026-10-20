@@ -2,11 +2,12 @@
 // Purpose: Implements the standard ACP client-side filesystem and terminal capabilities.
 // Layer: Provider ACP protocol support
 
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { promises as fs } from "node:fs";
 import nodePath from "node:path";
 
 import type * as Acp from "@agentclientprotocol/sdk";
+import { spawnProcess } from "@synara/shared/processRuntime";
 import { Effect, Scope } from "effect";
 
 import { buildProviderChildEnvironment } from "../../providerChildEnvironment.ts";
@@ -149,7 +150,7 @@ export const makeStandardAcpClientHandlers = Effect.fnUntraced(function* (
         const terminalId = crypto.randomUUID();
         const child = yield* Effect.try({
           try: () =>
-            spawn(params.command, params.args ?? [], {
+            spawnProcess(params.command, params.args ?? [], {
               ...(params.cwd ? { cwd: params.cwd } : {}),
               env: buildProviderChildEnvironment({
                 provider: "acp",
@@ -158,10 +159,8 @@ export const makeStandardAcpClientHandlers = Effect.fnUntraced(function* (
                   ...Object.fromEntries((params.env ?? []).map(({ name, value }) => [name, value])),
                 },
               }),
-              detached: process.platform !== "win32",
-              shell: false,
+              ownProcessGroup: true,
               stdio: "pipe",
-              windowsHide: true,
             }),
           catch: (cause) => requestError("terminal/create", cause),
         });

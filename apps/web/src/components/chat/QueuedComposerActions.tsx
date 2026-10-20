@@ -13,6 +13,7 @@ import type { QueuedComposerTurn } from "../../composerDraftStore";
 import { Button } from "../ui/button";
 import { IconButton } from "../ui/icon-button";
 import { Menu, MenuItem, MenuTrigger } from "../ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ComposerPickerMenuPopup } from "./ComposerPickerMenuPopup";
 
 type QueuedComposerActionsProps = {
@@ -35,15 +36,17 @@ function QueuedComposerActions({
   const copy = useMessages().composer.queued;
   return (
     <div className="flex shrink-0 items-center gap-0">
-      <Button
-        variant="subtle"
-        size="chip"
-        title={interruptsLiveTurn ? copy.steerInterruptHint : copy.steerHint}
-        onClick={() => void onSteer(queuedTurn)}
-      >
-        <SteerIcon />
-        <span>{interruptsLiveTurn ? copy.steerInterrupt : copy.steer}</span>
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={<Button variant="ghost" size="chip" onClick={() => void onSteer(queuedTurn)} />}
+        >
+          <SteerIcon />
+          <span>{interruptsLiveTurn ? copy.steerInterrupt : copy.steer}</span>
+        </TooltipTrigger>
+        <TooltipPopup className="max-w-80 leading-tight">
+          {interruptsLiveTurn ? copy.steerInterruptHint : copy.steerHint}
+        </TooltipPopup>
+      </Tooltip>
       <IconButton
         variant="ghost"
         size="icon-chip"

@@ -5,6 +5,7 @@
  * @module OmpControlPlane
  */
 import type { OmpProviderPolicyStatus, OmpProviderRuntimeStatus } from "@synara/contracts";
+import { supportsPosixPermissions } from "@synara/shared/filesystemPlatform";
 import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { access, mkdir, open, readFile, rename, rm } from "node:fs/promises";
@@ -240,7 +241,10 @@ export function buildOmpControlPlanePlan(input: {
   };
 }
 
-function resolveOmpControlPlanePaths(homeDir = homedir(), configuredAgentDir?: string): {
+function resolveOmpControlPlanePaths(
+  homeDir = homedir(),
+  configuredAgentDir?: string,
+): {
   readonly globalConfigPaths: ReadonlyArray<string>;
   readonly overlayPath: string;
 } {
@@ -304,7 +308,7 @@ async function writeOverlayAtomically(path: string, content: string): Promise<bo
     }
     await rename(temporaryPath, path);
     temporaryExists = false;
-    if (process.platform !== "win32") await access(path, fsConstants.R_OK);
+    if (supportsPosixPermissions()) await access(path, fsConstants.R_OK);
     return true;
   } finally {
     if (temporaryExists) await rm(temporaryPath, { force: true }).catch(() => undefined);

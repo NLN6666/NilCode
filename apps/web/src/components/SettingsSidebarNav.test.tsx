@@ -52,6 +52,10 @@ describe("rankSettingsSearchEntries", () => {
       expect.arrayContaining(["general:environment-instructions", "appearance:system-ui-font"]),
     );
   });
+  it("indexes the stacked and split diff layout preference", () => {
+    const results = rankSettingsSearchEntries("stacked", 12, m);
+    expect(results.some((entry) => entry.id === "behavior:diff-layout")).toBe(true);
+  });
   it("surfaces every row in a section when searching the section label", () => {
     const results = rankSettingsSearchEntries("appearance", SETTINGS_SEARCH_ENTRIES.length, m);
     expect(results.some((entry) => entry.section === "appearance")).toBe(true);
@@ -76,12 +80,6 @@ describe("rankSettingsSearchEntries", () => {
 
     for (const entry of SETTINGS_SEARCH_ENTRIES) {
       if (entry.target === null) expect(settingsSearchEntryTarget(entry)).toBeNull();
-    }
-  });
-
-  it("resolves every result title from the active catalog", () => {
-    for (const entry of SETTINGS_SEARCH_ENTRIES) {
-      expect(entry.title(m)).not.toBe("");
     }
   });
 });

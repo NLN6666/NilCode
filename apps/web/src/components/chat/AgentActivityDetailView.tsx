@@ -103,7 +103,7 @@ export function AgentActivityDetailView({
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <h2 className="truncate text-[18px] font-medium leading-6 text-foreground/92">
+                <h2 className="truncate text-ui-lg font-medium leading-6 text-foreground/92">
                   {resolveActivityTitle(detail.title, copy)}
                 </h2>
                 <span className="rounded-full border border-border/45 px-2 py-0.5 text-[10px] font-medium text-muted-foreground/56">
@@ -195,7 +195,10 @@ function AgentActivityEventRow(props: {
   const copy = useMessages().chat.activity;
   const preview = formatAgentActivityEntryPreview(props.entry);
   const title = resolveActivityTitle(formatAgentActivityEntryTitle(props.entry), copy);
-  const body = isReasoningUpdateWorkEntry(props.entry) ? preview : (preview ?? props.entry.detail);
+  const body =
+    isReasoningUpdateWorkEntry(props.entry) || props.entry.activityKind === "tool.summary"
+      ? (props.entry.detail ?? preview)
+      : (preview ?? props.entry.detail);
 
   return (
     <div className="py-3 first:pt-0 last:pb-0">

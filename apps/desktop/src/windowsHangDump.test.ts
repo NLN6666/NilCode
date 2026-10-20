@@ -200,8 +200,12 @@ describe("Windows hang dumps", () => {
 
   it("retains only the newest three owned incidents and leaves unrelated files alone", () => {
     const diagnosticsDir = makeTempDir();
-    for (const id of ["one", "two", "three", "four"]) {
-      fs.writeFileSync(path.join(diagnosticsDir, "synara-hang-" + id + ".json"), id);
+    for (const [index, id] of ["one", "two", "three", "four"].entries()) {
+      const filePath = path.join(diagnosticsDir, "synara-hang-" + id + ".json");
+      fs.writeFileSync(filePath, id);
+      // Consecutive writes can share a filesystem timestamp and enter the ID tie-breaker.
+      const timestamp = Date.UTC(2026, 0, 1, 0, 0, index) / 1000;
+      fs.utimesSync(filePath, timestamp, timestamp);
     }
     fs.writeFileSync(path.join(diagnosticsDir, "unrelated.json"), "keep");
 

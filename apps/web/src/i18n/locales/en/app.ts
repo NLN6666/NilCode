@@ -103,6 +103,7 @@ export const app = {
   },
 
   providerUsage: {
+    details: "Details",
     scanning: "Scanning local usage data for the selected provider.",
     noneForProvider: "No local usage data was found yet for the selected provider.",
     none: "No local usage data was found yet.",

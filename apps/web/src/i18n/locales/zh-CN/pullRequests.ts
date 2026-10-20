@@ -70,6 +70,7 @@ export const pullRequests: Messages["pullRequests"] = {
   },
 
   toast: {
+    sendToAgentFailed: "无法发送给智能体",
     merged: "Pull Request 已合并",
     enqueued: "Pull Request 已加入合并队列",
     stackEnqueued: "栈已加入合并队列",
@@ -155,6 +156,11 @@ export const pullRequests: Messages["pullRequests"] = {
   },
 
   unavailable: {
+    rateLimited: "已达到 GitHub 请求限制",
+    subjectUnavailable: (subject) => `${subject}暂不可用`,
+    rateLimitedUntil: (time) => `GitHub 请求将暂停至 ${time}。`,
+    rateLimitedDetail: "GitHub 请求将暂停至请求限制重置。",
+    autoRefreshAfterReset: "请求限制重置后，此视图会自动刷新。",
     cliRequired: "需要 GitHub CLI",
     signIn: "登录 GitHub CLI",
     generic: "Pull Request 不可用",

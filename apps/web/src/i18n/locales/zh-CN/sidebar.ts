@@ -46,7 +46,7 @@ export const sidebar: Sidebar = {
 
   views: {
     threads: "项目",
-    studio: "工作室",
+    groups: "工作组",
   },
   rail: {
     home: "主页",
@@ -65,7 +65,7 @@ export const sidebar: Sidebar = {
   surfacePicker: {
     ariaLabel: "切换侧边栏界面",
     threads: { title: "Synara", description: "构建、调试与交付" },
-    studio: { title: "工作室", description: "开放式智能体工作" },
+    groups: { title: "工作组", description: "跨仓库协同工作" },
   },
 
   projects: {
@@ -138,6 +138,7 @@ export const sidebar: Sidebar = {
     sessionId: "会话 ID",
     importClaudePlaceholder: "粘贴 Claude 会话 ID",
     importCursorPlaceholder: "粘贴 Cursor 会话 ID",
+    importDroidPlaceholder: "粘贴 Droid 会话 ID",
     importOpenCodePlaceholder: "粘贴 OpenCode 会话 ID",
     importOmpPlaceholder: "粘贴 Oh My Pi 会话 ID",
     importCodexPlaceholder: "粘贴 Codex 会话 ID",
@@ -145,6 +146,7 @@ export const sidebar: Sidebar = {
       codex: "Codex 会根据会话 ID 恢复已保存的会话。",
       claudeAgent: "Claude 会根据会话 ID 恢复已保存的会话。",
       cursor: "Cursor 会根据会话 ID 恢复已保存的会话。",
+      droid: "Droid 会根据会话 ID 恢复已保存的会话。",
       opencode: "OpenCode 会根据会话 ID 恢复已保存的会话。",
       omp: "Oh My Pi 会根据会话 ID 恢复已保存的会话。",
     },

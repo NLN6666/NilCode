@@ -6,8 +6,12 @@
 
 import type { Messages } from "./i18n/locales/en";
 import { rankProviderDiscoveryItems } from "~/lib/providerDiscovery";
-import { isBetaFeatureOn } from "./betaFeatures";
-import { settingRowAnchorId, type SettingsSectionId } from "./settingsNavigation";
+import {
+  isSettingsSectionAvailable,
+  settingRowAnchorId,
+  SETTINGS_NAV_ITEMS,
+  type SettingsSectionId,
+} from "./settingsNavigation";
 
 /** One searchable settings result. `target: null` marks panel-only or conditional rows. */
 export interface SettingsSearchEntry {
@@ -69,7 +73,20 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "general",
     title: (m) => m.settings.searchTitles.sidebarLayout,
     keywords: "sidebar layout classic rail panel navigation side bar 侧边栏 布局",
-    applies: () => isBetaFeatureOn("sidebarV2"),
+  },
+  {
+    id: "general:move-sent-messages-to-top",
+    section: "general",
+    title: (m) => m.settings.searchTitles.anchorSentMessagesToTop,
+    keywords:
+      "Move each sent message to the top of the conversation. Turn off to keep it at the bottom and follow replies as they stream. chat enter send scroll anchor",
+  },
+  {
+    id: "general:thread-tabs",
+    section: "general",
+    title: (m) => m.settings.searchTitles.threadTabs,
+    keywords:
+      "Show open threads as tabs in the chat header. Turn off to show only the current thread's title. horizontal tabs strip header chat title",
   },
   {
     id: "general:welcome-tour",
@@ -93,6 +110,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "Controls how threads are arranged inside each project in the main sidebar. sort updated created 会话排序 侧边栏",
   },
   {
+    id: "general:thread-attention-first",
+    section: "general",
+    title: (m) => m.settings.searchTitles.threadAttentionFirst,
+    keywords:
+      "With Recently active order, move working and unread threads above the rest. sort unread jump reorder pin top hold",
+  },
+  {
     id: "general:chats-section",
     section: "general",
     title: (m) => m.settings.general.sidebarSections.chats.title,
@@ -100,11 +124,10 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "Show the standalone Chats list in the sidebar footer chats not tied to a project. sidebar section 对话 侧边栏板块",
   },
   {
-    id: "general:studio-section",
+    id: "general:groups-section",
     section: "general",
-    title: (m) => m.settings.general.sidebarSections.studio.title,
-    keywords:
-      "Show the Studio tab in the sidebar switcher. sidebar section content outbox 侧边栏板块",
+    title: (m) => m.settings.general.sidebarSections.groups.title,
+    keywords: "Show the Hubs tab in the sidebar switcher. sidebar section content outbox groups",
   },
   {
     id: "general:automation-run-threads",
@@ -119,6 +142,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     title: (m) => m.settings.general.environmentPanel.defaultOpen.title,
     keywords:
       "Open the chat Environment panel automatically on normal threads. default closed open environment panel preference 环境面板 默认展开",
+  },
+  {
+    id: "general:environment-subagents",
+    section: "general",
+    title: (m) => m.settings.searchTitles.subagents,
+    keywords:
+      "Show a compact summary of the chat's subagents in the Environment panel and open the full list in the right dock. agents roster lineage running done stop background",
   },
   {
     id: "general:environment-usage",
@@ -173,6 +203,12 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   },
 
   // ── Appearance ───────────────────────────────────────────────────────────────
+  {
+    id: "appearance:ascii-background",
+    section: "appearance",
+    title: (m) => m.settings.searchTitles.asciiBackground,
+    keywords: "animated empty chat landing background field waves ripples reduced motion disable",
+  },
   {
     id: "appearance:theme",
     section: "appearance",
@@ -263,6 +299,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     keywords:
       "Show an OS notification when a chat or managed terminal agent finishes or needs input while the app is in the background. alerts toast 桌面通知 系统通知",
   },
+  {
+    id: "notifications:wait-for-subagents",
+    section: "notifications",
+    title: (m) => m.settings.searchTitles.waitForSubagents,
+    keywords:
+      "Alert once the agent and all of its background subagents have finished. Turn this off to be alerted each time the agent or one of its subagents stops. alerts notification",
+  },
 
   // ── AppSnap ───────────────────────────────────────────────────────────────────
   {
@@ -339,6 +382,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
 
   // ── Behavior ──────────────────────────────────────────────────────────────────
   {
+    id: "behavior:sidechat-expiry",
+    section: "behavior",
+    title: (m) => m.settings.searchTitles.sidechatExpiry,
+    keywords:
+      "Expire a side chat after it sits idle for this long. sidechat inactivity timeout 1 hour 24 hours never disable",
+  },
+  {
     id: "behavior:follow-up-behavior",
     section: "behavior",
     title: (m) => m.settings.behavior.followUpBehavior.title,
@@ -346,10 +396,24 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "Choose whether messages sent during an active turn wait in the queue or steer the current run. Ctrl Cmd Enter opposite send 追问 排队 引导",
   },
   {
+    id: "behavior:enter-while-dictating",
+    section: "behavior",
+    title: (m) => m.settings.searchTitles.voiceEnterBehavior,
+    keywords:
+      "Choose what Enter does while a voice note is recording: stop and transcribe into the composer, or stop and send the message. voice dictation microphone transcribe",
+  },
+  {
     id: "behavior:assistant-output",
     section: "behavior",
     title: (m) => m.settings.behavior.assistantOutput.title,
     keywords: "Show token-by-token output while a response is in progress. streaming 助手输出 流式",
+  },
+  {
+    id: "behavior:fold-finished-turns",
+    section: "behavior",
+    title: (m) => m.settings.searchTitles.foldFinishedTurns,
+    keywords:
+      "Hide a finished turn's tool calls and intermediate messages behind a single Worked for line. A turn stays open while it runs or while its background subagents are still working. collapse steps transcript",
   },
   {
     id: "behavior:effort-slider",
@@ -366,17 +430,37 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "Disable automatic iOS Simulator device pane opening. Use Simulator.app without the mirrored panel reopening. background launch",
   },
   {
-    id: "behavior:diff-line-wrapping",
+    id: "behavior:github-link-destination",
     section: "behavior",
-    title: (m) => m.settings.behavior.diffLineWrapping.title,
-    keywords: "Set the default wrap state when the diff panel opens. word wrap 差异自动换行",
+    title: (m) => m.settings.searchTitles.githubLinkOpenTarget,
+    keywords:
+      "Choose where GitHub links in chats open. built-in review view in-app browser external browser destination pr issue",
   },
   {
     id: "behavior:pull-request-diff-colors",
     section: "behavior",
     title: (m) => m.settings.behavior.pullRequestDiffColors.title,
     keywords:
-      "Show additions in green and deletions in red in pull request summaries. diff colors 拉取请求 差异 配色",
+      "Show additions in green and deletions in red in pull request summaries. pr diff stats green red 拉取请求 差异 配色",
+  },
+  {
+    id: "behavior:include-fork-upstreams",
+    section: "behavior",
+    title: (m) => m.settings.searchTitles.githubIncludeUpstreams,
+    keywords:
+      "Also list pull requests and issues from each project's other GitHub remotes, such as the repository a fork was made from. code review inbox github upstream remote fork",
+  },
+  {
+    id: "behavior:diff-layout",
+    section: "behavior",
+    title: (m) => m.settings.searchTitles.diffLayout,
+    keywords: "Default stacked split review panel side by side unified layout per thread",
+  },
+  {
+    id: "behavior:diff-line-wrapping",
+    section: "behavior",
+    title: (m) => m.settings.behavior.diffLineWrapping.title,
+    keywords: "Set the default wrap state when the diff panel opens. word wrap 差异自动换行",
   },
   {
     id: "behavior:delete-confirmation",
@@ -397,6 +481,15 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     keywords:
       "Ask before closing a terminal tab and clearing its history. safety confirm 终端关闭确认",
   },
+  {
+    id: "behavior:keep-computer-awake",
+    section: "behavior",
+    title: (m) => m.settings.searchTitles.keepComputerAwake,
+    keywords:
+      "caffeinate sleep macOS prevent sleep keep awake agent working system on off idle active",
+    // Row only renders on macOS with caffeinate available.
+    target: null,
+  },
 
   // ── Keybindings ───────────────────────────────────────────────────────────────
   {
@@ -404,7 +497,7 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "shortcuts",
     title: (m) => m.settings.searchTitles.keyboardShortcuts,
     keywords:
-      "Every keyboard shortcut available in Synara, grouped by context. keybindings hotkeys key combo cmd ctrl reference",
+      "Every keyboard shortcut available in Synara: change, add, remove, or reset them. keybindings hotkeys key combo cmd ctrl customize rebind unassigned reset defaults",
     target: null,
   },
 
@@ -427,6 +520,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   },
 
   // ── Models ────────────────────────────────────────────────────────────────────
+  {
+    id: "models:source-control-writing-style",
+    section: "models",
+    title: (m) => m.settings.searchTitles.sourceControlWritingStyle,
+    keywords:
+      "Repository conventions Conventional Commits custom instructions commit messages PR titles descriptions",
+  },
   {
     id: "models:git-writing-model",
     section: "models",
@@ -464,6 +564,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
 
   // ── Providers ─────────────────────────────────────────────────────────────────
   {
+    id: "providers:cpu-priority",
+    section: "providers",
+    title: (m) => m.settings.searchTitles.lowerProviderProcessPriority,
+    keywords:
+      "Lower agent CPU scheduling priority performance load nice responsiveness restart sessions",
+  },
+  {
     id: "providers:automatic-cli-update-checks",
     section: "providers",
     title: (m) => m.settings.providers.updates.autoChecks.title,
@@ -471,11 +578,18 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "Check Codex Claude and other provider CLIs for newer versions in the background. updates upgrade disable nags 自动检查更新",
   },
   {
+    id: "providers:enabled-providers",
+    section: "providers",
+    title: (m) => m.settings.providers.activity.enabledTitle,
+    keywords:
+      "Allow background checks and new turns. Enabling a provider does not install it or sign it in. enable disable activity",
+  },
+  {
     id: "providers:visible-providers",
     section: "providers",
     title: (m) => m.settings.providers.picker.visible.title,
     keywords:
-      "Drag providers into your preferred picker order and hide the ones you don't use. visibility order 可见提供商 隐藏 排序",
+      "Show or hide installed providers in the picker and drag them into your preferred order. visible providers visibility order",
   },
   {
     id: "providers:provider-updates",
@@ -507,6 +621,15 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "usage",
     title: (m) => m.settings.searchTitles.usageAndBilling,
     keywords: "Remaining quota and credits for each signed-in provider. limits credits",
+    target: null,
+  },
+
+  {
+    id: "usage:sidebar-rings",
+    section: "usage",
+    title: (m) => m.settings.searchTitles.sidebarUsage,
+    keywords:
+      "Choose up to two provider accounts for usage rings at the bottom of the sidebar rail. multiple Claude accounts quota",
     target: null,
   },
 
@@ -542,6 +665,15 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     target: null,
   },
   {
+    id: "connectors:catalog",
+    section: "connectors",
+    title: (m) => m.settingsNav.sections.connectors.label,
+    keywords:
+      "Connect Supabase Cloudflare Linear Notion Sentry Stripe Neon Atlassian PostHog remote MCP server sign in OAuth custom URL apps tools",
+    target: null,
+    applies: () => isSettingsSectionAvailable("connectors"),
+  },
+  {
     id: "integrations:external-mcp",
     section: "integrations",
     title: (m) => m.settings.searchTitles.externalMcpIntegrations,
@@ -555,6 +687,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "advanced",
     title: (m) => m.settings.advanced.about.version.title,
     keywords: "Current application version. about 版本 关于",
+  },
+  {
+    id: "advanced:feature-tour",
+    section: "advanced",
+    title: (m) => m.settings.advanced.about.featureTour.title,
+    keywords:
+      "Replay feature tour redesigned workspace provider accounts Code review slider updates",
   },
   {
     id: "advanced:release-history",

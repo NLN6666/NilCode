@@ -53,13 +53,15 @@ export function SettingResetButton({ label, onClick }: { label: string; onClick:
 
 export function SettingsSelectControl({
   value,
+  disabled,
   onValueChange,
   ariaLabel,
   triggerClassName: triggerClassNameProp,
   valueContent,
   children,
 }: {
-  value: string;
+  value: string | null;
+  disabled?: boolean;
   onValueChange: (value: string) => void;
   ariaLabel: string;
   triggerClassName?: string;
@@ -70,6 +72,7 @@ export function SettingsSelectControl({
   return (
     <Select
       value={value}
+      disabled={disabled}
       onValueChange={(next) => {
         if (next !== null) onValueChange(next);
       }}

@@ -86,9 +86,8 @@ function SettingsSearchResultRow(props: {
 }
 
 export function SettingsSidebarNav(props: {
+  onBack?: () => void;
   activeSection: SettingsSectionId;
-  /** Null hides the "Back to app" row (the rail layout navigates with the rail instead). */
-  onBack: (() => void) | null;
   onSelectSection: (section: SettingsSectionId, options?: { target?: string }) => void;
 }) {
   const { onSelectSection } = props;
@@ -134,13 +133,15 @@ export function SettingsSidebarNav(props: {
             <SidebarLeadingIcon size="sm" tone="text-inherit">
               <CentralIcon name="arrow-left" className={SETTINGS_SIDEBAR_ICON_CLASS_NAME} />
             </SidebarLeadingIcon>
-            <span className={SETTINGS_SIDEBAR_ITEM_LABEL_CLASS_NAME}>{m.settingsNav.backToApp}</span>
+            <span className={SETTINGS_SIDEBAR_ITEM_LABEL_CLASS_NAME}>
+              {m.settingsNav.backToApp}
+            </span>
           </button>
         </div>
       ) : null}
-
       <div className="mb-3 px-1">
         <SearchInput
+          shape="capsule"
           value={query}
           spellCheck={false}
           autoCorrect="off"

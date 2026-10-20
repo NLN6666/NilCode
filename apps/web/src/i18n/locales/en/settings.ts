@@ -17,6 +17,22 @@ export const settings = {
   // Titles for search results whose row has no catalog entry of its own — panel-level results
   // and rows that live outside the settings panels.
   searchTitles: {
+    anchorSentMessagesToTop: "Move sent messages to top",
+    threadTabs: "Thread tabs",
+    threadAttentionFirst: "Working and unread on top",
+    subagents: "Subagents",
+    asciiBackground: "ASCII background",
+    waitForSubagents: "Wait for subagents",
+    sidechatExpiry: "Side chat expiry",
+    voiceEnterBehavior: "Enter while dictating",
+    foldFinishedTurns: "Fold finished turns",
+    githubLinkOpenTarget: "Open pull requests and issues",
+    githubIncludeUpstreams: "Include fork upstreams",
+    diffLayout: "Diff layout",
+    keepComputerAwake: "Keep computer awake",
+    sourceControlWritingStyle: "Source control writing style",
+    lowerProviderProcessPriority: "Keep Synara responsive",
+    sidebarUsage: "Sidebar usage rings",
     fontSmoothing: "Font smoothing",
     keyboardShortcuts: "Keybindings",
     managedWorktrees: "Managed worktrees",
@@ -40,8 +56,7 @@ export const settings = {
   resetConfirmation: {
     title: "Restore default settings?",
     description: (labels: readonly string[]) => `This will reset: ${labels.join(", ")}.`,
-    themePack: (variant: "dark" | "light") =>
-      `${variant === "dark" ? "Dark" : "Light"} theme pack`,
+    themePack: (variant: "dark" | "light") => `${variant === "dark" ? "Dark" : "Light"} theme pack`,
     appSnapShortcut: "AppSnap shortcut",
     providerInstalls: "Provider installs",
     providerVisibility: "Provider visibility",
@@ -128,11 +143,11 @@ export const settings = {
         resetLabel: "chats section",
         ariaLabel: "Show the Chats section in the sidebar",
       },
-      studio: {
-        title: "Studio",
-        description: "Show the Studio tab in the sidebar switcher.",
-        resetLabel: "studio section",
-        ariaLabel: "Show the Studio section in the sidebar",
+      groups: {
+        title: "Hubs",
+        description: "Show the Hubs tab in the sidebar switcher.",
+        resetLabel: "Hubs section",
+        ariaLabel: "Show the Hubs section in the sidebar",
       },
       automationRuns: {
         title: "Automation runs",
@@ -450,6 +465,11 @@ export const settings = {
       repairFailedDescription: "Unable to repair local state.",
     },
     about: {
+      featureTour: {
+        title: "What’s new since 0.9.2",
+        description: "Explore the redesigned workspace, provider accounts, and Code review.",
+        replay: "Replay feature tour",
+      },
       title: "About",
       version: { title: "Version", description: "Current application version." },
       releaseHistory: {
@@ -848,6 +868,16 @@ export const settings = {
         description: "Optional custom Codex home and config directory.",
       },
       claudeBinaryPath: { label: "Claude binary path", placeholder: "Claude binary path" },
+      claudeHomePath: {
+        label: "Claude HOME path",
+        placeholder: "Claude HOME",
+        description: "Optional HOME directory for this Claude account.",
+      },
+      claudeConfirmColdCacheResume: {
+        label: "Ask before resuming a long idle session",
+        description:
+          "Off by default, like Claude Code. When on, after 70 minutes without a response in a session of 100k tokens or more, hold your message and offer to resume from a summary. Messages from agents and automations are never held.",
+      },
       claudeEnableArtifacts: {
         label: "Artifacts, /design and /slides",
         description:
@@ -891,7 +921,8 @@ export const settings = {
       ompAgentDir: {
         label: "Oh My Pi agent directory",
         placeholder: "Oh My Pi agent directory",
-        description: "Optional custom Oh My Pi agent directory for auth, models, skills, and commands.",
+        description:
+          "Optional custom Oh My Pi agent directory for auth, models, skills, and commands.",
       },
       piBinaryPath: { label: "Pi binary path", placeholder: "Pi binary path" },
       piAgentDir: {
@@ -1186,6 +1217,7 @@ export const settings = {
     },
     custom: {
       title: "Custom models",
+      enableProvider: "Enable a provider in Settings → Providers to add custom models.",
       saved: {
         title: "Saved model slugs",
         description: "Add custom model slugs for supported providers.",
@@ -1249,7 +1281,8 @@ export const settings = {
       },
       screenRecording: {
         title: "Screen Recording",
-        description: "Lets Synara capture windows and the desktop so the agent can see what it is driving.",
+        description:
+          "Lets Synara capture windows and the desktop so the agent can see what it is driving.",
       },
       inputMonitoring: {
         title: "Input Monitoring",
@@ -1264,6 +1297,8 @@ export const settings = {
     },
   },
   providerUsage: {
+    sidebarAccounts: (count: number) => `Sidebar · up to ${count} accounts`,
+    showSidebarUsage: (label: string) => `Show ${label} usage at the bottom of the sidebar`,
     title: "Provider usage",
     refresh: "Refresh",
     loading: "Loading provider usage…",

@@ -86,6 +86,7 @@ export const chat = {
       unknown: "Unknown",
       state: (label: string) => `Claude prompt cache: ${label}`,
       observedLifetime: (duration: string) => `Observed lifetime: ${duration}`,
+      lifetimeRange: (start: string, end: string) => `${start}–${end}`,
       lifetimeUnknown: "Cache lifetime is unavailable.",
       lastResponse: (duration: string) => `Last response: ${duration} ago`,
       reprocessEstimate: (tokens: string) =>
@@ -166,6 +167,7 @@ export const chat = {
 
   /** Right-dock panes and split-surface placeholders. */
   panes: {
+    openPanels: "Open panels",
     comingSoon: (label: string) => `${label} panel is coming soon.`,
     loadingBrowser: "Loading browser...",
     loadingPullRequest: "Loading pull request...",
@@ -190,6 +192,7 @@ export const chat = {
       git: "Git",
       pullRequest: "Pull request",
       services: "Services",
+      subagents: "Subagents",
       fallback: "Panel",
     },
 
@@ -346,6 +349,10 @@ export const chat = {
 
   /** Rows inside the work timeline. */
   work: {
+    commandReading: "Reading",
+    commandRead: "Read",
+    commandRunning: "Running",
+    commandRan: "Ran",
     summary: "Summary",
     rawCall: "Raw call",
     latest: "Latest",
@@ -406,6 +413,8 @@ export const chat = {
 
   /** Message-level affordances in the transcript. */
   message: {
+    sentByCoordinator: (group: string) => `Sent by ${group}`,
+    openCoordinator: "Open coordinator",
     copy: "Copy message",
     copyTooltip: "Copy to clipboard",
     scrollToBottom: "Scroll to bottom",
@@ -548,6 +557,8 @@ export const chat = {
   },
 
   header: {
+    continueHere: "Continue in this thread",
+    continueNewThread: "Continue in a new thread",
     chatHistory: "Chat history",
     noChatsInProject: "No chats in this project yet",
     newEditorRailItem: "New editor rail item",
@@ -574,6 +585,7 @@ export const chat = {
     preview: "Recap preview",
     boundedPreview: "Showing a bounded preview of the recap sent to the model.",
     reasons: {
+      "fork-from-earlier-turn": "Fork rebuilt up to the chosen turn",
       "conversation-rebuilt": "Conversation rebuilt",
       "fresh-session": "Fresh provider session",
       "interrupt-escalation": "Turn stop escalated to a session restart",

@@ -124,8 +124,35 @@ import AsyncUserInputMigration from "./Migrations/105_AsyncUserInput.ts";
 import ProjectImportOriginsMigration from "./Migrations/106_ProjectImportOrigins.ts";
 import Migration0107 from "./Migrations/107_ProjectionThreadsHumanMessage.ts";
 import Migration0108 from "./Migrations/108_GatewayCompletions.ts";
-import BrowserSharingMigration from "./Migrations/109_ProjectionProjectsBrowserSharing.ts";
-import AdvisorEnabledMigration from "./Migrations/110_ProjectionThreadsAdvisorEnabled.ts";
+import BrowserSharingMigration from "./Migrations/136_ProjectionProjectsBrowserSharing.ts";
+import AdvisorEnabledMigration from "./Migrations/137_ProjectionThreadsAdvisorEnabled.ts";
+import Migration0109 from "./Migrations/109_ProjectAgent.ts";
+import Migration0110 from "./Migrations/110_Groups.ts";
+import Migration0111 from "./Migrations/111_GroupLibraryHosting.ts";
+import Migration0112 from "./Migrations/112_CoordinatorAppearance.ts";
+import Migration0113 from "./Migrations/113_ProjectAgentWakeCursor.ts";
+import Migration0114 from "./Migrations/114_ProjectAgentLifecycle.ts";
+import Migration0115 from "./Migrations/115_ProjectAgentManagedWorkers.ts";
+import Migration0116 from "./Migrations/116_ProjectAgentWorkerRecovery.ts";
+import Migration0117 from "./Migrations/117_WorkerMonitoringLiveness.ts";
+import Migration0118 from "./Migrations/118_ProjectionThreadSessionProviderInstance.ts";
+import Migration0119 from "./Migrations/119_ProviderSessionRuntimeInstanceId.ts";
+import Migration0120 from "./Migrations/120_ProfileStatsDeletedProviderInstances.ts";
+import Migration0121 from "./Migrations/121_ClearAutomationDefinitionProviderOptions.ts";
+import Migration0122 from "./Migrations/122_ClearAutomationRunProviderOptions.ts";
+import Migration0123 from "./Migrations/123_ScrubOrchestrationEventProviderOptions.ts";
+import Migration0124 from "./Migrations/124_ProjectionTurnsPendingMessageIndex.ts";
+import Migration0125 from "./Migrations/125_Todos.ts";
+import Migration0126 from "./Migrations/126_ProjectionThreadsSidechatContext.ts";
+import Migration0127 from "./Migrations/127_ProjectImportHistory.ts";
+import Migration0128 from "./Migrations/128_HubWork.ts";
+import Migration0129 from "./Migrations/129_ProjectionThreadsSnooze.ts";
+import Migration0130 from "./Migrations/130_PullRequestAutoFix.ts";
+import Migration0131 from "./Migrations/131_ProjectSourceFolders.ts";
+import Migration0132 from "./Migrations/132_ExternalMcpTurnCapacityRecovery.ts";
+import Migration0133 from "./Migrations/133_ProjectionTurnsWorkspaceInitialization.ts";
+import Migration0134 from "./Migrations/134_ProjectionThreadsForkSourceMessage.ts";
+import Migration0135 from "./Migrations/135_ProjectionMessageTurnActivityIndex.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -250,8 +277,35 @@ export const migrationEntries = [
   [106, "ProjectImportOrigins", ProjectImportOriginsMigration],
   [107, "ProjectionThreadsHumanMessage", Migration0107],
   [108, "GatewayCompletions", Migration0108],
-  [109, "ProjectionProjectsBrowserSharing", BrowserSharingMigration],
-  [110, "ProjectionThreadsAdvisorEnabled", AdvisorEnabledMigration],
+  [109, "ProjectAgent", Migration0109],
+  [110, "Groups", Migration0110],
+  [111, "GroupLibraryHosting", Migration0111],
+  [112, "CoordinatorAppearance", Migration0112],
+  [113, "ProjectAgentWakeCursor", Migration0113],
+  [114, "ProjectAgentLifecycle", Migration0114],
+  [115, "ProjectAgentManagedWorkers", Migration0115],
+  [116, "ProjectAgentWorkerRecovery", Migration0116],
+  [117, "WorkerMonitoringLiveness", Migration0117],
+  [118, "ProjectionThreadSessionProviderInstance", Migration0118],
+  [119, "ProviderSessionRuntimeInstanceId", Migration0119],
+  [120, "ProfileStatsDeletedProviderInstances", Migration0120],
+  [121, "ClearAutomationDefinitionProviderOptions", Migration0121],
+  [122, "ClearAutomationRunProviderOptions", Migration0122],
+  [123, "ScrubOrchestrationEventProviderOptions", Migration0123],
+  [124, "ProjectionTurnsPendingMessageIndex", Migration0124],
+  [125, "Todos", Migration0125],
+  [126, "ProjectionThreadsSidechatContext", Migration0126],
+  [127, "ProjectImportHistory", Migration0127],
+  [128, "HubWork", Migration0128],
+  [129, "ProjectionThreadsSnooze", Migration0129],
+  [130, "PullRequestAutoFix", Migration0130],
+  [131, "ProjectSourceFolders", Migration0131],
+  [132, "ExternalMcpTurnCapacityRecovery", Migration0132],
+  [133, "ProjectionTurnsWorkspaceInitialization", Migration0133],
+  [134, "ProjectionThreadsForkSourceMessage", Migration0134],
+  [135, "ProjectionMessageTurnActivityIndex", Migration0135],
+  [136, "ProjectionProjectsBrowserSharing", BrowserSharingMigration],
+  [137, "ProjectionThreadsAdvisorEnabled", AdvisorEnabledMigration],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>
@@ -362,7 +416,7 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // migrations there). The canonical 88 migration must actually run.
     historicalId: 88,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 109,
+    currentId: 136,
     historicalSlotRequiresRerun: true,
   },
   {
@@ -370,7 +424,7 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // moved for the same reason as the ProjectionProjectsBrowserSharing alias.
     historicalId: 91,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 110,
+    currentId: 137,
     historicalSlotRequiresRerun: true,
   },
   {
@@ -378,13 +432,13 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // migrations now occupying those slots have never run on that database.
     historicalId: 97,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 109,
+    currentId: 136,
     historicalSlotRequiresRerun: true,
   },
   {
     historicalId: 98,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 110,
+    currentId: 137,
     historicalSlotRequiresRerun: true,
   },
   {
@@ -393,13 +447,13 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // migrations must still run; the relocated fork migrations are idempotent.
     historicalId: 100,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 109,
+    currentId: 136,
     historicalSlotRequiresRerun: true,
   },
   {
     historicalId: 101,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 110,
+    currentId: 137,
     historicalSlotRequiresRerun: true,
   },
   {
@@ -407,13 +461,26 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // uses them for different migrations, so replay both newly occupied slots.
     historicalId: 104,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 109,
+    currentId: 136,
     historicalSlotRequiresRerun: true,
   },
   {
     historicalId: 105,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 110,
+    currentId: 137,
+    historicalSlotRequiresRerun: true,
+  },
+  {
+    // v0.9.2 dev used these slots before upstream released the Hub migrations.
+    historicalId: 109,
+    historicalName: "ProjectionProjectsBrowserSharing",
+    currentId: 136,
+    historicalSlotRequiresRerun: true,
+  },
+  {
+    historicalId: 110,
+    historicalName: "ProjectionThreadsAdvisorEnabled",
+    currentId: 137,
     historicalSlotRequiresRerun: true,
   },
 ];

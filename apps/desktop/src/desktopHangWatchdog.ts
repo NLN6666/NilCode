@@ -6,7 +6,7 @@ import type { ChildProcess } from "node:child_process";
 import { fork as defaultFork } from "node:child_process";
 import path from "node:path";
 
-import { resolveWindowsSystemRoot } from "@synara/shared/windowsProcess";
+import { resolveWindowsSystemRoot } from "@synara/shared/platformEnvironment";
 
 export const DESKTOP_HANG_HEARTBEAT_INTERVAL_MS = 1_000;
 export const DESKTOP_HANG_THRESHOLD_MS = 6_000;

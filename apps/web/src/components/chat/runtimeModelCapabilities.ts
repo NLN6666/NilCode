@@ -96,10 +96,12 @@ export function getRuntimeAwareModelCapabilities(input: {
   const staticCapabilities = getModelCapabilities(input.provider, input.model);
   // Runtime discovery is authoritative when available; the static table is only a startup fallback.
   const supportsFastMode =
-    (input.provider === "codex" || input.provider === "cursor" || input.provider === "devin") &&
-    input.runtimeModel
-      ? input.runtimeModel.supportsFastMode === true
-      : staticCapabilities.supportsFastMode;
+    input.provider === "claudeAgent"
+      ? (input.runtimeModel?.supportsFastMode ?? staticCapabilities.supportsFastMode)
+      : (input.provider === "codex" || input.provider === "cursor" || input.provider === "devin") &&
+          input.runtimeModel
+        ? input.runtimeModel.supportsFastMode === true
+        : staticCapabilities.supportsFastMode;
   const supportsThinkingToggle =
     input.runtimeModel?.supportsThinkingToggle ?? staticCapabilities.supportsThinkingToggle;
   const contextWindowOptions =
@@ -110,7 +112,13 @@ export function getRuntimeAwareModelCapabilities(input: {
     })) ?? staticCapabilities.contextWindowOptions;
   const optionDescriptors =
     input.runtimeModel?.optionDescriptors ?? staticCapabilities.optionDescriptors;
-  const runtimeEfforts = input.runtimeModel?.supportedReasoningEfforts;
+  // Ignore the synthetic choice left in catalogs from the previous adapter.
+  const runtimeEfforts =
+    input.provider === "claudeAgent"
+      ? input.runtimeModel?.supportedReasoningEfforts?.filter(
+          (effort) => effort.value !== "default",
+        )
+      : input.runtimeModel?.supportedReasoningEfforts;
   // Providers with dynamic catalogs, including Droid, expose model-specific effort ladders here.
   //
   // Claude's explicitly catalogued ladders carry Synara-only prompt modes
@@ -118,9 +126,7 @@ export function getRuntimeAwareModelCapabilities(input: {
   // may borrow a family ladder while discovery is pending; once it arrives,
   // the model's own reported ladder must replace that borrowed fallback.
   const normalizedClaudeModel =
-    input.provider === "claudeAgent"
-      ? normalizeModelSlug(input.model, "claudeAgent")
-      : null;
+    input.provider === "claudeAgent" ? normalizeModelSlug(input.model, "claudeAgent") : null;
   const keepsCuratedClaudeEfforts =
     normalizedClaudeModel !== null &&
     staticCapabilities.reasoningEffortLevels.length > 0 &&
@@ -128,7 +134,7 @@ export function getRuntimeAwareModelCapabilities(input: {
       MODEL_CAPABILITIES_INDEX.claudeAgent,
       stripClaudeContextWindowSuffix(normalizedClaudeModel),
     );
-  if (keepsCuratedClaudeEfforts || !runtimeEfforts || runtimeEfforts.length === 0) {
+  if (runtimeEfforts === undefined || (runtimeEfforts.length > 0 && keepsCuratedClaudeEfforts)) {
     return {
       ...staticCapabilities,
       ...(optionDescriptors ? { optionDescriptors } : {}),
@@ -139,8 +145,11 @@ export function getRuntimeAwareModelCapabilities(input: {
   }
 
   const staticDefaultEffort = getDefaultEffort(staticCapabilities);
+  const reportedDefaultEffort = trimOrNull(input.runtimeModel?.defaultReasoningEffort);
   const runtimeDefaultEffort =
-    trimOrNull(input.runtimeModel?.defaultReasoningEffort) ??
+    (input.provider === "claudeAgent" && reportedDefaultEffort === "default"
+      ? null
+      : reportedDefaultEffort) ??
     (staticDefaultEffort && runtimeEfforts.some((effort) => effort.value === staticDefaultEffort)
       ? staticDefaultEffort
       : null);
@@ -172,5 +181,12 @@ export function getRuntimeAwareModelCapabilities(input: {
     supportsThinkingToggle,
     contextWindowOptions,
     reasoningEffortLevels: runtimeOptions,
+    ...(input.provider === "claudeAgent"
+      ? {
+          promptInjectedEffortLevels: staticCapabilities.promptInjectedEffortLevels.filter(
+            (value) => runtimeOptions.some((option) => option.value === value),
+          ),
+        }
+      : {}),
   };
 }

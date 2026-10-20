@@ -44,6 +44,13 @@ export interface OrchestrationThreadMentionContext {
   readonly totalMessageCount: number;
 }
 
+/**
+ * A full thread detail without its activity timeline. The field is removed at
+ * runtime and in the type, so a caller that needs activities fails to compile
+ * instead of silently reading an empty list.
+ */
+export type OrchestrationThreadWithoutActivities = Omit<OrchestrationThread, "activities">;
+
 export interface ProjectionSnapshotCounts {
   readonly projectCount: number;
   readonly threadCount: number;
@@ -51,6 +58,12 @@ export interface ProjectionSnapshotCounts {
 
 export interface ProjectionSnapshotSequence {
   readonly snapshotSequence: number;
+}
+
+/** Stable ordering key returned by the bounded runtime-reconciliation query. */
+export interface ProjectionStaleInFlightThreadCursor {
+  readonly observedAt: string;
+  readonly threadId: ThreadId;
 }
 
 export interface ProjectionThreadCheckpointContext {
@@ -69,6 +82,17 @@ export interface ProjectionThreadCheckpointContext {
 export interface ProjectionThreadCheckpointContextOptions {
   /** Include the narrow activity payload set used to attribute files in non-Git workspaces. */
   readonly includeFileChangeActivityPayloads?: boolean;
+}
+
+/**
+ * What a live provider turn diff needs to update its placeholder: the thread's
+ * highest checkpoint turn count and this turn's checkpoint row, under the same
+ * completed-checkpoint filter as `ProjectionThreadCheckpointContext.checkpoints`.
+ */
+export interface ProjectionThreadTurnDiffContext {
+  /** 0 when the thread has no completed checkpoint. */
+  readonly maxCheckpointTurnCount: number;
+  readonly checkpoint: OrchestrationCheckpointSummary | null;
 }
 
 export interface ProjectionGeneratedImageActivityRecord {
@@ -149,6 +173,22 @@ export interface ProjectionSnapshotQueryShape {
   }) => Effect.Effect<ReadonlyArray<ThreadId>, ProjectionRepositoryError>;
 
   /**
+   * Read the next bounded candidate page in (observedAt, threadId) order.
+   * Carry the returned key even when the planner finds no repair on this page.
+   */
+  readonly listStaleInFlightThreadPage: (input: {
+    readonly updatedBefore: string;
+    readonly limit: number;
+    readonly after?: ProjectionStaleInFlightThreadCursor;
+  }) => Effect.Effect<
+    {
+      readonly threadIds: ReadonlyArray<ThreadId>;
+      readonly nextCursor: ProjectionStaleInFlightThreadCursor | null;
+    },
+    ProjectionRepositoryError
+  >;
+
+  /**
    * Read only the columns managed-worktree retention needs, for every thread that
    * records a worktree path. Avoids hydrating the full read model on a background
    * prune, while still exposing soft-deleted threads so their worktrees are reclaimed.
@@ -183,6 +223,14 @@ export interface ProjectionSnapshotQueryShape {
     projectId: ProjectId,
   ) => Effect.Effect<Option.Option<OrchestrationProjectShell>, ProjectionRepositoryError>;
 
+  /**
+   * Read active project shells for the given ids in one query.
+   * Missing or deleted ids are omitted rather than returned as none.
+   */
+  readonly getProjectShellsByIds: (
+    projectIds: ReadonlyArray<ProjectId>,
+  ) => Effect.Effect<ReadonlyArray<OrchestrationProjectShell>, ProjectionRepositoryError>;
+
   /** Read a single active custom space shell row by id. */
   readonly getSpaceShellById: (
     spaceId: SpaceId,
@@ -202,6 +250,16 @@ export interface ProjectionSnapshotQueryShape {
     threadId: ThreadId,
     options?: ProjectionThreadCheckpointContextOptions,
   ) => Effect.Effect<Option.Option<ProjectionThreadCheckpointContext>, ProjectionRepositoryError>;
+
+  /**
+   * Read only what a live turn diff placeholder needs (see
+   * ProjectionThreadTurnDiffContext) without decoding every checkpoint's file
+   * list. None when the thread is missing or deleted.
+   */
+  readonly getThreadTurnDiffContext: (
+    threadId: ThreadId,
+    turnId: TurnId,
+  ) => Effect.Effect<Option.Option<ProjectionThreadTurnDiffContext>, ProjectionRepositoryError>;
 
   /**
    * Read the durable generated-image records for one turn. This narrow query is
@@ -226,17 +284,22 @@ export interface ProjectionSnapshotQueryShape {
 
   /**
    * Read a single active thread shell row by id.
+   * Runtime reconciliation can opt into the latest projected message timestamp
+   * as its activity clock without changing the persisted sidebar shell.
    */
   readonly getThreadShellById: (
     threadId: ThreadId,
+    options?: { readonly includeLatestMessageActivity?: boolean },
   ) => Effect.Effect<Option.Option<OrchestrationThreadShell>, ProjectionRepositoryError>;
 
   /**
    * Read several active thread shells in one round of queries. Ids without an
    * active thread are simply absent from the result.
+   * Reconciliation can include the in-flight message activity in the same batch.
    */
   readonly getThreadShellsByIds: (
     threadIds: ReadonlyArray<ThreadId>,
+    options?: { readonly includeLatestMessageActivity?: boolean },
   ) => Effect.Effect<ReadonlyArray<OrchestrationThreadShell>, ProjectionRepositoryError>;
 
   /**
@@ -267,6 +330,20 @@ export interface ProjectionSnapshotQueryShape {
   readonly getThreadDetailById: (
     threadId: ThreadId,
   ) => Effect.Effect<Option.Option<OrchestrationThread>, ProjectionRepositoryError>;
+
+  /**
+   * Read the same active thread detail as `getThreadDetailById` (messages,
+   * plans, pending interactions, checkpoints, session, latest turn and summary
+   * flags) without loading the activity timeline, the most expensive part of a
+   * detail read on long threads. Summary flags stay identical because pending
+   * interactions, not activity replay, decide them.
+   */
+  readonly getThreadDetailWithoutActivitiesById: (
+    threadId: ThreadId,
+  ) => Effect.Effect<
+    Option.Option<OrchestrationThreadWithoutActivities>,
+    ProjectionRepositoryError
+  >;
 
   /**
    * The bounded slice a `thread://` mention needs: the thread row plus its

@@ -7,6 +7,7 @@
 export const workspace = {
   kanban: {
     columns: {
+      awaitingYou: "Awaiting you",
       draft: "Draft",
       inProgress: "In Progress",
       done: "Done",

@@ -27,10 +27,7 @@ export type PullRequestConfirmAction =
   | { kind: "merge"; method: PullRequestMergeMethod }
   | { kind: "close" };
 
-export function copyPullRequestLink(
-  url: string,
-  copy: Messages["pullRequests"]["toast"],
-): void {
+export function copyPullRequestLink(url: string, copy: Messages["pullRequests"]["toast"]): void {
   void copyTextToClipboard(url)
     .then(() => {
       toastManager.add({ type: "success", title: copy.linkCopied });

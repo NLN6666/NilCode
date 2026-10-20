@@ -258,6 +258,7 @@ export const git: Messages["git"] = {
       },
     },
     runtimeModeHintSuffix: "点击可修改权限。",
+    pendingRuntimeModeHint: (mode) => `${mode}将在当前回复结束后生效。`,
   },
 
   panel: {

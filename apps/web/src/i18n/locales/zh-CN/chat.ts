@@ -78,6 +78,7 @@ export const chat: Chat = {
       unknown: "未知",
       state: (label) => `Claude 提示词缓存：${label}`,
       observedLifetime: (duration) => `已观测的有效期：${duration}`,
+      lifetimeRange: (start, end) => `${start}–${end}`,
       lifetimeUnknown: "缓存有效期不可用。",
       lastResponse: (duration) => `上次回复：${duration}前`,
       reprocessEstimate: (tokens) => `下次请求可能重新处理约 ${tokens} 个 token。`,
@@ -151,6 +152,7 @@ export const chat: Chat = {
   },
 
   panes: {
+    openPanels: "打开面板",
     comingSoon: (label) => `${label}面板即将推出。`,
     loadingBrowser: "正在加载浏览器…",
     loadingPullRequest: "正在加载 Pull Request…",
@@ -182,6 +184,7 @@ export const chat: Chat = {
       git: "Git",
       pullRequest: "拉取请求",
       services: "后台服务",
+      subagents: "子智能体",
       fallback: "面板",
     },
 
@@ -302,6 +305,10 @@ export const chat: Chat = {
   },
 
   work: {
+    commandReading: "正在读取",
+    commandRead: "已读取",
+    commandRunning: "正在运行",
+    commandRan: "已运行",
     summary: "摘要",
     rawCall: "原始调用",
     latest: "最新",
@@ -359,6 +366,8 @@ export const chat: Chat = {
   },
 
   message: {
+    sentByCoordinator: (group: string) => `由 ${group} 发送`,
+    openCoordinator: "打开协调器",
     copy: "复制消息",
     copyTooltip: "复制到剪贴板",
     scrollToBottom: "滚动到底部",
@@ -481,6 +490,8 @@ export const chat: Chat = {
   },
 
   header: {
+    continueHere: "在当前会话中继续",
+    continueNewThread: "在新会话中继续",
     chatHistory: "对话历史",
     noChatsInProject: "此项目还没有对话",
     newEditorRailItem: "新建编辑器栏项目",
@@ -507,6 +518,7 @@ export const chat: Chat = {
     preview: "摘要预览",
     boundedPreview: "仅显示已发送给模型的摘要的部分内容。",
     reasons: {
+      "fork-from-earlier-turn": "已重建至所选回合的分支",
       "conversation-rebuilt": "对话已重建",
       "fresh-session": "新的提供商会话",
       "interrupt-escalation": "停止当前回合升级为重启会话",

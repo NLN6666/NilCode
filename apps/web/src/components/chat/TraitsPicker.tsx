@@ -6,11 +6,13 @@
 import {
   type OpenCodeModelOptions,
   type ProviderAgentDescriptor,
+  type ProviderInstanceId,
   type ProviderKind,
   type ProviderModelDescriptor,
   type ThreadId,
 } from "@synara/contracts";
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import type { FastModeNotice } from "~/lib/fastModeState";
 import { ChevronDownIcon, FastModeIcon, FastModeOutlineIcon, SettingsIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
@@ -39,7 +41,7 @@ import {
 } from "./composerTraits";
 import { useComposerTraitCommit } from "./useComposerTraitCommit";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ShortcutKbd } from "../ui/shortcut-kbd";
+import { ShortcutKbd } from "../ui/kbd";
 import { useMessages } from "~/i18n/context";
 import { useComposerDraftStore } from "~/composerDraftStore";
 
@@ -163,14 +165,18 @@ export function FastModeToggle({
   enabled,
   onToggle,
   tone: toneProp,
+  notice,
 }: {
   enabled: boolean;
   onToggle: () => void;
   tone?: "muted" | "accent";
+  // Requested but not serving: the toggle stays pressed and reads as inactive.
+  notice?: FastModeNotice | null | undefined;
 }) {
   const copy = useMessages().chat.traits;
   const tone = toneProp ?? "muted";
-  const Icon = enabled ? FastModeIcon : FastModeOutlineIcon;
+  const serving = enabled && !notice;
+  const Icon = serving ? FastModeIcon : FastModeOutlineIcon;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -191,7 +197,7 @@ export function FastModeToggle({
           aria-hidden="true"
           className={cn(
             "size-3.5",
-            enabled
+            serving
               ? tone === "accent"
                 ? "text-[var(--color-text-accent)]"
                 : "text-[hsl(var(--chart-4))]"
@@ -200,7 +206,7 @@ export function FastModeToggle({
         />
       </TooltipTrigger>
       <TooltipPopup side="top" variant="picker">
-        {enabled ? "Fast mode on" : "Fast mode off"}
+        {enabled ? (notice?.label ?? "Fast mode on") : "Fast mode off"}
       </TooltipPopup>
     </Tooltip>
   );
@@ -295,6 +301,7 @@ export interface TraitsMenuContentProps {
   // itself and only needs the remaining trait sections (thinking, context, agent).
   excludeEffort?: boolean;
   modelOptions?: ProviderOptions | null | undefined;
+  selectedProviderInstanceId?: ProviderInstanceId | null | undefined;
   onSelectionComplete?: () => void;
 }
 
@@ -309,6 +316,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   includeFastMode: includeFastModeProp,
   excludeEffort: excludeEffortProp,
   modelOptions,
+  selectedProviderInstanceId,
   onSelectionComplete,
 }: TraitsMenuContentProps) {
   const copy = useMessages().chat.traits;
@@ -355,7 +363,13 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   const hasPriorFastModeSection =
     thinkingEnabled !== null || effortLevels.length > 0 || contextWindowOptions.length > 1;
 
-  const commitTraitOptions = useComposerTraitCommit({ threadId, provider, model, modelOptions });
+  const commitTraitOptions = useComposerTraitCommit({
+    threadId,
+    provider,
+    providerInstanceId: selectedProviderInstanceId,
+    model,
+    modelOptions,
+  });
   // Commit a trait change and close the menu. Every section funnels here; the
   // fast-mode header toggle passes `keepMenuOpen` so its state flip stays visible.
   const commitTrait = useCallback(
@@ -501,6 +515,7 @@ export const TraitsPicker = memo(function TraitsPicker({
   onPromptChange,
   includeFastMode: includeFastModeProp,
   modelOptions,
+  selectedProviderInstanceId,
   open,
   onOpenChange,
   onSelectionCommitted,
@@ -692,6 +707,7 @@ export const TraitsPicker = memo(function TraitsPicker({
           onPromptChange={onPromptChange}
           includeFastMode={includeFastMode}
           modelOptions={modelOptions}
+          selectedProviderInstanceId={selectedProviderInstanceId}
           onSelectionComplete={handleSelectionComplete}
         />
       </ComposerPickerMenuPopup>

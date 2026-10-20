@@ -6,6 +6,7 @@ import {
 import {
   createComposerMentionTokenRegex,
   extractComposerMentionPath,
+  findConnectorProviderMentionReferenceForToken,
   findThreadProviderMentionReferenceForToken,
   isColorPreviewMentionToken,
   isPluginProviderMentionReference,
@@ -382,20 +383,26 @@ function splitTextIntoPromptSegments(
         ) ?? false;
       const tokenLength = match.end - match.start;
       const threadId = threadMention ? threadIdFromThreadMentionPath(threadMention.path) : null;
+      const isConnectorMention =
+        !threadMention &&
+        findConnectorProviderMentionReferenceForToken(match.value, options.mentionReferences) !==
+          undefined;
       segments.push(
-        threadMention
-          ? {
-              type: "mention",
-              path: match.value,
-              kind: "thread",
-              ...(threadId !== null ? { threadId } : {}),
-              tokenLength,
-            }
-          : isPluginMention
-            ? { type: "mention", path: match.value, kind: "plugin", tokenLength }
-            : isColorPreviewMentionToken(match.value)
-              ? { type: "mention", path: match.value, kind: "preview", tokenLength }
-              : { type: "mention", path: match.value, tokenLength },
+        isConnectorMention
+          ? { type: "mention", path: match.value, kind: "connector", tokenLength }
+          : threadMention
+            ? {
+                type: "mention",
+                path: match.value,
+                kind: "thread",
+                ...(threadId !== null ? { threadId } : {}),
+                tokenLength,
+              }
+            : isPluginMention
+              ? { type: "mention", path: match.value, kind: "plugin", tokenLength }
+              : isColorPreviewMentionToken(match.value)
+                ? { type: "mention", path: match.value, kind: "preview", tokenLength }
+                : { type: "mention", path: match.value, tokenLength },
       );
     } else if (match.kind === "slash-command") {
       segments.push({ type: "slash-command", command: match.command });

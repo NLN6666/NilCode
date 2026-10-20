@@ -22,6 +22,7 @@ import {
 } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
 import { FetchHttpClient } from "effect/unstable/http";
+import type { ServerSettings } from "@synara/contracts";
 import { NetService } from "@synara/shared/Net";
 import {
   MIGRATION_DIVERGENCE_CONSENT_ENV,
@@ -59,7 +60,10 @@ import * as SqlitePersistence from "./persistence/Layers/Sqlite";
 import { ProviderRuntimeEventRepositoryLive } from "./persistence/Layers/ProviderRuntimeEvents";
 import { makeServerApplicationLayers } from "./serverLayers";
 import { startServerMemoryDiagnostics } from "./memoryDiagnostics";
-import { createClaudeCredentialKeepaliveController } from "./provider/claudeCredentialKeepalive";
+import {
+  claudeCredentialKeepaliveTargets,
+  createClaudeCredentialKeepaliveController,
+} from "./provider/claudeCredentialKeepalive";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
 import { ProviderSessionReaperLive } from "./provider/Layers/ProviderSessionReaper";
 import { ProviderRuntimeReconcilerLive } from "./provider/Layers/ProviderRuntimeReconciler";
@@ -199,6 +203,10 @@ const CliEnvConfig = Config.all({
   ),
   autoBootstrapProjectFromCwd: optionalBooleanEnvironmentConfig(
     "SYNARA_AUTO_BOOTSTRAP_PROJECT_FROM_CWD",
+  ),
+  trashDir: Config.string("SYNARA_TRASH_DIR").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
   ),
   logProviderEvents: optionalBooleanEnvironmentConfig("SYNARA_LOG_PROVIDER_EVENTS"),
   logWebSocketEvents: optionalBooleanEnvironmentConfig("SYNARA_LOG_WS_EVENTS"),
@@ -349,7 +357,7 @@ const ServerConfigLive = (input: CliInput) =>
         });
       }
 
-      const { homeDir, chatWorkspaceRoot, studioWorkspaceRoot } =
+      const { homeDir, chatWorkspaceRoot, studioWorkspaceRoot, groupsWorkspaceRoot } =
         yield* resolveCanonicalWorkspaceRoots({ homeDir: userHomeDir });
 
       const config: ServerConfigShape = {
@@ -359,6 +367,7 @@ const ServerConfigLive = (input: CliInput) =>
         homeDir,
         chatWorkspaceRoot,
         studioWorkspaceRoot,
+        groupsWorkspaceRoot,
         host,
         baseDir,
         ...derivedPaths,
@@ -371,6 +380,7 @@ const ServerConfigLive = (input: CliInput) =>
         desktopShutdownToken,
         migrationDivergenceConsent,
         autoBootstrapProjectFromCwd,
+        trashDir: env.trashDir,
         logProviderEvents,
         logWebSocketEvents,
       } satisfies ServerConfigShape;
@@ -488,18 +498,14 @@ const makeServerProgram = (input: CliInput) =>
       homeDir: config.homeDir,
       log: (message) => Effect.runFork(Effect.logInfo(message)),
     });
-    const reconcileClaudeKeepalive = (settings: {
-      readonly providers: {
-        readonly claudeAgent: { readonly enabled: boolean; readonly binaryPath?: string };
-      };
-    }) =>
+    const reconcileClaudeKeepalive = (settings: ServerSettings) =>
       Effect.promise(() =>
-        claudeKeepalive.reconcile({
-          enabled: settings.providers.claudeAgent.enabled,
-          ...(settings.providers.claudeAgent.binaryPath !== undefined
-            ? { binaryPath: settings.providers.claudeAgent.binaryPath }
-            : {}),
-        }),
+        claudeKeepalive.reconcile(
+          claudeCredentialKeepaliveTargets(settings, {
+            homeDir: config.homeDir,
+            stateDir: config.stateDir,
+          }),
+        ),
       );
     // Attach before reading the initial snapshot. The settings PubSub does not
     // replay, so reading first could miss a disable/path update in the small

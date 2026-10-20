@@ -8,6 +8,22 @@ import type { Settings } from "../en/settings";
 
 export const settings: Settings = {
   searchTitles: {
+    anchorSentMessagesToTop: "将已发送消息移到顶部",
+    threadTabs: "会话标签页",
+    threadAttentionFirst: "工作中和未读会话置顶",
+    subagents: "子代理",
+    asciiBackground: "ASCII 背景",
+    waitForSubagents: "等待子代理完成",
+    sidechatExpiry: "侧聊过期时间",
+    voiceEnterBehavior: "语音输入时的回车行为",
+    foldFinishedTurns: "折叠已完成轮次",
+    githubLinkOpenTarget: "打开拉取请求和议题",
+    githubIncludeUpstreams: "包含 Fork 上游仓库",
+    diffLayout: "差异布局",
+    keepComputerAwake: "保持电脑唤醒",
+    sourceControlWritingStyle: "源代码管理写作风格",
+    lowerProviderProcessPriority: "保持 Synara 响应流畅",
+    sidebarUsage: "侧边栏用量圆环",
     fontSmoothing: "字体平滑",
     keyboardShortcuts: "键位绑定",
     managedWorktrees: "受管工作树",
@@ -78,7 +94,8 @@ export const settings: Settings = {
       title: "侧边栏组织",
       layout: {
         title: "侧边栏布局",
-        description: "经典布局保留单列侧边栏；导航栏布局在左侧加入固定图标标签，旁边显示项目和会话面板。",
+        description:
+          "经典布局保留单列侧边栏；导航栏布局在左侧加入固定图标标签，旁边显示项目和会话面板。",
         resetLabel: "侧边栏布局",
         ariaLabel: "侧边栏布局",
         options: { classic: "经典", rail: "导航栏" },
@@ -113,11 +130,11 @@ export const settings: Settings = {
         resetLabel: "对话板块",
         ariaLabel: "在侧边栏中显示对话板块",
       },
-      studio: {
-        title: "Studio",
-        description: "在侧边栏切换器中显示 Studio 标签页。",
-        resetLabel: "Studio 板块",
-        ariaLabel: "在侧边栏中显示 Studio 板块",
+      groups: {
+        title: "工作组",
+        description: "在侧边栏切换器中显示工作组标签页。",
+        resetLabel: "工作组板块",
+        ariaLabel: "在侧边栏中显示工作组板块",
       },
       automationRuns: {
         title: "自动化运行",
@@ -420,6 +437,11 @@ export const settings: Settings = {
       repairFailedDescription: "无法修复本地状态。",
     },
     about: {
+      featureTour: {
+        title: "0.9.2 之后的新功能",
+        description: "了解新版工作区、提供商账号和代码审阅。",
+        replay: "重播功能导览",
+      },
       title: "关于",
       version: { title: "版本", description: "当前应用版本。" },
       releaseHistory: {
@@ -791,6 +813,16 @@ export const settings: Settings = {
         description: "可选的自定义 Codex 主目录与配置目录。",
       },
       claudeBinaryPath: { label: "Claude 可执行文件路径", placeholder: "Claude 可执行文件路径" },
+      claudeHomePath: {
+        label: "Claude HOME 路径",
+        placeholder: "Claude HOME",
+        description: "此 Claude 账号可选的 HOME 目录。",
+      },
+      claudeConfirmColdCacheResume: {
+        label: "恢复长时间空闲的会话前询问",
+        description:
+          "与 Claude Code 一样默认关闭。启用后，若至少包含 10 万 token 的会话超过 70 分钟没有响应，将暂缓消息并提供从摘要恢复的选项。代理和自动化发送的消息不受影响。",
+      },
       claudeEnableArtifacts: {
         label: "Artifacts、/design 和 /slides",
         description:
@@ -1118,6 +1150,7 @@ export const settings: Settings = {
     },
     custom: {
       title: "自定义模型",
+      enableProvider: "请先在「设置 → 提供商」启用提供商，再添加自定义模型。",
       saved: {
         title: "已保存的模型标识",
         description: "为受支持的提供商添加自定义模型标识。",
@@ -1173,7 +1206,8 @@ export const settings: Settings = {
       featureName: "电脑控制",
       accessibility: {
         title: "辅助功能",
-        description: "允许 Synara 代你移动指针、点击和输入。只有在你授权电脑控制任务后才会执行操作。",
+        description:
+          "允许 Synara 代你移动指针、点击和输入。只有在你授权电脑控制任务后才会执行操作。",
       },
       screenRecording: {
         title: "屏幕录制",
@@ -1191,6 +1225,8 @@ export const settings: Settings = {
     },
   },
   providerUsage: {
+    sidebarAccounts: (count) => `侧边栏 · 最多 ${count} 个账号`,
+    showSidebarUsage: (label) => `在侧边栏底部显示 ${label} 的用量`,
     title: "提供商用量",
     refresh: "刷新",
     loading: "正在加载提供商用量…",

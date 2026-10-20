@@ -239,7 +239,8 @@ export const composer: Messages["composer"] = {
       computerTask: {
         prompt: "允许本次任务使用电脑吗？",
         acceptLabel: "允许本次任务使用电脑",
-        acceptDescription: "在本次回复结束前允许常规桌面操作。点击「停止」可撤销访问；读取剪贴板仍需单独授权。",
+        acceptDescription:
+          "在本次回复结束前允许常规桌面操作。点击「停止」可撤销访问；读取剪贴板仍需单独授权。",
         declineLabel: "拒绝",
         declineDescription: "本轮停止桌面控制，智能体会在不使用工具的情况下继续",
         cancelLabel: "取消这次请求",
@@ -289,6 +290,8 @@ export const composer: Messages["composer"] = {
     uncertainTitle: "请求状态尚不明确",
     compactTitle: "压缩将读取已过期的上下文",
     expiredTitle: "Claude 的提示词缓存可能已过期",
+    expiredSession: (duration, tokens) => `此会话距今 ${duration}，包含 ${tokens} 个 token。`,
+    resumeDescription: "压缩会读取一次完整历史，然后从摘要继续；使用完整上下文继续会保留现有历史。",
     uncertainDescription: "Claude 可能已接受请求。在确认请求状态之前，消息将暂停发送。",
     contextUnknown: "对话上下文",
     contextTokens: (tokens) => `约 ${tokens} 个 token 的上下文`,
@@ -302,6 +305,8 @@ export const composer: Messages["composer"] = {
     compactThenSendDescription: "发送暂缓的消息前先总结当前对话",
     cancelLabel: "取消这次发送",
     cancelDescription: "保留当前对话，不发送暂缓的消息",
+    neverLabel: "不再询问",
+    neverDescription: "现在保留完整历史继续，之后不再询问。可在设置 → 提供商中重新启用",
   },
   threadMentionDrop: {
     unavailableTitle: "无法引用该对话",
@@ -324,6 +329,7 @@ export const composer: Messages["composer"] = {
   },
 
   voice: {
+    startingMicrophone: "正在启动麦克风…",
     record: "录制语音",
     transcribing: "正在转写语音",
     stop: (duration) => `结束录音（${duration}）`,

@@ -7,6 +7,7 @@ export const DESKTOP_IPC_CHANNELS = {
   saveFile: "desktop:save-file",
   confirm: "desktop:confirm",
   setTheme: "desktop:set-theme",
+  setWindowMaterial: "desktop:set-window-material",
   getAppIcon: "desktop:get-app-icon",
   setAppIcon: "desktop:set-app-icon",
   contextMenu: "desktop:context-menu",
@@ -27,6 +28,7 @@ export const DESKTOP_IPC_CHANNELS = {
   customTitleBarSetPreference: "desktop:custom-title-bar-set-preference",
   customTitleBarRelaunch: "desktop:custom-title-bar-relaunch",
   menuAction: "desktop:menu-action",
+  setMenuShortcuts: "desktop:set-menu-shortcuts",
   quitConfirmationRequest: "desktop:quit-confirmation-request",
   quitConfirmationResponse: "desktop:quit-confirmation-response",
   beta: {
@@ -35,6 +37,14 @@ export const DESKTOP_IPC_CHANNELS = {
     install: "desktop:beta-install",
     importAndLaunch: "desktop:beta-import-and-launch",
     leave: "desktop:beta-leave",
+  },
+  betaDiagnostics: {
+    enabled: "desktop:beta-diagnostics-enabled",
+    rendererReady: "desktop:beta-diagnostics-renderer-ready",
+    reportError: "desktop:beta-diagnostics-report-error",
+    recordActivity: "desktop:beta-diagnostics-record-activity",
+    reportIssue: "desktop:beta-diagnostics-report-issue",
+    getReportStatus: "desktop:beta-diagnostics-report-status",
   },
   updateState: "desktop:update-state",
   updateGetState: "desktop:update-get-state",
@@ -48,7 +58,16 @@ export const DESKTOP_IPC_CHANNELS = {
   wsUrl: "desktop:get-ws-url",
   transcribeVoice: "desktop:server-transcribe-voice",
   computerPreviewFrame: "computerPreview.frame",
+  // Renderer preview demand for the native frame tap: the helper captures only
+  // while a main-window preview is subscribed.
+  computerPreviewSubscribe: "desktop:computer-preview-subscribe",
+  computerPreviewUnsubscribe: "desktop:computer-preview-unsubscribe",
   computerSetCursorStyle: "desktop:computer-set-cursor-style",
+  audioLevel: {
+    setSource: "desktop:audio-level-set-source",
+    listMicrophones: "desktop:audio-level-list-microphones",
+    level: "desktop:audio-level",
+  },
   storageMigration: {
     read: "desktop:storage-migration-read",
     acknowledge: "desktop:storage-migration-acknowledge",

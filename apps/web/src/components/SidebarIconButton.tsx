@@ -45,6 +45,8 @@ export function sidebarIconButtonSlotClass(size: SidebarIconButtonSize): string 
 type TooltipSide = "top" | "right" | "bottom" | "left";
 
 export type SidebarIconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
+  /** Optional content for controls that share the sidebar hit target, such as update progress. */
+  children?: ReactNode;
   // Accepts both our LucideIcon adapters and raw react-icons glyphs.
   icon: ComponentType<{ className?: string }>;
   // Always rendered as the accessible name (aria-label).
@@ -73,6 +75,7 @@ export function SidebarIconButton({
   tooltipSide: tooltipSideProp,
   render,
   className,
+  children,
   ...buttonProps
 }: SidebarIconButtonProps) {
   const glyph = glyphProp ?? "chrome";
@@ -92,7 +95,7 @@ export function SidebarIconButton({
       INTERACTIVE_PRESS_MOTION_CLASS_NAME,
     ),
   };
-  const iconNode = <Icon className={iconClassName ?? sidebarGlyphClass(glyph)} />;
+  const iconNode = children ?? <Icon className={iconClassName ?? sidebarGlyphClass(glyph)} />;
   const trigger = triggerElement as ReactElement<Record<string, unknown>>;
 
   if (!tooltip) {

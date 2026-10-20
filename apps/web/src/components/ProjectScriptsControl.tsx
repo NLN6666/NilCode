@@ -12,6 +12,7 @@ import {
   PlayIcon,
   PlusIcon,
   SearchIcon,
+  PlusSignIcon,
   SettingsIcon,
   StopIcon,
 } from "~/lib/icons";
@@ -42,8 +43,8 @@ import { Button } from "./ui/button";
 import {
   CHAT_HEADER_SPLIT_LEADING_CLASS_NAME,
   CHAT_HEADER_SPLIT_TRAILING_CLASS_NAME,
-  ChatHeaderButton,
   ChatHeaderIconButton,
+  ChatHeaderButton,
   ChatHeaderSplitDivider,
   ChatHeaderSplitGroup,
 } from "./chat/chatHeaderControls";
@@ -352,8 +353,9 @@ export default function ProjectScriptsControl({
             <MenuTrigger
               render={
                 <ChatHeaderIconButton
+                  tone="surface"
                   label={copy.menu}
-                  tone="outline"
+                  title={copy.menu}
                   className={CHAT_HEADER_SPLIT_TRAILING_CLASS_NAME}
                 />
               }

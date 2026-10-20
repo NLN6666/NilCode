@@ -3,6 +3,11 @@
 // Layer: Route/UI support
 // Exports: section ids, nav items, and search normalization helper
 
+import { MCP_CONNECTORS_BETA_FEATURE } from "@synara/shared/betaFeatures";
+
+import { isBetaFeatureOn } from "~/betaFeatures";
+import { KEYBINDINGS_ICON_NAME } from "~/lib/icons";
+
 export const SETTINGS_SECTION_IDS = [
   "general",
   "profile",
@@ -19,6 +24,7 @@ export const SETTINGS_SECTION_IDS = [
   "skills",
   "usage",
   "mcpServers",
+  "connectors",
   "integrations",
   "advanced",
 ] as const;
@@ -33,6 +39,7 @@ export type SettingsNavGroupId = "personal" | "integrations" | "coding" | "syste
  */
 export const SETTINGS_TARGETS = {
   providerUpdates: "provider-updates",
+  providerInstalls: "provider-installs",
   environmentPanel: "environment-panel",
 } as const;
 
@@ -57,7 +64,21 @@ export const SETTINGS_NAV_GROUP_IDS = [
   "archived",
 ] as const satisfies readonly SettingsNavGroupId[];
 
-export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
+/** Sections that exist only where their Beta-only feature is on. */
+const SETTINGS_SECTION_BETA_FEATURES: Partial<Record<SettingsSectionId, string>> = {
+  connectors: MCP_CONNECTORS_BETA_FEATURE,
+};
+
+/** False for a Beta-only section on Stable: no nav entry, search result, or deep link. */
+export function isSettingsSectionAvailable(
+  section: SettingsSectionId,
+  isOn: (feature: string) => boolean = isBetaFeatureOn,
+): boolean {
+  const feature = SETTINGS_SECTION_BETA_FEATURES[section];
+  return feature === undefined || isOn(feature);
+}
+
+const ALL_SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
   { id: "general", group: "personal", icon: "settings-gear-4" },
   { id: "profile", group: "personal", icon: "user" },
   { id: "appearance", group: "personal", icon: "color-palette" },
@@ -70,6 +91,7 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
   // Sits immediately before Integrations so the two MCP pages are neighbours. The icon is
   // deliberately not `plugin-1` (Integrations owns that) — the pages point in opposite
   // directions and must be distinguishable at a glance.
+  { id: "connectors", group: "integrations", icon: "connectors-1", badge: "beta" },
   { id: "mcpServers", group: "integrations", icon: "api-connection" },
   { id: "integrations", group: "integrations", icon: "plugin-1" },
   { id: "providers", group: "coding", icon: "puzzle" },
@@ -79,6 +101,10 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
   { id: "advanced", group: "system", icon: "toolbox" },
   { id: "archived", group: "archived", icon: "archive" },
 ] as const;
+
+export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = ALL_SETTINGS_NAV_ITEMS.filter(
+  (item) => isSettingsSectionAvailable(item.id),
+);
 
 /**
  * Stable DOM id for a settings row, derived from its (string) title. Shared by the row that
@@ -98,5 +124,9 @@ export function normalizeSettingsSection(value: unknown): SettingsSectionId {
   if (typeof value !== "string") {
     return "general";
   }
-  return SETTINGS_SECTION_IDS.find((candidate) => candidate === value) ?? "general";
+  return (
+    SETTINGS_SECTION_IDS.find(
+      (candidate) => candidate === value && isSettingsSectionAvailable(candidate),
+    ) ?? "general"
+  );
 }

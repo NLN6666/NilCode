@@ -12,6 +12,7 @@ import {
   WsBootstrapNegotiateResult,
   WsComputerRpcGroup,
   WsFeatureRpcGroup,
+  WsServerRpcGroup,
   type ProviderKind,
   type ServerProviderStatus,
 } from "@synara/contracts";
@@ -115,7 +116,9 @@ async function desktopSocketUrl(cdpPort: number): Promise<string> {
   });
 }
 
-const makeClient = RpcClient.make(WsFeatureRpcGroup.merge(WsComputerRpcGroup));
+const makeClient = RpcClient.make(
+  WsFeatureRpcGroup.merge(WsComputerRpcGroup).merge(WsServerRpcGroup),
+);
 
 export async function connectPackagedOwner(cdpPort: number) {
   return connectOwnerUrl(await desktopSocketUrl(cdpPort));

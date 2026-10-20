@@ -78,6 +78,7 @@ export const pullRequests = {
   },
 
   toast: {
+    sendToAgentFailed: "Could not send to agent",
     merged: "Pull request merged",
     enqueued: "Pull request added to merge queue",
     stackEnqueued: "Stack added to merge queue",
@@ -169,6 +170,11 @@ export const pullRequests = {
 
   /** Shown when the gh CLI is missing, signed out, or the request itself failed. */
   unavailable: {
+    rateLimited: "GitHub rate limit reached",
+    subjectUnavailable: (subject: string) => `${subject} are unavailable`,
+    rateLimitedUntil: (time: string) => `GitHub requests are paused until ${time}.`,
+    rateLimitedDetail: "GitHub requests are paused until the rate limit resets.",
+    autoRefreshAfterReset: "This view refreshes automatically after the rate limit resets.",
     cliRequired: "GitHub CLI is required",
     signIn: "Sign in to GitHub CLI",
     generic: "Pull requests are unavailable",

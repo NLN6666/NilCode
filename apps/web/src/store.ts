@@ -38,6 +38,7 @@ import {
 import { applyOrchestrationEvents, applyOrchestrationEventsHotPath } from "./storeEventReducer";
 import { persistState, readPersistedState, rememberProjectState } from "./storePersistence";
 import { initialState, type AppState } from "./storeState";
+import { persistThreadVisitedState } from "./threadVisitedPersistence";
 import type { Project, ThreadWorkspacePatch } from "./types";
 
 type ReadModelThread = OrchestrationReadModel["threads"][number];
@@ -59,12 +60,18 @@ export {
 } from "./storeProjection";
 export { applyOrchestrationEvents, applyOrchestrationEventsHotPath } from "./storeEventReducer";
 
-const debouncedPersistState = new Debouncer(persistState, { wait: 500 });
+const debouncedPersistState = new Debouncer(
+  (state: AppState) => {
+    persistState(state);
+    persistThreadVisitedState(state);
+  },
+  { wait: 500 },
+);
 
 export function persistAppStateNow(state: AppState = useStore.getState()): void {
   persistState(state);
+  persistThreadVisitedState(state, { force: true });
 }
-
 export function markThreadVisited(
   state: AppState,
   threadId: ThreadId,
@@ -280,7 +287,11 @@ export function setThreadWorkspace(
 interface AppStore extends AppState {
   syncServerShellSnapshot: (snapshot: OrchestrationShellSnapshot) => void;
   syncServerThreadDetail: (thread: ReadModelThread) => void;
-  syncServerThreadDetailHotPath: (thread: ReadModelThread, snapshotSequence?: number) => void;
+  syncServerThreadDetailHotPath: (
+    thread: ReadModelThread,
+    snapshotSequence?: number,
+    historyRevisionSequence?: number,
+  ) => void;
   syncServerReadModel: (readModel: OrchestrationReadModel) => void;
   applyShellEvent: (event: OrchestrationShellStreamEvent) => void;
   applyOrchestrationEvents: (events: ReadonlyArray<OrchestrationEvent>) => void;
@@ -312,8 +323,10 @@ export const useStore = create<AppStore>((set) => ({
   ...readPersistedState(initialState),
   syncServerShellSnapshot: (snapshot) => set((state) => syncServerShellSnapshot(state, snapshot)),
   syncServerThreadDetail: (thread) => set((state) => syncServerThreadDetail(state, thread)),
-  syncServerThreadDetailHotPath: (thread, snapshotSequence) =>
-    set((state) => syncServerThreadDetailHotPath(state, thread, snapshotSequence)),
+  syncServerThreadDetailHotPath: (thread, snapshotSequence, historyRevisionSequence) =>
+    set((state) =>
+      syncServerThreadDetailHotPath(state, thread, snapshotSequence, historyRevisionSequence),
+    ),
   syncServerReadModel: (readModel) => set((state) => syncServerReadModel(state, readModel)),
   applyShellEvent: (event) => set((state) => applyShellEvent(state, event)),
   applyOrchestrationEvents: (events) => set((state) => applyOrchestrationEvents(state, events)),

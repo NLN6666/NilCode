@@ -278,6 +278,7 @@ export const git = {
       },
     },
     runtimeModeHintSuffix: "Click to change permissions.",
+    pendingRuntimeModeHint: (mode: string) => `${mode} takes effect after the current response.`,
   },
 
   /** Source-control side panel in the chat dock. */

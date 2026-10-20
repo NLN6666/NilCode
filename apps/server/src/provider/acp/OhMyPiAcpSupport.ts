@@ -16,7 +16,7 @@ import type * as Acp from "@agentclientprotocol/sdk";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
 import { resolveExecutable } from "../../executableLookup.ts";
-import { buildProviderChildEnvironment } from "../../providerChildEnvironment.ts";
+import { buildOmpProcessEnv, type OmpAccountBoundary } from "./OmpAcpSupport.ts";
 import * as AcpErrors from "./AcpErrors.ts";
 import {
   AcpSessionRuntime,
@@ -38,10 +38,10 @@ export const OH_MY_PI_ACP_CLIENT_CAPABILITIES = {
   elicitation: { form: {} },
 } satisfies NonNullable<Acp.InitializeRequest["clientCapabilities"]>;
 
-export interface OhMyPiAcpRuntimeSettings {
-  readonly binaryPath?: string;
-  readonly overlayPath?: string;
-  readonly agentDir?: string;
+export interface OhMyPiAcpRuntimeSettings extends OmpAccountBoundary {
+  readonly binaryPath?: string | undefined;
+  readonly overlayPath?: string | undefined;
+  readonly agentDir?: string | undefined;
 }
 
 export interface OhMyPiAcpRuntimeInput extends Omit<
@@ -70,11 +70,10 @@ export function buildOhMyPiAcpSpawnInput(
   if (!overlayPath) {
     throw new Error("Oh My Pi ACP requires the Synara process overlay before spawn.");
   }
-  const env = buildProviderChildEnvironment({ provider: "acp" });
-  delete env.PI_CODING_AGENT_DIR;
-  if (settings?.agentDir?.trim()) env.PI_CODING_AGENT_DIR = settings.agentDir.trim();
+  const env = buildOmpProcessEnv(settings ?? {});
+  const command = settings?.binaryPath?.trim() || "omp";
   return {
-    command: resolveOhMyPiCliBinaryPath(settings?.binaryPath),
+    command: resolveExecutable(command, { env }) ?? command,
     args: ["acp", "--config", overlayPath],
     cwd,
     env,

@@ -45,7 +45,7 @@ export const sidebar = {
   /** The Studio/Projects segmented control, and the list headings under each. */
   views: {
     threads: "Projects",
-    studio: "Studio",
+    groups: "Hubs",
   },
   rail: {
     home: "Home",
@@ -65,7 +65,7 @@ export const sidebar = {
   surfacePicker: {
     ariaLabel: "Switch sidebar surface",
     threads: { title: "Synara", description: "Build, debug, and ship" },
-    studio: { title: "Studio", description: "Open-ended agent work" },
+    groups: { title: "Hubs", description: "Coordinated agent work" },
   },
 
   projects: {
@@ -142,6 +142,7 @@ export const sidebar = {
     sessionId: "Session ID",
     importClaudePlaceholder: "Paste a Claude session id",
     importCursorPlaceholder: "Paste a Cursor session id",
+    importDroidPlaceholder: "Paste a Droid session id",
     importOpenCodePlaceholder: "Paste an OpenCode session id",
     importOmpPlaceholder: "Paste an Oh My Pi session id",
     importCodexPlaceholder: "Paste a Codex thread id",
@@ -149,6 +150,7 @@ export const sidebar = {
       codex: "Codex resumes a persisted thread by thread id.",
       claudeAgent: "Claude resumes a persisted session by session id.",
       cursor: "Cursor resumes a persisted session by session id.",
+      droid: "Droid resumes a persisted session by session id.",
       opencode: "OpenCode resumes a persisted session by session id.",
       omp: "Oh My Pi resumes a persisted session by session id.",
     },
@@ -167,7 +169,8 @@ export const sidebar = {
     projectPathPlaceholder: "Enter project path (e.g. ~/projects/my-app)",
     searchPlaceholder: "Search chats or run a command",
     enterFolderPath: "Enter a folder path.",
-    relativePathsUnsupported: "Relative paths are not supported. Use an absolute path or start with ~/.",
+    relativePathsUnsupported:
+      "Relative paths are not supported. Use an absolute path or start with ~/.",
     addFailed: "Failed to add project.",
     createAndAdd: "Create & Add",
     add: "Add",

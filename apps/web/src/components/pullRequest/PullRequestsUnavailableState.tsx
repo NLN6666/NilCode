@@ -1,12 +1,13 @@
 // FILE: PullRequestsUnavailableState.tsx
 // Purpose: Actionable empty state for the pull requests surface when the GitHub CLI is missing,
-//          unauthenticated, or a request otherwise failed — each case gets a short explanation
-//          and a copyable terminal command instead of a dead end.
+//          unauthenticated, rate-limited, or a request otherwise failed — each case gets a short
+//          explanation and a copyable terminal command or reset time instead of a dead end.
 // Layer: Pull request presentation
 // Exports: PullRequestsUnavailableState, isPullRequestsUnavailableError
 
 import { useEffect, useRef, useState } from "react";
 
+import { useAppSettings } from "~/appSettings";
 import { Button } from "~/components/ui/button";
 import { toastManager } from "~/components/ui/toast";
 import {
@@ -21,12 +22,16 @@ import { copyTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { CheckIcon, CopyIcon, GitPullRequestIcon, TriangleAlertIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { ensureNativeApi } from "~/nativeApi";
+import { formatShortTimestamp } from "~/timestampFormat";
 import { PR_FINE_TEXT_CLASS_NAME, PR_META_TEXT_CLASS_NAME } from "./pullRequestText";
 import { useMessages } from "~/i18n/context";
 
-export function isPullRequestsUnavailableError(
-  error: unknown,
-): error is { _tag: "PullRequestsUnavailableError"; reason: string; message: string } {
+export function isPullRequestsUnavailableError(error: unknown): error is {
+  _tag: "PullRequestsUnavailableError";
+  reason: string;
+  message: string;
+  retryAt?: string;
+} {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -112,15 +117,25 @@ function CommandLine({ command }: { command: string }) {
 export function PullRequestsUnavailableState({
   error,
   onRetry,
+  subject: subjectProp,
 }: {
   error: unknown;
   /** Optional refetch hook so "Retry" re-runs the failed query instead of reloading the app. */
   onRetry?: () => void;
+  /** What failed to load, as a plural noun for the title ("Pull requests are unavailable"). */
+  subject?: string;
 }) {
   const copy = useMessages().pullRequests;
+  const subject = subjectProp ?? copy.title;
+  const { settings } = useAppSettings();
   const unavailable = isPullRequestsUnavailableError(error) ? error : null;
   const notInstalled = unavailable?.reason === "gh-not-installed";
   const notAuthenticated = unavailable?.reason === "gh-not-authenticated";
+  const rateLimited = unavailable?.reason === "rate-limited";
+  const resetTime =
+    rateLimited && unavailable?.retryAt
+      ? formatShortTimestamp(unavailable.retryAt, settings.timestampFormat)
+      : null;
   const installCommand =
     notInstalled && typeof navigator !== "undefined"
       ? githubCliInstallCommand(navigator.platform)
@@ -137,16 +152,22 @@ export function PullRequestsUnavailableState({
             ? copy.unavailable.cliRequired
             : notAuthenticated
               ? copy.unavailable.signIn
-              : copy.unavailable.generic}
+              : rateLimited
+                ? copy.unavailable.rateLimited
+                : copy.unavailable.subjectUnavailable(subject)}
         </EmptyTitle>
         <EmptyDescription>
           {notInstalled
             ? copy.unavailable.cliRequiredDetail
             : notAuthenticated
               ? copy.unavailable.signInDetail
-              : error instanceof Error
-                ? error.message
-                : copy.unavailable.genericDetail}
+              : rateLimited
+                ? resetTime
+                  ? copy.unavailable.rateLimitedUntil(resetTime)
+                  : copy.unavailable.rateLimitedDetail
+                : error instanceof Error
+                  ? error.message
+                  : copy.unavailable.genericDetail}
         </EmptyDescription>
       </EmptyHeader>
       {notInstalled || notAuthenticated ? (
@@ -185,7 +206,11 @@ export function PullRequestsUnavailableState({
             )}
           >
             <TriangleAlertIcon className="size-3.5" />
-            <span>{copy.unavailable.checkConnection}</span>
+            <span>
+              {rateLimited
+                ? copy.unavailable.autoRefreshAfterReset
+                : copy.unavailable.checkConnection}
+            </span>
           </div>
           {onRetry ? (
             <Button variant="outline" size="sm" onClick={onRetry}>

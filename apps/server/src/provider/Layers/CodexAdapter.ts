@@ -21,6 +21,7 @@ import {
   type ProviderSendTurnInput,
   type ProviderListSkillsResult,
   type ProviderRuntimeEvent,
+  type ProviderInstanceId,
   type ServerVoiceTranscriptionResult,
   type ThreadTokenUsageSnapshot,
   type ProviderUserInputAnswers,
@@ -47,9 +48,11 @@ import { CodexAdapter, type CodexAdapterShape } from "../Services/CodexAdapter.t
 import { PROVIDER_ADAPTER_RUNTIME_EVENT_BUFFER_CAPACITY } from "../Services/ProviderAdapter.ts";
 import {
   CodexAppServerManager,
+  CodexSessionAuthInvalidatedError,
   parseCodexUserInputQuestions,
   type CodexAppServerSendTurnInput,
   type CodexAppServerStartSessionInput,
+  type CodexSessionInspection,
 } from "../../codexAppServerManager.ts";
 import {
   evaluateAcpTurnIdleTick,
@@ -65,6 +68,8 @@ import { filterProviderPromptImageAttachments } from "../promptAttachments.ts";
 import { resolveProviderAttachmentPath } from "../providerAttachmentPaths.ts";
 import {
   codexGeneratedImageArtifact,
+  type CodexGeneratedImageHomeCandidate,
+  type CodexGeneratedImageHomeContext,
   extractCodexGeneratedImageReference,
   firstStringValue,
   isCodexGeneratedImageItemType,
@@ -118,8 +123,18 @@ interface CodexTurnWatchdogEntry {
   lastActivityAt: number;
 }
 
+const stampEvent = (event: ProviderEvent, instanceId: string | undefined): ProviderEvent =>
+  event.providerInstanceId === undefined && instanceId
+    ? { ...event, providerInstanceId: instanceId }
+    : event;
+
 type CodexRuntimeIngressItem = {
   readonly nativeEvent: ProviderEvent;
+  readonly inspect: () => Promise<CodexSessionInspection | undefined>;
+  readonly isAuthRejected: () => boolean;
+  readonly validationKey: object | undefined;
+  readonly rejectInspection: () => void;
+  readonly trustedClose: boolean;
   readonly runtimeEvents: ReadonlyArray<ProviderRuntimeEvent>;
   readonly bytes: number;
 };
@@ -262,6 +277,12 @@ function asString(value: unknown): string | undefined {
 function asTrimmedString(value: unknown): string | undefined {
   const stringValue = asString(value)?.trim();
   return stringValue ? stringValue : undefined;
+}
+
+function codexErrorCode(value: unknown): string | undefined {
+  const error = asObject(value);
+  const code = asTrimmedString(error?.codexErrorInfo) ?? asTrimmedString(error?.codex_error_info);
+  return code === "serverOverloaded" ? "server_overloaded" : code;
 }
 
 function asArray(value: unknown): unknown[] | undefined {
@@ -710,11 +731,16 @@ function codexGeneratedImageThreadId(
   );
 }
 
-function sanitizeGeneratedImagePayload(event: ProviderEvent, canonicalThreadId: ThreadId): unknown {
+function sanitizeGeneratedImagePayload(
+  event: ProviderEvent,
+  canonicalThreadId: ThreadId,
+  codexHome?: CodexGeneratedImageHomeContext,
+): unknown {
   const payload = asObject(event.payload);
   return sanitizeNestedCodexGeneratedImagePayloads({
     value: event.payload ?? {},
     threadId: codexGeneratedImageThreadId(event, payload) ?? canonicalThreadId,
+    ...(codexHome ? { codexHome } : {}),
   });
 }
 
@@ -722,13 +748,14 @@ function withSanitizedGeneratedImageRaw(
   base: Omit<ProviderRuntimeEvent, "type" | "payload">,
   event: ProviderEvent,
   canonicalThreadId: ThreadId,
+  codexHome?: CodexGeneratedImageHomeContext,
 ): Omit<ProviderRuntimeEvent, "type" | "payload"> {
   return {
     ...base,
     raw: {
       source: eventRawSource(event),
       method: event.method,
-      payload: sanitizeGeneratedImagePayload(event, canonicalThreadId),
+      payload: sanitizeGeneratedImagePayload(event, canonicalThreadId, codexHome),
     },
   };
 }
@@ -765,6 +792,7 @@ function generatedImageEventCandidate(event: ProviderEvent): Record<string, unkn
 function mapGeneratedImageEndEvent(
   event: ProviderEvent,
   canonicalThreadId: ThreadId,
+  codexHome?: CodexGeneratedImageHomeContext,
 ): ProviderRuntimeEvent | undefined {
   if (
     event.method !== "codex/event/image_generation_end" &&
@@ -777,6 +805,7 @@ function mapGeneratedImageEndEvent(
   const reference = extractCodexGeneratedImageReference({
     value: candidate,
     threadId: codexGeneratedImageThreadId(event, payload) ?? canonicalThreadId,
+    ...(codexHome ? { codexHome } : {}),
   });
   if (!reference) {
     return undefined;
@@ -809,6 +838,7 @@ function mapGeneratedImageEndEvent(
     },
     event,
     canonicalThreadId,
+    codexHome,
   );
 
   return {
@@ -859,6 +889,7 @@ function runtimeEventBase(
     ...(event.parentTurnId ? { parentTurnId: event.parentTurnId } : {}),
     ...(event.itemId ? { itemId: asRuntimeItemId(event.itemId) } : {}),
     ...(event.requestId ? { requestId: asRuntimeRequestId(event.requestId) } : {}),
+    ...(event.providerInstanceId ? { providerInstanceId: event.providerInstanceId } : {}),
     ...(refs ? { providerRefs: refs } : {}),
     raw: {
       source: eventRawSource(event),
@@ -897,16 +928,74 @@ function withMinimalRawPayload(
   };
 }
 
+// Codex multi-agent v2 announces each spawned child with a subAgentActivity
+// item (kind "started"/"completed", agentThreadId, agentPath "/root/<task>")
+// instead of a collabAgentToolCall naming receivers, and its spawn prompt is
+// encrypted. Present it as a collab call so the shared subagent machinery
+// creates the child thread, names it after its task, and records its outcome.
+function codexSubAgentActivityCollabItem(
+  source: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (source.type !== "subAgentActivity") {
+    return undefined;
+  }
+  const agentThreadId = asString(source.agentThreadId);
+  if (!agentThreadId) {
+    return undefined;
+  }
+  const kind = asString(source.kind);
+  const agentPath = asString(source.agentPath);
+  const taskName = agentPath
+    ?.split("/")
+    .map((segment) => segment.trim())
+    .findLast((segment) => segment.length > 0);
+  const model = asString(source.model);
+  const effort = asString(source.reasoningEffort);
+  const settled = kind !== undefined && kind !== "started";
+  return {
+    type: "collabAgentToolCall",
+    ...(asString(source.id) ? { id: asString(source.id) } : {}),
+    tool: settled ? "subAgentSettled" : "spawnAgent",
+    status: "completed",
+    receiverThreadIds: [agentThreadId],
+    receiverAgents: [
+      {
+        threadId: agentThreadId,
+        ...(taskName ? { agentNickname: taskName } : {}),
+        ...(model ? { model } : {}),
+        ...(effort ? { reasoningEffort: effort } : {}),
+      },
+    ],
+    ...(settled ? { agentsStates: { [agentThreadId]: { status: kind } } } : {}),
+    ...(agentPath ? { agentPath } : {}),
+  };
+}
+
 function mapItemLifecycle(
   event: ProviderEvent,
   canonicalThreadId: ThreadId,
   lifecycle: "item.started" | "item.updated" | "item.completed",
+  codexHome?: CodexGeneratedImageHomeContext,
 ): ProviderRuntimeEvent | undefined {
   const payload = asObject(event.payload);
   const item = asObject(payload?.item);
   const source = item ?? payload;
   if (!source) {
     return undefined;
+  }
+
+  const subAgentCollabItem = codexSubAgentActivityCollabItem(source);
+  if (subAgentCollabItem) {
+    return {
+      ...runtimeEventBase(event, canonicalThreadId),
+      type: lifecycle,
+      payload: {
+        itemType: "collab_agent_tool_call",
+        status: lifecycle === "item.started" ? "inProgress" : "completed",
+        title: "Subagent",
+        data: { ...payload, item: subAgentCollabItem },
+      },
+    };
   }
 
   const itemType = toCanonicalItemType(source.type ?? source.kind);
@@ -918,6 +1007,7 @@ function mapItemLifecycle(
       ? extractCodexGeneratedImageReference({
           value: source,
           threadId: codexGeneratedImageThreadId(event, payload) ?? canonicalThreadId,
+          ...(codexHome ? { codexHome } : {}),
         })
       : undefined;
   if (
@@ -957,6 +1047,7 @@ function mapItemLifecycle(
           runtimeEventBase(event, canonicalThreadId),
           event,
           canonicalThreadId,
+          codexHome,
         )
       : runtimeEventBase(event, canonicalThreadId)),
     type: lifecycle,
@@ -1079,8 +1170,10 @@ function mapCodexHookEvent(
   };
 }
 
-// Configuration/lifecycle bookkeeping belongs in native diagnostics, not the transcript.
+// Internal metadata and configuration/lifecycle bookkeeping stay in native diagnostics.
 const DIAGNOSTIC_ONLY_CODEX_METHODS = new Set([
+  "turn/moderationMetadata",
+  "item/autoApprovalReview/started",
   "remoteControl/status/changed",
   "skills/changed",
   "session/threadOpenRequested",
@@ -1121,10 +1214,11 @@ function mapUnmappedCodexEvent(
 function mapToRuntimeEvents(
   event: ProviderEvent,
   canonicalThreadId: ThreadId,
+  codexHome?: CodexGeneratedImageHomeContext,
 ): ReadonlyArray<ProviderRuntimeEvent> {
   const payload = asObject(event.payload);
   const turn = asObject(payload?.turn);
-  const generatedImageEndEvent = mapGeneratedImageEndEvent(event, canonicalThreadId);
+  const generatedImageEndEvent = mapGeneratedImageEndEvent(event, canonicalThreadId, codexHome);
   if (generatedImageEndEvent) {
     return [generatedImageEndEvent];
   }
@@ -1390,6 +1484,7 @@ function mapToRuntimeEvents(
 
   if (event.method === "turn/completed") {
     const errorMessage = asString(asObject(turn?.error)?.message);
+    const errorCode = codexErrorCode(turn?.error);
     return [
       {
         ...runtimeEventBase(event, canonicalThreadId),
@@ -1403,6 +1498,7 @@ function mapToRuntimeEvents(
             ? { totalCostUsd: asNumber(turn?.totalCostUsd) }
             : {}),
           ...(errorMessage ? { errorMessage } : {}),
+          ...(errorCode ? { errorCode } : {}),
         },
       },
     ];
@@ -1447,9 +1543,12 @@ function mapToRuntimeEvents(
   }
 
   if (event.method === "turn/diff/updated") {
+    // Each patch resends the whole cumulative turn diff. Keep it only in
+    // payload.unifiedDiff: copying it into raw doubles every journal write,
+    // sizing pass and decode for no reader.
     return [
       {
-        ...runtimeEventBase(event, canonicalThreadId),
+        ...runtimeDeltaEventBase(event, canonicalThreadId),
         type: "turn.diff.updated",
         payload: {
           unifiedDiff:
@@ -1463,7 +1562,7 @@ function mapToRuntimeEvents(
   }
 
   if (event.method === "item/started") {
-    const started = mapItemLifecycle(event, canonicalThreadId, "item.started");
+    const started = mapItemLifecycle(event, canonicalThreadId, "item.started", codexHome);
     return started ? [started] : [];
   }
 
@@ -1490,7 +1589,7 @@ function mapToRuntimeEvents(
         },
       ];
     }
-    const completed = mapItemLifecycle(event, canonicalThreadId, "item.completed");
+    const completed = mapItemLifecycle(event, canonicalThreadId, "item.completed", codexHome);
     return completed ? [completed] : [];
   }
 
@@ -1498,7 +1597,7 @@ function mapToRuntimeEvents(
     event.method === "item/reasoning/summaryPartAdded" ||
     event.method === "item/commandExecution/terminalInteraction"
   ) {
-    const updated = mapItemLifecycle(event, canonicalThreadId, "item.updated");
+    const updated = mapItemLifecycle(event, canonicalThreadId, "item.updated", codexHome);
     return updated ? [updated] : [];
   }
 
@@ -1862,6 +1961,7 @@ function mapToRuntimeEvents(
     const message =
       asString(asObject(payload?.error)?.message) ?? event.message ?? "Provider runtime error";
     const willRetry = payload?.willRetry === true;
+    const errorCode = codexErrorCode(payload?.error);
     const treatAsWarning = willRetry || isNonFatalCodexErrorMessage(message);
     return [
       {
@@ -1870,6 +1970,8 @@ function mapToRuntimeEvents(
         payload: {
           message,
           ...(!treatAsWarning ? { class: "provider_error" as const } : {}),
+          ...(!treatAsWarning && errorCode ? { errorCode } : {}),
+          ...(willRetry ? { willRetry: true } : {}),
           ...(event.payload !== undefined ? { detail: event.payload } : {}),
         },
       },
@@ -2127,16 +2229,26 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
       const managerInput: CodexAppServerStartSessionInput = {
         threadId: input.threadId,
         provider: "codex",
+        ...(input.providerInstanceId ? { providerInstanceId: input.providerInstanceId } : {}),
         ...(input.lifecycleGeneration !== undefined
           ? { lifecycleGeneration: input.lifecycleGeneration }
           : {}),
         ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
         ...(input.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
+        ...(input.expectedCodexContinuationGeneration
+          ? { expectedCodexContinuationGeneration: input.expectedCodexContinuationGeneration }
+          : {}),
         ...(input.forkSourceResumeCursor !== undefined
           ? { forkSourceResumeCursor: input.forkSourceResumeCursor }
           : {}),
         ...(input.providerOptions !== undefined ? { providerOptions: input.providerOptions } : {}),
+        ...(input.additionalDirectories !== undefined
+          ? { additionalDirectories: input.additionalDirectories }
+          : {}),
         agentGatewayCapabilityInput: captureAgentGatewayCapabilityInput(input),
+        ...(input.autoApproveSynaraTools !== undefined
+          ? { autoApproveSynaraTools: input.autoApproveSynaraTools }
+          : {}),
         runtimeMode: input.runtimeMode,
         ...codexModelSelectionOverrides(input.modelSelection),
       };
@@ -2153,7 +2265,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
               : {}),
             cause,
           }),
-      }).pipe(Effect.map((session) => session));
+      });
     };
 
     const sendTurn: CodexAdapterShape["sendTurn"] = (input) =>
@@ -2244,7 +2356,12 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
 
     const readExternalThread: NonNullable<CodexAdapterShape["readExternalThread"]> = (input) =>
       Effect.tryPromise({
-        try: () => manager.readExternalThread(input),
+        try: () =>
+          manager.readExternalThread({
+            externalThreadId: input.externalThreadId,
+            ...(input.cwd ? { cwd: input.cwd } : {}),
+            ...(input.providerOptions?.codex ? { codexOptions: input.providerOptions.codex } : {}),
+          }),
         catch: (cause) =>
           new ProviderAdapterRequestError({
             provider: PROVIDER,
@@ -2260,6 +2377,21 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
         })),
       );
 
+    const readExternalThreadPage: NonNullable<CodexAdapterShape["readExternalThreadPage"]> = (
+      input,
+    ) =>
+      Effect.tryPromise({
+        try: () =>
+          manager.readExternalThreadPage({
+            externalThreadId: input.externalThreadId,
+            ...(input.cursor !== undefined ? { cursor: input.cursor } : {}),
+            ...(input.cwd ? { cwd: input.cwd } : {}),
+            ...(input.providerOptions?.codex ? { codexOptions: input.providerOptions.codex } : {}),
+          }),
+        catch: (cause) =>
+          toRequestError(ThreadId.makeUnsafe(input.externalThreadId), "thread/turns/list", cause),
+      }).pipe(Effect.map((page) => ({ ...page, threadId: ThreadId.makeUnsafe(page.threadId) })));
+
     const rollbackThread: CodexAdapterShape["rollbackThread"] = (threadId, numTurns) => {
       if (!Number.isInteger(numTurns) || numTurns < 1) {
         return Effect.fail(
@@ -2273,7 +2405,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
 
       return Effect.tryPromise({
         try: () => manager.rollbackThread(threadId, numTurns),
-        catch: (cause) => toRequestError(threadId, "thread/rollback", cause),
+        catch: (cause) => toRequestError(threadId, "thread/revert", cause),
       }).pipe(
         Effect.map((snapshot) => ({
           threadId,
@@ -2329,6 +2461,31 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
     const listSessions: CodexAdapterShape["listSessions"] = () =>
       Effect.sync(() => manager.listSessions());
 
+    const listGeneratedImageHomePaths: NonNullable<
+      CodexAdapterShape["listGeneratedImageHomePaths"]
+    > = (input) =>
+      Effect.sync(() => {
+        const homePaths = new Map<string, CodexGeneratedImageHomeCandidate>();
+        for (const { session, codexOptions } of manager.inspectSessions()) {
+          const instanceId = session.providerInstanceId ?? (PROVIDER as ProviderInstanceId);
+          if (
+            input?.enabledProviderInstanceIds &&
+            !input.enabledProviderInstanceIds.has(instanceId)
+          ) {
+            continue;
+          }
+          if (!codexOptions) {
+            continue;
+          }
+          const candidateKey =
+            typeof codexOptions === "string"
+              ? `path:${codexOptions}`
+              : JSON.stringify(codexOptions);
+          homePaths.set(candidateKey, codexOptions);
+        }
+        return [...homePaths.values()];
+      });
+
     const hasSession: CodexAdapterShape["hasSession"] = (threadId) =>
       Effect.sync(() => manager.hasSession(threadId));
 
@@ -2353,6 +2510,13 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
           manager.listSkills({
             cwd: input.cwd,
             ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),
+            codexOptions: {
+              ...(input.binaryPath ? { binaryPath: input.binaryPath } : {}),
+              ...(input.homePath ? { homePath: input.homePath } : {}),
+              ...(input.shadowHomePath ? { shadowHomePath: input.shadowHomePath } : {}),
+              ...(input.accountId ? { accountId: input.accountId } : {}),
+              ...(input.environment ? { environment: input.environment } : {}),
+            },
             ...(input.forceReload !== undefined ? { forceReload: input.forceReload } : {}),
           }),
         catch: (cause) =>
@@ -2370,6 +2534,13 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
           manager.listPlugins({
             ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
             ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),
+            codexOptions: {
+              ...(input.binaryPath ? { binaryPath: input.binaryPath } : {}),
+              ...(input.homePath ? { homePath: input.homePath } : {}),
+              ...(input.shadowHomePath ? { shadowHomePath: input.shadowHomePath } : {}),
+              ...(input.accountId ? { accountId: input.accountId } : {}),
+              ...(input.environment ? { environment: input.environment } : {}),
+            },
             ...(input.forceRemoteSync !== undefined
               ? { forceRemoteSync: input.forceRemoteSync }
               : {}),
@@ -2390,6 +2561,15 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
           manager.readPlugin({
             marketplacePath: input.marketplacePath,
             pluginName: input.pluginName,
+            ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+            ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),
+            codexOptions: {
+              ...(input.binaryPath ? { binaryPath: input.binaryPath } : {}),
+              ...(input.homePath ? { homePath: input.homePath } : {}),
+              ...(input.shadowHomePath ? { shadowHomePath: input.shadowHomePath } : {}),
+              ...(input.accountId ? { accountId: input.accountId } : {}),
+              ...(input.environment ? { environment: input.environment } : {}),
+            },
           }),
         catch: (cause) =>
           new ProviderAdapterRequestError({
@@ -2412,9 +2592,19 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
         } satisfies ProviderListAgentsResult;
       });
 
-    const listModels: NonNullable<CodexAdapterShape["listModels"]> = (_input) =>
+    const listModels: NonNullable<CodexAdapterShape["listModels"]> = (input) =>
       Effect.tryPromise({
-        try: () => manager.listModels(),
+        try: () =>
+          manager.listModels({
+            ...(input.cwd ? { cwd: input.cwd } : {}),
+            codexOptions: {
+              ...(input.binaryPath ? { binaryPath: input.binaryPath } : {}),
+              ...(input.homePath ? { homePath: input.homePath } : {}),
+              ...(input.shadowHomePath ? { shadowHomePath: input.shadowHomePath } : {}),
+              ...(input.accountId ? { accountId: input.accountId } : {}),
+              ...(input.environment ? { environment: input.environment } : {}),
+            },
+          }),
         catch: (cause) =>
           new ProviderAdapterRequestError({
             provider: PROVIDER,
@@ -2426,7 +2616,11 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
 
     const transcribeVoice: NonNullable<CodexAdapterShape["transcribeVoice"]> = (input) =>
       Effect.tryPromise({
-        try: () => manager.transcribeVoice(input),
+        try: () =>
+          manager.transcribeVoice({
+            ...input,
+            ...(input.providerOptions?.codex ? { codexOptions: input.providerOptions.codex } : {}),
+          }),
         catch: (cause) =>
           new ProviderAdapterRequestError({
             provider: PROVIDER,
@@ -2442,6 +2636,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
           manager.prewarmVoice({
             cwd: input.cwd,
             ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),
+            ...(input.providerOptions?.codex ? { codexOptions: input.providerOptions.codex } : {}),
           }),
         catch: (cause) =>
           new ProviderAdapterRequestError({
@@ -2461,10 +2656,26 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
             }
             yield* nativeEventLogger.write(event, event.threadId);
           });
+        const filterRuntimeEvents = (
+          event: ProviderEvent,
+          events: ReadonlyArray<ProviderRuntimeEvent>,
+        ) =>
+          events.filter(
+            (runtimeEvent) =>
+              runtimeEvent.type !== "event.unmapped" ||
+              (!DIAGNOSTIC_ONLY_CODEX_METHODS.has(event.method) &&
+                shouldSurfaceUnmappedEvent(event)),
+          );
 
-        const ingress = yield* makeBoundedCallbackIngress<CodexRuntimeIngressItem, never, never>(
-          (item) =>
+        const ingress = yield* makeBoundedCallbackIngress<
+          CodexRuntimeIngressItem,
+          never,
+          never,
+          CodexSessionInspection | null | undefined
+        >(
+          (item, inspection) =>
             Effect.gen(function* () {
+              if (!item.trustedClose && (inspection === null || item.isAuthRejected())) return;
               yield* writeNativeEvent(item.nativeEvent).pipe(
                 Effect.catchCause((cause) =>
                   Effect.logWarning("Codex native event logging failed", {
@@ -2484,9 +2695,34 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
                 });
                 return;
               }
-              yield* Queue.offerAll(runtimeEventQueue, runtimeEvents);
+              if (item.trustedClose || !item.isAuthRejected())
+                yield* Queue.offerAll(runtimeEventQueue, runtimeEvents);
             }),
           {
+            prepareConcurrency: 8,
+            prepareKey: (item) => (item.trustedClose ? undefined : item.validationKey),
+            prepare: ({
+              inspect,
+              trustedClose,
+              isAuthRejected,
+              rejectInspection,
+              nativeEvent: { threadId },
+            }) => {
+              if (trustedClose) return Promise.resolve(undefined);
+              if (isAuthRejected()) return Promise.resolve(null);
+              return Promise.resolve()
+                .then(inspect)
+                .catch((error: unknown) => {
+                  if (error instanceof CodexSessionAuthInvalidatedError) return null;
+                  rejectInspection();
+                  void Effect.runPromise(
+                    Effect.logError("Codex callback auth inspection failed; origin rejected", {
+                      threadId,
+                    }),
+                  );
+                  return null;
+                });
+            },
             capacity: PROVIDER_ADAPTER_RUNTIME_EVENT_BUFFER_CAPACITY,
             maxBufferedBytes: PROVIDER_RUNTIME_CALLBACK_BUFFER_MAX_BYTES,
             terminalReserve: PROVIDER_RUNTIME_CALLBACK_TERMINAL_RESERVE,
@@ -2494,39 +2730,58 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
             sizeOf: (item) => item.bytes,
           },
         );
+        let nextDroppedWarning = 1;
         const listener = (event: ProviderEvent) => {
+          const origin = manager.getSessionEventOrigin(event.threadId, event.lifecycleGeneration);
+          const stampedEvent = stampEvent(event, origin.providerInstanceId);
           const mappedRuntimeEvents = assignDerivedProviderRuntimeEventIds(
-            mapToRuntimeEvents(event, event.threadId),
+            mapToRuntimeEvents(stampedEvent, stampedEvent.threadId, origin.codexOptions),
           );
           const hasUnmappedEvent = mappedRuntimeEvents.some(
             (runtimeEvent) => runtimeEvent.type === "event.unmapped",
           );
-          const sizedRuntimeEvents = mappedRuntimeEvents
-            .filter(
-              (runtimeEvent) =>
-                runtimeEvent.type !== "event.unmapped" ||
-                (!DIAGNOSTIC_ONLY_CODEX_METHODS.has(event.method) &&
-                  shouldSurfaceUnmappedEvent(event)),
-            )
-            .map(compactProviderRuntimeEventForIngress);
+          const sizedRuntimeEvents = filterRuntimeEvents(stampedEvent, mappedRuntimeEvents).map(
+            compactProviderRuntimeEventForIngress,
+          );
           const runtimeEvents = sizedRuntimeEvents.map((item) => item.event);
-          trackTurnWatchdogActivity(event.threadId, runtimeEvents);
+          trackTurnWatchdogActivity(stampedEvent.threadId, runtimeEvents);
           const nativeEvent = compactCodexNativeEventForIngress(
-            hasUnmappedEvent ? sanitizeUnmappedProviderEvent(event) : event,
+            hasUnmappedEvent ? sanitizeUnmappedProviderEvent(stampedEvent) : stampedEvent,
           );
           const result = ingress.offer({
             nativeEvent: nativeEvent.event,
+            inspect: origin.inspect,
+            isAuthRejected: origin.isAuthRejected,
+            validationKey: origin.validationKey,
+            rejectInspection: origin.rejectInspection,
+            // This notice is authored by the manager, not by provider stdout.
+            // Stale auth must suppress provider output but still durably close its session.
+            trustedClose: event.kind === "session" && event.method === "session/closed",
             runtimeEvents,
             bytes:
               nativeEvent.bytes + sizedRuntimeEvents.reduce((total, item) => total + item.bytes, 0),
           });
+          if (result === "dropped" || result === "evicted-for-terminal") {
+            const status = ingress.status();
+            // Report the first loss and exponentially spaced totals, not one warning per delta.
+            if (status.dropped >= nextDroppedWarning) {
+              while (nextDroppedWarning <= status.dropped) nextDroppedWarning *= 2;
+              void Effect.runPromise(
+                Effect.logWarning("Codex callback ingress dropped provider events", {
+                  threadId: stampedEvent.threadId,
+                  method: stampedEvent.method,
+                  status,
+                }),
+              );
+            }
+          }
           if (result === "terminal-overflow") {
             // This means the reserved terminal budget itself was exhausted.
             // The runtime reconciler remains the final recovery fence.
             void Effect.runPromise(
               Effect.logError("Codex callback ingress exhausted terminal reserve", {
-                threadId: event.threadId,
-                method: event.method,
+                threadId: stampedEvent.threadId,
+                method: stampedEvent.method,
                 status: ingress.status(),
               }),
             );
@@ -2569,13 +2824,22 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
       interruptTurn,
       readThread,
       readExternalThread,
+      readExternalThreadPage,
       rollbackThread,
       compactThread,
       forkThread,
       respondToRequest,
       respondToUserInput,
       stopSession,
+      renewAgentGatewayCredential: (threadId) =>
+        Effect.tryPromise({
+          try: () => manager.renewAgentGatewayCredential(threadId),
+          catch: (cause) => toRequestError(threadId, "thread/resume", cause),
+        }),
+      agentGatewayCredentialRetired: (threadId) =>
+        Effect.sync(() => manager.isAgentGatewayCredentialRetired(threadId)),
       listSessions,
+      listGeneratedImageHomePaths,
       hasSession,
       stopAll,
       getComposerCapabilities,
@@ -2587,6 +2851,8 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
       prewarmVoice,
       transcribeVoice,
       streamEvents: Stream.fromQueue(runtimeEventQueue),
+      // App-server notifications get a fresh local UUID; this queue has no replay.
+      runtimeEventDelivery: "fresh-ids-once",
     } satisfies CodexAdapterShape;
   });
 

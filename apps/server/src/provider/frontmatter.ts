@@ -7,6 +7,7 @@
 //          readFrontmatterBoolean, readdirOrEmpty
 
 import * as fs from "node:fs/promises";
+import YAML from "yaml";
 
 export type FrontmatterValue = string | boolean;
 
@@ -29,8 +30,7 @@ function parseYamlScalar(value: string): FrontmatterValue {
   return unquoted;
 }
 
-// Parses the small scalar frontmatter subset used by Agent Skills and subagent
-// definitions without pulling in YAML.
+// Skills and agents share YAML parsing, including folded descriptions and metadata.
 export function parseScalarFrontmatter(markdown: string): Record<string, FrontmatterValue> {
   const normalized = markdown.replace(/\r\n/g, "\n");
   const match = /^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/.exec(normalized);
@@ -38,8 +38,30 @@ export function parseScalarFrontmatter(markdown: string): Record<string, Frontma
     return {};
   }
 
+  const block = match[1] ?? "";
+  try {
+    const parsed: unknown = YAML.parse(block, { uniqueKeys: false, logLevel: "error" });
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      const record: Record<string, FrontmatterValue> = {};
+      for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value === "string") record[key] = value.trim();
+        else if (typeof value === "boolean") record[key] = value;
+      }
+      const metadata = (parsed as { metadata?: unknown }).metadata;
+      if (typeof metadata === "object" && metadata !== null) {
+        const shortDescription = (metadata as Record<string, unknown>)["short-description"];
+        if (typeof shortDescription === "string" && record["short-description"] === undefined) {
+          record["short-description"] = shortDescription.trim();
+        }
+      }
+      return record;
+    }
+  } catch {
+    // Malformed legacy frontmatter retains the existing lenient scalar interpretation.
+  }
+
   const record: Record<string, FrontmatterValue> = {};
-  for (const line of (match[1] ?? "").split("\n")) {
+  for (const line of block.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) {
       continue;

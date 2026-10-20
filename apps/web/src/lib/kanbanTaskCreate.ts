@@ -6,30 +6,21 @@
 
 import type {
   AssistantDeliveryMode,
-  ModelSelection,
-  ProjectId,
-  ProviderInteractionMode,
   ProviderKind,
   ProviderStartOptions,
-  RuntimeMode,
   ThreadId,
 } from "@synara/contracts";
 
-import { useComposerDraftStore, type DraftThreadEnvMode } from "../composerDraftStore";
+import type { ProviderInstanceOption } from "../appSettings";
 import type { DefaultModelRef } from "../providerOrdering";
-import { dispatchKanbanDraftThread, type KanbanDraftDispatchResult } from "./kanbanDispatch";
-import { newThreadId } from "./utils";
+import { createDraftThread, type DraftThreadInput } from "./draftThreadCreate";
+import {
+  dispatchKanbanDraftThread,
+  dispatchKanbanDraftThreadAsGoal,
+  type KanbanDraftDispatchResult,
+} from "./kanbanDispatch";
 
-export interface KanbanDraftTaskInput {
-  projectId: ProjectId;
-  prompt: string;
-  /** Optional scratch composer whose full transferable content seeds the new task. */
-  sourceComposerThreadId?: ThreadId;
-  modelSelection: ModelSelection;
-  runtimeMode: RuntimeMode;
-  interactionMode: ProviderInteractionMode;
-  envMode: DraftThreadEnvMode;
-}
+export type KanbanDraftTaskInput = Omit<DraftThreadInput, "workingDirectory">;
 
 /**
  * Registers a new mapping-less draft thread and seeds its composer content. The
@@ -37,30 +28,17 @@ export interface KanbanDraftTaskInput {
  * created back to back.
  */
 export function createKanbanDraftTask(input: KanbanDraftTaskInput): ThreadId {
-  const store = useComposerDraftStore.getState();
-  const threadId = newThreadId();
-  store.registerDraftThread(threadId, {
-    projectId: input.projectId,
-    envMode: input.envMode,
-    runtimeMode: input.runtimeMode,
-    interactionMode: input.interactionMode,
-  });
-  if (input.sourceComposerThreadId) {
-    store.copyTransferableComposerState(input.sourceComposerThreadId, threadId);
-  } else {
-    store.setPrompt(threadId, input.prompt);
-  }
-  store.setModelSelection(threadId, input.modelSelection);
-  store.setRuntimeMode(threadId, input.runtimeMode);
-  store.setInteractionMode(threadId, input.interactionMode);
-  return threadId;
+  return createDraftThread(input);
 }
 
 /**
  * Creates the draft, then immediately promotes + dispatches it so the task skips
  * the Draft column and lands in In Progress — the "send now" path for the new-task
  * dialog. Reuses {@link dispatchKanbanDraftThread} so a sent task behaves exactly
- * like dragging a Draft card onto In Progress.
+ * like dragging a Draft card onto In Progress. Pass `sendAsGoal` to route through
+ * {@link dispatchKanbanDraftThreadAsGoal} instead, so the task starts with its
+ * prompt saved as the thread goal (the dialog's "send as goal" toggle, off by
+ * default).
  */
 export async function createAndSendKanbanTask(
   input: KanbanDraftTaskInput & {
@@ -68,10 +46,14 @@ export async function createAndSendKanbanTask(
     defaultModelByProvider: ReadonlyArray<DefaultModelRef>;
     assistantDeliveryMode: AssistantDeliveryMode;
     providerOptions?: ProviderStartOptions | undefined;
+    sendAsGoal?: boolean | undefined;
+    providerInstances?: ReadonlyArray<Pick<ProviderInstanceOption, "instanceId" | "provider">>;
   },
 ): Promise<{ threadId: ThreadId; result: KanbanDraftDispatchResult }> {
   const threadId = createKanbanDraftTask(input);
-  const result = await dispatchKanbanDraftThread({
+  const dispatch =
+    input.sendAsGoal === true ? dispatchKanbanDraftThreadAsGoal : dispatchKanbanDraftThread;
+  const result = await dispatch({
     threadId,
     projectId: input.projectId,
     thread: null,
@@ -79,6 +61,7 @@ export async function createAndSendKanbanTask(
     defaultModelByProvider: input.defaultModelByProvider,
     assistantDeliveryMode: input.assistantDeliveryMode,
     providerOptions: input.providerOptions,
+    providerInstances: input.providerInstances,
   });
   return { threadId, result };
 }

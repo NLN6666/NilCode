@@ -17,6 +17,7 @@ import { createLatestAppSnapRequestGuard } from "~/appSnap.logic";
 import { DisclosureRegion } from "~/components/ui/DisclosureRegion";
 import { Button } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
+import { StatusDot } from "~/components/ui/status-chip";
 import { toastManager } from "~/components/ui/toast";
 import { useMessages } from "~/i18n/context";
 import { cn } from "~/lib/utils";
@@ -75,16 +76,15 @@ function AppSnapPermissionBadge({ permission }: { permission: DesktopAppSnapPerm
   const copy = useMessages().settings.appSnap.permissions;
   return (
     <span className="inline-flex items-center gap-1.5 text-ui-xs font-medium text-muted-foreground">
-      <span
+      <StatusDot
         aria-hidden
-        className={cn(
-          "size-1.5 rounded-full",
+        className={
           permission === "granted"
             ? "bg-emerald-500"
             : permission === "denied" || permission === "restricted"
               ? "bg-red-500"
-              : "bg-[color:var(--color-border)]",
-        )}
+              : "bg-[color:var(--color-border)]"
+        }
       />
       {copy.labels[permission]}
     </span>
@@ -260,7 +260,10 @@ export function AppSnapPermissionSection({
     toastManager.add({
       type: "success",
       title: copy.grantedTitle,
-      description: copy.grantedDescription(paneLabel, isComputer ? computerCopy.featureName : feature),
+      description: copy.grantedDescription(
+        paneLabel,
+        isComputer ? computerCopy.featureName : feature,
+      ),
     });
   }, [guidePane, state, feature, onGuidePaneChange, m]);
 

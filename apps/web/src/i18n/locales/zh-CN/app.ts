@@ -98,6 +98,7 @@ export const app: Messages["app"] = {
   },
 
   providerUsage: {
+    details: "详情",
     scanning: "正在扫描所选提供商的本地用量数据。",
     noneForProvider: "还没有找到所选提供商的本地用量数据。",
     none: "还没有找到本地用量数据。",

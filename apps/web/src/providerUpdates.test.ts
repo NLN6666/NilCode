@@ -28,6 +28,8 @@ function providerStatus(
 ): ServerProviderStatus {
   return {
     provider,
+    instanceId: provider,
+    driver: provider,
     status: "ready",
     available: true,
     authStatus: "authenticated",
@@ -56,12 +58,31 @@ function serverSettings(overrides: Partial<ServerSettings["providers"]> = {}): S
   return {
     enableAssistantStreaming: false,
     enableProviderUpdateChecks: true,
+    keepAwakeMode: "off",
+    lowerProviderProcessPriority: true,
     defaultThreadEnvMode: "local",
     addProjectBaseDirectory: "",
+    githubInboxIncludeUpstreams: false,
+    sidechatExpiry: "1h",
+    sourceControlWritingStyle: "repository",
+    sourceControlCustomInstructions: "",
     textGenerationModelSelection: { provider: "codex", model: "gpt-5.4-mini" },
     providers: {
-      codex: { ...provider, binaryPath: "codex", homePath: "" },
-      claudeAgent: { ...provider, binaryPath: "claude", launchArgs: "", enableArtifacts: false },
+      codex: {
+        ...provider,
+        binaryPath: "codex",
+        homePath: "",
+        selectedAccountId: "default",
+        accounts: [],
+      },
+      claudeAgent: {
+        ...provider,
+        binaryPath: "claude",
+        homePath: "",
+        launchArgs: "",
+        enableArtifacts: false,
+        confirmColdCacheResume: false,
+      },
       cursor: { ...provider, binaryPath: "cursor-agent", apiEndpoint: "" },
       devin: { ...provider, binaryPath: "devin" },
       antigravity: { ...provider, binaryPath: "agy" },
@@ -81,6 +102,7 @@ function serverSettings(overrides: Partial<ServerSettings["providers"]> = {}): S
     advisor: DEFAULT_ADVISOR_SETTINGS,
     skills: DEFAULT_SERVER_SETTINGS.skills,
     network: { proxy: { mode: "env", url: "", noProxy: "" } },
+    providerInstances: {},
   };
 }
 
@@ -105,6 +127,55 @@ describe("getVisibleProviderUpdateStatuses", () => {
 
     expect(result.map((provider) => provider.provider)).toEqual(["codex"]);
   });
+
+  it.each([
+    { enabled: false, visible: [] },
+    { enabled: true, visible: ["claude_work"] },
+  ])(
+    "requires global and account enablement for custom instance updates ($enabled)",
+    ({ enabled, visible }) => {
+      const settings = serverSettings({
+        claudeAgent: {
+          enabled,
+          binaryPath: "claude",
+          homePath: "",
+          launchArgs: "",
+          enableArtifacts: false,
+          confirmColdCacheResume: false,
+          customModels: [],
+        },
+      });
+      const result = getVisibleProviderUpdateStatuses({
+        providers: [
+          providerStatus("claudeAgent", {
+            instanceId: "claude_work",
+            driver: "claudeAgent",
+          }),
+          providerStatus("claudeAgent", {
+            instanceId: "claude_disabled",
+            driver: "claudeAgent",
+          }),
+        ],
+        serverSettings: {
+          ...settings,
+          providerInstances: {
+            claude_work: {
+              driver: "claudeAgent",
+              enabled: true,
+              config: { homePath: "/tmp/claude-work" },
+            },
+            claude_disabled: {
+              driver: "claudeAgent",
+              enabled: false,
+              config: { homePath: "/tmp/claude-disabled" },
+            },
+          },
+        },
+      });
+
+      expect(result.map((provider) => provider.instanceId)).toEqual(visible);
+    },
+  );
 
   it("waits for server settings before showing provider updates", () => {
     const result = getVisibleProviderUpdateStatuses({

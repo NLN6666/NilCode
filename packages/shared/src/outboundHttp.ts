@@ -17,6 +17,7 @@ import {
   assertPublicIpAddress,
   isLoopbackIpAddress,
   isPublicIpAddress,
+  isBenchmarkIpAddress,
   normalizeOutboundOrigin,
   stripOutboundSensitiveHeaders,
 } from "./outboundHttpPolicy";
@@ -59,6 +60,11 @@ export interface OutboundHttpPolicy {
   readonly requirePublicAddress?: boolean;
   /** Permits HTTP only for localhost, 127.0.0.1, or ::1. */
   readonly allowLoopbackHttp?: boolean;
+  /**
+   * Permits the RFC 2544 benchmarking range 198.18.0.0/15, which fake-ip DNS
+   * modes (Clash/Mihomo, Surge) hand out for the hosts they proxy.
+   */
+  readonly allowBenchmarkAddressRange?: boolean;
 }
 
 export interface OutboundHttpRequest {
@@ -68,6 +74,12 @@ export interface OutboundHttpRequest {
   readonly headers?: ConstructorParameters<typeof Headers>[0];
   readonly body?: string | Uint8Array;
   readonly signal?: AbortSignal;
+  /**
+   * Called after each body chunk of the final response; returning true stops
+   * reading and settles with the bytes received so far. Lets a caller end at
+   * a protocol boundary of a stream the server keeps open (an SSE event).
+   */
+  readonly stopReadingAfter?: (chunk: Uint8Array, headers: Headers) => boolean;
 }
 
 export interface OutboundHttpResponse {
@@ -267,12 +279,23 @@ function requestHeaders(headers: Headers): Record<string, string> {
   return result;
 }
 
-async function resolvePinnedAddress(
+interface PinnedAddress {
+  readonly address: string;
+  readonly family: 4 | 6;
+}
+
+/**
+ * Resolves once and validates every address. All of them stay pinned so a
+ * dual-stack host is still reachable from a network without IPv6 (Happy
+ * Eyeballs falls back to IPv4); the connection never re-resolves.
+ */
+async function resolvePinnedAddresses(
   url: URL,
   requirePublicAddress: boolean,
   allowLoopbackHttp: boolean,
+  allowBenchmarkAddressRange: boolean,
   signal: AbortSignal,
-): Promise<{ readonly address: string; readonly family: 4 | 6 }> {
+): Promise<ReadonlyArray<PinnedAddress>> {
   if (signal.aborted) throw abortedError(signal.reason);
   const hostname =
     url.hostname.startsWith("[") && url.hostname.endsWith("]")
@@ -281,12 +304,15 @@ async function resolvePinnedAddress(
   const requireLoopbackAddress = allowLoopbackHttp && url.protocol === "http:";
   const assertAddressAllowed = (address: string) => {
     if (requireLoopbackAddress) assertExactLoopbackIpAddress(address);
-    else if (requirePublicAddress) assertPublicIpAddress(address);
+    else if (requirePublicAddress) {
+      if (allowBenchmarkAddressRange && isBenchmarkIpAddress(address)) return;
+      assertPublicIpAddress(address);
+    }
   };
   const literalFamily = Net.isIP(hostname);
   if (literalFamily === 4 || literalFamily === 6) {
     assertAddressAllowed(hostname);
-    return { address: hostname, family: literalFamily };
+    return [{ address: hostname, family: literalFamily }];
   }
 
   let addresses: ReadonlyArray<{ readonly address: string; readonly family: 4 | 6 }>;
@@ -307,25 +333,19 @@ async function resolvePinnedAddress(
     throw new OutboundHttpError("dns", "Outbound destination DNS lookup returned no addresses.");
   }
   for (const result of addresses) assertAddressAllowed(result.address);
-  const selected = addresses[0];
-  if (!selected) {
-    throw new OutboundHttpError("dns", "Outbound destination DNS lookup returned no addresses.");
-  }
-  return selected;
+  return addresses;
 }
 
 /**
- * Custom `http`/`https` lookup that always returns the already-pinned address,
- * closing the DNS-rebinding window between the policy check and the connect.
- *
- * Node picks the callback shape via `options.all`, and the two shapes are not
- * interchangeable: modern Node/Bun Happy Eyeballs pass `{ all: true }` and
- * expect the array form, and answering such a call with `(address, family)`
- * makes the socket read `undefined` as its host and throw
- * ERR_INVALID_IP_ADDRESS before any byte is sent.
+ * Custom `http`/`https` lookup that always returns the already-pinned addresses.
+ * Modern Node/Bun Happy Eyeballs pass `{ all: true }` and expect the array
+ * callback form (every pinned address, tried in order); the legacy
+ * single-address form gets the first one and alone crashes those runtimes.
+ * Defer completion like native DNS so TLS construction and error listeners
+ * finish before a connection can fail (for example, with EADDRNOTAVAIL).
  */
 export function invokePinnedDnsLookup(
-  pinned: { readonly address: string; readonly family: 4 | 6 },
+  pinned: PinnedAddress | ReadonlyArray<PinnedAddress>,
   options: { readonly all?: boolean | undefined } | undefined,
   // Match Node/Bun's Happy Eyeballs lookup callback shape (`LookupAddress[]`, not
   // a readonly structural twin) so `http.request({ lookup })` typechecks.
@@ -335,18 +355,28 @@ export function invokePinnedDnsLookup(
     family?: number,
   ) => void,
 ): void {
-  if (options?.all) {
-    callback(null, [{ address: pinned.address, family: pinned.family }]);
-    return;
-  }
-  callback(null, pinned.address, pinned.family);
+  const addresses: ReadonlyArray<PinnedAddress> = "address" in pinned ? [pinned] : pinned;
+  queueMicrotask(() => {
+    const first = addresses[0];
+    if (!first) {
+      callback(Object.assign(new Error("No pinned address."), { code: "ENOTFOUND" }), "");
+      return;
+    }
+    if (options?.all) {
+      callback(
+        null,
+        addresses.map(({ address, family }) => ({ address, family })),
+      );
+      return;
+    }
+    callback(null, first.address, first.family);
+  });
 }
 
 /** Adapts {@link invokePinnedDnsLookup} to the `lookup` hook shape Node expects. */
-export function createPinnedLookup(pinned: {
-  readonly address: string;
-  readonly family: 4 | 6;
-}): Net.LookupFunction {
+export function createPinnedLookup(
+  pinned: PinnedAddress | ReadonlyArray<PinnedAddress>,
+): Net.LookupFunction {
   return ((
     _hostname: string,
     options: { readonly all?: boolean | undefined } | undefined,
@@ -404,17 +434,18 @@ async function connectThroughProxy(input: {
   readonly target: URL;
   readonly signal: AbortSignal;
 }): Promise<Net.Socket> {
-  const pinnedProxy = await resolvePinnedAddress(input.proxyUrl, false, false, input.signal).catch(
-    (cause: unknown) => {
-      if (cause instanceof OutboundHttpError && cause.code === "aborted") throw cause;
-      throw new OutboundHttpError(
-        "proxy",
-        "Could not resolve the configured proxy address.",
-        cause,
-      );
-    },
-  );
-  assertProxyAddressAllowed(pinnedProxy.address);
+  const pinnedProxyAddresses = await resolvePinnedAddresses(
+    input.proxyUrl,
+    false,
+    false,
+    false,
+    input.signal,
+  ).catch((cause: unknown) => {
+    if (cause instanceof OutboundHttpError && cause.code === "aborted") throw cause;
+    throw new OutboundHttpError("proxy", "Could not resolve the configured proxy address.", cause);
+  });
+  for (const address of pinnedProxyAddresses) assertProxyAddressAllowed(address.address);
+  const pinnedProxy = pinnedProxyAddresses[0]!;
 
   const targetPort = input.target.port || (input.target.protocol === "https:" ? "443" : "80");
   const authority = `${input.target.hostname}:${targetPort}`;
@@ -524,7 +555,9 @@ async function requestHop(input: {
   readonly requirePublicAddress: boolean;
   readonly allowLoopbackHttp: boolean;
   readonly proxy?: OutboundProxyConfig;
+  readonly allowBenchmarkAddressRange: boolean;
   readonly signal: AbortSignal;
+  readonly stopReadingAfter?: (chunk: Uint8Array, headers: Headers) => boolean;
 }): Promise<OutboundHttpResponse> {
   // Through a proxy the destination is dialed by the proxy, so we pin the proxy
   // instead. Failure here is terminal: we never silently fall back to a direct
@@ -540,10 +573,11 @@ async function requestHop(input: {
     ? { agent: createTunnelAgent(tunnel, input.url) }
     : {
         lookup: createPinnedLookup(
-          await resolvePinnedAddress(
+          await resolvePinnedAddresses(
             input.url,
             input.requirePublicAddress,
             input.allowLoopbackHttp,
+            input.allowBenchmarkAddressRange,
             input.signal,
           ),
         ),
@@ -593,6 +627,25 @@ async function requestHop(input: {
 
         const chunks: Uint8Array[] = [];
         let size = 0;
+        const finish = () => {
+          const body = new Uint8Array(size);
+          let offset = 0;
+          for (const chunk of chunks) {
+            body.set(chunk, offset);
+            offset += chunk.byteLength;
+          }
+          settle({
+            status: response.statusCode ?? 0,
+            headers,
+            body,
+            url: input.url.href,
+          });
+        };
+        // Redirect hops are never handed to the caller, so only the final
+        // response may stop early.
+        const stopReadingAfter = isRedirectStatus(response.statusCode ?? 0)
+          ? undefined
+          : input.stopReadingAfter;
         response.on("data", (chunk: Buffer | Uint8Array | string) => {
           const bytes =
             typeof chunk === "string" ? new TextEncoder().encode(chunk) : new Uint8Array(chunk);
@@ -608,21 +661,23 @@ async function requestHop(input: {
             return;
           }
           chunks.push(bytes);
-        });
-        response.once("end", () => {
-          const body = new Uint8Array(size);
-          let offset = 0;
-          for (const chunk of chunks) {
-            body.set(chunk, offset);
-            offset += chunk.byteLength;
+          if (settled || !stopReadingAfter) return;
+          // A throwing caller hook must fail this request, not escape the
+          // stream's event emitter and take the process down.
+          let stop: boolean;
+          try {
+            stop = stopReadingAfter(bytes, headers);
+          } catch (cause) {
+            response.destroy();
+            settle(new OutboundHttpError("request", "Outbound response reader failed.", cause));
+            return;
           }
-          settle({
-            status: response.statusCode ?? 0,
-            headers,
-            body,
-            url: input.url.href,
-          });
+          if (stop) {
+            finish();
+            response.destroy();
+          }
         });
+        response.once("end", finish);
         // `on`, not `once`: a stream can emit `error` more than once, and a
         // second emit with no listener attached is fatal to the process.
         response.on("error", (cause) => {
@@ -719,7 +774,9 @@ export class OutboundHttpClient {
           requirePublicAddress: policy.requirePublicAddress ?? true,
           ...(proxy ? { proxy } : {}),
           allowLoopbackHttp,
+          allowBenchmarkAddressRange: policy.allowBenchmarkAddressRange === true,
           signal: controller.signal,
+          ...(input.stopReadingAfter ? { stopReadingAfter: input.stopReadingAfter } : {}),
         });
         if (!isRedirectStatus(response.status)) return response;
         if (redirects >= policy.maxRedirects) {

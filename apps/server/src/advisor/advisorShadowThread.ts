@@ -10,8 +10,9 @@
 // The prefix is the isolation boundary. Provider events carry the session's
 // thread id, and every one of them reaches ProviderRuntimeIngestion, which would
 // journal them and project them against a thread that does not exist - very
-// likely tripping runtimeJournalPoisonGate. `isAdvisorShadowThreadId` is what
-// lets ingestion drop them at the door.
+// likely tripping runtimeJournalPoisonGate. ProviderService excludes these ids
+// before journaling while preserving their ephemeral runtime fan-out. Ingestion
+// also filters them for non-durable service implementations.
 
 import { ThreadId } from "@synara/contracts";
 

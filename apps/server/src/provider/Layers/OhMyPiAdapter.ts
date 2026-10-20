@@ -7,6 +7,7 @@ import {
   type ProviderComposerCapabilities,
   type ProviderInteractionMode,
   type ProviderListCommandsResult,
+  type ProviderListModelsInput,
   type ProviderListModelsResult,
   type ProviderRuntimeEvent,
   type ProviderSession,
@@ -91,6 +92,11 @@ import {
   type OhMyPiAcpRuntimeInput,
   type OhMyPiAcpRuntimeSettings,
 } from "../acp/OhMyPiAcpSupport.ts";
+import {
+  buildOmpProcessEnv,
+  ompAccountCacheScope,
+  resolveOmpAgentDir,
+} from "../acp/OmpAcpSupport.ts";
 import { parsePermissionRequest } from "../acp/AcpRuntimeModel.ts";
 import type { AcpSessionRuntimeShape } from "../acp/AcpSessionRuntime.ts";
 import {
@@ -118,7 +124,10 @@ import {
   waitForOmpTurnSettle,
 } from "../omp/OmpControlPlane.ts";
 import { OhMyPiAdapter, type OhMyPiAdapterShape } from "../Services/OhMyPiAdapter.ts";
-import { PROVIDER_ADAPTER_RUNTIME_EVENT_BUFFER_CAPACITY } from "../Services/ProviderAdapter.ts";
+import {
+  PROVIDER_ADAPTER_RUNTIME_EVENT_BUFFER_CAPACITY,
+  resolveProviderSessionInstanceId,
+} from "../Services/ProviderAdapter.ts";
 
 const PROVIDER = "omp" as const;
 const OMP_RESUME_VERSION = 1 as const;
@@ -174,11 +183,19 @@ export interface OhMyPiAdapterLiveOptions {
   ) => Effect.Effect<AcpSessionRuntimeShape, import("../acp/AcpErrors.ts").AcpError, Scope.Scope>;
   readonly discoveryCacheMs?: number;
   readonly discoveryTimeoutMs?: number;
-  readonly prepareControlPlane?: (agentDir?: string) => Effect.Effect<PreparedOmpControlPlane, Error>;
+  readonly prepareControlPlane?: (
+    agentDir?: string,
+    env?: NodeJS.ProcessEnv,
+  ) => Effect.Effect<PreparedOmpControlPlane, Error>;
   readonly settleQuietWindowMs?: number;
   readonly settleMaxWaitMs?: number;
   readonly settlePollMs?: number;
 }
+
+type OhMyPiDiscoveryInput = Pick<
+  ProviderListModelsInput,
+  "cwd" | "binaryPath" | "agentDir" | "environment" | "instanceId"
+>;
 
 function parseResumeCursor(raw: unknown): { sessionId: string } | undefined {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
@@ -301,9 +318,13 @@ export function makeOhMyPiAdapter(
     const runtimeFactory = options?.makeRuntime ?? makeOhMyPiAcpRuntime;
     const prepareControlPlane =
       options?.prepareControlPlane ??
-      ((agentDir?: string) =>
+      ((agentDir?: string, env?: NodeJS.ProcessEnv) =>
         Effect.tryPromise({
-          try: () => prepareOmpControlPlane(agentDir ? { agentDir } : undefined),
+          try: () =>
+            prepareOmpControlPlane({
+              ...(agentDir ? { agentDir } : {}),
+              ...(env ? { env } : {}),
+            }),
           catch: (cause) =>
             cause instanceof Error
               ? cause
@@ -583,8 +604,18 @@ export function makeOhMyPiAdapter(
 
           const selection =
             input.modelSelection?.provider === PROVIDER ? input.modelSelection : undefined;
-          const agentDir = input.providerOptions?.omp?.agentDir?.trim() || settings.agentDir?.trim();
-          const controlPlane = yield* prepareControlPlane(agentDir).pipe(
+          const accountSettings: OhMyPiAcpRuntimeSettings = {
+            ...settings,
+            ...input.providerOptions?.omp,
+            instanceId: resolveProviderSessionInstanceId(input) ?? PROVIDER,
+            homeDir: serverConfig.homeDir,
+            isolationRootDir: serverConfig.stateDir,
+          };
+          const agentDir = resolveOmpAgentDir(accountSettings);
+          const controlPlane = yield* prepareControlPlane(
+            agentDir,
+            buildOmpProcessEnv(accountSettings),
+          ).pipe(
             Effect.mapError(
               (cause) =>
                 new ProviderAdapterRequestError({
@@ -595,6 +626,7 @@ export function makeOhMyPiAdapter(
             ),
           );
           const providerSettings: OhMyPiAcpRuntimeSettings = {
+            ...accountSettings,
             overlayPath: controlPlane.overlayPath,
             ...(agentDir ? { agentDir } : {}),
             ...(settings.binaryPath ? { binaryPath: settings.binaryPath } : {}),
@@ -1386,7 +1418,7 @@ export function makeOhMyPiAdapter(
       } satisfies ProviderComposerCapabilities);
 
     const withDiscoveryRuntime = <A>(
-      input: { readonly cwd?: string; readonly binaryPath?: string; readonly agentDir?: string },
+      input: OhMyPiDiscoveryInput,
       use: (runtime: AcpSessionRuntimeShape) => Effect.Effect<A, unknown>,
     ) =>
       Effect.gen(function* () {
@@ -1398,10 +1430,23 @@ export function makeOhMyPiAdapter(
             issue: "cwd is required and no server cwd fallback is available.",
           });
         }
-        const agentDir = input.agentDir?.trim() || settings.agentDir?.trim();
-        const controlPlane = yield* prepareControlPlane(agentDir);
+        const accountSettings: OhMyPiAcpRuntimeSettings = {
+          ...settings,
+          ...(input.binaryPath ? { binaryPath: input.binaryPath } : {}),
+          ...(input.agentDir ? { agentDir: input.agentDir } : {}),
+          environment: input.environment,
+          instanceId: input.instanceId,
+          homeDir: serverConfig.homeDir,
+          isolationRootDir: serverConfig.stateDir,
+        };
+        const agentDir = resolveOmpAgentDir(accountSettings);
+        const controlPlane = yield* prepareControlPlane(
+          agentDir,
+          buildOmpProcessEnv(accountSettings),
+        );
         const runtime = yield* runtimeFactory({
           ohMyPiSettings: {
+            ...accountSettings,
             overlayPath: controlPlane.overlayPath,
             ...(agentDir ? { agentDir } : {}),
             ...(settings.binaryPath ? { binaryPath: settings.binaryPath } : {}),
@@ -1443,7 +1488,7 @@ export function makeOhMyPiAdapter(
         ),
       );
 
-    const discoverCatalog = (input: { readonly cwd?: string; readonly binaryPath?: string }) =>
+    const discoverCatalog = (input: OhMyPiDiscoveryInput) =>
       withDiscoveryRuntime(input, (runtime) =>
         Effect.gen(function* () {
           const models = yield* discoverOhMyPiAcpModels(runtime);
@@ -1476,13 +1521,16 @@ export function makeOhMyPiAdapter(
               issue: "cwd is required and no server cwd fallback is available.",
             });
           }
-          const key = discoveryCacheKey(
-            effectiveDiscoveryBinaryPath(input.binaryPath, settings.binaryPath),
-            cwd,
-            input.agentDir?.trim() || settings.agentDir?.trim(),
-          );
+          const key = JSON.stringify([
+            discoveryCacheKey(
+              effectiveDiscoveryBinaryPath(input.binaryPath, settings.binaryPath),
+              cwd,
+              input.agentDir?.trim() || settings.agentDir?.trim(),
+            ),
+            ompAccountCacheScope(input),
+          ]);
           const cached = modelCache.get(key);
-          if (input.forceReload !== true && cached && cached.expiresAt > Date.now()) {
+          if (input.refresh !== "now" && cached && cached.expiresAt > Date.now()) {
             return { ...cached.result, cached: true };
           }
           const catalog = yield* discoverCatalog(input);
@@ -1505,11 +1553,14 @@ export function makeOhMyPiAdapter(
               issue: "cwd is required and no server cwd fallback is available.",
             });
           }
-          const key = discoveryCacheKey(
-            effectiveDiscoveryBinaryPath(input.binaryPath, settings.binaryPath),
-            cwd,
-            input.agentDir?.trim() || settings.agentDir?.trim(),
-          );
+          const key = JSON.stringify([
+            discoveryCacheKey(
+              effectiveDiscoveryBinaryPath(input.binaryPath, settings.binaryPath),
+              cwd,
+              input.agentDir?.trim() || settings.agentDir?.trim(),
+            ),
+            ompAccountCacheScope(input),
+          ]);
           const cached = commandCache.get(key);
           if (input.forceReload !== true && cached && cached.expiresAt > Date.now()) {
             return { ...cached.result, cached: true };

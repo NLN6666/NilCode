@@ -1,4 +1,3 @@
-import { requestCurrentAppSnap } from "../appSnap.logic";
 // FILE: BranchToolbar.tsx
 // Purpose: Renders the chat thread's compact workspace controls, including the
 // local usage popover, inline workspace handoff actions, and runtime access toggle.
@@ -20,12 +19,16 @@ import { readNativeApi } from "../nativeApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useProviderUsageSummary } from "../hooks/useProviderUsageSummary";
 import { resolveThreadEnvironmentPresentation } from "../lib/threadEnvironment";
-import { providerModelSupportsAutoRuntimeMode } from "../lib/runtimeMode";
+import {
+  RUNTIME_MODE_PRESENTATION,
+  runtimeModePresentation,
+  providerModelSupportsAutoRuntimeMode,
+} from "../lib/runtimeMode";
 import { useStore } from "../store";
 import {
   createAccountRateLimitThreadsSelector,
   createProjectSelector,
-  createThreadSelector,
+  createThreadShellSettingsSelector,
 } from "../storeSelectors";
 import {
   EnvMode,
@@ -39,7 +42,6 @@ import {
   type BranchSelectorVariant,
 } from "./BranchToolbarBranchSelector";
 import {
-  RUNTIME_AUTO_ACCENT_CLASS_NAME,
   RUNTIME_FULL_ACCESS_ACCENT_CLASS_NAME,
   COMPOSER_PICKER_TRIGGER_TEXT_CLASS_NAME,
 } from "./chat/composerPickerStyles";
@@ -72,10 +74,12 @@ function WorktreeGlyph({ className }: { className?: string }) {
 
 function RuntimeModeMenuItem({
   mode,
+  provider,
   icon,
   accent = false,
 }: {
   mode: RuntimeMode;
+  provider: ProviderKind | undefined;
   icon: ReactNode;
   accent?: boolean;
 }) {
@@ -83,9 +87,10 @@ function RuntimeModeMenuItem({
   return (
     <MenuRadioItem
       value={mode}
+      preserveChildLayout
+      closeOnClick
       className={cn(
-        "runtime-mode-menu-item",
-        mode === "auto" && "runtime-mode-menu-item--auto",
+        "runtime-mode-menu-item data-checked:bg-[var(--color-background-button-secondary-hover)]",
         accent &&
           "text-[var(--runtime-full-access-accent)] data-highlighted:text-[var(--runtime-full-access-accent)]",
       )}
@@ -124,7 +129,9 @@ export interface BranchToolbarProps {
   variant?: BranchSelectorVariant;
   // Keeps the Local/Worktree control visible while hiding Git-only branch UI for non-repo cwd.
   showBranchSelector?: boolean;
-  // Studio-like containers bind the toolbar to one concrete local folder and
+  // The new-chat landing tray swaps the Local/Worktree picker for its own Worktree checkbox.
+  showEnvironmentPicker?: boolean;
+  // Group-like containers bind the toolbar to one concrete local folder and
   // must not persist project/worktree metadata from branch selector actions.
   fixedLocalWorkspaceCwd?: string | null;
 }
@@ -134,6 +141,7 @@ export interface RuntimeUsageControlsProps {
   runtimeModel?: ProviderModelDescriptor | undefined;
   providerStatus?: ServerProviderStatus | null | undefined;
   runtimeMode?: RuntimeMode | undefined;
+  activeRuntimeMode?: RuntimeMode | undefined;
   onRuntimeModeChange?: ((mode: RuntimeMode) => void) | undefined;
   contextWindow?: ContextWindowSnapshot | null | undefined;
   cumulativeCostUsd?: number | null | undefined;
@@ -151,6 +159,7 @@ export function RuntimeUsageControls({
   runtimeModel,
   providerStatus,
   runtimeMode,
+  activeRuntimeMode,
   onRuntimeModeChange,
   className,
   hideLabel: hideLabelProp,
@@ -160,6 +169,10 @@ export function RuntimeUsageControls({
     provider !== undefined &&
     providerModelSupportsAutoRuntimeMode(provider, runtimeModel, providerStatus);
   const runtimePresentation = copy.runtimeModes[runtimeMode ?? "approval-required"];
+  const runtimeModePending = activeRuntimeMode !== undefined && activeRuntimeMode !== runtimeMode;
+  const pendingDescription = runtimeModePending
+    ? copy.pendingRuntimeModeHint(copy.runtimeModes[activeRuntimeMode].label)
+    : "";
   const hideLabel = hideLabelProp ?? false;
   return (
     <div
@@ -178,10 +191,9 @@ export function RuntimeUsageControls({
                 className={cn(
                   "min-w-0 shrink-0 justify-start gap-1.5 whitespace-nowrap px-2 [&_svg]:mx-0 sm:px-2.5",
                   COMPOSER_PICKER_TRIGGER_TEXT_CLASS_NAME,
-                  runtimeMode === "auto" && RUNTIME_AUTO_ACCENT_CLASS_NAME,
                   runtimeMode === "full-access" && RUNTIME_FULL_ACCESS_ACCENT_CLASS_NAME,
                 )}
-                title={`${runtimePresentation.label}: ${runtimePresentation.description} ${copy.runtimeModeHintSuffix}`}
+                title={`${runtimePresentation.label}: ${runtimePresentation.description} ${copy.runtimeModeHintSuffix}${pendingDescription}`}
               />
             }
           >
@@ -195,6 +207,7 @@ export function RuntimeUsageControls({
               )}
               <span className={cn("truncate", hideLabel ? "sr-only" : "@max-[480px]:sr-only")}>
                 {runtimePresentation.label}
+                {runtimeModePending ? " (next turn)" : ""}
               </span>
               <ChevronDownIcon
                 className={cn(
@@ -226,26 +239,23 @@ export function RuntimeUsageControls({
             >
               <RuntimeModeMenuItem
                 mode="approval-required"
+                provider={provider}
                 icon={<HiOutlineHandRaised className="size-4 shrink-0" />}
               />
               {autoModeAvailable ? (
                 <RuntimeModeMenuItem
                   mode="auto"
+                  provider={provider}
                   icon={<CentralIcon name="shield-code" className="size-4 shrink-0" />}
                 />
               ) : null}
               <RuntimeModeMenuItem
                 mode="full-access"
+                provider={provider}
                 accent
                 icon={<CentralIcon name="shield-access" className="size-4 shrink-0" />}
               />
             </MenuRadioGroup>
-            {typeof window !== "undefined" && window.desktopBridge?.appSnap?.captureCurrentApp ? (
-              <>
-                <MenuSeparator />
-                <MenuItem onClick={requestCurrentAppSnap}>Share current app</MenuItem>
-              </>
-            ) : null}
           </ComposerPickerMenuPopup>
         </Menu>
       ) : null}
@@ -266,12 +276,14 @@ export default function BranchToolbar({
   onComposerFocusRequest,
   variant: variantProp,
   showBranchSelector: showBranchSelectorProp,
+  showEnvironmentPicker: showEnvironmentPickerProp,
   fixedLocalWorkspaceCwd,
 }: BranchToolbarProps) {
   const toolbarCopy = useMessages().git.toolbar;
   const handoffBusy = handoffBusyProp ?? false;
   const variant = variantProp ?? "toolbar";
   const showBranchSelector = showBranchSelectorProp ?? true;
+  const showEnvironmentPicker = showEnvironmentPickerProp ?? true;
   const isPanel = variant === "panel";
   const setThreadWorkspaceAction = useStore((store) => store.setThreadWorkspace);
   const draftThread = useComposerDraftStore((store) => store.getDraftThread(threadId));
@@ -280,7 +292,12 @@ export default function BranchToolbar({
   const threads = useStore(rateLimitThreadsSelector);
   const { settings } = useAppSettings();
 
-  const serverThread = useStore(useMemo(() => createThreadSelector(threadId), [threadId]));
+  // Settings and session only, never the transcript: subscribing to the whole thread
+  // re-rendered the toolbar for every streamed token.
+  const serverThread = useStore(
+    useMemo(() => createThreadShellSettingsSelector(threadId), [threadId]),
+  );
+  const serverThreadSession = useStore((state) => state.threadSessionById?.[threadId] ?? null);
   const activeProjectId = serverThread?.projectId ?? draftThread?.projectId ?? null;
   const activeProject = useStore(
     useMemo(() => createProjectSelector(activeProjectId), [activeProjectId]),
@@ -297,7 +314,7 @@ export default function BranchToolbar({
     ? (serverThread.workingDirectory ?? null)
     : (draftThread?.workingDirectory ?? null);
   const activeProvider =
-    serverThread?.session?.provider ?? serverThread?.modelSelection.provider ?? null;
+    serverThreadSession?.provider ?? serverThread?.modelSelection.provider ?? null;
   const usesFixedLocalWorkspace = fixedLocalWorkspaceCwd !== undefined;
   const branchCwd = usesFixedLocalWorkspace
     ? fixedLocalWorkspaceCwd
@@ -328,7 +345,7 @@ export default function BranchToolbar({
         }
 
         const api = readNativeApi();
-        if (serverThread?.session && api) {
+        if (serverThreadSession && api) {
           void api.orchestration
             .dispatchCommand({
               type: "thread.session.stop",
@@ -378,7 +395,7 @@ export default function BranchToolbar({
       const api = readNativeApi();
       // If the effective cwd is about to change, stop the running session so the
       // next message creates a new one with the correct cwd.
-      if (serverThread?.session && worktreePath !== activeWorktreePath && api) {
+      if (serverThreadSession && worktreePath !== activeWorktreePath && api) {
         void api.orchestration
           .dispatchCommand({
             type: "thread.session.stop",
@@ -425,7 +442,7 @@ export default function BranchToolbar({
       activeThreadId,
       activeThreadBranch,
       activeWorkingDirectory,
-      serverThread?.session,
+      serverThreadSession,
       activeWorktreePath,
       hasServerThread,
       setThreadWorkspaceAction,
@@ -476,8 +493,8 @@ export default function BranchToolbar({
         className,
       )}
     >
-      <div className={isPanel ? "flex flex-col gap-0.5" : "flex items-center gap-2"}>
-        {showEnvPicker ? (
+      <div className={isPanel ? "flex flex-col gap-0.5" : "flex w-full min-w-0 items-center gap-2"}>
+        {!showEnvironmentPicker ? null : showEnvPicker ? (
           <ComposerEnvironmentPicker
             environmentPresentation={environmentPresentation}
             onEnvModeChange={onEnvModeChange}

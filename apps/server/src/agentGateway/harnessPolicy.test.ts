@@ -25,24 +25,6 @@ describe("Synara harness policy", () => {
     assert.include(deferred, "synara_report_automation_result");
   });
 
-  it("includes honest completion evidence and opt-in delegated E2E testing", () => {
-    const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
-    for (const text of [
-      "completion report",
-      "artifactPath",
-      "![Result description]",
-      "explicitly asked",
-      "synara_e2e_review",
-      "Do not load it for unrelated work",
-    ]) {
-      assert.include(policy, text);
-    }
-    assert.notInclude(
-      renderSynaraHarnessPolicy({ gatewayControlAvailable: false }),
-      "browser_screenshot({kind:'proof'})",
-    );
-  });
-
   it("identifies Synara and explains exact batch coordination when MCP is available", () => {
     const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
     assert.include(policy, SYNARA_HARNESS_POLICY_MARKER);
@@ -193,6 +175,24 @@ describe("Synara harness policy", () => {
 
   it("keeps the gateway policy below its prompt budget", () => {
     assert.isAtMost(renderSynaraHarnessPolicy({ gatewayControlAvailable: true }).length, 6_030);
+    // Inline visuals add one line where the server offers them.
+    assert.isAtMost(
+      renderSynaraHarnessPolicy({ gatewayControlAvailable: true, inlineVisuals: true }).length,
+      6_160,
+    );
+  });
+
+  it("points to synara_show_visual only when the session can call it", () => {
+    const visualLine = "call synara_show_visual and place its block in your reply";
+    assert.include(
+      renderSynaraHarnessPolicy({ gatewayControlAvailable: true, inlineVisuals: true }),
+      visualLine,
+    );
+    assert.notInclude(renderSynaraHarnessPolicy({ gatewayControlAvailable: true }), visualLine);
+    assert.notInclude(
+      renderSynaraHarnessPolicy({ gatewayControlAvailable: false, inlineVisuals: true }),
+      visualLine,
+    );
   });
 
   it("withholds device guidance from sessions with no gateway control", () => {

@@ -6,6 +6,7 @@ export default defineConfig({
     "visibleBrowserMcp.e2e.ts",
     "browserAnnotations.e2e.ts",
     "coldBrowserPanelNavigation.e2e.ts",
+    "inlineVisualIsolation.e2e.ts",
   ],
   globalSetup: "./e2e/globalSetup.ts",
   workers: 1,

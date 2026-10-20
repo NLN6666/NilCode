@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { resolveWindowsSystemRoot } from "@synara/shared/windowsProcess";
+import { resolveWindowsSystemRoot } from "@synara/shared/platformEnvironment";
 
 import type { HangDumpMode, HangTargetKind } from "./desktopHangWatchdog";
 

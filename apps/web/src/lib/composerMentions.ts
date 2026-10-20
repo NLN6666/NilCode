@@ -4,6 +4,7 @@
 // Exports: mention token formatters plus regex helpers used by composer parsing and prompt sync.
 
 import type { ProviderMentionReference, ProviderSkillReference } from "@synara/contracts";
+import { isMcpConnectorMentionPath } from "@synara/shared/mcpConnectors";
 import { isThreadMentionPath, threadIdFromThreadMentionPath } from "@synara/shared/threadMentions";
 
 export function skillMentionPrefix(provider: string): string {
@@ -147,7 +148,7 @@ export function providerMentionMatchesToken(
   );
 }
 
-export type MentionChipKind = "path" | "plugin" | "thread" | "preview" | "launch";
+export type MentionChipKind = "path" | "plugin" | "thread" | "preview" | "launch" | "connector";
 
 /**
  * Composer mention token that enables color-theme preview mode for the sent
@@ -276,6 +277,20 @@ export function isThreadProviderMentionReference(mention: ProviderMentionReferen
   return isThreadMentionPath(mention.path);
 }
 
+export function isConnectorProviderMentionReference(mention: ProviderMentionReference): boolean {
+  return isMcpConnectorMentionPath(mention.path);
+}
+
+export function findConnectorProviderMentionReferenceForToken(
+  token: string,
+  mentions: ReadonlyArray<ProviderMentionReference> | undefined,
+): ProviderMentionReference | undefined {
+  return mentions?.find(
+    (mention) =>
+      isConnectorProviderMentionReference(mention) && providerMentionMatchesToken(mention, token),
+  );
+}
+
 export function threadIdFromProviderMentionReference(
   mention: ProviderMentionReference,
 ): string | null {
@@ -302,11 +317,17 @@ export function resolveMentionChipKind(
   if (options?.kind === "thread" || isThreadMentionPath(path)) {
     return "thread";
   }
+  if (options?.kind === "connector" || isMcpConnectorMentionPath(path)) {
+    return "connector";
+  }
   if (options?.kind === "plugin" || path.startsWith("plugin://")) {
     return "plugin";
   }
   if (findThreadProviderMentionReferenceForToken(path, options?.mentionReferences)) {
     return "thread";
+  }
+  if (findConnectorProviderMentionReferenceForToken(path, options?.mentionReferences)) {
+    return "connector";
   }
   if (
     options?.mentionReferences?.some(

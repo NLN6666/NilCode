@@ -18,9 +18,17 @@ import {
 
 const KEY: ProviderModelDiscoveryCacheKey = {
   provider: "opencode",
+  instanceId: null,
   binaryPath: "/bin/opencode",
+  homePath: null,
+  shadowHomePath: null,
+  accountId: null,
   apiEndpoint: null,
   agentDir: null,
+  serverUrl: null,
+  serverPasswordKey: null,
+  experimentalWebSockets: false,
+  environmentKey: null,
   cwd: "/repo/a",
 };
 
@@ -47,8 +55,11 @@ const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe("makeProviderModelDiscoveryCache", () => {
   it("refreshes a fresh catalog once for concurrent forced requests and retains the result", async () => {
-    const cache = makeProviderModelDiscoveryCache<ProviderAdapterRequestError>();
+    const clock = makeClock();
+    const cache = makeProviderModelDiscoveryCache<ProviderAdapterRequestError>({ now: clock.now });
     await Effect.runPromise(cache.lookup(KEY, Effect.succeed(CATALOG)));
+    // Manual refresh is eligible, while the catalog is still inside its normal fresh window.
+    clock.advance(2 * 60_000);
     const gate = Deferred.makeUnsafe<void>();
     const refreshed = { ...CATALOG, models: [{ slug: "new-model", name: "New model" }] };
     let calls = 0;
@@ -58,7 +69,7 @@ describe("makeProviderModelDiscoveryCache", () => {
       return refreshed;
     });
     const pending = Effect.runPromise(
-      Effect.all([cache.lookup(KEY, discover, true), cache.lookup(KEY, discover, true)], {
+      Effect.all([cache.lookup(KEY, discover, "now"), cache.lookup(KEY, discover, "now")], {
         concurrency: "unbounded",
       }),
     );
@@ -102,20 +113,28 @@ describe("makeProviderModelDiscoveryCache", () => {
       source: "opencode-cli",
       cached: false,
     };
+    const refreshGate = Deferred.makeUnsafe<void>();
     let calls = 0;
-    const discover = Effect.sync(() => {
+    const discover = Effect.gen(function* () {
       calls += 1;
-      return calls === 1 ? CATALOG : refreshed;
+      if (calls === 1) return CATALOG;
+      yield* Deferred.await(refreshGate);
+      return refreshed;
     });
 
     await Effect.runPromise(cache.lookup(KEY, discover));
     clock.advance(5_000);
     const stale = await Effect.runPromise(cache.lookup(KEY, discover));
-    await flush();
-    const afterRefresh = await Effect.runPromise(cache.lookup(KEY, discover));
 
     expect(stale.models).toEqual(CATALOG.models);
     expect(stale.cached).toBe(true);
+    // The stale read must finish while discovery is still blocked. Wait for
+    // its detached start, then join completion rather than assuming a timer
+    // tick has also committed the refreshed catalog on a busy runner.
+    await expect.poll(() => calls).toBe(2);
+    Deferred.doneUnsafe(refreshGate, Effect.void);
+    await Effect.runPromise(cache.lookup(KEY, discover, "if-stale"));
+    const afterRefresh = await Effect.runPromise(cache.lookup(KEY, discover));
     expect(afterRefresh.models).toEqual(refreshed.models);
     expect(calls).toBe(2);
   });
@@ -142,6 +161,70 @@ describe("makeProviderModelDiscoveryCache", () => {
     expect(calls).toBe(1);
     expect(first.models).toEqual(CATALOG.models);
     expect(second.models).toEqual(CATALOG.models);
+  });
+
+  it("delivers the refreshed catalog to an interactive reader without a second read", async () => {
+    const clock = makeClock();
+    const cache = makeProviderModelDiscoveryCache<ProviderAdapterRequestError>({ now: clock.now });
+    await Effect.runPromise(cache.lookup(KEY, Effect.succeed(CATALOG)));
+    clock.advance(31 * 60_000);
+    const updated = { ...CATALOG, models: [{ slug: "new-model", name: "New model" }] };
+
+    expect(await Effect.runPromise(cache.lookup(KEY, Effect.succeed(updated), "if-stale"))).toEqual(
+      updated,
+    );
+  });
+
+  it("deduplicates manual refreshes and bounds repeated clicks without deleting the catalog", async () => {
+    const clock = makeClock();
+    const cache = makeProviderModelDiscoveryCache<ProviderAdapterRequestError>({ now: clock.now });
+    await Effect.runPromise(cache.lookup(KEY, Effect.succeed(CATALOG)));
+    clock.advance(61_000);
+    const gate = Deferred.makeUnsafe<void>();
+    const updated = { ...CATALOG, models: [{ slug: "new-model", name: "New model" }] };
+    let calls = 0;
+    const discover = Effect.gen(function* () {
+      calls += 1;
+      yield* Deferred.await(gate);
+      return updated;
+    });
+    const requests = Effect.runPromise(
+      Effect.all([cache.lookup(KEY, discover, "now"), cache.lookup(KEY, discover, "now")], {
+        concurrency: "unbounded",
+      }),
+    );
+    // Detached discovery may start after the next timer tick on a busy runner.
+    await expect.poll(() => calls).toBe(1);
+    expect((await Effect.runPromise(cache.lookup(KEY, discover))).models).toEqual(CATALOG.models);
+    Deferred.doneUnsafe(gate, Effect.void);
+    expect((await requests).map((result) => result.models)).toEqual([
+      updated.models,
+      updated.models,
+    ]);
+    await Effect.runPromise(cache.lookup(KEY, discover, "now"));
+    expect(calls).toBe(1);
+    clock.advance(61_000);
+    await Effect.runPromise(cache.lookup(KEY, discover, "now"));
+    expect(calls).toBe(2);
+  });
+
+  it("backs off failed manual refreshes and retains the last good catalog", async () => {
+    const clock = makeClock();
+    const cache = makeProviderModelDiscoveryCache<ProviderAdapterRequestError>({ now: clock.now });
+    await Effect.runPromise(cache.lookup(KEY, Effect.succeed(CATALOG)));
+    clock.advance(61_000);
+    let calls = 0;
+    const discover = Effect.suspend(() => {
+      calls += 1;
+      return Effect.fail(failure("temporarily unavailable"));
+    });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      expect(Exit.isFailure(await Effect.runPromiseExit(cache.lookup(KEY, discover, "now")))).toBe(
+        true,
+      );
+    }
+    expect(calls).toBe(1);
+    expect((await Effect.runPromise(cache.lookup(KEY, discover))).models).toEqual(CATALOG.models);
   });
 
   it.each([false, true])("isolates a new cwd for concurrent callers (fails: %s)", async (fails) => {
@@ -248,6 +331,65 @@ describe("makeProviderModelDiscoveryCache", () => {
     expect(cache.size()).toBe(1);
   });
 
+  it("retries a fallback catalog after the failure window without persisting it", async () => {
+    const clock = makeClock();
+    const snapshots: Array<ReadonlyArray<PersistedModelCatalogEntryInput>> = [];
+    const cache = makeProviderModelDiscoveryCache<ProviderAdapterRequestError>({
+      now: clock.now,
+      failureTtlMs: 1_000,
+      onCatalogsChanged: (entries) => snapshots.push(entries),
+    });
+    const fallback = {
+      ...CATALOG,
+      models: [{ slug: "fallback", name: "Fallback" }],
+      degraded: true,
+    };
+    let calls = 0;
+    const discover = Effect.sync(() => (++calls === 1 ? fallback : CATALOG));
+
+    expect(await Effect.runPromise(cache.lookup(KEY, discover))).toEqual(fallback);
+    expect(await Effect.runPromise(cache.lookup(KEY, discover))).toEqual(fallback);
+    expect(snapshots).toEqual([]);
+    expect(cache.size()).toBe(0);
+    clock.advance(1_001);
+    expect(await Effect.runPromise(cache.lookup(KEY, discover))).toEqual(CATALOG);
+    expect(calls).toBe(2);
+    expect(snapshots.at(-1)?.[0]?.result).toEqual(CATALOG);
+  });
+
+  it.each(["if-stale", "now"] as const)(
+    "keeps the last good catalog through degraded %s refreshes and cooldown",
+    async (refresh) => {
+      const clock = makeClock();
+      const snapshots: Array<ReadonlyArray<PersistedModelCatalogEntryInput>> = [];
+      const cache = makeProviderModelDiscoveryCache<ProviderAdapterRequestError>({
+        now: clock.now,
+        freshTtlMs: 1_000,
+        failureTtlMs: 10_000,
+        onCatalogsChanged: (entries) => snapshots.push(entries),
+      });
+      await Effect.runPromise(cache.lookup(KEY, Effect.succeed(CATALOG)));
+      clock.advance(61_000);
+      let calls = 0;
+      const discover = Effect.sync(() => {
+        calls += 1;
+        return { ...CATALOG, models: [], degraded: true };
+      });
+
+      const expected = { ...CATALOG, cached: true };
+      expect(await Effect.runPromise(cache.lookup(KEY, discover, refresh))).toEqual(expected);
+      expect(await Effect.runPromise(cache.lookup(KEY, discover, refresh))).toEqual(expected);
+      expect(await Effect.runPromise(cache.lookup(KEY, discover))).toEqual(expected);
+      expect(calls).toBe(1);
+      expect(snapshots).toHaveLength(1);
+      expect(cache.size()).toBe(1);
+      clock.advance(10_001);
+      expect(await Effect.runPromise(cache.lookup(KEY, Effect.succeed(CATALOG), refresh))).toEqual(
+        CATALOG,
+      );
+    },
+  );
+
   it.each(["rejected", "degraded"])(
     "honors cooldown after a %s refresh with a stale catalog",
     async (kind) => {
@@ -295,21 +437,23 @@ describe("makeProviderModelDiscoveryCache", () => {
     });
     const empty = { ...CATALOG, models: [] };
     let calls = 0;
-    const discover = Effect.sync(() => {
+    const discover = Effect.gen(function* () {
       calls += 1;
-      return calls === 2 ? empty : CATALOG;
+      if (calls !== 2) return CATALOG;
+      yield* Effect.sleep(20);
+      return empty;
     });
     await Effect.runPromise(cache.lookup(KEY, discover));
     clock.advance(5_000);
     await Effect.runPromise(cache.lookup(KEY, discover));
-    await flush();
+    // A timer turn does not prove detached revalidation has finished.
+    await expect.poll(() => cache.size()).toBe(0);
     const results = await Effect.runPromise(
       Effect.all([cache.lookup(KEY, discover), cache.lookup(KEY, discover)], {
         concurrency: "unbounded",
       }),
     );
     expect(results).toEqual([empty, empty]);
-    expect(cache.size()).toBe(0);
     expect(calls).toBe(2);
 
     clock.advance(10_001);

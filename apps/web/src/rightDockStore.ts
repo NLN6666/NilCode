@@ -1,5 +1,6 @@
 // FILE: rightDockStore.ts
-// Purpose: Persist the tabbed right-dock state (open panes + active tab) per host thread.
+// Purpose: Persist the tabbed right-dock state (open panes + active tab) per host: a chat
+//          thread, or the GitHub inbox (GITHUB_INBOX_DOCK_HOST_ID).
 // Layer: UI state store
 // Exports: dock store hook, per-thread selector, and stable default snapshot.
 
@@ -11,15 +12,18 @@ import { randomUUID } from "./lib/utils";
 import { sanitizeStringKeyedRecord } from "./persistedRecord";
 import {
   type OpenPaneInput,
+  type RightDockHostId,
   type RightDockPane,
   type RightDockThreadState,
   closePaneInState,
   createDefaultRightDockState,
+  movePaneInState,
   openPaneInState,
   resolveProjectSharedBrowserDockState,
   sanitizeRightDockStateByThreadId,
   setActivePaneInState,
   setDockOpenInState,
+  setSidechatPaneThreadInState,
   toggleSingletonPaneInState,
   updatePaneInState,
 } from "./rightDockStore.logic";
@@ -32,18 +36,19 @@ interface RightDockStore {
   setSharedBrowserVisible: (projectId: ProjectId, visible: boolean) => void;
   reconcileSharedBrowser: (threadId: ThreadId, visible: boolean) => void;
   openPane: (
-    threadId: ThreadId,
+    threadId: RightDockHostId,
     input: Omit<OpenPaneInput, "paneId"> & { paneId?: string },
   ) => void;
   toggleSingletonPane: (
-    threadId: ThreadId,
+    threadId: RightDockHostId,
     input: Omit<OpenPaneInput, "paneId"> & { paneId?: string },
   ) => void;
-  closePane: (threadId: ThreadId, paneId: string) => void;
-  setActivePane: (threadId: ThreadId, paneId: string) => void;
-  setDockOpen: (threadId: ThreadId, open: boolean) => void;
+  closePane: (threadId: RightDockHostId, paneId: string) => void;
+  movePane: (threadId: RightDockHostId, paneId: string, overPaneId: string) => void;
+  setActivePane: (threadId: RightDockHostId, paneId: string) => void;
+  setDockOpen: (threadId: RightDockHostId, open: boolean) => void;
   updatePane: (
-    threadId: ThreadId,
+    threadId: RightDockHostId,
     paneId: string,
     patch: Partial<
       Pick<
@@ -59,6 +64,7 @@ interface RightDockStore {
       >
     >,
   ) => void;
+  setSidechatPaneThread: (hostId: RightDockHostId, threadId: ThreadId | null) => void;
   clearThreadDockState: (threadId: ThreadId) => void;
 }
 
@@ -71,7 +77,7 @@ Object.freeze(DEFAULT_RIGHT_DOCK_STATE.panes);
 
 function commit(
   set: (fn: (store: RightDockStore) => Partial<RightDockStore>) => void,
-  threadId: ThreadId,
+  threadId: RightDockHostId,
   transform: (state: RightDockThreadState) => RightDockThreadState,
 ): void {
   set((store) => {
@@ -124,12 +130,18 @@ export const useRightDockStore = create<RightDockStore>()(
         ),
       closePane: (threadId, paneId) =>
         commit(set, threadId, (state) => closePaneInState(state, paneId)),
+      movePane: (threadId, paneId, overPaneId) =>
+        commit(set, threadId, (state) => movePaneInState(state, paneId, overPaneId)),
       setActivePane: (threadId, paneId) =>
         commit(set, threadId, (state) => setActivePaneInState(state, paneId)),
       setDockOpen: (threadId, open) =>
         commit(set, threadId, (state) => setDockOpenInState(state, open)),
       updatePane: (threadId, paneId, patch) =>
         commit(set, threadId, (state) => updatePaneInState(state, paneId, patch)),
+      setSidechatPaneThread: (hostId, threadId) =>
+        commit(set, hostId, (state) =>
+          setSidechatPaneThreadInState(state, { paneId: randomUUID(), threadId }),
+        ),
       clearThreadDockState: (threadId) =>
         set((store) => {
           if (!Object.hasOwn(store.dockStateByThreadId, threadId)) {
@@ -160,7 +172,7 @@ export const useRightDockStore = create<RightDockStore>()(
   ),
 );
 
-export function selectRightDockState(threadId: ThreadId | null) {
+export function selectRightDockState(threadId: RightDockHostId | null) {
   // Keep the fallback snapshot stable so React does not observe phantom store
   // changes while mounting a thread that has no persisted dock state yet.
   return (store: RightDockStore) =>

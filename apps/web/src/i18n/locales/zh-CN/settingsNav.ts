@@ -71,6 +71,10 @@ export const settingsNav: SettingsNav = {
       label: "MCP 连接",
       description: "为 Codex、Claude 及其他本地代理授予受限的 Synara 任务访问权限。",
     },
+    connectors: {
+      label: "连接器",
+      description: "为支持的提供商账号连接外部服务。",
+    },
     providers: {
       label: "代理提供商",
       description: "选择可见的编码代理并管理其已安装的 CLI 工具。",

@@ -1,5 +1,7 @@
 import {
   type ProjectEntry,
+  type ProjectId,
+  type ProviderInstanceId,
   type ProviderKind,
   type ProviderMentionReference,
   type ProviderNativeCommandDescriptor,
@@ -11,6 +13,10 @@ import {
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { useAgentMcpTools } from "~/hooks/useAgentMcpTools";
+import { githubReferenceSearchQueryOptions } from "~/lib/githubReferenceQueryOptions";
+import { projectLaunchConfigQueryOptions } from "~/lib/launchConfigReactQuery";
+import { buildMcpToolReferenceKeys } from "~/lib/mcpToolReferences";
 import { isLocalFolderMentionQuery } from "~/lib/localFolderMentions";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import {
@@ -39,9 +45,13 @@ type ComposerPluginSuggestion = {
 
 const EMPTY_COMPOSER_PLUGIN_SUGGESTIONS: ComposerPluginSuggestion[] = [];
 const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120;
+const COMPOSER_GITHUB_QUERY_DEBOUNCE_MS = 180;
 interface ComposerDiscoveryInput {
   threadId: ThreadId;
+  projectId: ProjectId | null;
+  projectCwd: string | null;
   selectedProvider: ProviderKind;
+  selectedProviderInstanceId: ProviderInstanceId;
   composerTrigger: ComposerTrigger | null;
   composerCommandPicker: "fork-target" | "review-target" | null;
   providerModelDiscoveryCwd: string | null;
@@ -54,7 +64,10 @@ interface ComposerDiscoveryInput {
 
 export function useComposerDiscovery({
   threadId,
+  projectId,
+  projectCwd,
   selectedProvider,
+  selectedProviderInstanceId,
   composerTrigger,
   composerCommandPicker,
   providerModelDiscoveryCwd,
@@ -73,6 +86,31 @@ export function useComposerDiscovery({
     isMentionTrigger &&
     isLocalFolderMentionQuery(mentionTriggerQuery);
   const isSkillTrigger = composerTriggerKind === "skill";
+  const agentMcpTools = useAgentMcpTools({
+    provider: selectedProvider,
+    composerTriggerKind,
+  });
+  const mcpToolReferenceKeys = useMemo(
+    () => (agentMcpTools.hasCatalog ? buildMcpToolReferenceKeys(agentMcpTools.tools) : null),
+    [agentMcpTools.hasCatalog, agentMcpTools.tools],
+  );
+  const githubReferenceTriggerQuery =
+    composerTrigger?.kind === "github-reference" ? composerTrigger.query : "";
+  const [debouncedGitHubReferenceQuery, composerGitHubQueryDebouncer] = useDebouncedValue(
+    githubReferenceTriggerQuery,
+    { wait: COMPOSER_GITHUB_QUERY_DEBOUNCE_MS },
+    (state) => ({ isPending: state.isPending }),
+  );
+  const githubReferencesQuery = useQuery(
+    githubReferenceSearchQueryOptions({
+      projectId,
+      query: githubReferenceTriggerQuery ? debouncedGitHubReferenceQuery : "",
+      enabled: composerTriggerKind === "github-reference",
+    }),
+  );
+  const launchConfigQuery = useQuery(
+    projectLaunchConfigQueryOptions({ projectId, cwd: projectCwd }),
+  );
   const [debouncedPathQuery, composerPathQueryDebouncer] = useDebouncedValue(
     mentionTriggerQuery,
     { wait: COMPOSER_PATH_QUERY_DEBOUNCE_MS },
@@ -81,11 +119,12 @@ export function useComposerDiscovery({
   const effectiveMentionQuery = mentionTriggerQuery.length > 0 ? debouncedPathQuery : "";
   const composerSkillCwd = providerModelDiscoveryCwd;
   const providerComposerCapabilitiesQuery = useQuery(
-    providerComposerCapabilitiesQueryOptions(selectedProvider),
+    providerComposerCapabilitiesQueryOptions(selectedProvider, selectedProviderInstanceId),
   );
   const providerCommandsQuery = useQuery(
     providerCommandsQueryOptions({
       provider: selectedProvider,
+      instanceId: selectedProviderInstanceId,
       cwd: composerSkillCwd,
       threadId,
       binaryPath:
@@ -123,6 +162,7 @@ export function useComposerDiscovery({
   const providerSkillsQuery = useQuery(
     providerSkillsQueryOptions({
       provider: selectedProvider,
+      instanceId: selectedProviderInstanceId,
       cwd: composerSkillCwd,
       threadId,
       agentDir:
@@ -143,6 +183,7 @@ export function useComposerDiscovery({
   const providerPluginsQuery = useQuery(
     providerPluginsQueryOptions({
       provider: selectedProvider,
+      instanceId: selectedProviderInstanceId,
       cwd: composerSkillCwd,
       threadId,
       enabled:
@@ -216,7 +257,12 @@ export function useComposerDiscovery({
       (providerComposerCapabilitiesQuery.isLoading ||
         providerComposerCapabilitiesQuery.isFetching ||
         providerSkillsQuery.isLoading ||
-        providerSkillsQuery.isFetching));
+        providerSkillsQuery.isFetching)) ||
+    (composerTriggerKind === "mcp-tool" && agentMcpTools.isLoading) ||
+    (composerTriggerKind === "github-reference" &&
+      (composerGitHubQueryDebouncer.state.isPending ||
+        githubReferencesQuery.isLoading ||
+        githubReferencesQuery.isFetching));
   return {
     mentionTriggerQuery,
     isLocalFolderBrowserOpen,
@@ -225,6 +271,10 @@ export function useComposerDiscovery({
     providerArtifacts: providerCommandsQuery.data?.artifacts,
     providerSkills,
     workspaceEntries,
+    agentMcpTools,
+    mcpToolReferenceKeys,
+    githubReferences: githubReferencesQuery.data?.entries ?? [],
+    launchConfigurations: launchConfigQuery.data?.configurations,
     effectiveComposerTrigger,
     effectiveComposerTriggerKind,
     supportsTextNativeReviewCommand,

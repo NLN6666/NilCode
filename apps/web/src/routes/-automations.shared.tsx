@@ -18,9 +18,13 @@ import {
 } from "@synara/contracts";
 import { automationRequiresTargetThread } from "@synara/shared/automationMode";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useAppSettings } from "~/appSettings";
+import {
+  getProviderInstanceOptions,
+  resolveSelectableProviderInstanceId,
+  useAppSettings,
+} from "~/appSettings";
 import { useMessages } from "~/i18n/context";
 import type { Messages } from "~/i18n/locales/en";
 import type { Thread } from "~/types";
@@ -29,7 +33,6 @@ import {
   ComposerPickerMenuSubPopup,
 } from "~/components/chat/ComposerPickerMenuPopup";
 import { ProviderModelPicker } from "~/components/chat/ProviderModelPicker";
-import { RUNTIME_AUTO_ICON_ACCENT_CLASS_NAME } from "~/components/chat/composerPickerStyles";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Dialog, DialogPopup, DialogTitle } from "~/components/ui/dialog";
@@ -89,7 +92,7 @@ import {
   automationFailurePolicyOptions,
   type AutomationFailurePolicyValue,
 } from "~/lib/automationFailurePolicy";
-import { SkillCubeIcon, WorktreeIcon } from "~/lib/icons";
+import { ClockIcon, FolderIcon, SkillCubeIcon, WorktreeIcon } from "~/lib/icons";
 import { CentralIcon } from "~/lib/central-icons";
 import { resolveRuntimeModelDescriptor } from "~/components/chat/runtimeModelCapabilities";
 import { resolveProviderDiscoveryCwd } from "~/lib/providerDiscovery";
@@ -107,6 +110,7 @@ import { useProviderModelCatalog } from "~/hooks/useProviderModelCatalog";
 import { useProviderStatusesForLocalConfig } from "~/hooks/useProviderStatusesForLocalConfig";
 import { useStore } from "~/store";
 import { resolveThreadPickerTitle } from "./-chatThreadRoute.logic";
+import { isSidechatThread } from "@synara/shared/sidechatThread";
 
 export const automationQueryKey = ["automations"] as const;
 export const EMPTY_AUTOMATION_LIST: AutomationListResult = {
@@ -119,11 +123,9 @@ const AUTOMATION_DEFINITION_UPDATE_SCOPE = {
 } as const;
 
 export function automationTargetThreads<
-  TThread extends Pick<Thread, "projectId" | "sidechatSourceThreadId">,
+  TThread extends Pick<Thread, "projectId" | "sidechatSourceThreadId" | "sidechatContext">,
 >(threads: readonly TThread[], projectId: string): readonly TThread[] {
-  return threads.filter(
-    (thread) => thread.projectId === projectId && !thread.sidechatSourceThreadId,
-  );
+  return threads.filter((thread) => thread.projectId === projectId && !isSidechatThread(thread));
 }
 
 export function automationDefinitionUpdateMutationOptions(
@@ -853,9 +855,15 @@ export function AutomationModelPicker({
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const providerStatuses = useProviderStatusesForLocalConfig();
   const [open, setOpen] = useState(false);
-  const modelHintByProvider: Partial<Record<ProviderKind, string | null>> = {
-    [value.provider]: value.model,
-  };
+  const providerInstances = useMemo(() => getProviderInstanceOptions(settings), [settings]);
+  const selectedProviderInstanceId = useMemo(
+    () => resolveSelectableProviderInstanceId(settings, value.provider, value.instanceId),
+    [settings, value.instanceId, value.provider],
+  );
+  const modelHintByProvider = useMemo<Partial<Record<ProviderKind, string | null>>>(
+    () => ({ [value.provider]: value.model }),
+    [value.model, value.provider],
+  );
   const providerModelDiscoveryCwd = resolveProviderDiscoveryCwd({
     activeThreadWorktreePath: null,
     activeProjectCwd: projectCwd,
@@ -863,17 +871,23 @@ export function AutomationModelPicker({
   });
   const {
     modelOptionsByProvider,
+    modelOptionsByProviderInstance,
     loadingModelProviders,
     discoveryErrorsByProvider,
     runtimeModelsByProvider,
     selectedRuntimeModel,
   } = useProviderModelCatalog({
     selectedProvider: value.provider,
+    selectedProviderInstanceId,
     discoveryEnabled: open,
     cwd: providerModelDiscoveryCwd,
     modelHintByProvider,
   });
-  const providerStatus = findProviderStatus(providerStatuses, value.provider);
+  const providerStatus = findProviderStatus(
+    providerStatuses,
+    value.provider,
+    selectedProviderInstanceId,
+  );
   const persistedRuntimeModel =
     value.provider === "claudeAgent" && typeof value.supportsAutoMode === "boolean"
       ? {
@@ -899,6 +913,7 @@ export function AutomationModelPicker({
       lockedProvider={null}
       providers={providerStatuses}
       modelOptionsByProvider={modelOptionsByProvider}
+      modelOptionsByProviderInstance={modelOptionsByProviderInstance}
       loadingModelProviders={loadingModelProviders}
       discoveryErrorsByProvider={discoveryErrorsByProvider}
       hiddenProviders={settings.hiddenProviders}
@@ -906,17 +921,20 @@ export function AutomationModelPicker({
       disabled={disabled ?? false}
       open={open}
       onOpenChange={setOpen}
-      onProviderModelChange={(provider, model) => {
+      onProviderModelChange={(provider, model, instanceId) => {
         const runtimeModel = resolveRuntimeModelDescriptor({
           provider,
           model,
           runtimeModels: runtimeModelsByProvider[provider],
         });
-        onChange(buildModelSelection(provider, model, undefined, runtimeModel?.supportsAutoMode));
+        onChange(
+          buildModelSelection(provider, model, undefined, runtimeModel?.supportsAutoMode, {
+            instanceId: instanceId ?? provider,
+          }),
+        );
       }}
-      onProviderModelRoleSelect={(model, options) => {
-        onChange(buildModelSelection("omp", model, options));
-      }}
+      providerInstances={providerInstances}
+      selectedProviderInstanceId={selectedProviderInstanceId}
     />
   );
 }
@@ -954,7 +972,7 @@ export function AutomationDialog({
   readonly form: AutomationFormState;
   readonly projects: ReturnType<typeof useStore.getState>["projects"];
   readonly threads: ReadonlyArray<
-    Pick<Thread, "id" | "projectId" | "title" | "sidechatSourceThreadId">
+    Pick<Thread, "id" | "projectId" | "title" | "sidechatSourceThreadId" | "sidechatContext">
   >;
   readonly warnings?: readonly AutomationDraftWarning[];
   readonly acknowledgedWarningIds?: ReadonlySet<AutomationDraftWarningId>;
@@ -1166,7 +1184,7 @@ export function AutomationDialog({
 
             <Menu>
               <MenuTrigger render={<Button variant="ghost" size="sm" className={CHIP_CLASS} />}>
-                <CentralIcon name="folder-2" className="size-4" />
+                <FolderIcon className="size-4" />
                 <span className="max-w-[10rem] truncate">
                   {selectedProject?.name ?? copy.dialog.selectProject}
                 </span>
@@ -1198,7 +1216,7 @@ export function AutomationDialog({
 
             <Menu>
               <MenuTrigger render={<Button variant="ghost" size="sm" className={CHIP_CLASS} />}>
-                <CentralIcon name="clock" className="size-4" />
+                <ClockIcon className="size-4" />
                 <span>{formatCadence(schedule)}</span>
                 <CentralIcon name="chevron-down-small" className="size-3.5 opacity-60" />
               </MenuTrigger>
@@ -1472,10 +1490,7 @@ export function AutomationDialog({
                         ? "shield-access"
                         : "brain"
                   }
-                  className={cn(
-                    "size-4",
-                    form.runtimeMode === "auto" && RUNTIME_AUTO_ICON_ACCENT_CLASS_NAME,
-                  )}
+                  className="size-4"
                 />
               </MenuTrigger>
               <ComposerPickerMenuPopup align="start" className="w-48">
@@ -1488,10 +1503,7 @@ export function AutomationDialog({
                   </MenuRadioItem>
                   {selectedModelSupportsAuto ? (
                     <MenuRadioItem value="auto">
-                      <CentralIcon
-                        name="shield-code"
-                        className={cn("size-4", RUNTIME_AUTO_ICON_ACCENT_CLASS_NAME)}
-                      />
+                      <CentralIcon name="shield-code" className="size-4" />
                       {copy.runtimeMode.auto}
                     </MenuRadioItem>
                   ) : null}

@@ -17,6 +17,8 @@ import type { WorkLogEntry } from "../session-logic";
 
 import {
   appendVoiceTranscriptToPrompt,
+  buildBlockedComposerSendToastCopy,
+  buildCollapsedCursorModelOptionsReset,
   buildTranscriptAutoFollowSignal,
   buildTranscriptTailKey,
   canApplyComposerFocus,
@@ -50,10 +52,12 @@ import {
   type TurnDispatchSettings,
   hasLiveTurnTakenOver,
   hasServerAcknowledgedLocalDispatch,
+  hasServerReceivedSentMessage,
   isVoiceAuthExpiredMessage,
   describeVoiceRecordingStartError,
   LOCAL_DISPATCH_TURN_TAKEOVER_TIMEOUT_MS,
   resolveActiveThreadTitle,
+  resolveBlockedComposerSendReason,
   resolveDraftFallbackModelSelection,
   resolveActiveTurnLiveDiffState,
   resolveCommittedProviderModel,
@@ -65,7 +69,6 @@ import {
   resolveEnvironmentPanelPreferenceAfterFirstSend,
   resolveEnvironmentPanelPreferenceUpdate,
   resolveGitRepoUiState,
-  resolveProjectScriptTerminalTarget,
   resolveQueuedSteerGateTransition,
   resolveRuntimeModeAfterApprovalDecision,
   resolveSettledThreadBranchMismatch,
@@ -82,6 +85,7 @@ import {
   shouldHandlePromptHistoryNavigationKey,
   shouldRenderProviderHealthBanner,
   shouldShowComposerModelBootstrapSkeleton,
+  shouldShowComposerProviderInstancePicker,
   shouldStartActiveTurnLayoutGrace,
   worktreeSetupHasError,
 } from "./ChatView.logic";
@@ -91,7 +95,6 @@ describe("composer focus admission", () => {
     expect(
       canApplyComposerFocus({
         windowHasFocus: false,
-        secondaryChromeReady: true,
         editorAvailable: true,
         editorDisabled: false,
       }),
@@ -102,15 +105,6 @@ describe("composer focus admission", () => {
     expect(
       canApplyComposerFocus({
         windowHasFocus: true,
-        secondaryChromeReady: false,
-        editorAvailable: true,
-        editorDisabled: false,
-      }),
-    ).toBe(false);
-    expect(
-      canApplyComposerFocus({
-        windowHasFocus: true,
-        secondaryChromeReady: true,
         editorAvailable: false,
         editorDisabled: false,
       }),
@@ -118,7 +112,6 @@ describe("composer focus admission", () => {
     expect(
       canApplyComposerFocus({
         windowHasFocus: true,
-        secondaryChromeReady: true,
         editorAvailable: true,
         editorDisabled: true,
       }),
@@ -129,7 +122,6 @@ describe("composer focus admission", () => {
     expect(
       canApplyComposerFocus({
         windowHasFocus: true,
-        secondaryChromeReady: true,
         editorAvailable: true,
         editorDisabled: false,
       }),
@@ -158,13 +150,52 @@ describe("composer strip work-log derivation", () => {
     });
     expect(deriveParentWorkLogEntries).toHaveBeenCalledOnce();
   });
+
+  it("shows the standalone account menu only for a missing account", () => {
+    expect(
+      shouldShowComposerProviderInstancePicker({
+        selectedProviderInstanceId: "cursor_removed",
+        providerInstances: [{ instanceId: "cursor" }],
+      }),
+    ).toBe(true);
+    // Configured accounts are picked in the model picker's own tabs.
+    expect(
+      shouldShowComposerProviderInstancePicker({
+        selectedProviderInstanceId: "codex_work",
+        providerInstances: [{ instanceId: "codex" }, { instanceId: "codex_work" }],
+      }),
+    ).toBe(false);
+  });
+
+  it("targets collapsed Cursor option resets at the selected non-default instance", () => {
+    expect(
+      buildCollapsedCursorModelOptionsReset({
+        provider: "cursor",
+        instanceId: "cursor_work",
+        model: "cursor/auto" as ModelSlug,
+        showExpandedCursorModelVariants: false,
+      }),
+    ).toEqual({
+      persistSticky: true,
+      instanceId: "cursor_work",
+      model: "cursor/auto",
+    });
+    expect(
+      buildCollapsedCursorModelOptionsReset({
+        provider: "cursor",
+        instanceId: "cursor_work",
+        model: "cursor/auto" as ModelSlug,
+        showExpandedCursorModelVariants: true,
+      }),
+    ).toBeUndefined();
+  });
 });
 
 describe("thread artifact workspace root", () => {
   it("uses a materialized worktree for file previews", () => {
     expect(
       resolveThreadArtifactWorkspaceRoot({
-        isStudioContainer: false,
+        isGroupContainer: false,
         projectCwd: "/repo/project",
         threadWorkspaceCwd: "/repo/worktrees/feature",
       }),
@@ -174,7 +205,7 @@ describe("thread artifact workspace root", () => {
   it("keeps the project fallback while a normal thread worktree is pending", () => {
     expect(
       resolveThreadArtifactWorkspaceRoot({
-        isStudioContainer: false,
+        isGroupContainer: false,
         projectCwd: "/repo/project",
         threadWorkspaceCwd: null,
       }),
@@ -184,7 +215,7 @@ describe("thread artifact workspace root", () => {
   it("does not escape a Studio thread's selected working directory", () => {
     expect(
       resolveThreadArtifactWorkspaceRoot({
-        isStudioContainer: true,
+        isGroupContainer: true,
         projectCwd: "/studio/root",
         threadWorkspaceCwd: null,
       }),
@@ -578,24 +609,35 @@ describe("prompt history navigation", () => {
     ).toBe(true);
   });
 
-  it("detects first and last line cursor positions", () => {
-    const prompt = "first\nmiddle\nlast";
+  it.each(["draft in progress", "first\nsecond", "wrapped draft ".repeat(30), " \n"])(
+    "leaves a nonempty draft to normal caret navigation: %j",
+    (prompt) => {
+      for (const cursor of [0, Math.floor(prompt.length / 2), prompt.length]) {
+        expect(
+          resolvePromptHistoryNavigation({
+            direction: "older",
+            history: ["previous prompt"],
+            currentPrompt: prompt,
+            currentExpandedCursor: cursor,
+            selectionCollapsed: true,
+            state: null,
+          }),
+        ).toEqual({
+          handled: false,
+          prompt,
+          expandedCursor: cursor,
+          state: null,
+        });
+      }
+    },
+  );
 
-    expect(isComposerCursorOnFirstLine(prompt, 0)).toBe(true);
-    expect(isComposerCursorOnFirstLine(prompt, 5)).toBe(true);
-    expect(isComposerCursorOnFirstLine(prompt, 6)).toBe(false);
-
-    expect(isComposerCursorOnLastLine(prompt, 13)).toBe(true);
-    expect(isComposerCursorOnLastLine(prompt, prompt.length)).toBe(true);
-    expect(isComposerCursorOnLastLine(prompt, 12)).toBe(false);
-  });
-
-  it("navigates older prompts from a non-empty draft and restores the draft at the end", () => {
+  it("navigates history from an empty composer and returns to the empty draft", () => {
     const history = ["third prompt", "second prompt", "first prompt"];
     const first = resolvePromptHistoryNavigation({
       direction: "older",
       history,
-      currentPrompt: "draft in progress",
+      currentPrompt: "",
       currentExpandedCursor: 0,
       selectionCollapsed: true,
       state: null,
@@ -605,7 +647,7 @@ describe("prompt history navigation", () => {
       handled: true,
       prompt: "third prompt",
       expandedCursor: "third prompt".length,
-      state: { index: 0, draft: "draft in progress" },
+      state: { index: 0, draft: "" },
     });
 
     const second = resolvePromptHistoryNavigation({
@@ -621,7 +663,7 @@ describe("prompt history navigation", () => {
       handled: true,
       prompt: "second prompt",
       expandedCursor: "second prompt".length,
-      state: { index: 1, draft: "draft in progress" },
+      state: { index: 1, draft: "" },
     });
 
     const newer = resolvePromptHistoryNavigation({
@@ -636,7 +678,7 @@ describe("prompt history navigation", () => {
     expect(newer).toMatchObject({
       handled: true,
       prompt: "third prompt",
-      state: { index: 0, draft: "draft in progress" },
+      state: { index: 0, draft: "" },
     });
 
     const restored = resolvePromptHistoryNavigation({
@@ -650,8 +692,8 @@ describe("prompt history navigation", () => {
 
     expect(restored).toEqual({
       handled: true,
-      prompt: "draft in progress",
-      expandedCursor: "draft in progress".length,
+      prompt: "",
+      expandedCursor: 0,
       state: null,
     });
   });
@@ -1002,6 +1044,8 @@ describe("voice helpers", () => {
   it("derives voice-note availability from provider auth and runtime state", () => {
     expect(
       deriveComposerVoiceState({
+        enabled: true,
+        available: true,
         authStatus: "authenticated",
         voiceTranscriptionAvailable: true,
         isRecording: false,
@@ -1015,6 +1059,8 @@ describe("voice helpers", () => {
 
     expect(
       deriveComposerVoiceState({
+        enabled: true,
+        available: true,
         authStatus: "unauthenticated",
         voiceTranscriptionAvailable: true,
         isRecording: true,
@@ -1022,6 +1068,51 @@ describe("voice helpers", () => {
       }),
     ).toEqual({
       canRenderVoiceNotes: false,
+      canStartVoiceNotes: false,
+      showVoiceNotesControl: true,
+    });
+
+    expect(
+      deriveComposerVoiceState({
+        enabled: false,
+        available: true,
+        authStatus: "authenticated",
+        voiceTranscriptionAvailable: true,
+        isRecording: false,
+        isTranscribing: false,
+      }),
+    ).toEqual({
+      canRenderVoiceNotes: false,
+      canStartVoiceNotes: false,
+      showVoiceNotesControl: false,
+    });
+
+    expect(
+      deriveComposerVoiceState({
+        enabled: true,
+        available: false,
+        authStatus: "authenticated",
+        voiceTranscriptionAvailable: true,
+        isRecording: false,
+        isTranscribing: false,
+      }),
+    ).toEqual({
+      canRenderVoiceNotes: false,
+      canStartVoiceNotes: false,
+      showVoiceNotesControl: false,
+    });
+
+    expect(
+      deriveComposerVoiceState({
+        enabled: true,
+        available: true,
+        authStatus: "authenticated",
+        voiceTranscriptionAvailable: false,
+        isRecording: false,
+        isTranscribing: false,
+      }),
+    ).toEqual({
+      canRenderVoiceNotes: true,
       canStartVoiceNotes: false,
       showVoiceNotesControl: true,
     });
@@ -1195,19 +1286,19 @@ describe("git repository UI state", () => {
   it("waits for positive repository detection in Studio", () => {
     expect(
       resolveGitRepoUiState({
-        isStudioContainer: true,
+        isGroupContainer: true,
         queriedIsRepo: undefined,
       }),
     ).toBe(false);
     expect(
       resolveGitRepoUiState({
-        isStudioContainer: true,
+        isGroupContainer: true,
         queriedIsRepo: true,
       }),
     ).toBe(true);
     expect(
       resolveGitRepoUiState({
-        isStudioContainer: true,
+        isGroupContainer: true,
         queriedIsRepo: false,
       }),
     ).toBe(false);
@@ -1216,7 +1307,7 @@ describe("git repository UI state", () => {
   it("keeps normal project Git UI stable while discovery is pending", () => {
     expect(
       resolveGitRepoUiState({
-        isStudioContainer: false,
+        isGroupContainer: false,
         queriedIsRepo: undefined,
       }),
     ).toBe(true);
@@ -1762,63 +1853,6 @@ describe("shouldRenderTerminalWorkspace", () => {
   });
 });
 
-describe("resolveProjectScriptTerminalTarget", () => {
-  it("reuses the base terminal only when no terminal is open or running", () => {
-    const target = resolveProjectScriptTerminalTarget({
-      baseTerminalId: "default",
-      createTerminalId: () => "new-terminal",
-      hasRunningTerminal: false,
-      terminalOpen: false,
-    });
-
-    expect(target).toEqual({
-      shouldCreateNewTerminal: false,
-      terminalId: "default",
-    });
-  });
-
-  it("creates a fresh terminal when a live terminal could keep stale cwd or env", () => {
-    expect(
-      resolveProjectScriptTerminalTarget({
-        baseTerminalId: "default",
-        createTerminalId: () => "visible-script-terminal",
-        hasRunningTerminal: false,
-        terminalOpen: true,
-      }),
-    ).toEqual({
-      shouldCreateNewTerminal: true,
-      terminalId: "visible-script-terminal",
-    });
-
-    expect(
-      resolveProjectScriptTerminalTarget({
-        baseTerminalId: "default",
-        createTerminalId: () => "running-script-terminal",
-        hasRunningTerminal: true,
-        terminalOpen: false,
-      }),
-    ).toEqual({
-      shouldCreateNewTerminal: true,
-      terminalId: "running-script-terminal",
-    });
-  });
-
-  it("honors explicit requests for a new terminal", () => {
-    const target = resolveProjectScriptTerminalTarget({
-      baseTerminalId: "default",
-      createTerminalId: () => "forced-script-terminal",
-      hasRunningTerminal: false,
-      preferNewTerminal: true,
-      terminalOpen: false,
-    });
-
-    expect(target).toEqual({
-      shouldCreateNewTerminal: true,
-      terminalId: "forced-script-terminal",
-    });
-  });
-});
-
 describe("shouldRenderProviderHealthBanner", () => {
   it("does not show chat provider health while a terminal thread is active", () => {
     expect(
@@ -2146,6 +2180,25 @@ describe("runWorktreeCreationFlow", () => {
       flow,
     };
   }
+
+  it("does not start Git if setup was resolved during task registration", async () => {
+    const resolution = createWorktreeSetupResolution();
+    resolution.resolve("cancel");
+    let starts = 0;
+    const result = await runWorktreeCreationFlow({
+      progressId: "cancelled-before-git",
+      resolution,
+      subscribeToProgress: () => () => undefined,
+      onCreationStep: () => undefined,
+      startCreation: async () => {
+        starts += 1;
+        return { worktree: { path: "/unused" } };
+      },
+      removeWorktree: async () => undefined,
+    });
+    expect(result).toEqual({ outcome: "resolved" });
+    expect(starts).toBe(0);
+  });
 
   it("advances steps only for this creation's phase-started events", async () => {
     const harness = startFlowHarness();
@@ -3445,5 +3498,77 @@ describe("turn dispatch settings", () => {
     expect(resolved.runtimeMode).toBe("approval-required");
     expect(resolved.enableComputerControl).toBe(false);
     expect(resolved.computerControlMode).toBe("off");
+  });
+});
+
+describe("blocked composer sends", () => {
+  it("reports a send refused while another send owns the thread", () => {
+    expect(
+      resolveBlockedComposerSendReason({
+        sendInFlight: true,
+        sessionStarting: true,
+        hasComposerContent: true,
+      }),
+    ).toBe("send-in-flight");
+    expect(
+      resolveBlockedComposerSendReason({
+        sendInFlight: false,
+        sessionStarting: true,
+        hasComposerContent: true,
+      }),
+    ).toBe("session-starting");
+  });
+
+  it("stays silent when nothing blocks the send or there is nothing to send", () => {
+    expect(
+      resolveBlockedComposerSendReason({
+        sendInFlight: false,
+        sessionStarting: false,
+        hasComposerContent: true,
+      }),
+    ).toBeNull();
+    expect(
+      resolveBlockedComposerSendReason({
+        sendInFlight: true,
+        sessionStarting: false,
+        hasComposerContent: false,
+      }),
+    ).toBeNull();
+  });
+
+  it("explains every blocked send instead of doing nothing", () => {
+    for (const reason of ["send-in-flight", "session-starting", "no-project"] as const) {
+      const copy = buildBlockedComposerSendToastCopy(reason);
+      expect(copy.title.length).toBeGreaterThan(0);
+      expect(copy.description.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("hasServerReceivedSentMessage", () => {
+  const messageId = MessageId.makeUnsafe("sent-message");
+
+  it("detects a user message the server already recorded", () => {
+    expect(
+      hasServerReceivedSentMessage(
+        {
+          messages: [
+            {
+              id: messageId,
+              role: "user",
+              text: "Reply with ok",
+              createdAt: "2026-10-09T20:00:00.000Z",
+              streaming: false,
+            },
+          ],
+        },
+        messageId,
+      ),
+    ).toBe(true);
+  });
+
+  it("treats a missing thread or message as not received", () => {
+    expect(hasServerReceivedSentMessage(undefined, messageId)).toBe(false);
+    expect(hasServerReceivedSentMessage({ messages: [] }, messageId)).toBe(false);
   });
 });
