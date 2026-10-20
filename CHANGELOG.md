@@ -7,6 +7,7 @@
 - Keep causal timeline ordering within each owning turn, and preserve project-local provider catalogs and account-local model options.
 - Keep streamed and completed subagent reasoning under one child-owned row; native Claude compaction no longer waits on unrelated agent-catalog scans.
 - Share server RPC declarations across the server, web and packaged client, and route MCP probe launches through the shared process boundary without losing launcher-tree cleanup.
+- Verify patched content for dependencies installed in desktop production stages without requiring build-only packages such as `tree-kill`.
 
 ## 1.0.7 — 2026-10-17
 

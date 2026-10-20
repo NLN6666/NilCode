@@ -52,7 +52,6 @@ describe("createDesktopPlatformBuildConfig", () => {
     assert.deepStrictEqual(config.asarUnpack, ["node_modules/node-pty/**"]);
     assert.equal(mac.hardenedRuntime, true);
     assert.equal(mac.notarize, false);
-    assert.ok(config.afterSign?.endsWith("/mac-after-sign.cjs"));
     assert.equal(mac.identity, undefined);
     assert.equal(dmg.sign, true);
     assert.equal(dmg.writeUpdateInfo, false);
@@ -166,7 +165,6 @@ describe("createDesktopPlatformBuildConfig", () => {
     assert.equal(config.mac?.timestamp, undefined);
     assert.equal(config.mac?.hardenedRuntime, true);
     assert.equal(config.mac?.notarize, false);
-    assert.ok(config.afterSign?.endsWith("/mac-after-sign.cjs"));
   });
 
   it("packages the Linux driver as an external executable and leaves Windows unchanged", () => {

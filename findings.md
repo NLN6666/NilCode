@@ -715,3 +715,13 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 最后一个大 diff 真实 Git 场景重复报临时目录 `EBUSY`：suite 共享 GitCore 服务的后台 upstream refresh 可以晚于 fixture 仓库释放。仅让该用例持有独立 scoped GitCore，并先关闭其后台任务、再释放临时仓库；没有延时、重试或吞异常，也没有改慢生产 Git 路径。原有内容校验、提交、本地 bare remote 推送及 up-to-date 跳过断言全部保留，聚焦场景通过。最终 server 类型检查仍为 72 条既有错误、无新增诊断，`lint` 通过。
 - OMP 实例健康检查的 Windows fixture 将 `omp.exe` 与解析出的 `omp.EXE` 按字符串比较；`realpathSync` 也不会自动统一其大小写。改为比较实际文件的卷号/文件 ID，继续断言选中实例的 PATH、实例标记及 ready 状态，定向用例通过。服务端类型检查从 package 目录执行时诊断路径为 `src/...`，与根目录执行产生的 `apps/server/src/...` 统一前缀后没有新增诊断，仍为 72 条。
 - 两个任务专用对照 worktree 的 `mockServiceWorker.js` 在 `status` 中显示修改，但普通 `git diff --exit-code` 均为空；仅对该生成文件刷新各自 index，再普通移除 worktree 成功，没有使用 `--force`，保留回退分支。
+
+## 2026-10-20 Windows 1.0.7 本地安装包
+
+- 应用来源为已推送的 `564318c3804a1d12c8622b44c6a2dfea71a4731d`。先完成 desktop/server/web 4/4 无缓存构建；后续仅修正打包器及测试，应用代码未变，复用这批新产物完成 Windows x64 NSIS 打包，没有安装、发布或额外 push。
+- 首轮传给原生 Windows 子进程的 PATH 使用了 POSIX 路径/分隔符，导致实际执行全局 Bun 1.3.14，它忽略新格式锁文件；使用原生 Windows 路径和分号后，子进程明确执行 Bun 1.4.2。机器上的全局 Bun 和源码锁文件均未修改。
+- 生产 stage 不安装 `tsdown` 的开发依赖 `tree-kill`，旧校验器却要求所有根目录补丁都在 stage 内。将校验范围限定为已安装的依赖；已安装包缺失目标文件或补丁内容仍然报错，不增加无用运行时依赖，也不删除开发工具仍使用的补丁。真实打包从该错误转为成功。
+- 移除两个仅固定 POSIX 分隔符的 `afterSign` 后缀断言，保留签名身份、hardened runtime 和 entitlement 行为检查；打包/identity/启动三文件 23 项通过，scripts 原生类型检查及 computer-measurement 项目通过。lint 为 0 错误；全仓格式检查仍有 2941 个既有问题，根类型检查仍被既有 desktop 诊断阻塞，未全仓重排格式。
+- 实际安装包为 `release/Synara-1.0.7-x64.exe`，250385823 字节，SHA-256 `0ccd54eb79c617b5ee943ba2648d53139e7ec022d88108527aaab8a1e6ddd017`，Authenticode 为 NotSigned。只解压 NSIS 的 `app-64.7z`，未运行安装程序。
+- 包内 metadata 的版本、production flavor、应用提交及锁文件摘要与构建输入一致；135–137 迁移和中文/fork 内容标记均存在。ASAR 通用读取器遇到大型 SDK 文件的内存上限，改用构建器已有的 `@electron/asar.extractFile` 精确读取 manifest，未全量提取 ASAR。
+- 在独立 HOME、APPDATA、LOCALAPPDATA 和 Synara 数据目录启动解压应用，十个 provider、更新检查和 Advisor 均禁用；真实 packaged runtime dependency smoke 通过。自有 Electron 进程及后端的 HTTP 200、Synara 标题、正式启动日志标记、实际主界面截图和 0 JavaScript 错误均已核实，没有真实模型回合。证据位于 `D:/Codes/NilCode-windows-1.0.7-564318c38-r56255m_`。

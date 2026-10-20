@@ -778,7 +778,9 @@ function parsePatchAddedLines(patchContents: string): PatchFileExpectation[] {
 
 // Package managers can silently skip tracked patches when the staged install
 // diverges from the repo setup (that shipped broken Windows provider updates
-// in v0.5.2–v0.5.5), so fail the build unless every patched line is present.
+// in v0.5.2–v0.5.5), so verify every patched line for packages installed in the stage.
+// Production installs omit build-only dependencies; dependency installation owns
+// graph completeness, while this check owns the installed packages' patched content.
 const verifyStagedPatchedDependencies = Effect.fn("verifyStagedPatchedDependencies")(function* (
   repoRoot: string,
   stageAppDir: string,
@@ -790,9 +792,12 @@ const verifyStagedPatchedDependencies = Effect.fn("verifyStagedPatchedDependenci
     rootPackageJson.patchedDependencies ?? {},
   )) {
     const packageName = dependency.slice(0, dependency.indexOf("@", 1));
+    const stagedPackageDirectory = path.join(stageAppDir, "node_modules", packageName);
+    if (!(yield* fs.exists(stagedPackageDirectory))) continue;
+
     const patchContents = yield* fs.readFileString(path.join(repoRoot, patchRelativePath));
     for (const expectation of parsePatchAddedLines(patchContents)) {
-      const stagedFilePath = path.join(stageAppDir, "node_modules", packageName, expectation.file);
+      const stagedFilePath = path.join(stagedPackageDirectory, expectation.file);
       const stagedContents = yield* fs.readFileString(stagedFilePath).pipe(
         Effect.mapError(
           (cause) =>
