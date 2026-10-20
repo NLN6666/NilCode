@@ -8,6 +8,8 @@
 - Keep streamed and completed subagent reasoning under one child-owned row; native Claude compaction no longer waits on unrelated agent-catalog scans.
 - Share server RPC declarations across the server, web and packaged client, and route MCP probe launches through the shared process boundary without losing launcher-tree cleanup.
 - Verify patched content for dependencies installed in desktop production stages without requiring build-only packages such as `tree-kill`.
+- Keep service output and Run/Stop state attached to the newly launched terminal, including when the project's service terminal was already opened or a stopped service is restarted.
+- Preserve the page behind browser menus for shared project browsers; native overlay captures retain the page's viewport without reloading it or changing browser ownership.
 
 ## 1.0.7 — 2026-10-17
 

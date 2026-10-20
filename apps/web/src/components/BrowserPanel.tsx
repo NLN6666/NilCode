@@ -1402,7 +1402,10 @@ export function BrowserPanel({
     const capture = async () => {
       try {
         if (!document.hidden) {
-          const src = await api.browser.capturePreview({ threadId, tabId: activeTabId });
+          const src = await api.browser.capturePreview({
+            threadId: browserSurfaceId,
+            tabId: activeTabId,
+          });
           if (!cancelled && src) setPreviewFrame({ tabId: activeTabId, src });
         }
       } catch {
@@ -1425,7 +1428,7 @@ export function BrowserPanel({
     isBrowserSurfaceOccluded,
     usesNativeRuntime,
     activeTabId,
-    threadId,
+    browserSurfaceId,
     showLocalServersHome,
     browserPageError,
   ]);

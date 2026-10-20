@@ -116,9 +116,9 @@ export function useChatProjectScripts({
         ) ??
         dock?.panes.find((pane) => pane.kind === "terminal");
       const targetPaneId = isService ? script.id : (terminalPane?.id ?? randomUUID());
-      const baseTerminalId = isService
-        ? selectServiceTerminalIdsForScript(terminalState, script.id)[0]
-        : terminalState.dockTerminalIdsByPaneId?.[targetPaneId];
+      const baseTerminalId =
+        terminalState.dockTerminalIdsByPaneId?.[targetPaneId] ??
+        (isService ? selectServiceTerminalIdsForScript(terminalState, script.id)[0] : undefined);
       if (
         pendingScriptThreads.current.has(terminalThreadId) ||
         (baseTerminalId !== undefined && terminalState?.runningTerminalIds.includes(baseTerminalId))
@@ -147,15 +147,11 @@ export function useChatProjectScripts({
           worktreePath: options?.worktreePath ?? activeThread.worktreePath ?? null,
           ...(options?.env ? { env: options.env } : {}),
           onOpened: () => {
-            if (isService) {
-              const terminals = useTerminalStateStore.getState();
-              terminals.newTerminal(terminalThreadId, targetTerminalId);
-              terminals.setTerminalOpen(terminalThreadId, true);
-              return;
-            }
             // Attach only after the requested cwd/env are set, but before writing
             // so the session stays accessible if command delivery fails.
             storeEnsureDockTerminal(terminalThreadId, targetPaneId, targetTerminalId);
+            // Services stay below the browser; only their terminal ownership changes.
+            if (isService) return;
             const dockStore = useRightDockStore.getState();
             if (
               selectRightDockState(activeThreadId)(dockStore).panes.some(

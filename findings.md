@@ -725,3 +725,14 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 实际安装包为 `release/Synara-1.0.7-x64.exe`，250385823 字节，SHA-256 `0ccd54eb79c617b5ee943ba2648d53139e7ec022d88108527aaab8a1e6ddd017`，Authenticode 为 NotSigned。只解压 NSIS 的 `app-64.7z`，未运行安装程序。
 - 包内 metadata 的版本、production flavor、应用提交及锁文件摘要与构建输入一致；135–137 迁移和中文/fork 内容标记均存在。ASAR 通用读取器遇到大型 SDK 文件的内存上限，改用构建器已有的 `@electron/asar.extractFile` 精确读取 manifest，未全量提取 ASAR。
 - 在独立 HOME、APPDATA、LOCALAPPDATA 和 Synara 数据目录启动解压应用，十个 provider、更新检查和 Advisor 均禁用；真实 packaged runtime dependency smoke 通过。自有 Electron 进程及后端的 HTTP 200、Synara 标题、正式启动日志标记、实际主界面截图和 0 JavaScript 错误均已核实，没有真实模型回合。证据位于 `D:/Codes/NilCode-windows-1.0.7-564318c38-r56255m_`。
+
+## 2026-10-20 服务启动反馈与共享浏览器菜单黑屏
+
+- service runner 每次打开新 PTY，却调用承诺复用已有 session 的 `newTerminal`。预先展开/折叠项目终端即可触发：实际 HTTP 服务已启动，客户端仍只有旧 `default` 终端，ownership/activity 被未知 ID 防护丢弃。改用现有 `ensureDockTerminal` 显式采用新 ID，并按 script owner mapping 安全替换已停止服务的旧 session；保持项目作用域与浏览器 pane 不变。
+- 共享浏览器菜单使用 `browserSurfaceId` 隐藏原生页面，但替代画面的 `capturePreview` 误用宿主聊天 `threadId`，持续返回 null。修正截图 owner 与 effect 依赖，保留 DOM 菜单的原生遮挡机制。
+- 不能仅凭 browser mock 宣称修复完成：14 项 browser 测试通过后，真实 Electron 仍无法完成普通 native 页面的遮挡截图。扩展现有 viewport smoke，非 automation 分支实测 bounds 被置为 0×0；修正为遮挡期间保留有效尺寸并隐藏停放，普通 hide 仍撤出人工页面。真实 smoke 验证人工/automation 两种页面均保留完整页面像素与同一 document。
+- 判别性回归在旧实现上失败：3 个 service adopted-before-write 场景均为 false，共享菜单没有替代截图；扩展后的真实 Electron smoke 在非 automation 分支得到 0×0 而非 900×650。修正后 web 两文件 14 项通过。
+- 本机 browser runner 需显式使用已安装 Chrome；`test:browser` script 已带 `--config`，不能再叠加同名参数。使用 `bun run test --config <临时配置>`；不下载浏览器。默认 desktop dev 后端设置位于隔离 home 的 `dev/settings.json`，不是 `userdata/settings.json`；实际通过 API 禁用全部 provider 与更新检查后继续验证，不发送模型回合。
+- 真实 Electron viewport smoke 所有行为断言通过后，Windows 删除仍由当前 Electron 持有的临时 profile 报 EPERM；不能把该命令退出码报告为成功。profile 在对应 Electron 退出后由本任务清理，不修改生产生命周期以掩盖测试清理问题。
+- 最终隔离桌面重启后实测：新 service PTY 输出持续增长至 `SERVICE_TICK 49/50/51`，按钮为 Stop，项目终端 ownership 正确；Stop 后实际端口返回 ECONNREFUSED。替代截图为 1151×1005，页面背景像素为 RGBA 225/242/208/255，菜单关闭后原生按钮仍可点击，重复开关保留同一 document sentinel。该 fixture 的 SIGINT handler 等待 HTTP server close callback，端口关闭后命令仍可能存活；服务端 `onlyIfIdle` 正确拒绝提前替换，没有为验证而放松 busy guard。
+- 最终 browser 两文件 14 项、相关 Web 六文件 120 项、desktop browser manager 57 项通过；desktop 构建、Web 类型检查和 Windows runtime boundary 通过。lint 为 0 errors / 1017 warnings；7 个本轮代码文件格式检查通过，全仓格式检查仍报 2937 个未统一文件，全仓类型检查仍被未改动的 desktop watchdog/hang-dump 类型错误阻塞。隔离验证证据位于 `D:/Codes/NilCode-ui-fix-20261020`。

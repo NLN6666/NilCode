@@ -345,8 +345,9 @@ describe("DesktopBrowserManager automation runtime boundary", () => {
     "captures a full-size page behind an overlay without reloading (automation-owned: %s)",
     async (automationOwned) => {
       const contents = new FakeWebContents(122);
+      let viewBounds = { x: 0, y: 0, width: 0, height: 0 };
       const image = {
-        isEmpty: () => false,
+        isEmpty: () => viewBounds.width === 0 || viewBounds.height === 0,
         getSize: () => ({ width: 1280, height: 800 }),
         resize: vi.fn(),
         toJPEG: vi.fn(() => Buffer.from("full-size page")),
@@ -355,7 +356,9 @@ describe("DesktopBrowserManager automation runtime boundary", () => {
       Object.assign(contents, { capturePage });
       const view = {
         webContents: contents,
-        setBounds: vi.fn(),
+        setBounds: vi.fn((bounds: typeof viewBounds) => {
+          viewBounds = bounds;
+        }),
         setVisible: vi.fn(),
         setBorderRadius: vi.fn(),
         setBackgroundColor: vi.fn(),
@@ -378,8 +381,6 @@ describe("DesktopBrowserManager automation runtime boundary", () => {
           bounds: null,
           occluded: true,
         });
-        if (automationOwned)
-          expect(view.setBounds).toHaveBeenLastCalledWith({ ...bounds, x: 0, y: 0 });
         expect(await manager.capturePreview(input)).toBe(
           `data:image/jpeg;base64,${Buffer.from("full-size page").toString("base64")}`,
         );

@@ -4,12 +4,16 @@ import { afterEach, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-react";
 import { dockTerminalThreadId } from "../../lib/dockTerminalScope";
+import { projectServiceTerminalThreadId } from "../../lib/projectServiceTerminalScope";
 import { selectRightDockState, useRightDockStore } from "../../rightDockStore";
 import { makeProject, makeThread } from "../../storeTestFixtures";
 import { useTerminalStateStore } from "../../terminalStateStore";
 import { useChatProjectScripts } from "./useChatProjectScripts";
 
 const api = vi.hoisted(() => ({
+  server: {
+    listLocalServers: vi.fn(async () => ({ servers: [] })),
+  },
   terminal: {
     close: vi.fn<(input: TerminalCloseInput) => Promise<void>>(async () => {}),
     open: vi.fn(async (input: TerminalOpenInput) => ({ ...input, status: "running" })),
@@ -23,6 +27,7 @@ afterEach(() => {
   useRightDockStore.setState({ dockStateByThreadId: {} });
   vi.clearAllMocks();
   api.terminal.close.mockReset();
+  api.terminal.write.mockReset();
 });
 
 it.each([
@@ -152,5 +157,110 @@ it.each([
     }
     await view.unmount();
     queryClient.clear();
+  },
+);
+
+it.each([
+  { mappedService: false, writeFails: false },
+  { mappedService: true, writeFails: false },
+  { mappedService: true, writeFails: true },
+])(
+  "adopts a service terminal before sending its command (mapped: $mappedService, write fails: $writeFails)",
+  async ({ mappedService, writeFails }) => {
+    const script = {
+      id: "web",
+      name: "Web",
+      command: "node server.js",
+      icon: "play" as const,
+      runOnWorktreeCreate: false,
+      port: 58135,
+    };
+    const project = makeProject({ scripts: [script] });
+    const thread = makeThread({ projectId: project.id });
+    const scopeId = projectServiceTerminalThreadId(project.id);
+    const store = useTerminalStateStore.getState();
+    store.newTerminal(scopeId, "old-shell");
+    if (mappedService) store.ensureDockTerminal(scopeId, script.id, "old-shell");
+    store.ensureDockTerminal(scopeId, "worker", "worker-shell");
+    store.markTerminalServiceScript(scopeId, "worker-shell", "worker");
+    store.setTerminalActivity(scopeId, "worker-shell", {
+      hasRunningSubprocess: true,
+      agentState: null,
+    });
+    store.setTerminalOpen(scopeId, false);
+    useRightDockStore.getState().openPane(thread.id, { kind: "browser", paneId: "preview" });
+    const dock = selectRightDockState(thread.id)(useRightDockStore.getState());
+    const setThreadError = vi.fn();
+    const client = new QueryClient();
+    let adoptedBeforeWrite = false;
+    api.terminal.write.mockImplementation(async () => {
+      const opened = api.terminal.open.mock.lastCall![0];
+      const current = useTerminalStateStore.getState().terminalStateByThreadId[scopeId]!;
+      adoptedBeforeWrite =
+        current.activeTerminalId === opened.terminalId &&
+        current.terminalIds.includes(opened.terminalId!);
+      if (writeFails) throw new Error("Service command delivery failed");
+      store.setTerminalActivity(scopeId, opened.terminalId!, {
+        hasRunningSubprocess: true,
+        agentState: null,
+      });
+    });
+    function ServiceAction() {
+      const { runProjectScript, runningProjectScriptIds } = useChatProjectScripts({
+        activeThreadId: thread.id,
+        activeThread: thread,
+        activeProject: project,
+        gitCwd: project.cwd,
+        isGroupContainer: false,
+        openBrowserUrl: vi.fn(),
+        setThreadError,
+      });
+      return (
+        <>
+          <button onClick={() => void runProjectScript(script)}>Run service</button>
+          <output>
+            {runningProjectScriptIds.has(script.id) ? "Service running" : "Service idle"}
+          </output>
+        </>
+      );
+    }
+    const view = await render(
+      <QueryClientProvider client={client}>
+        <ServiceAction />
+      </QueryClientProvider>,
+    );
+    await page.getByRole("button", { name: "Run service" }).click();
+    await expect.poll(() => api.terminal.write.mock.calls.length).toBe(1);
+    expect(adoptedBeforeWrite).toBe(true);
+    const opened = api.terminal.open.mock.lastCall![0];
+    const current = useTerminalStateStore.getState().terminalStateByThreadId[scopeId]!;
+    expect(opened.threadId).toBe(scopeId);
+    expect(current.terminalOpen).toBe(true);
+    expect(current.activeTerminalId).toBe(opened.terminalId);
+    expect(current.runningTerminalIds).toContain("worker-shell");
+    expect(selectRightDockState(thread.id)(useRightDockStore.getState())).toEqual(dock);
+    if (mappedService) {
+      expect(api.terminal.close).toHaveBeenCalledExactlyOnceWith({
+        threadId: scopeId,
+        terminalId: "old-shell",
+        onlyIfIdle: true,
+        deleteHistory: false,
+      });
+      expect(current.terminalIds).not.toContain("old-shell");
+    } else {
+      expect(api.terminal.close).not.toHaveBeenCalled();
+      expect(current.terminalIds).toContain("old-shell");
+    }
+    if (writeFails) {
+      await expect
+        .poll(() => setThreadError.mock.lastCall?.[1])
+        .toBe("Service command delivery failed");
+      await expect.element(page.getByText("Service idle", { exact: true })).toBeVisible();
+    } else {
+      await expect.element(page.getByText("Service running", { exact: true })).toBeVisible();
+      expect(current.serviceScriptIdsByTerminalId[opened.terminalId!]).toBe(script.id);
+    }
+    await view.unmount();
+    client.clear();
   },
 );

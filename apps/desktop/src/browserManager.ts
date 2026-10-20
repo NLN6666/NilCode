@@ -1814,7 +1814,17 @@ export class DesktopBrowserManager {
       // Occlusion already detached the visible panel; restore ordinary
       // background sizing when the user subsequently hides it.
       const runtime = this.runtimes.get(buildRuntimeKey(input.threadId, activeTab.id));
-      if (runtime) this.setRuntimeViewHidden(runtime, true);
+      if (runtime) {
+        this.setRuntimeViewHidden(runtime, true);
+        if (
+          runtime.view &&
+          !this.automationRuntimeKeys.has(runtime.key) &&
+          this.window &&
+          !this.window.isDestroyed()
+        ) {
+          this.window.contentView.removeChildView(runtime.view);
+        }
+      }
     }
 
     if (!state?.open) {
@@ -3183,7 +3193,7 @@ export class DesktopBrowserManager {
     const runtime = this.runtimes.get(this.attachedRuntimeKey);
     if (runtime?.view) {
       this.setRuntimeViewHidden(runtime, true, occludedBounds);
-      if (!this.automationRuntimeKeys.has(runtime.key)) {
+      if (!occludedBounds && !this.automationRuntimeKeys.has(runtime.key)) {
         this.window.contentView.removeChildView(runtime.view);
       }
     }
@@ -3199,7 +3209,8 @@ export class DesktopBrowserManager {
     if (!runtime.view || runtime.webContents.isDestroyed()) {
       return;
     }
-    const keepRenderingInBackground = hidden && this.automationRuntimeKeys.has(runtime.key);
+    const keepRenderingInBackground =
+      hidden && (occludedBounds !== undefined || this.automationRuntimeKeys.has(runtime.key));
     if (keepRenderingInBackground) {
       // An overlay needs the panel's framing; ordinary background automation
       // still uses its standard viewport.

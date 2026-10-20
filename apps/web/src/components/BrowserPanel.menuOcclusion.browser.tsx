@@ -3,6 +3,7 @@ import "../index.css";
 import {
   ThreadId,
   type BrowserSetPanelBoundsInput,
+  type BrowserTabInput,
   type ThreadBrowserState,
 } from "@synara/contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -36,7 +37,7 @@ const api = vi.hoisted(() => ({
     detachWebview: vi.fn(async () => {}),
     attachWebview: vi.fn(async () => {}),
     navigate: vi.fn<() => Promise<ThreadBrowserState>>(),
-    capturePreview: vi.fn<() => Promise<string | null>>(),
+    capturePreview: vi.fn<(input: BrowserTabInput) => Promise<string | null>>(),
   },
 }));
 
@@ -234,35 +235,52 @@ describe("native browser menu occlusion", () => {
     await mounted.unmount();
   });
 
-  it("keeps the page visible behind browser actions and restores it without reloading", async () => {
-    const mounted = await render(
-      <QueryClientProvider client={new QueryClient()}>
-        <div style={{ width: 640, height: 600 }}>
-          <BrowserPanel
-            mode="sidebar"
-            threadId={threadId}
-            browserSurfaceId={threadId}
-            onClosePanel={() => {}}
-          />
-        </div>
-      </QueryClientProvider>,
-    );
-    await vi.waitFor(() => expect(lastBounds()?.width).toBeGreaterThan(0));
-    const original = lastBounds();
-    api.browser.capturePreview.mockClear();
-    await page.getByRole("button", { name: "Browser actions" }).click();
-    await expect.element(page.getByRole("menuitem", { name: "New tab" })).toBeVisible();
-    await expect.element(page.getByAltText("Browser preview")).toBeVisible();
-    expect(api.browser.capturePreview).toHaveBeenCalledWith({ threadId, tabId: state.activeTabId });
-    await vi.waitFor(() => expect(lastBounds()).toBeNull());
-    await userEvent.keyboard("{Escape}");
-    await vi.waitFor(() => expect(lastBounds()).toEqual(original));
-    await expect.element(page.getByAltText("Browser preview")).not.toBeInTheDocument();
-    expect(api.browser.open).toHaveBeenCalledOnce();
-    expect(api.browser.navigate).not.toHaveBeenCalled();
-    expect(api.browser.hide).not.toHaveBeenCalled();
-    await mounted.unmount();
-  });
+  it.each([threadId, ThreadId.makeUnsafe("project-browser:shared-project")])(
+    "keeps %s visible behind browser actions and restores it without reloading",
+    async (browserSurfaceId) => {
+      const surfaceState = { ...state, threadId: browserSurfaceId };
+      api.browser.open.mockResolvedValue(surfaceState);
+      api.browser.capturePreview.mockImplementation(async (input) =>
+        input.threadId === browserSurfaceId ? previewSrc : null,
+      );
+      useBrowserStateStore.setState({
+        threadStatesByThreadId: { [browserSurfaceId]: surfaceState },
+      });
+      const mounted = await render(
+        <QueryClientProvider client={new QueryClient()}>
+          <div style={{ width: 640, height: 600 }}>
+            <BrowserPanel
+              mode="sidebar"
+              threadId={threadId}
+              browserSurfaceId={browserSurfaceId}
+              onClosePanel={() => {}}
+            />
+          </div>
+        </QueryClientProvider>,
+      );
+      await vi.waitFor(() => expect(lastBounds()?.width).toBeGreaterThan(0));
+      const original = lastBounds();
+      api.browser.capturePreview.mockClear();
+      await page.getByRole("button", { name: "Browser actions" }).click();
+      await expect.element(page.getByRole("menuitem", { name: "New tab" })).toBeVisible();
+      await expect.element(page.getByAltText("Browser preview")).toBeVisible();
+      expect(document.querySelector<HTMLImageElement>('img[alt="Browser preview"]')?.src).toBe(
+        previewSrc,
+      );
+      expect(api.browser.capturePreview).toHaveBeenCalledWith({
+        threadId: browserSurfaceId,
+        tabId: state.activeTabId,
+      });
+      await vi.waitFor(() => expect(lastBounds()).toBeNull());
+      await userEvent.keyboard("{Escape}");
+      await vi.waitFor(() => expect(lastBounds()).toEqual(original));
+      await expect.element(page.getByAltText("Browser preview")).not.toBeInTheDocument();
+      expect(api.browser.open).toHaveBeenCalledOnce();
+      expect(api.browser.navigate).not.toHaveBeenCalled();
+      expect(api.browser.hide).not.toHaveBeenCalled();
+      await mounted.unmount();
+    },
+  );
 
   it("retains a renderer opener while its native popup is active and restores the same webview", async () => {
     await page.viewport(1280, 900);
