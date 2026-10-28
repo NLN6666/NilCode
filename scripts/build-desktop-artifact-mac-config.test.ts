@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { assert, describe, it } from "@effect/vitest";
 import { basename } from "node:path";
+import { createRequire } from "node:module";
 import { SYNARA_PACKAGED_DESKTOP_FLAVORS } from "@synara/shared/desktopIdentity";
 import { desktopIconAssetPaths } from "./lib/brand-assets.ts";
 
@@ -28,6 +29,36 @@ import {
 } from "./lib/desktop-platform-build-config.ts";
 
 describe("createDesktopPlatformBuildConfig", () => {
+  it("retains TypeScript runtime libraries on every desktop platform", () => {
+    const require = createRequire(import.meta.url);
+    for (const platform of ["mac", "linux", "win"] as const) {
+      const config = createDesktopPlatformBuildConfig({ platform, target: "dir" });
+      assert.ok(config.onNodeModuleFile);
+      const include = require(config.onNodeModuleFile) as (filePath: string) => boolean;
+      for (const root of [
+        "/stage/node_modules/typescript/lib/",
+        "C:\\stage\\node_modules\\typescript\\lib\\",
+      ]) {
+        for (const library of [
+          "lib.d.ts",
+          "lib.es5.d.ts",
+          "lib.esnext.full.d.ts",
+          "lib.dom.d.ts",
+        ]) {
+          assert.equal(include(`${root}${library}`), true);
+        }
+      }
+      for (const file of [
+        "/stage/node_modules/other/lib/lib.d.ts",
+        "/stage/node_modules/typescript/lib/typescript.d.ts",
+        "/stage/node_modules/typescript/lib/typescript.js",
+        "/stage/node_modules/typescript/lib/nested/lib.d.ts",
+      ]) {
+        assert.equal(include(file), false);
+      }
+    }
+  });
+
   it("names every packaged Icon Composer asset for CFBundleIconName", () => {
     for (const flavor of SYNARA_PACKAGED_DESKTOP_FLAVORS) {
       assert.equal(
@@ -49,6 +80,7 @@ describe("createDesktopPlatformBuildConfig", () => {
 
     assert.deepStrictEqual(mac.target, ["dmg"]);
     assert.equal(mac.icon, "icon.icns");
+    assert.equal(mac.minimumSystemVersion, "13.0");
     assert.deepStrictEqual(config.asarUnpack, ["node_modules/node-pty/**"]);
     assert.equal(mac.hardenedRuntime, true);
     assert.equal(mac.notarize, false);
@@ -134,6 +166,7 @@ describe("createDesktopPlatformBuildConfig", () => {
       writeUpdateInfo: false,
     });
     assert.equal(config.mac?.identity, undefined);
+    assert.equal(config.mac?.minimumSystemVersion, "13.0");
   });
 
   it("seals isolated local app bundles with the existing nested signing policy", () => {
@@ -145,6 +178,7 @@ describe("createDesktopPlatformBuildConfig", () => {
     });
 
     assert.equal(config.mac?.identity, "-");
+    assert.equal(config.mac?.minimumSystemVersion, "13.0");
     assert.equal(config.mac?.timestamp, "none");
     assert.equal(config.mac?.hardenedRuntime, false);
     assert.equal(config.mac?.notarize, false);
@@ -162,6 +196,7 @@ describe("createDesktopPlatformBuildConfig", () => {
     });
 
     assert.equal(config.mac?.identity, undefined);
+    assert.equal(config.mac?.minimumSystemVersion, "13.0");
     assert.equal(config.mac?.timestamp, undefined);
     assert.equal(config.mac?.hardenedRuntime, true);
     assert.equal(config.mac?.notarize, false);

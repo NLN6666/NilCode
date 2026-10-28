@@ -72,6 +72,7 @@ import {
   isDiffPanelRepoScopeOption,
   isStaleDiffTurnSelection,
   resolveConversationCacheScope,
+  resolveTurnDiffCacheScope,
   resolveDiffPanelGitStatusQueriesEnabled,
   resolveDiffPanelQueriesEnabled,
   resolveDiffPanelScopeCountQueriesEnabled,
@@ -724,7 +725,10 @@ export default function DiffPanel({
       fromTurnCount: activeCheckpointRange?.fromTurnCount ?? null,
       toTurnCount: activeCheckpointRange?.toTurnCount ?? null,
       ignoreWhitespace: diffIgnoreWhitespace,
-      cacheScope: selectedTurn ? `turn:${selectedTurn.turnId}` : conversationCacheScope,
+      cacheScope: selectedTurn ? resolveTurnDiffCacheScope(selectedTurn) : conversationCacheScope,
+      liveSnapshot:
+        selectedTurn?.status === "missing" &&
+        selectedTurn.checkpointRef?.startsWith("provider-diff:") === true,
       enabled:
         diffQueriesEnabled && isGitRepo && !diffEnvironmentPending && diffViewKind === "turn",
     }),

@@ -9,7 +9,7 @@ import { computerToolInstructions } from "./computerGuidance.ts";
 import { AUTOMATION_AUTHORING_GUIDANCE } from "./automationAuthoringGuidance.ts";
 
 /** Canonical, versioned host policy delivered to every supported provider. */
-export const SYNARA_HARNESS_POLICY_VERSION = "2026-10-19.1";
+export const SYNARA_HARNESS_POLICY_VERSION = "2026-10-28.1";
 export const SYNARA_HARNESS_POLICY_MARKER = `[Synara harness policy ${SYNARA_HARNESS_POLICY_VERSION}]`;
 
 export interface SynaraHarnessCapabilities {
@@ -40,6 +40,7 @@ export function renderSynaraHarnessPolicy(capabilities: SynaraHarnessCapabilitie
         "After successfully creating a pull request for the current thread's own deliverable, call synara_set_thread_pull_request with its URL. Never associate a pull request that the thread only reviews, references, or discusses.",
         "Use synara_*_daemon for long-lived processes; shell children die with the session. Declare ready at start; send input for graceful stop. Use detached: true only to survive Synara exit.",
         "Native subagent/Task tools do not create Synara threads; use synara_create_threads for explicit Synara thread requests.",
+        "Server-assigned Hub coordinators route work and own automations. Workers do assigned work, cannot create threads or message peers; ordinary chats retain thread tools.",
         "For a plural thread request, submit one exact synara_create_threads plan. The array length is the exact requested count.",
         "If synara_create_threads fails before returning an operationId, correct the rejected plan and reuse its requestId; no durable task was created.",
         "Use synara_capabilities and its targetConstruction: canonical providers/models/options only. Codex options.reasoningEffort differs from Claude Agent options.effort. Never guess model slugs or silently substitute providers/models.",

@@ -9,6 +9,8 @@ import {
   TurnId,
 } from "@synara/contracts";
 import { nonEmptyTrimmed } from "@synara/shared/text";
+import { sanitizeUserFacingErrorMessage } from "@synara/shared/errorMessages";
+import { providerRuntimeCommandProgressKey } from "./providerRuntimeProgressCoalescing.ts";
 
 import {
   isSensitiveKey,
@@ -696,6 +698,10 @@ export function projectProviderRuntimeActivities(
     typeof sessionSequence === "number" && Number.isInteger(sessionSequence) && sessionSequence >= 0
       ? { sequence: sessionSequence }
       : {};
+  const commandProgressKey = providerRuntimeCommandProgressKey(event);
+  const commandProgressId = commandProgressKey
+    ? EventId.makeUnsafe(`provider-command-progress:${commandProgressKey}`)
+    : event.eventId;
   // Reasoning rows need a readable summary: empty starts/completions are
   // private/encrypted reasoning boundaries, not transcript rows.
   //
@@ -873,7 +879,10 @@ export function projectProviderRuntimeActivities(
           kind: "runtime.error",
           summary: "Provider runtime error",
           payload: toActivityPayload({
-            message: truncateDetail(message, 500),
+            message: truncateDetail(
+              sanitizeUserFacingErrorMessage(message, "Provider runtime error"),
+              500,
+            ),
             ...(errorClass ? { class: errorClass } : {}),
             ...(event.payload.errorCode ? { errorCode: event.payload.errorCode } : {}),
           }),
@@ -886,6 +895,10 @@ export function projectProviderRuntimeActivities(
     case "runtime.warning": {
       const raw = asObject((event as { raw?: unknown }).raw);
       const nativeType = asString(asObject(raw?.payload)?.type);
+      const nativeMethod = asString(raw?.method);
+      const isCodexThreadWarning =
+        event.provider === "codex" &&
+        (nativeMethod === "guardianWarning" || nativeMethod === "warning");
       // Claude backgrounding notices arrive as warnings whose detail is the
       // SDK background_tasks_changed message; they present as a plain info
       // line ("Moved to background: <work>"), not as a runtime warning.
@@ -932,11 +945,13 @@ export function projectProviderRuntimeActivities(
             message,
             detail: message,
             ...(willRetry ? { willRetry: true } : {}),
-            ...(isBackgroundMove || isClaudeRetry || isMonitorEvent
-              ? { nativeEventType: detailSubtype }
-              : nativeType
-                ? { nativeEventType: nativeType }
-                : {}),
+            ...(isCodexThreadWarning
+              ? { nativeEventType: `codex.${nativeMethod}` }
+              : isBackgroundMove || isClaudeRetry || isMonitorEvent
+                ? { nativeEventType: detailSubtype }
+                : nativeType
+                  ? { nativeEventType: nativeType }
+                  : {}),
             ...activityDataField(event.payload.detail),
           }),
           turnId: toTurnId(event.turnId) ?? null,
@@ -1024,6 +1039,9 @@ export function projectProviderRuntimeActivities(
                 : "Task started",
           payload: toActivityPayload({
             taskId: event.payload.taskId,
+            ...(event.payload.interactionMode
+              ? { interactionMode: event.payload.interactionMode }
+              : {}),
             ...(event.payload.taskType ? { taskType: event.payload.taskType } : {}),
             ...(event.payload.subagentType ? { subagentType: event.payload.subagentType } : {}),
             ...(event.payload.workflowName ? { workflowName: event.payload.workflowName } : {}),
@@ -1104,6 +1122,9 @@ export function projectProviderRuntimeActivities(
                 : "Task completed",
           payload: toActivityPayload({
             taskId: event.payload.taskId,
+            ...(event.payload.interactionMode
+              ? { interactionMode: event.payload.interactionMode }
+              : {}),
             status: event.payload.status,
             ...(event.payload.toolUseId ? { toolUseId: event.payload.toolUseId } : {}),
             ...(event.payload.summary
@@ -1115,6 +1136,10 @@ export function projectProviderRuntimeActivities(
               : {}),
             ...(event.payload.workflowAgents
               ? { workflowAgents: event.payload.workflowAgents }
+              : {}),
+            ...(event.payload.reconcilesStop ? { reconcilesStop: true } : {}),
+            ...(event.payload.awaitingProviderConfirmation
+              ? { awaitingProviderConfirmation: true }
               : {}),
           }),
           turnId: toTurnId(event.turnId) ?? null,
@@ -1140,6 +1165,10 @@ export function projectProviderRuntimeActivities(
                   : "Task updated",
           payload: toActivityPayload({
             taskId: event.payload.taskId,
+            ...(event.payload.reconcilesStop ? { reconcilesStop: true } : {}),
+            ...(event.payload.interactionMode
+              ? { interactionMode: event.payload.interactionMode }
+              : {}),
             ...(event.payload.status ? { status: event.payload.status } : {}),
             ...(event.payload.isBackgrounded !== undefined
               ? { isBackgrounded: event.payload.isBackgrounded }
@@ -1265,7 +1294,7 @@ export function projectProviderRuntimeActivities(
       const itemTitle = nonEmptyTrimmed(event.payload.title);
       return [
         {
-          id: event.eventId,
+          id: commandProgressId,
           createdAt: event.createdAt,
           tone: "tool",
           kind:
@@ -1348,7 +1377,7 @@ export function projectProviderRuntimeActivities(
     case "tool.progress": {
       return [
         {
-          id: event.eventId,
+          id: commandProgressId,
           createdAt: event.createdAt,
           tone: "tool",
           kind: "tool.updated",
@@ -1426,7 +1455,9 @@ export function projectProviderRuntimeActivities(
             ...(typeof event.payload.cumulativeCostUsd === "number"
               ? { cumulativeCostUsd: event.payload.cumulativeCostUsd }
               : {}),
-            ...(errorMessage ? { errorMessage } : {}),
+            ...(errorMessage
+              ? { errorMessage: sanitizeUserFacingErrorMessage(errorMessage, "Turn failed") }
+              : {}),
             ...(event.payload.errorCode ? { errorCode: event.payload.errorCode } : {}),
           }),
           turnId: toTurnId(event.turnId) ?? null,
@@ -1648,6 +1679,8 @@ export function providerActivityUpdateDedupeKey(
   if (activity.kind !== "tool.updated") {
     return undefined;
   }
+  const commandProgressKey = providerRuntimeCommandProgressKey(event);
+  if (commandProgressKey) return `${prefix}:${commandProgressKey}`;
 
   const data = asObject(payload?.data);
   const toolUpdateId =

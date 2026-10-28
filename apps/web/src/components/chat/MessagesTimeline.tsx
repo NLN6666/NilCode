@@ -165,7 +165,7 @@ import {
   type ParsedTerminalContextEntry,
 } from "~/lib/terminalContext";
 import { cn } from "~/lib/utils";
-import { MUTED_LABEL_TEXT_CLASS_NAME } from "~/surfaceStyles";
+import { MUTED_LABEL_TEXT_CLASS_NAME, MUTED_LABEL_TEXT_COLOR } from "~/surfaceStyles";
 import {
   DEFAULT_CHAT_FONT_SIZE_PX,
   normalizeChatFontSizePx,
@@ -1636,10 +1636,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // the visuals and the answer read as one block below it.
   const renderSettledTurnHeader = (row: Extract<MessagesTimelineRow, { kind: "message" }>) => {
     const knownAbsoluteFilePaths = knownAbsoluteFilePathsForRow(row);
-    // Keep main's lifetime semantics: only tasks outliving this turn stay pinned.
+    // Outliving tasks stay visible until a successful follow-up consumes them.
     const turnEndedAt = row.turnHeader?.endedAt ?? null;
     const pinnedBackgroundEntries = (row.collapsedTurnItems ?? []).flatMap((item) =>
-      item.kind === "work" && isPinnedBackgroundTaskEntry(item.entry, turnEndedAt)
+      item.kind === "work" &&
+      isPinnedBackgroundTaskEntry(item.entry, turnEndedAt, item.backgroundTaskConsumed)
         ? [item.entry]
         : [],
     );
@@ -1650,7 +1651,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           item.entry.synaraThreadCreation ||
           item.entry.computerSetupRequired ||
           item.entry.computerControlDenied ||
-          isPinnedBackgroundTaskEntry(item.entry, turnEndedAt)
+          isPinnedBackgroundTaskEntry(item.entry, turnEndedAt, item.backgroundTaskConsumed)
         ),
     );
     const hasCollapsedWork = Boolean(collapsedTurnItems && collapsedTurnItems.length > 0);
@@ -1660,23 +1661,29 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     const settledCollapseTransition = isCollapsedWorkExpanded
       ? undefined
       : settledTurnCollapseTransitions[row.message.id];
-    const renderCollapsedTurnItem = (item: CollapsedTurnItem, keyPrefix: string) =>
-      item.kind === "work" ? (
-        <TimelineWorkEntryRow
-          key={`${keyPrefix}:work:${row.message.id}:${item.id}`}
-          workEntry={item.entry}
-          chatMetaFontSizePx={appTypographyScale.chatMetaPx}
-          textFontSizePx={normalizedChatFontSizePx}
-          density={prefersCompactWorkEntryRow(item.entry) ? "compact" : "default"}
-          markdownCwd={markdownCwd}
-          onImageExpand={onImageExpand}
-          timestampFormat={timestampFormat}
-          {...(onOpenAgentActivity ? { onOpenAgentActivity } : {})}
-          {...(onOpenAutomation ? { onOpenAutomation } : {})}
-          {...(computerControlEnabled !== undefined ? { computerControlEnabled } : {})}
-          {...(onEnableComputerControl ? { onEnableComputerControl } : {})}
-        />
-      ) : (
+    const renderCollapsedTurnItem = (item: CollapsedTurnItem, keyPrefix: string) => {
+      if (item.kind === "work") {
+        const workRowKey = `${keyPrefix}:work:${row.message.id}:${item.id}`;
+        return (
+          <TimelineWorkEntryRow
+            key={workRowKey}
+            workEntry={item.entry}
+            chatMetaFontSizePx={appTypographyScale.chatMetaPx}
+            textFontSizePx={normalizedChatFontSizePx}
+            density={prefersCompactWorkEntryRow(item.entry) ? "compact" : "default"}
+            mutedProse
+            markdownCwd={markdownCwd}
+            threadId={threadId}
+            onImageExpand={onImageExpand}
+            timestampFormat={timestampFormat}
+            {...(onOpenAgentActivity ? { onOpenAgentActivity } : {})}
+            {...(onOpenAutomation ? { onOpenAutomation } : {})}
+            {...(computerControlEnabled !== undefined ? { computerControlEnabled } : {})}
+            {...(onEnableComputerControl ? { onEnableComputerControl } : {})}
+          />
+        );
+      }
+      return (
         <div
           key={`${keyPrefix}:narration:${row.message.id}:${item.id}`}
           className={MUTED_LABEL_TEXT_CLASS_NAME}
@@ -1686,15 +1693,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           <ChatMarkdown
             text={item.message.text}
             cwd={markdownCwd}
+            threadId={threadId}
+            imageAttachments={item.message.attachments}
             directionMode="auto-blocks"
             isStreaming={false}
-            style={chatTypographyStyle}
+            style={{ ...chatTypographyStyle, color: MUTED_LABEL_TEXT_COLOR }}
             onImageExpand={onImageExpand}
             knownAbsoluteFilePaths={knownAbsoluteFilePaths}
             {...threadFindMarkdownProps(findHighlight, item.message.id)}
           />
         </div>
       );
+    };
     const renderCollapsedTurnChunk = (chunk: CollapsedTurnChunk, keyPrefix: string) => {
       if (chunk.kind === "item") {
         return renderCollapsedTurnItem(chunk.item, keyPrefix);
@@ -1931,6 +1941,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               textFontSizePx={normalizedChatFontSizePx}
               density={prefersCompactWorkEntryRow(workEntry) ? "compact" : "default"}
               markdownCwd={markdownCwd}
+              threadId={threadId}
               onImageExpand={onImageExpand}
               timestampFormat={timestampFormat}
               {...(onOpenAgentActivity ? { onOpenAgentActivity } : {})}
@@ -2099,19 +2110,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               data-chat-find-document-id={row.message.id}
               data-chat-find-segment-index={row.segmentIndex}
             >
-              <div className={MUTED_LABEL_TEXT_CLASS_NAME}>
-                <InlineVisualEmbedContext.Provider value={resolveInlineVisualEmbed(row.message.id)}>
-                  <ChatMarkdown
-                    text={segmentText}
-                    cwd={markdownCwd}
-                    directionMode="auto-blocks"
-                    isStreaming={false}
-                    style={chatTypographyStyle}
-                    onImageExpand={onImageExpand}
-                    {...threadFindMarkdownProps(findHighlight, row.message.id, row.segmentIndex)}
-                  />
-                </InlineVisualEmbedContext.Provider>
-              </div>
+              {/* Interleaved slices are the assistant's own text: same tone as its reply. */}
+              <InlineVisualEmbedContext.Provider value={resolveInlineVisualEmbed(row.message.id)}>
+                <ChatMarkdown
+                  text={segmentText}
+                  cwd={markdownCwd}
+                  threadId={threadId}
+                  imageAttachments={row.message.attachments}
+                  directionMode="auto-blocks"
+                  isStreaming={false}
+                  style={chatTypographyStyle}
+                  onImageExpand={onImageExpand}
+                  {...threadFindMarkdownProps(findHighlight, row.message.id, row.segmentIndex)}
+                />
+              </InlineVisualEmbedContext.Provider>
             </div>
           );
         })()}
@@ -2556,8 +2568,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               ),
             ).values(),
           ];
-          // Background tasks that outlived the turn stay visible under the header
-          // while it is folded; ones the turn settled itself fold with its work.
+          // Outliving background tasks stay visible until a successful follow-up
+          // consumes them; tasks settled by this turn fold with its other work.
           const turnEndedAt = row.turnHeader?.endedAt ?? null;
           const collapsedTurnItems = row.collapsedTurnItems?.filter(
             (item) =>
@@ -2566,7 +2578,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 item.entry.synaraThreadCreation ||
                 item.entry.computerSetupRequired ||
                 item.entry.computerControlDenied ||
-                isPinnedBackgroundTaskEntry(item.entry, turnEndedAt)
+                isPinnedBackgroundTaskEntry(item.entry, turnEndedAt, item.backgroundTaskConsumed)
               ),
           );
           const hasCollapsedWork = Boolean(collapsedTurnItems?.length);
@@ -2584,6 +2596,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 density="compact"
                 fileDiffStatByPath={fileDiffStatByPath}
                 markdownCwd={markdownCwd}
+                threadId={threadId}
                 onImageExpand={onImageExpand}
                 onOpenTurnDiff={onOpenTurnDiff}
                 timestampFormat={timestampFormat}
@@ -2727,6 +2740,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         textFontSizePx={normalizedChatFontSizePx}
                         density={prefersCompactWorkEntryRow(workEntry) ? "compact" : "default"}
                         markdownCwd={markdownCwd}
+                        threadId={threadId}
                         onImageExpand={onImageExpand}
                         timestampFormat={timestampFormat}
                         {...(onOpenAgentActivity ? { onOpenAgentActivity } : {})}
@@ -2777,6 +2791,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                             : messageText
                         }
                         cwd={markdownCwd}
+                        threadId={threadId}
+                        imageAttachments={row.message.attachments}
                         directionMode="auto-blocks"
                         isStreaming={Boolean(row.message.streaming)}
                         style={chatTypographyStyle}
@@ -2818,6 +2834,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       textFontSizePx={normalizedChatFontSizePx}
                       density="compact"
                       markdownCwd={markdownCwd}
+                      threadId={threadId}
                       onImageExpand={onImageExpand}
                       timestampFormat={timestampFormat}
                       {...(computerControlEnabled !== undefined ? { computerControlEnabled } : {})}

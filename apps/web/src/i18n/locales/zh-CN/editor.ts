@@ -54,6 +54,8 @@ export const editor: Messages["editor"] = {
   image: {
     openFailed: "无法打开这张图片",
     openFailedHint: "文件可能已被移动或不可用。",
+    retry: "重试",
+    retryImage: "重试图片预览",
     download: "下载",
     downloadImage: "下载图片",
   },

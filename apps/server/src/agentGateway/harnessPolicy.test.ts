@@ -174,11 +174,11 @@ describe("Synara harness policy", () => {
   });
 
   it("keeps the gateway policy below its prompt budget", () => {
-    assert.isAtMost(renderSynaraHarnessPolicy({ gatewayControlAvailable: true }).length, 6_030);
-    // Inline visuals add one line where the server offers them.
+    // Role guidance adds one line; keep the optional visual guidance in its own budget.
+    assert.isAtMost(renderSynaraHarnessPolicy({ gatewayControlAvailable: true }).length, 6_250);
     assert.isAtMost(
       renderSynaraHarnessPolicy({ gatewayControlAvailable: true, inlineVisuals: true }).length,
-      6_160,
+      6_380,
     );
   });
 

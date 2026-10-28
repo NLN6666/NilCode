@@ -89,6 +89,7 @@ export const app = {
     debug: "Debug",
     stopGeneration: "Stop generation",
     stopGenerationHint: "Stop the current response. On Mac, press Ctrl+C to interrupt.",
+    recoveryStopHint: "Stop the provider runtime before unblocking this thread.",
     implementationActions: "Implementation actions",
     implementInNewThread: "Implement in a new thread",
     synaraLogo: "Synara logo",

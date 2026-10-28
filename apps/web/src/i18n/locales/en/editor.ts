@@ -56,6 +56,8 @@ export const editor = {
   image: {
     openFailed: "Couldn’t open this image",
     openFailedHint: "The file may have moved or be unavailable.",
+    retry: "Retry",
+    retryImage: "Retry image preview",
     download: "Download",
     downloadImage: "Download image",
   },

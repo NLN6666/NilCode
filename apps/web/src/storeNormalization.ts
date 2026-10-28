@@ -553,6 +553,7 @@ function normalizeChatAttachments(
             }
           : {
               type: "image",
+              ...(attachment.sourcePath !== undefined ? { sourcePath: attachment.sourcePath } : {}),
               id: attachment.id,
               name: attachment.name,
               mimeType: attachment.mimeType,
@@ -571,6 +572,7 @@ function normalizeChatAttachments(
           existing.name === nextAttachment.name &&
           existing.mimeType === nextAttachment.mimeType &&
           existing.sizeBytes === nextAttachment.sizeBytes &&
+          existing.sourcePath === nextAttachment.sourcePath &&
           existing.previewUrl === nextAttachment.previewUrl) ||
         (existing.type === "file" &&
           nextAttachment.type === "file" &&
@@ -683,6 +685,7 @@ function readModelAttachmentsFromChatMessage(
               id: attachment.id,
               name: attachment.name,
               type: "image" as const,
+              ...(attachment.sourcePath !== undefined ? { sourcePath: attachment.sourcePath } : {}),
               mimeType: attachment.mimeType,
               sizeBytes: attachment.sizeBytes,
             },

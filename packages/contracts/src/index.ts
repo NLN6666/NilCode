@@ -1,3 +1,4 @@
+export * from "./editorDebug";
 export * from "./auth";
 export * from "./automation";
 export * from "./baseSchemas";
@@ -44,6 +45,7 @@ export * from "./githubInbox";
 export * from "./orchestration";
 export * from "./asyncUserInput";
 export * from "./editor";
+export * from "./editorIntelligence";
 export * from "./environment";
 export * from "./project";
 export * from "./projectAgent";

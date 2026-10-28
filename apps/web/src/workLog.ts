@@ -335,6 +335,9 @@ export interface WorkLogBackgroundTask {
   status: "running" | WorkLogBackgroundTaskOutcome;
   startedAt: string;
   completedAt: string | null;
+  // Exact task.completed activity that can wake a later response. A preceding
+  // task.updated can settle the row earlier without changing this identity.
+  completionActivityId?: string;
   exitCode: number | null;
 }
 
@@ -702,9 +705,15 @@ function deriveBackgroundTaskStates(ordered: ReadonlyArray<OrchestrationThreadAc
   const tasks = new Map<string, BackgroundTaskState>();
   const noticesAnnouncingSubagents = new Set<string>();
   const seenTaskIds = new Set<string>();
+  // Sparse background updates reuse the description from their launch event.
   const started = new Map<
     string,
-    { toolUseId: string | null; taskType: string | null; startedAt: string }
+    {
+      toolUseId: string | null;
+      taskType: string | null;
+      description: string | null;
+      startedAt: string;
+    }
   >();
   const admit = (
     taskId: string,
@@ -734,7 +743,7 @@ function deriveBackgroundTaskStates(ordered: ReadonlyArray<OrchestrationThreadAc
     tasks.set(taskId, {
       taskId,
       taskType,
-      description: info.description,
+      description: info.description ?? launch?.description ?? null,
       command: null,
       status: "running",
       startedAt: launch?.startedAt ?? activity.createdAt,
@@ -770,6 +779,7 @@ function deriveBackgroundTaskStates(ordered: ReadonlyArray<OrchestrationThreadAc
       const launch = {
         toolUseId: asTrimmedString(payload?.toolUseId),
         taskType: asTrimmedString(payload?.taskType),
+        description: asTrimmedString(payload?.detail),
         startedAt: activity.createdAt,
       };
       started.set(taskId, launch);
@@ -796,9 +806,29 @@ function deriveBackgroundTaskStates(ordered: ReadonlyArray<OrchestrationThreadAc
       });
     }
     const task = tasks.get(taskId);
-    if (!task || task.status !== "running") continue;
+    const reconcilesStop = payload?.reconcilesStop === true && task?.status === "stopped";
+    const outcome = backgroundTaskOutcome(payload?.status);
+    if (task && reconcilesStop && outcome && task.status !== outcome) {
+      delete task.completionActivityId;
+    }
+    if (
+      task &&
+      activity.kind === "task.completed" &&
+      outcome &&
+      (task.status === "running" || task.status === outcome || reconcilesStop)
+    ) {
+      task.completionActivityId ??= activity.id;
+    }
+    if (!task || (task.status !== "running" && !reconcilesStop)) continue;
+    // Only explicit native replay evidence can reopen a provisional local stop.
+    if (reconcilesStop && activity.kind === "task.updated" && payload?.status === "running") {
+      task.status = "running";
+      task.completedAt = null;
+      delete task.completionActivityId;
+      task.exitCode = null;
+      continue;
+    }
     if (activity.kind === "task.updated" || activity.kind === "task.completed") {
-      const outcome = backgroundTaskOutcome(payload?.status);
       if (!outcome) continue;
       const detail = asTrimmedString(payload?.detail);
       task.status = outcome;
@@ -912,20 +942,46 @@ export interface SubagentTaskEnd {
 /**
  * When and how each subagent task ended, keyed by its launching tool call id,
  * from the parent's task completions. A background subagent's own thread ends
- * its first turn at launch, so this is the only reliable end it has.
+ * its first turn at launch, so this is the only reliable end it has. An end
+ * that names only its task (an older session stop) resolves through the task's
+ * start while that task is still open.
  */
 export function deriveSubagentTaskEnds(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
 ): ReadonlyMap<string, SubagentTaskEnd> {
   const ends = new Map<string, SubagentTaskEnd>();
   const resumed = new Set<string>();
+  const openToolUseIdByTaskId = new Map<string, string>();
   for (const activity of activities) {
     const payload = asRecord(activity.payload);
-    const toolUseId = asTrimmedString(payload?.toolUseId);
-    if (activity.kind === "task.started" && toolUseId && ends.has(toolUseId)) {
-      resumed.add(toolUseId);
+    const taskId = asTrimmedString(payload?.taskId);
+    const ownToolUseId = asTrimmedString(payload?.toolUseId);
+    if (activity.kind === "task.started" && taskId) {
+      if (ownToolUseId) openToolUseIdByTaskId.set(taskId, ownToolUseId);
+      else openToolUseIdByTaskId.delete(taskId);
+    }
+    if (activity.kind === "task.started" && ownToolUseId && ends.has(ownToolUseId)) {
+      resumed.add(ownToolUseId);
+    }
+    if (
+      activity.kind === "task.updated" &&
+      payload?.reconcilesStop === true &&
+      payload.status === "running" &&
+      ownToolUseId
+    ) {
+      const stopped = ends.get(ownToolUseId);
+      if (stopped?.outcome === "stopped") {
+        // Explicit native replay retracts only the provisional stop, retaining
+        // earlier invocations and the correlation for its eventual completion.
+        if (stopped.previous) ends.set(ownToolUseId, stopped.previous);
+        else ends.delete(ownToolUseId);
+        resumed.add(ownToolUseId);
+        if (taskId) openToolUseIdByTaskId.set(taskId, ownToolUseId);
+      }
     }
     if (activity.kind !== "task.completed") continue;
+    const toolUseId = ownToolUseId ?? (taskId ? openToolUseIdByTaskId.get(taskId) : undefined);
+    if (taskId) openToolUseIdByTaskId.delete(taskId);
     const outcome = subagentOutcomeFromStatus(asTrimmedString(payload?.status));
     if (toolUseId && outcome) {
       const previous = resumed.has(toolUseId) ? ends.get(toolUseId) : ends.get(toolUseId)?.previous;
@@ -1213,6 +1269,10 @@ function deriveBackgroundTaskCompletionEntries(
   return completions;
 }
 
+export function isCodexRuntimeWarningType(nativeEventType: unknown): boolean {
+  return nativeEventType === "codex.guardianWarning" || nativeEventType === "codex.warning";
+}
+
 function shouldKeepActivityForWorkLog(
   activity: OrchestrationThreadActivity,
   latestTurnId: TurnId | undefined,
@@ -1237,6 +1297,14 @@ function shouldKeepActivityForWorkLog(
   // Authentication can start or finish outside a turn. Keep its latest state
   // visible even when the transcript has turn-scoped assistant messages.
   if (activity.kind === "auth.status") return true;
+
+  // Codex Guardian and hook warnings carry no provider turn id.
+  if (
+    activity.kind === "runtime.warning" &&
+    activity.turnId === null &&
+    isCodexRuntimeWarningType(asRecord(activity.payload)?.nativeEventType)
+  )
+    return true;
 
   // Thread-level compaction progress has no provider turn id but should stay visible.
   if (activity.kind === "context-compaction" && activity.turnId === null) {

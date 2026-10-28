@@ -736,3 +736,20 @@ detached 把 stdio 重定向到日志文件，**没有 stdin**，于是发不了
 - 真实 Electron viewport smoke 所有行为断言通过后，Windows 删除仍由当前 Electron 持有的临时 profile 报 EPERM；不能把该命令退出码报告为成功。profile 在对应 Electron 退出后由本任务清理，不修改生产生命周期以掩盖测试清理问题。
 - 最终隔离桌面重启后实测：新 service PTY 输出持续增长至 `SERVICE_TICK 49/50/51`，按钮为 Stop，项目终端 ownership 正确；Stop 后实际端口返回 ECONNREFUSED。替代截图为 1151×1005，页面背景像素为 RGBA 225/242/208/255，菜单关闭后原生按钮仍可点击，重复开关保留同一 document sentinel。该 fixture 的 SIGINT handler 等待 HTTP server close callback，端口关闭后命令仍可能存活；服务端 `onlyIfIdle` 正确拒绝提前替换，没有为验证而放松 busy guard。
 - 最终 browser 两文件 14 项、相关 Web 六文件 120 项、desktop browser manager 57 项通过；desktop 构建、Web 类型检查和 Windows runtime boundary 通过。lint 为 0 errors / 1017 warnings；7 个本轮代码文件格式检查通过，全仓格式检查仍报 2937 个未统一文件，全仓类型检查仍被未改动的 desktop watchdog/hang-dump 类型错误阻塞。隔离验证证据位于 `D:/Codes/NilCode-ui-fix-20261020`。
+
+## 2026-10-28 main 1.0.9 合入 dev
+
+- 本次经用户明确批准，获取 `NLN6666/NilCode` 的 main/dev；来源为 `ea912dcf14a38c12f30ebc3bfdf80af6ca446bea`，旧 dev `80b01e8d6ee2240bac42a412c7146252cf9b55d6` 保留在 `backup/dev-premerge-20261028`。未跟踪 `WATCHDOG.yml` 不属于本次提交。先前错误地在 dev 执行多引用 `git merge --ff-only` 被 Git 拒绝且未修改工作树；改为先验证祖先关系、仅快进 main 引用，再执行正常双亲合并。
+- 32 个冲突文件采用增量整合。整文件的行尾冲突不能重复拼入两套 imports/tests；浏览器“zipped tests”恢复双方完整测试。原生 OMP、daemon、editor API 各自闭合并保持独立；迁移没有新增编号碰撞，不重排 136/137。
+- shared ProjectActionDialog 接收 fork 的预览端口与中文文案，header/Environment 共用同一编辑器；服务检测、Run/Stop 和 terminal adoption 仍在。删除“空项目必须无按钮”等与 fork 行为冲突的默认布局断言，不修改服务行为迁就该断言。
+- upstream 工具行移除了 failure excerpt 及其 prop，但冲突残留引用会在真正渲染时抛 `ReferenceError`；完成 cutover，保留详情中的失败输出。实时 reasoning 保留有界滚动区，完成后使用 main 的正文渲染，删除只钉旧完成布局的断言。
+- Codex streaming 与 upstream Claude-only 终态保护组合后，晚到 completion 会覆盖 durable failed 行。将现有保护扩展到共享 streaming-provider predicate，同步保留首次时间/sequence；0/2001 后续行的 Codex 场景在修改前均失败。新增保护覆盖 Codex/Claude 的位置和 late-delta 终态。旧 throttle 场景人为向已完成的同一 turn/item 发 delta 并要求重新打开，与新终态契约矛盾，移除此实现断言。
+- main 新增的三个真实 ProviderService/registry 测试 fixture 只提供 Beta OMP，Stable 合并树需要 native OhMyPiAdapter；补齐 fixture 的实际服务依赖，不改变生产 provider 选择。Registry membership 用当前 flavor 的真实 selected fake，两个 OMP fake 不再共用 listSessions mock。
+- 使用任务专用 Bun 1.4.4 / Node 24.13.1，不修改全局工具。两个 parent control 初次 offline 安装留下 tinyglobby → picomatch 4.0.5 的悬空链接，marketing postinstall 报缺包；在用户已授权下载范围内重新 frozen/force 安装后完成对照，不改锁文件或跳过脚本。
+- 根 lint、Windows runtime boundary 通过；首次 fmt:check 报 3124 个文件，全部属于两个独立 parent 的格式失败路径集合，没有新增失败路径。未全仓重排格式。Web 类型修复后通过；server 72 项、desktop 17 项类型诊断按规范化文件/代码/消息与旧 dev 完全一致，不用总数冒充回归证据。
+- desktop 首轮 1359 passed / 202 failed / 18 skipped，202 个失败名称全部在干净 main 对照复现；其中 191 个也在旧 dev 复现。shared 的临时目录 rename EPERM 在 main 定向对照复现，process-priority 用例在定向运行通过；源码和测试与两个 parent 一致，不能宣称全套全绿。
+- ChatView 聚焦 browser 首轮 9 passed / 3 failed；同命令旧 dev 为 6 passed / 相同 3 failed。失败为 transport-recovery 文案等待及两项 scroll ownership 场景，未通过改断言或扩大本次 scope 隐藏它们。合并新增的三个项目/子代理场景通过。
+- 最终 reasoning/ingestion 回归为 202 passed。CheckpointReactor 同轮 120 passed / 20 failed；20 个失败名称全部在干净 main 定向对照复现，15 个也在旧 dev 复现，包括 Git CRLF、等待超时及虚拟时钟断言。没有通过删掉这些行为测试宣称全绿。
+- 生产 desktop 依赖图 4/4 无缓存构建成功。真实隔离 Electron 主界面已打开并截图，后端 HTTP 200、标题 Synara、无观察到的 renderer JavaScript 错误；10 个 provider、更新检查与 Advisor 均禁用，没有模型回合。首个 smoke 只等 bridge 发布便请求后端，过早得到 ECONNREFUSED；改为检测实际后端可用，而非预测等待时间。该 probe 不更改应用启动逻辑。
+- 将 Windows `subprocess.list2cmdline` 的结果交给 Bash 会吞掉路径反斜杠，两个 checkpoint 对照命令尚未运行就被 shell 拒绝；改用正斜杠路径和 `shlex.join`。未实际运行的命令不计入测试证据。
+- 全部原始日志、JSON、父分支对照和运行时截图位于 `D:/Codes/NilCode-merge-20261028`；安装、签名发布、自动更新升级及真实 provider/connector 登录不属于本次本地构建验证。

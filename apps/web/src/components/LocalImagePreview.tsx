@@ -15,6 +15,7 @@ import { buildLocalImageUrl, localImageFileName } from "~/lib/localImageUrls";
 import { cn } from "~/lib/utils";
 import { toastManager } from "./ui/toast";
 import { useMessages } from "~/i18n/context";
+import { Button } from "./ui/button";
 
 export type LocalImagePreviewStatus = "loading" | "ready" | "error";
 
@@ -38,23 +39,32 @@ export function useLocalImagePreview(input: {
   src: string;
   cwd: string | null | undefined;
   previewGrant?: string | null | undefined;
+  canonicalPath?: string | undefined;
+  /** Already owner-scoped managed resource URL; never rewrite its opaque query or handle. */
+  resourceUrl?: string | undefined;
   cacheKey?: string | number | undefined;
   onPreviewReady?: (() => void) | undefined;
   onPreviewError?: (() => void) | undefined;
 }): LocalImagePreviewState {
   const { src, cwd, previewGrant } = input;
-  const previewUrl = buildLocalImageUrl({
-    src,
-    cwd: cwd ?? undefined,
-    grant: previewGrant,
-    cacheKey: input.cacheKey,
-  });
-  const downloadUrl = buildLocalImageUrl({
-    src,
-    cwd: cwd ?? undefined,
-    download: true,
-    grant: previewGrant,
-  });
+  const previewUrl =
+    input.resourceUrl ??
+    buildLocalImageUrl({
+      src,
+      cwd: cwd ?? undefined,
+      canonicalPath: input.canonicalPath,
+      grant: previewGrant,
+      cacheKey: input.cacheKey,
+    });
+  const downloadUrl =
+    input.resourceUrl ??
+    buildLocalImageUrl({
+      src,
+      cwd: cwd ?? undefined,
+      canonicalPath: input.canonicalPath,
+      download: true,
+      grant: previewGrant,
+    });
   const fileName = localImageFileName(src);
   // A generation distinguishes separate visits to the same URL. This keeps an
   // A -> B -> A transition from reviving A's old error branch (which contains
@@ -140,8 +150,21 @@ export function LocalImageErrorCard(props: {
   className?: string | undefined;
   downloadAriaLabel?: string;
   onDownloadClick?: ((event: MouseEvent<HTMLElement>) => void) | undefined;
+  onRetry?: (() => void) | undefined;
 }) {
   const copy = useMessages().editor.image;
+  const downloadAction = (
+    <a
+      href={props.downloadUrl}
+      download={props.downloadName}
+      onClick={props.onDownloadClick}
+      className="local-image-error__action"
+      aria-label={props.downloadAriaLabel ?? copy.downloadImage}
+    >
+      <DownloadIcon className="size-3.5" aria-hidden="true" />
+      <span>{copy.download}</span>
+    </a>
+  );
   return (
     <span className={cn("local-image-error", props.className)}>
       <span className="local-image-error__icon" aria-hidden="true">
@@ -151,16 +174,25 @@ export function LocalImageErrorCard(props: {
         <span className="local-image-error__title">{copy.openFailed}</span>
         <span className="local-image-error__subtitle">{copy.openFailedHint}</span>
       </span>
-      <a
-        href={props.downloadUrl}
-        download={props.downloadName}
-        onClick={props.onDownloadClick}
-        className="local-image-error__action"
-        aria-label={props.downloadAriaLabel ?? copy.downloadImage}
-      >
-        <DownloadIcon className="size-3.5" aria-hidden="true" />
-        <span>{copy.download}</span>
-      </a>
+      {props.onRetry ? (
+        <span className="inline-flex shrink-0 flex-col items-stretch gap-1">
+          <Button
+            variant="outline"
+            size="chip"
+            aria-label={copy.retryImage}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              props.onRetry?.();
+            }}
+          >
+            {copy.retry}
+          </Button>
+          {downloadAction}
+        </span>
+      ) : (
+        downloadAction
+      )}
     </span>
   );
 }

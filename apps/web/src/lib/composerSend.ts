@@ -289,7 +289,7 @@ async function cancelManagedAttachments(attachmentIds: readonly string[]): Promi
       const body = JSON.stringify({ attachmentId });
       if (new TextEncoder().encode(body).byteLength > ATTACHMENT_CANCEL_BODY_MAX_BYTES) continue;
       try {
-        await fetch(resolveWsHttpUrl(ATTACHMENT_CANCEL_ROUTE_PATH), {
+        await fetch(resolveWsHttpUrl(ATTACHMENT_CANCEL_ROUTE_PATH, { requireBackend: true }), {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -338,7 +338,9 @@ export async function stageUploadComposerAttachments(input: {
         mimeType: appSnapSource ? uploadFile.type : attachment.mimeType,
       });
       const response = await fetch(
-        resolveWsHttpUrl(`${ATTACHMENT_UPLOAD_ROUTE_PATH}?${params.toString()}`),
+        resolveWsHttpUrl(`${ATTACHMENT_UPLOAD_ROUTE_PATH}?${params.toString()}`, {
+          requireBackend: true,
+        }),
         {
           method: "POST",
           credentials: "include",
@@ -350,11 +352,23 @@ export async function stageUploadComposerAttachments(input: {
         | ChatFileAttachment
         | { readonly error?: unknown }
         | null;
-      if (!response.ok || !payload || !("id" in payload) || !isManagedAttachmentId(payload.id)) {
+      if (
+        !response.ok ||
+        !payload ||
+        typeof payload !== "object" ||
+        !("id" in payload) ||
+        !isManagedAttachmentId(payload.id)
+      ) {
+        // A static app fallback can return HTTP 200 without an upload receipt.
         const message =
-          payload && "error" in payload && typeof payload.error === "string"
+          payload &&
+          typeof payload === "object" &&
+          "error" in payload &&
+          typeof payload.error === "string"
             ? payload.error
-            : `Attachment upload failed with status ${response.status}.`;
+            : response.ok
+              ? "Your computer returned an invalid attachment upload response. Reconnect and try again."
+              : `Attachment upload failed with status ${response.status}.`;
         throw new Error(message);
       }
       managedAttachmentIds.push(payload.id);

@@ -1,3 +1,11 @@
+import type {
+  EditorDebugStartInput,
+  EditorDebugActionInput,
+  EditorDebugActionResult,
+  EditorDebugPollInput,
+  EditorDebugSnapshot,
+} from "./editorDebug";
+import type { EditorIntelligenceInput, EditorIntelligenceResult } from "./editorIntelligence";
 import { Schema } from "effect";
 import type {
   LoadProjectImportHistoryInput,
@@ -480,6 +488,13 @@ export interface DesktopWindowMaterial {
   blurRadius: number;
 }
 
+/**
+ * How the desktop window backs the translucent shell. `native`: macOS vibrancy with the
+ * adjustable desktop blur (`setWindowMaterial`). `compositor`: a transparent window that the
+ * Linux compositor (Hyprland) blurs with its own settings, so the radius is not ours to set.
+ */
+export type DesktopWindowTranslucency = "native" | "compositor";
+
 export interface DesktopRuntimeInfo {
   hostArch: DesktopRuntimeArch;
   appArch: DesktopRuntimeArch;
@@ -931,9 +946,21 @@ export interface SynaraStorageSnapshot {
   readonly entries: Readonly<Record<string, string>>;
 }
 
+/**
+ * Full Disk Access as observed by the desktop main process when the info was
+ * requested. "unknown" means there was no Safari data to prove it either way.
+ */
+export type DesktopSafariFullDiskAccess = "granted" | "denied" | "unknown";
+
 export type DesktopSafariAccessInfo =
   | { supported: false }
-  | { supported: true; appName: string; appPath: string | null };
+  | {
+      supported: true;
+      appName: string;
+      appPath: string | null;
+      /** Absent from desktop builds that predate the access probe. */
+      fullDiskAccess?: DesktopSafariFullDiskAccess;
+    };
 
 /**
  * One frame of the desktop app's native computer preview tap: a complete JPEG
@@ -1083,6 +1110,11 @@ export interface DesktopBridge {
   setTheme: (theme: DesktopTheme) => Promise<void>;
   /** macOS only; resolves false when the adjustable blur is unavailable. */
   setWindowMaterial?: (input: DesktopWindowMaterial) => Promise<boolean>;
+  /**
+   * Set when the desktop window was created see-through. Absent on opaque windows
+   * (Windows, Linux without a blurring compositor) and in browsers.
+   */
+  windowTranslucency?: DesktopWindowTranslucency;
   getAppIcon?: () => Promise<DesktopAppIcon>;
   setAppIcon: (icon: DesktopAppIcon) => Promise<void>;
   showContextMenu: <T extends string>(
@@ -1280,6 +1312,19 @@ export interface NativeApi {
     sendText: (input: OmpLaunchSendInput) => Promise<OmpRuntimeService>;
     stop: (input: OmpLaunchStopInput) => Promise<OmpRuntimeService>;
     restart: (input: OmpLaunchRestartInput) => Promise<OmpRuntimeService>;
+  };
+  /** Absent on older servers. Core editing remains available without language services. */
+  editor?: {
+    debugStart?: (
+      input: EditorDebugStartInput,
+      options?: { signal?: AbortSignal },
+    ) => Promise<{ sessionId: string }>;
+    debugAction?: (input: EditorDebugActionInput) => Promise<EditorDebugActionResult>;
+    debugPoll?: (input: EditorDebugPollInput) => Promise<EditorDebugSnapshot>;
+    intelligence: (
+      input: EditorIntelligenceInput,
+      options?: { signal?: AbortSignal },
+    ) => Promise<EditorIntelligenceResult>;
   };
   projects: {
     discoverScripts: (input: ProjectDiscoverScriptsInput) => Promise<ProjectDiscoverScriptsResult>;

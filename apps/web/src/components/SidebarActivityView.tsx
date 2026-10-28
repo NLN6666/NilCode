@@ -272,7 +272,6 @@ export function ActivityThreadRow({
                 expanded={false}
                 appearance={project.appearance}
                 glyphClassName={sidebarGlyphClass("meta", "text-muted-foreground/70")}
-                presentation="favicon"
               />
             ) : (
               <FolderIcon
@@ -597,6 +596,8 @@ export function SidebarActivityView({
   prByThreadId,
   threadJumpLabelByThreadId,
   onVisibleThreadIdsChange,
+  groupMode,
+  onChangeGroupMode,
   onCreateChat,
   onAddProject,
 }: {
@@ -614,6 +615,8 @@ export function SidebarActivityView({
   prByThreadId: ReadonlyMap<ThreadId, OrchestrationThreadPullRequest | null>;
   threadJumpLabelByThreadId: ReadonlyMap<ThreadId, string>;
   onVisibleThreadIdsChange: (threadIds: readonly ThreadId[]) => void;
+  groupMode: ActivityGroupMode;
+  onChangeGroupMode: (mode: ActivityGroupMode) => void;
   resolveThreadStatus: (thread: SidebarThreadSummary) => ThreadStatusPill | null;
   onOpenThread: (threadId: ThreadId) => void;
   /** PR chip click: plain click opens it in the thread, cmd/ctrl/middle-click on GitHub. */
@@ -643,7 +646,6 @@ export function SidebarActivityView({
   /** Same "Add project" action the Projects section header runs. */
   onAddProject: () => void;
 }) {
-  const [groupMode, setGroupMode] = useState<ActivityGroupMode>("time");
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [earlierOpen, setEarlierOpen] = useState(false);
   const [earlierExtraPages, setEarlierExtraPages] = useState(0);
@@ -1039,7 +1041,7 @@ export function SidebarActivityView({
         </SidebarSectionToolbar>
         <ActivityFilterMenu
           groupMode={groupMode}
-          onChangeGroupMode={setGroupMode}
+          onChangeGroupMode={onChangeGroupMode}
           markAllReadDisabled={unreadThreads.length === 0}
           onMarkAllRead={markAllRead}
           clearReadPriorityDisabled={clearReadPriorityDisabled}

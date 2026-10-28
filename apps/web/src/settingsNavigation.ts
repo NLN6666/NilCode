@@ -84,14 +84,14 @@ const ALL_SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
   { id: "appearance", group: "personal", icon: "color-palette" },
   { id: "notifications", group: "personal", icon: "bell" },
   { id: "behavior", group: "personal", icon: "settings-slider-hor" },
-  { id: "shortcuts", group: "personal", icon: "shortcut" },
+  { id: "shortcuts", group: "personal", icon: KEYBINDINGS_ICON_NAME },
   { id: "usage", group: "personal", icon: "gauge" },
   { id: "appsnap", group: "integrations", icon: "screen-capture" },
   { id: "computer", group: "integrations", icon: "computer-use", badge: "beta" },
   // Sits immediately before Integrations so the two MCP pages are neighbours. The icon is
   // deliberately not `plugin-1` (Integrations owns that) — the pages point in opposite
   // directions and must be distinguishable at a glance.
-  { id: "connectors", group: "integrations", icon: "connectors-1", badge: "beta" },
+  { id: "connectors", group: "integrations", icon: "connectors-1" },
   { id: "mcpServers", group: "integrations", icon: "api-connection" },
   { id: "integrations", group: "integrations", icon: "plugin-1" },
   { id: "providers", group: "coding", icon: "puzzle" },

@@ -282,7 +282,9 @@ async function requestVoiceTranscriptionUpload(
     bytes[index] = decoded.charCodeAt(index);
   }
   const response = await fetch(
-    resolveWsHttpUrl(`${VOICE_TRANSCRIPTION_UPLOAD_ROUTE_PATH}?${params.toString()}`),
+    resolveWsHttpUrl(`${VOICE_TRANSCRIPTION_UPLOAD_ROUTE_PATH}?${params.toString()}`, {
+      requireBackend: true,
+    }),
     { method: "POST", credentials: "include", body: bytes },
   );
   if (response.status === 404 || response.status === 405) {
@@ -607,6 +609,18 @@ export function createWsNativeApi(): NativeApi {
       sendText: (input) => transport.request(WS_METHODS.ompLaunchSendText, input),
       stop: (input) => transport.request(WS_METHODS.ompLaunchStop, input),
       restart: (input) => transport.request(WS_METHODS.ompLaunchRestart, input),
+    },
+    editor: {
+      debugStart: (input, options) =>
+        transport.request(WS_METHODS.editorDebugStart, input, {
+          ...(options?.signal ? { signal: options.signal } : {}),
+        }),
+      debugAction: (input) => transport.request(WS_METHODS.editorDebugAction, input),
+      debugPoll: (input) => transport.request(WS_METHODS.editorDebugPoll, input),
+      intelligence: (input, options) =>
+        transport.request(WS_METHODS.editorIntelligence, input, {
+          ...(options?.signal ? { signal: options.signal } : {}),
+        }),
     },
     projects: {
       discoverScripts: (input) => transport.request(WS_METHODS.projectsDiscoverScripts, input),

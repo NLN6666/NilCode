@@ -19,6 +19,7 @@ import {
   type ProviderMentionReference,
 } from "@synara/contracts";
 import { isLocalAbsolutePath } from "@synara/shared/path";
+import type { ChatAttachment } from "~/types";
 import "katex/dist/katex.min.css";
 import { matchWikiLinkAt, remarkWikiLinks } from "../lib/remarkWikiLinks";
 import { remarkGithubAlerts, type GithubAlertKind } from "../lib/remarkGithubAlerts";
@@ -63,7 +64,7 @@ import {
 import { MAX_SYNTAX_HIGHLIGHT_INPUT_CHARS } from "../lib/syntaxHighlightingLimits";
 import { getFileIconName, pathLooksLikeKnownFile } from "../file-icons";
 import { CentralIcon } from "~/lib/central-icons";
-import { isLocalImageMarkdownSrc } from "../lib/localImageUrls";
+import { isLocalImageMarkdownSrc, normalizeMarkdownImagePath } from "../lib/localImageUrls";
 import { repairMarkdownTableDelimiters } from "../lib/markdownTableRepair";
 import { showFileReferenceContextMenu } from "../lib/fileReferenceContextMenu";
 import {
@@ -163,6 +164,9 @@ class CodeHighlightErrorBoundary extends React.Component<
 interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
+  threadId?: string | null | undefined;
+  /** Attachments belong only to this message; source aliases never cross transcript rows. */
+  imageAttachments?: ReadonlyArray<ChatAttachment> | undefined;
   wikiLinkRoot?: string | undefined;
   /**
    * Assigns native bidi ownership to transcript markdown blocks. The default
@@ -1431,6 +1435,8 @@ function UncachedShikiCodeBlock({
 interface MarkdownRenderContextValue {
   isInsideLink: boolean;
   cwd: ChatMarkdownProps["cwd"];
+  threadId: ChatMarkdownProps["threadId"];
+  imageAttachmentIdsBySource: ReadonlyMap<string, string>;
   knownAbsoluteFilePaths: string[] | undefined;
   diffThemeName: DiffThemeName;
   isStreaming: boolean;
@@ -1737,15 +1743,19 @@ const MARKDOWN_COMPONENTS: Components = {
     );
   },
   img: function MarkdownImage({ node: _node, src, alt: altProp, ...props }) {
-    const { cwd, onImageExpand, isInsideLink } = useContext(MarkdownRenderContext)!;
+    const { cwd, threadId, imageAttachmentIdsBySource, onImageExpand, isInsideLink } =
+      useContext(MarkdownRenderContext)!;
     const alt = altProp ?? "";
     const restoredSrc = src ? restoreLiteralDollarPlaceholders(src) : "";
-    if (isLocalImageMarkdownSrc(restoredSrc)) {
+    const attachmentId = imageAttachmentIdsBySource.get(normalizeMarkdownImagePath(restoredSrc));
+    if (attachmentId || isLocalImageMarkdownSrc(restoredSrc)) {
       return (
         <GeneratedMarkdownImage
           src={restoredSrc}
           alt={alt}
           cwd={cwd}
+          threadId={threadId}
+          attachmentId={attachmentId}
           onImageExpand={onImageExpand}
           isLinked={isInsideLink}
         />
@@ -1862,6 +1872,8 @@ function stringArraysEqual(previous: readonly string[], next: readonly string[])
 function ChatMarkdown({
   text,
   cwd,
+  threadId,
+  imageAttachments,
   directionMode: directionModeProp,
   wikiLinkRoot,
   isStreaming: isStreamingProp,
@@ -1892,6 +1904,18 @@ function ChatMarkdown({
   const { resolvedTheme } = useTheme();
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
   const isUserVariant = variant === "user";
+  // Resolve only this assistant message's immutable images, without rescanning streamed text.
+  const imageAttachmentIdsBySource = useMemo(() => {
+    const aliases = new Map<string, string>();
+    if (!isUserVariant) {
+      for (const attachment of imageAttachments ?? []) {
+        if (attachment.type === "image" && attachment.sourcePath) {
+          aliases.set(attachment.sourcePath, attachment.id);
+        }
+      }
+    }
+    return aliases;
+  }, [imageAttachments, isUserVariant]);
   // A fresh array per streamed token would rebuild the render context and
   // re-render every link and code node; keep it while its paths are unchanged.
   const extractedAbsoluteFilePaths = useStableValue(
@@ -1981,6 +2005,8 @@ function ChatMarkdown({
     () => ({
       isInsideLink: false,
       cwd,
+      threadId,
+      imageAttachmentIdsBySource,
       knownAbsoluteFilePaths,
       diffThemeName,
       isStreaming,
@@ -1995,6 +2021,8 @@ function ChatMarkdown({
     }),
     [
       cwd,
+      threadId,
+      imageAttachmentIdsBySource,
       knownAbsoluteFilePaths,
       diffThemeName,
       isStreaming,

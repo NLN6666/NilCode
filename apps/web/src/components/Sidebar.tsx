@@ -265,7 +265,7 @@ import {
 } from "./SidebarCustomizeList";
 import { AppRailMoreMenu } from "./AppRailMoreMenu";
 import { AppRailUsage } from "./AppRailUsage";
-import { ProjectSidebarIcon } from "./ProjectSidebarIcon";
+import { ProjectDisclosureChevron, ProjectSidebarIcon } from "./ProjectSidebarIcon";
 import { ThreadHoverCardContent } from "./ThreadHoverCardContent";
 import { ProjectHoverCardContent } from "./ProjectHoverCardContent";
 import {
@@ -280,6 +280,7 @@ import {
 } from "./sidebarHoverCardAnchors";
 import { PreviewCard, PreviewCardPopup, PreviewCardTrigger } from "./ui/preview-card";
 import {
+  type ActivityGroupMode,
   type ActivityScopeSelection,
   buildActivityViewModel,
   findNextThreadNeedingAttention,
@@ -410,6 +411,8 @@ import {
   collectParentThreadIdsWithRunningSubagents,
   createSidebarThreadHoverAnchorId,
   findWorkspaceRootMatch,
+  canSnoozeSidebarThread,
+  mayBelongToGroup,
   getPinnedThreadsForSidebar,
   orderPinnedProjectsForSidebar,
   pullRequestRepositoryConfigFingerprint,
@@ -630,6 +633,9 @@ type ProjectContextMenuState = {
 const PROJECT_CONTEXT_MENU_PANEL_CLASS_NAME = SIDEBAR_CONTEXT_MENU_PANEL_CLASS_NAME;
 const PROJECT_CONTEXT_MENU_ITEM_CLASS_NAME = SIDEBAR_CONTEXT_MENU_ITEM_CLASS_NAME;
 const PROJECT_CONTEXT_MENU_ICON_CLASS_NAME = SIDEBAR_CONTEXT_MENU_ICON_CLASS_NAME;
+
+// Same gap and tone as the Chats header chevron.
+const PROJECT_ROW_CHEVRON_CLASS_NAME = "-ml-1 text-muted-foreground/79";
 
 function ProjectContextMenuIcon({ icon }: { icon: LucideIcon }) {
   return <SidebarContextMenuIcon icon={icon} />;
@@ -1705,6 +1711,9 @@ export default function Sidebar() {
   const [activityScope, setActivityScope] = useState<ActivityScopeSelection>(
     () => readSidebarUiState().activityScope,
   );
+  const [activityGroupMode, setActivityGroupMode] = useState<ActivityGroupMode>(
+    () => readSidebarUiState().activityGroupMode,
+  );
   const [activityVisibleThreadIds, setActivityVisibleThreadIds] = useState<readonly ThreadId[]>([]);
   const [classicSnoozedVisibleThreadIds, setClassicSnoozedVisibleThreadIds] = useState<
     readonly ThreadId[]
@@ -1735,6 +1744,7 @@ export default function Sidebar() {
         setLastThreadRoute(state.lastThreadRoute);
         setActivityViewEnabled(state.activityViewEnabled);
         setActivityScope(state.activityScope);
+        setActivityGroupMode(state.activityGroupMode);
       }),
     [],
   );
@@ -1788,7 +1798,8 @@ export default function Sidebar() {
   const sidebarTreeThreads = useStore(selectSidebarTreeThreads);
   const selectProjectLastActivityAt = useMemo(() => createProjectLastActivityAtSelector(), []);
   const projectLastActivityAt = useStore(selectProjectLastActivityAt);
-  const { summaryFor, summariesByProjectId, coordinatorThreadIds } = useProjectAgentSummaries();
+  const { summaryFor, summariesByProjectId, coordinatorThreadIds, membersLoaded } =
+    useProjectAgentSummaries();
   // The bell and Inbox read current threads. Activity also receives snoozed rows
   // for its separate section, so badges never point at work the user set aside.
   const {
@@ -1872,14 +1883,23 @@ export default function Sidebar() {
     (
       thread: Pick<
         SidebarThreadSummary,
-        "id" | "projectId" | "parentThreadId" | "sidechatSourceThreadId" | "sidechatContext"
+        | "id"
+        | "projectId"
+        | "creationSource"
+        | "sourceThreadId"
+        | "parentThreadId"
+        | "sidechatSourceThreadId"
+        | "sidechatContext"
       >,
     ) =>
-      !thread.parentThreadId &&
-      !groupProjectIdSet.has(thread.projectId) &&
-      !coordinatorThreadIds.has(thread.id) &&
-      !isSidechatThread(thread),
-    [groupProjectIdSet, coordinatorThreadIds],
+      canSnoozeSidebarThread({
+        thread,
+        groupProjectIds: groupProjectIdSet,
+        summariesByProjectId,
+        coordinatorThreadIds,
+        membersLoaded,
+      }),
+    [groupProjectIdSet, summariesByProjectId, coordinatorThreadIds, membersLoaded],
   );
   const resolveThreadStatusForSidebar = useCallback(
     (thread: SidebarThreadSummary) =>
@@ -1982,21 +2002,22 @@ export default function Sidebar() {
     [projects],
   );
   const filterThreadsToActiveSpace = useCallback(
-    (threads: readonly SidebarThreadSummary[]) =>
-      filterSidebarThreadsBySpace({
+    (threads: readonly SidebarThreadSummary[]) => {
+      const state = useStore.getState();
+      const selection = useSpacesUiStore.getState();
+      return filterSidebarThreadsBySpace({
         threads,
-        projectById,
-        spaceId: activeSpaceId,
+        // A move can be confirmed between renders; navigation must use its live membership.
+        projectById: new Map(state.projects.map((project) => [project.id, project])),
+        spaceId: resolveActiveSpaceId(
+          selection.activeSpaceId,
+          state.spaces,
+          selection.pendingActiveSpace?.spaceId,
+        ),
         paths: { homeDir, chatWorkspaceRoot, studioWorkspaceRoot, groupsWorkspaceRoot },
-      }),
-    [
-      activeSpaceId,
-      chatWorkspaceRoot,
-      groupsWorkspaceRoot,
-      homeDir,
-      projectById,
-      studioWorkspaceRoot,
-    ],
+      });
+    },
+    [chatWorkspaceRoot, groupsWorkspaceRoot, homeDir, studioWorkspaceRoot],
   );
   const {
     pinnedThreadIds,
@@ -2941,24 +2962,29 @@ export default function Sidebar() {
   }, [prefetchModelsForProjectNewThread, primaryNewThreadTarget]);
 
   const handlePrimaryNewThread = useCallback(() => {
-    if (primaryNewThreadTarget) {
-      prefetchModelsForProjectNewThread(primaryNewThreadTarget.projectId, { includeDroid: true });
-      void handleNewThread(primaryNewThreadTarget.projectId);
+    const liveState = useStore.getState();
+    // Hydration can change between rendering this button and handling its click.
+    // Wait before warming models or treating an empty snapshot as no projects.
+    if (!liveState.threadsHydrated) {
+      return;
+    }
+    const liveTarget =
+      primaryNewThreadTarget &&
+      liveState.projects.some((project) => project.id === primaryNewThreadTarget.projectId)
+        ? primaryNewThreadTarget
+        : null;
+    if (liveTarget) {
+      prefetchModelsForProjectNewThread(liveTarget.projectId, { includeDroid: true });
+      void handleNewThread(liveTarget.projectId);
       return;
     }
 
-    // The projects snapshot can be temporarily empty during startup. Wait for hydration
-    // before treating a missing target as a genuine no-project state.
-    if (!threadsHydrated) {
-      return;
-    }
     handleStartAddProject();
   }, [
     handleNewThread,
     handleStartAddProject,
     prefetchModelsForProjectNewThread,
     primaryNewThreadTarget,
-    threadsHydrated,
   ]);
 
   const handleImportThread = useCallback(
@@ -3488,9 +3514,20 @@ export default function Sidebar() {
         worktreePath: thread.worktreePath,
       });
       // Group actions only make sense for threads in ordinary (non-group)
-      // projects; group threads already belong to a group.
+      // projects; group threads, workers included, already belong to a group.
       const canUseHubActions =
-        GROUPS_ON && !groupProjectIdSet.has(thread.projectId) && !thread.parentThreadId;
+        GROUPS_ON &&
+        !mayBelongToGroup({
+          threadId,
+          projectId: thread.projectId,
+          creationSource: thread.creationSource,
+          sourceThreadId: thread.sourceThreadId,
+          groupProjectIds: groupProjectIdSet,
+          summariesByProjectId,
+          coordinatorThreadIds,
+          membersLoaded,
+        }) &&
+        !thread.parentThreadId;
       // Paused and archived groups can't run a coordinator turn, so they
       // aren't move targets — the server refuses the turn either way.
       const eligibleGroups = canUseHubActions
@@ -3813,6 +3850,7 @@ export default function Sidebar() {
       forkThread,
       groupProjectIdSet,
       handoffThread,
+      membersLoaded,
       moveThreadToGroup,
       handleMarkThreadUnread,
       navigate,
@@ -3827,6 +3865,7 @@ export default function Sidebar() {
       setThreadSnoozedUntil,
       setSnoozeDialogThreadId,
       snoozeThread,
+      summariesByProjectId,
       summaryFor,
       toggleThreadPinned,
     ],
@@ -3951,10 +3990,12 @@ export default function Sidebar() {
         lastThreadRoute: nextLastThreadRoute,
         activityViewEnabled,
         activityScope,
+        activityGroupMode,
       });
     },
     [
       activityScope,
+      activityGroupMode,
       activityViewEnabled,
       chatSectionExpanded,
       chatThreadListExtraPages,
@@ -5047,9 +5088,11 @@ export default function Sidebar() {
       lastThreadRoute,
       activityViewEnabled,
       activityScope,
+      activityGroupMode,
     });
   }, [
     activityScope,
+    activityGroupMode,
     activityViewEnabled,
     chatSectionExpanded,
     chatThreadListExtraPages,
@@ -6065,7 +6108,24 @@ export default function Sidebar() {
                   projectToolbarReserveClassName,
                 )}
               >
-                <span className={SIDEBAR_PROJECT_NAME_CLASS_NAME}>{projectRowLabel}</span>
+                {/* Sized to the name so the chevron follows it, like the Chats header. */}
+                <span className={cn(SIDEBAR_PROJECT_NAME_CLASS_NAME, "flex-initial")}>
+                  {projectRowLabel}
+                </span>
+                {/* The pin covers a pinned project's glyph, folder included. */}
+                {isProjectPinned ? (
+                  <DisclosureChevron
+                    open={project.expanded}
+                    className={PROJECT_ROW_CHEVRON_CLASS_NAME}
+                  />
+                ) : (
+                  <ProjectDisclosureChevron
+                    cwd={project.cwd}
+                    expanded={project.expanded}
+                    appearance={project.appearance}
+                    className={PROJECT_ROW_CHEVRON_CLASS_NAME}
+                  />
+                )}
               </div>
               {/* Closed folders surface child-chat status on the project row; open
                   folders leave that signal to their visible child thread rows. */}
@@ -7507,6 +7567,8 @@ export default function Sidebar() {
                         threadsHydrated={threadsHydrated}
                         scopeSelection={activityScope}
                         onScopeSelectionChange={setActivityScope}
+                        groupMode={activityGroupMode}
+                        onChangeGroupMode={setActivityGroupMode}
                         resolveThreadStatus={resolveThreadStatusForSidebar}
                         onOpenThread={activateThreadFromSidebarIntent}
                         onOpenThreadPullRequest={openThreadPullRequest}

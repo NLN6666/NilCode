@@ -63,7 +63,7 @@ import {
 } from "./agentActivity.logic";
 import { AutomationCreatedCard } from "./AutomationCreatedCard";
 import { BackgroundTaskRow } from "./BackgroundTaskRow";
-import { INLINE_COMMAND_CHIP_CLASS_NAME } from "./chatTypography";
+import { getChatTranscriptTextStyle, INLINE_COMMAND_CHIP_CLASS_NAME } from "./chatTypography";
 import { SubagentRunCard } from "./SubagentRunCard";
 import { ConnectedComputerSetupRequiredCard } from "./ComputerSetupRequiredCard";
 import { ComputerControlDeniedCard } from "./ComputerControlDeniedCard";
@@ -591,6 +591,22 @@ function isFileChangeWorkEntry(workEntry: TimelineWorkEntry): boolean {
   return isFileChangeWorkLogEntry(workEntry);
 }
 
+// Item-scoped reasoning and summaries keep full prose. Legacy reasoning groups
+// only carry a compact preview; their existing opener retains all original updates.
+function isProseWorkEntry(workEntry: TimelineWorkEntry): boolean {
+  return (
+    (isReasoningUpdateWorkEntry(workEntry) && Boolean(workEntry.toolCallId)) ||
+    workEntry.activityKind === "tool.summary"
+  );
+}
+
+function proseWorkEntryText(workEntry: TimelineWorkEntry, displayText: string): string | null {
+  const source = workEntry.detail ?? workEntry.preview ?? displayText;
+  // Codex summaries end in an empty `<!-- -->` block separator.
+  const text = source.replace(/<!--[\s\S]*?-->/gu, "").trim();
+  return text.length > 0 ? text : null;
+}
+
 function commandTooltipContent(command: string, displayText: string, copy: WorkCopy) {
   return (
     <div className="max-w-96 whitespace-pre-wrap leading-tight">
@@ -648,8 +664,10 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
   chatMetaFontSizePx: number;
   textFontSizePx?: number;
   density?: "default" | "compact";
+  mutedProse?: boolean;
   fileDiffStatByPath?: ReadonlyMap<string, { additions: number; deletions: number }>;
   markdownCwd: string | undefined;
+  threadId?: string | null | undefined;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   turnId?: TurnId;
   onOpenTurnDiff?: (turnId: TurnId, filePath?: string) => void;
@@ -670,8 +688,10 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
     chatMetaFontSizePx,
     textFontSizePx: textFontSizePxProp,
     density: densityProp,
+    mutedProse,
     fileDiffStatByPath,
     markdownCwd,
+    threadId,
     onImageExpand,
     turnId,
     onOpenTurnDiff,
@@ -757,8 +777,8 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
     [workEntry],
   );
   const liveActivityNowMs = useLiveActivityNow(workEntry.liveActivity);
-  // A failed call says so explicitly, with its exit code and the first line
-  // that explains it, instead of the generic lifecycle meta.
+  // A failed call says so explicitly, with its exit code, instead of the
+  // generic lifecycle meta. The output itself stays behind the disclosure.
   const failure =
     toolWorkEntryStatus(workEntry) === "failed"
       ? deriveToolFailureSummary(workEntry.toolDetails)
@@ -775,10 +795,6 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
       ? `Failed · exit ${failure.exitCode}`
       : "Failed"
     : null;
-  // Reasoning and progress narration reads as prose: it wraps instead of
-  // being cut to one line.
-  const wrapsFullText =
-    isReasoningUpdateWorkEntry(workEntry) || workEntry.activityKind === "tool.summary";
 
   // A computer-control denial renders as an actionable card (enable + retry)
   // instead of a buried tool-error line. Kept after the hooks above so the
@@ -832,6 +848,31 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
           textFontSizePx={textFontSizePx}
           metaFontSizePx={chatMetaFontSizePx}
           {...(onOpenAutomation ? { onOpen: () => onOpenAutomation(automation.id) } : {})}
+        />
+      </div>
+    );
+  }
+
+  // Narration renders like the assistant's own text: full Markdown in the
+  // transcript type and color, with no glyph or disclosure.
+  const proseText =
+    !isStreamingReasoning && isProseWorkEntry(workEntry)
+      ? proseWorkEntryText(workEntry, displayText)
+      : null;
+  if (proseText !== null) {
+    return (
+      <div className="py-1" data-work-entry-prose="true">
+        <ChatMarkdown
+          text={proseText}
+          cwd={markdownCwd}
+          threadId={threadId}
+          directionMode="auto-blocks"
+          isStreaming={false}
+          style={{
+            ...getChatTranscriptTextStyle(textFontSizePx),
+            ...(mutedProse ? { color: MUTED_LABEL_TEXT_COLOR } : {}),
+          }}
+          onImageExpand={onImageExpand}
         />
       </div>
     );
@@ -988,6 +1029,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
                     <ChatMarkdown
                       text={preview ?? ""}
                       cwd={markdownCwd}
+                      threadId={threadId}
                       isStreaming={false}
                       className="leading-relaxed"
                       style={{
@@ -1001,7 +1043,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
                 ) : (
                   <p
                     className={cn(
-                      wrapsFullText ? "whitespace-pre-wrap break-words" : "truncate",
+                      "truncate",
                       compact ? "leading-5" : "leading-6",
                       // Match the leading icon's tone so the row reads as one muted unit, and
                       // brighten the whole row to foreground on hover/focus instead of a fill.
@@ -1029,20 +1071,6 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
               </div>
             </>
           );
-          // The failure's first explanatory line sits right under the row,
-          // aligned with its text, so it reads without opening the details.
-          const failureExcerpt = failure?.excerpt ? (
-            <p
-              className={cn(
-                "truncate font-chat-code text-chat-code leading-5 text-destructive/85",
-                compact ? "pl-[1.375rem]" : "pl-7",
-              )}
-              data-tool-failure-excerpt="true"
-              title={failure.excerpt}
-            >
-              {failure.excerpt}
-            </p>
-          ) : null;
           if (canOpenToolDetails) {
             return (
               <ToolDetailsDisclosure
@@ -1070,14 +1098,13 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
                 compact={compact}
                 timestampFormat={timestampFormat}
                 tooltip={toolRowTooltipContent(rawCommand, displayText, displayText, rowCopy)}
-                afterSummary={failureExcerpt}
               >
                 {rowContentChildren}
               </ToolDetailsDisclosure>
             );
           }
 
-          const rowContent = (
+          return (
             <AgentActivityOpenSurface
               canOpen={canOpenAgentActivity || canOpenReadFile}
               compact={compact}
@@ -1092,13 +1119,6 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
             >
               {rowContentChildren}
             </AgentActivityOpenSurface>
-          );
-
-          return (
-            <>
-              {rowContent}
-              {failureExcerpt}
-            </>
           );
         })()
       )}
@@ -1320,8 +1340,6 @@ function ToolDetailsDisclosure(props: {
   summaryClassName?: string | undefined;
   timestampFormat: TimestampFormat;
   tooltip?: ReactNode;
-  // Rendered between the summary row and its details (e.g. a failure excerpt).
-  afterSummary?: ReactNode;
 }) {
   const summaryClassName =
     props.summaryClassName ??
@@ -1395,7 +1413,6 @@ function ToolDetailsDisclosure(props: {
   return (
     <div className="group/tool-details min-w-0">
       <ToolRowTooltip content={props.tooltip}>{summaryButton}</ToolRowTooltip>
-      {props.afterSummary}
       {renderDetails ? (
         <DisclosureRegion
           open={motionOpen}

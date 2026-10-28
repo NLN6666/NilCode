@@ -9,7 +9,8 @@ import { page } from "vitest/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
 
-import ProjectScriptsControl, { type NewProjectScriptInput } from "./ProjectScriptsControl";
+import ProjectScriptsControl from "./ProjectScriptsControl";
+import type { NewProjectScriptInput } from "./chat/ProjectActionDialog";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 
@@ -72,17 +73,6 @@ const WEB_SCRIPT: ProjectScript = {
 describe("ProjectScriptsControl", () => {
   afterEach(() => {
     document.body.innerHTML = "";
-  });
-
-  it("opens the add-action dialog from the header when no script exists yet", async () => {
-    await using _ = await mountProjectScriptsControl();
-
-    await page.getByRole("button", { name: "Add action" }).click();
-
-    await expect.poll(() => document.body.textContent).toContain("Add Action");
-    expect(document.body.textContent).toContain(
-      "Actions are project-scoped commands you can run from the top bar or keybindings.",
-    );
   });
 
   it("runs the primary action and exposes setup actions in the dropdown", async () => {

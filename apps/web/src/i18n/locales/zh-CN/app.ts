@@ -84,6 +84,7 @@ export const app: Messages["app"] = {
     debug: "调试",
     stopGeneration: "停止生成",
     stopGenerationHint: "停止当前回复。在 Mac 上可按 Ctrl+C 中断。",
+    recoveryStopHint: "先停止提供方运行时，再解除此会话的阻塞。",
     implementationActions: "实现操作",
     implementInNewThread: "在新会话中实现",
     synaraLogo: "Synara 标志",

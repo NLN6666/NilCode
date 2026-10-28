@@ -2,14 +2,79 @@
 
 ## Unreleased — dev integration
 
-- Merge `main` through `299fd573b`, retaining the fork's native Stable OMP adapter, Beta ACP adapter, Advisor, Chinese localization, classic sidebar and project-service controls alongside the upstream chat controller.
-- Preserve released migration IDs through 135; move browser sharing and Advisor to 136–137 and recognize historical fork migration identities.
-- Keep causal timeline ordering within each owning turn, and preserve project-local provider catalogs and account-local model options.
-- Keep streamed and completed subagent reasoning under one child-owned row; native Claude compaction no longer waits on unrelated agent-catalog scans.
-- Share server RPC declarations across the server, web and packaged client, and route MCP probe launches through the shared process boundary without losing launcher-tree cleanup.
-- Verify patched content for dependencies installed in desktop production stages without requiring build-only packages such as `tree-kill`.
-- Keep service output and Run/Stop state attached to the newly launched terminal, including when the project's service terminal was already opened or a stopped service is restarted.
-- Preserve the page behind browser menus for shared project browsers; native overlay captures retain the page's viewport without reloading it or changing browser ownership.
+- Merge `main` through `ea912dcf1` (Synara 1.0.9), retaining native Stable OMP, Beta ACP OMP, Advisor, Chinese localization, the classic sidebar, and project-service controls.
+- Include main's native editor and MCP Connectors on Stable, attachment upload/replay safety, Claude Stop and steer ownership fences, project logos, subagent model information, and narration/tool-row updates.
+- Retain fixed-height live reasoning while rendering settled narration as prose. Apply stable position and terminal-state protection to both Codex and Claude reasoning so late events cannot reopen completed or failed rows.
+- Share the project-action editor between the header and Environment panel without losing preview ports, Chinese copy, service detection, or Run/Stop state.
+- Preserve released migration IDs through 135 and fork browser sharing/Advisor at 136–137, including historical fork migration identities.
+- Keep streamed and completed subagent reasoning under one child-owned row, Claude's actual `[1m]` model selection, project-local provider catalogs, and account-local options.
+- Keep service output attached to its adopted terminal and shared browser menu captures attached to their browser surface, preserving native viewport size and document ownership.
+- Keep the shared server RPC declarations, MCP process boundary, prompt-injection budget, and production-stage dependency patch verification. Build with the pinned Bun 1.4.4 / Node 24.13.1 toolchain.
+
+## 1.0.9 — 2026-10-25
+
+**Native editing and MCP Connectors in Stable, safer Stop retries and compressed recovery backups.**
+
+This Stable release covers all 15 commits after `v1.0.8` through `8e21e29c2a3d47205a0a9e834c8c44745efd0cf1`. Native editor and connector promotion was merged before release preparation. Diagnostics remain Beta-only; app identities, credentials, data homes and update feeds stay separate.
+
+### Added
+
+- Stable gains the Code OSS engine for file editors, editable diffs and previews, TypeScript/JavaScript language intelligence, editor commands and JavaScript debugging. Existing buffer ownership, save/conflict rules and large-preview fallbacks remain.
+- Stable gains Settings → Connectors and supported remote MCP connections. Provider coverage and normal tool approvals still apply; running sessions keep their starting connector set.
+- A new `/goal` in an idle persisted chat outside Plan mode commits a visible message with its first turn. Native clients can discover this optional host capability without re-pairing.
+
+### Changed
+
+- New pre-migration SQLite backups use `.sqlite.gz`; inspection and recovery accept compressed and existing plain snapshots. Scratch-space checks account for both the snapshot and compressed output. Retention and recovery safety remain enforced.
+- Local project favicons supply project glyphs across sidebar, search, pickers and previews; explicit custom glyphs take precedence and unsafe paths are rejected.
+- The build toolchain requires Bun 1.4.4 security fixes. Mac bundles declare macOS 13.0, and updater manifests use Darwin 22.0.0 to enforce that minimum.
+
+### Fixed
+
+- Conditional Stop persists its original runtime/turn target before physical control. Retries cannot adopt a replacement runtime or later turn; failed observations remain retryable or uncertain. Interrupt-only controls preserve queued messages and transcript context.
+- Command-progress activity uses durable identity across ingestion and replay. User-facing provider errors retain readable messages without inline stack details.
+- OpenCode sign-in and model-list fallback use isolated servers when `--standalone` is supported; cold V2 discovery loads models before provider metadata. Authentication terminals retain usable capabilities despite inherited `TERM=dumb` or `NO_COLOR`.
+- Hub workers omit Snooze and Hub actions. The landing ASCII field remains continuous beneath the composer's own surface.
+
+### Verification
+
+Local formatting, lint, typecheck, release smoke, brand, Windows runtime and migration checks, affected tests and marketing build are required for the finished candidate. The exact-tag publication workflow supplies full quality/server suites, portable inputs, all four native packages, macOS signing/notarization and Intel startup, provenance, Windows Defender and packaged startup. Pending gates are not passed gates; actual outcomes are recorded in the release checkpoint and public notes.
+
+See [source audit](docs/releases/1.0.9-source-audit.md). Release preparation changes versions and visible release text on existing surfaces only. Manual installation/upgrades, runtime behavior on macOS 13, live providers and connector sign-in, and browser-download reputation remain separately unverified.
+
+## 1.0.8 — 2026-10-23
+
+**Reliable handoffs and recovery, clearer parallel work, captured live diffs and workspace refinements.**
+
+This Stable release covers all 32 commits after `v1.0.7` through `f9ba953a6a26769bf73c78c2bae673e5a09ba62f`. The native editor, connectors and diagnostics remain Beta-only. Stable and Beta keep separate identities, data homes and update feeds.
+
+### Added
+
+- A new-thread + follows the chat tabs and creates a chat in the current workspace. Environment offers shared project-action creation and editing; header actions are grouped with independent visibility preferences.
+- Running subagents appear above the composer. Devin ACP background work and child agents retain task, permission and turn ownership across replay and recovery; Claude child chats report their resolved model.
+- Turn diffs expose captured live snapshots and complete Codex cumulative patches against their exact baseline, including Ignore whitespace. Incomplete evidence remains unavailable until a complete update or final checkpoint.
+- Hyprland supports compositor-backed translucency when blur is confirmed enabled; Linux artwork is isolated by app flavor.
+
+### Changed
+
+- Hub context distinguishes coordinator and worker roles and labels provenance. Original human requests and attachment references accompany delegated work; stable task keys make replay idempotent. Ordinary follow-ups queue; steering can interrupt.
+- SQLite free pages are reclaimed incrementally. Existing databases convert only after clean shutdown with sufficient reclaimable pages and scratch space, under a bounded subprocess deadline. This is not guaranteed emergency disk recovery.
+- Idle agent-booted simulators are released after owned work settles, preserving overlapping and renewed leases.
+
+### Fixed
+
+- Send, Continue task and Implement use Hand off consistently. Auto-mode saves preserve pending provider switches; queued work follows the current provider/model. Stored-selection recovery preserves protected history and refuses switches that would silently end background tasks.
+- Codex fresh-resume fallback restores prior transcript context, handles threads without rollouts and discloses omitted or shortened messages. Runtime warnings surface in chat. Plugin discovery is isolated from live sessions, and retired gateway write authority is renewed without reviving old credentials.
+- Hubs settle non-Git workers and preserve settings saves after pause/resume. Orphaned agent tasks settle. Stopped Pi and Antigravity sessions report inactivity for normal next-turn recovery.
+- Done and Archive stay within the active Space; Activity grouping persists. New-thread creation validates current hydration, and window activation, composer updates and terminal activation preserve chosen keyboard focus.
+- Cmd/Ctrl+W closes the focused chat tab or dock terminal. Idle terminal reuse works with large process tables and retains input while commands start.
+- Safari setup detects an existing Full Disk Access grant. Unanswered foreground Computer Use prompts report cancellation. Nested untracked repositories no longer break ordinary working-tree diffs.
+
+### Verification
+
+The complete candidate receives brand, formatting, lint, typecheck, release smoke, focused tests and the relevant Windows runtime boundary check. One publication workflow on the exact tag SHA supplies the complete quality/server suites, portable build, native packages, signing/notarization, provenance, Windows Defender and packaged startup gates. Results are recorded in the publication notes after verification; pending gates are not passed gates.
+
+See [source audit](docs/releases/1.0.8-source-audit.md) for every commit and the durable documentation audit. Release preparation changes visible release text only through the existing surfaces. Manual installed-app upgrades, live provider/microphone behavior and browser-download reputation remain separately unqualified.
 
 ## 1.0.7 — 2026-10-17
 
@@ -919,6 +984,7 @@ This inventory compares the actual **v0.9.2** source with **212dd3bc8**, coverin
 - Installer packaging, macOS signing/notarization, Windows Defender/provenance/startup smoke and public publication are verified by the release workflow, separately from these local checks. Live provider/account authentication, physical audio permissions and every remote/device combination were not exercised by this release audit.
 
 [Complete commit comparison](https://github.com/Emanuele-web04/synara/compare/v0.9.2...v1.0.0-beta.1).
+
 ## [0.9.2] — 2026-09-25
 
 **Synara Beta arrives as a separate app, with Oh My Pi available in Beta.** The stable 0.9.2 release includes the path to try Beta and a set of reliability fixes; OMP remains gated off in Stable.

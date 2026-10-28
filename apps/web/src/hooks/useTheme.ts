@@ -6,6 +6,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { isElectron } from "../env";
 import { getNavigatorPlatform, isMacPlatform, isWindowsPlatform } from "../lib/utils";
+import { readDesktopWindowTranslucency } from "../lib/desktopWindowTranslucency";
 import {
   DEFAULT_THEME_STATE,
   type ChromeTheme,
@@ -200,8 +201,8 @@ function applyThemeState(state: ThemeState, suppressTransitions = false) {
   const translucency = state.translucency[variant];
   const cssVariableBuild = buildThemeCssVariables(activeTheme, variant, {
     electron: isElectron,
-    isMac,
     isWindows,
+    windowTranslucency: readDesktopWindowTranslucency(),
     systemUiFont: state.systemUiFont,
     translucency,
   });
@@ -254,11 +255,14 @@ function syncDesktopTheme(theme: ThemeMode) {
   });
 }
 
-// Only the macOS desktop implements this; the material there is "translucent" only on macOS.
-// Without a chosen blur the window keeps vibrancy, which is the desktop's "opaque" backing.
+// Only the macOS desktop ("native" translucency) implements this. Without a chosen blur the
+// window keeps vibrancy, which is the desktop's "opaque" backing. A compositor-backed window
+// (Hyprland) is blurred by the compositor's own settings, so there is nothing to send.
 function syncDesktopWindowMaterial(cssMaterial: WindowMaterial, blur: number | null) {
   const setWindowMaterial =
-    typeof window === "undefined" ? undefined : window.desktopBridge?.setWindowMaterial;
+    readDesktopWindowTranslucency() === "native"
+      ? window.desktopBridge?.setWindowMaterial
+      : undefined;
   const material: WindowMaterial =
     cssMaterial === "translucent" && blur !== null ? "translucent" : "opaque";
   const blurRadius = material === "translucent" && blur !== null ? blur : 0;

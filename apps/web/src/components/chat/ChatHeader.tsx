@@ -46,7 +46,8 @@ import { ComposerPickerMenuPopup } from "./ComposerPickerMenuPopup";
 import { OpenInPicker } from "./OpenInPicker";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SidebarHeaderNavigationControls } from "../SidebarHeaderNavigationControls";
-import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
+import ProjectScriptsControl from "../ProjectScriptsControl";
+import type { NewProjectScriptInput } from "./ProjectActionDialog";
 import { Toggle } from "../ui/toggle";
 import { useAppSettings } from "../../appSettings";
 import { useStore } from "../../store";
@@ -113,6 +114,9 @@ interface ChatHeaderProps {
   // Coordinator threads pass false — a hand-off copy would read as a second
   // coordinator, so the action itself is hidden rather than disabled.
   showHandoffAction?: boolean;
+  // Whether the selected project's actions render in the top bar. Off keeps them reachable
+  // from keybindings and the Environment panel's Actions section.
+  showHeaderActions?: boolean;
   gitCwd: string | null;
   diffTotals: RepoDiffTotals;
   showGitActions?: boolean;
@@ -452,6 +456,7 @@ export function ChatHeader({
   handoffActionTargets,
   continueHandoffActionTargets,
   showHandoffAction: showHandoffActionProp,
+  showHeaderActions: showHeaderActionsProp,
   gitCwd,
   diffTotals,
   showGitActions: showGitActionsProp,
@@ -486,6 +491,7 @@ export function ChatHeader({
   const hideSidebarControls = hideSidebarControlsProp ?? false;
   const hideHandoffControls = hideHandoffControlsProp ?? false;
   const showHandoffAction = showHandoffActionProp ?? true;
+  const showHeaderActions = showHeaderActionsProp ?? true;
   const minimalChrome = minimalChromeProp ?? false;
   const showGitActions = showGitActionsProp ?? true;
   const showDiffToggle = showDiffToggleProp ?? true;
@@ -814,7 +820,10 @@ export function ChatHeader({
             </ComposerPickerMenuPopup>
           </Menu>
         ) : null}
-        {!minimalChrome && activeProjectScripts ? (
+        {!minimalChrome &&
+        showHeaderActions &&
+        activeProjectScripts &&
+        activeProjectScripts.length > 0 ? (
           <ProjectScriptsControl
             scripts={activeProjectScripts}
             keybindings={keybindings}

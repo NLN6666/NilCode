@@ -40,7 +40,7 @@ import {
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
   LastInvokedScriptByProjectSchema,
 } from "../ChatView.logic";
-import { type NewProjectScriptInput } from "../ProjectScriptsControl";
+import { type NewProjectScriptInput } from "./ProjectActionDialog";
 import { disposeAndCloseTerminalSession } from "../terminal/terminalSession";
 import { randomTerminalId } from "../terminal/terminalIds";
 import { toastManager } from "../ui/toast";

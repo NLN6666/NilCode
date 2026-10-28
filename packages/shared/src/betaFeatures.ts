@@ -40,13 +40,18 @@ export const PULL_REQUEST_AUTO_FIX_BETA_FEATURE = "pull-request-auto-fix";
 export const INLINE_VISUALS_BETA_FEATURE = "inline-visuals";
 
 /**
- * Connectors (Beta only): remote MCP servers (Supabase, Linear, ...) the user
- * signs in to from Settings, proxied to provider sessions through the agent
- * gateway. Stable refuses the RPCs, the OAuth callback, and the proxy routes.
+ * Connectors (Stable and Beta): remote MCP servers the user signs in to from
+ * Settings, proxied to supported provider sessions through the agent gateway.
  */
 export const MCP_CONNECTORS_BETA_FEATURE = "mcp-connectors";
 
-export const BETA_ONLY_FEATURES: readonly BetaOnlyFeature[] = [MCP_CONNECTORS_BETA_FEATURE];
+/**
+ * Native editor (Stable and Beta): the Code OSS engine behind file, diff and
+ * preview editing, its TypeScript language service and JavaScript debugger.
+ */
+export const NATIVE_EDITOR_BETA_FEATURE = "native-editor";
+
+export const BETA_ONLY_FEATURES: readonly BetaOnlyFeature[] = [];
 
 /**
  * Whether a Beta-only feature is on for this host. Only the Stable
