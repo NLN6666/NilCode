@@ -2,6 +2,7 @@
 
 ## Unreleased — dev integration
 
+- Keep classic-sidebar navigation controls aligned after collapse instead of covering thread titles, and size the labeled Hand off control to its text while retaining the compact icon-only button.
 - Merge `main` through `7c81757e8` (Synara 1.1.0), retaining Stable OMP, Beta ACP OMP, Advisor, Chinese localization, the classic sidebar, and project-service controls.
 - Integrate main's account and remote-connection surfaces, Pro entry points, immersive onboarding, crash recovery, opt-in quota continuation, Pi 1.4 compatibility, safer attachments, and Electron 43.8.7.
 - Use the shared i18next catalogs and one renderer language runtime for English, Spanish and Simplified Chinese. Retain NilCode's Stable Chinese support, native menus, and three-language browser annotations.

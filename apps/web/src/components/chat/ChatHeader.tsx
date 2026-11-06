@@ -34,6 +34,7 @@ import {
 import { formatRelativeTime } from "~/lib/relativeTime";
 import {
   CHAT_HEADER_TOGGLE_CLASS_NAME,
+  ChatHeaderButton,
   ChatHeaderGroupDivider,
   ChatHeaderIconButton,
   SurfaceChipIcon,
@@ -774,12 +775,21 @@ export function ChatHeader({
                 render={
                   <MenuTrigger
                     render={
-                      <ChatHeaderIconButton
-                        type="button"
-                        tone="surface"
-                        label={handoffActionLabel}
-                        disabled={handoffDisabled || handoffActionTargets.length === 0}
-                      />
+                      compact ? (
+                        <ChatHeaderIconButton
+                          type="button"
+                          tone="surface"
+                          label={handoffActionLabel}
+                          disabled={handoffDisabled || handoffActionTargets.length === 0}
+                        />
+                      ) : (
+                        <ChatHeaderButton
+                          type="button"
+                          tone="surface"
+                          aria-label={handoffActionLabel}
+                          disabled={handoffDisabled || handoffActionTargets.length === 0}
+                        />
+                      )
                     }
                   >
                     <HandoffIcon className="size-[1em] shrink-0 opacity-80" />

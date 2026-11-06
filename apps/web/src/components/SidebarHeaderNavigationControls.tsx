@@ -83,7 +83,8 @@ const LeadingControlsDockContext = createContext<RegisterLeadingControlsAnchor |
  * the dock targets the box's settled position, not the one it has mid-transition.
  *
  * `routeColumn` is the element that slides with the panel, and `railSlot` the fixed rail
- * whose right edge is where that column settles once the panel is collapsed.
+ * whose right edge is where that column settles once the panel is collapsed. Classic
+ * layouts have no rail, so the column settles at its shell's leading edge instead.
  */
 export function SidebarLeadingControlsDock({
   routeColumn,
@@ -128,10 +129,12 @@ export function SidebarLeadingControlsDock({
     const measure = () => {
       const rect = anchor.getBoundingClientRect();
       const x =
-        routeColumn && railSlot && routeColumn.contains(anchor)
+        routeColumn && routeColumn.contains(anchor)
           ? rect.left -
             routeColumn.getBoundingClientRect().left +
-            railSlot.getBoundingClientRect().right +
+            (railSlot
+              ? railSlot.getBoundingClientRect().right
+              : routeColumn.parentElement!.getBoundingClientRect().left) +
             pendingLeadingPaddingShift(anchor, routeColumn)
           : rect.left;
       const y = rect.top;
