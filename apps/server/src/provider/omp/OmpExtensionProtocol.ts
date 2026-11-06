@@ -188,13 +188,14 @@ export function acceptOmpExtensionEnvelope(
   if (envelope.sequence <= state.lastSequence) {
     return { accepted: false, reason: "duplicate-sequence", state };
   }
+  const { degradedReason: _degradedReason, ...stateWithoutDegradedReason } = state;
+  void _degradedReason;
   return {
     accepted: true,
     reason: "accepted",
     state: {
-      ...state,
+      ...stateWithoutDegradedReason,
       mode: "typed",
-      degradedReason: undefined,
       sessionId: envelope.sessionId,
       generation: envelope.generation,
       ompVersion: envelope.ompVersion,

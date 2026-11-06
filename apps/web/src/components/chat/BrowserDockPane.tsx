@@ -25,7 +25,7 @@ import { setProjectBrowserSharing } from "~/lib/projectBrowserSharing";
 import type { DockPaneRuntimeMode } from "~/lib/dockPaneActivation";
 import { useStore } from "~/store";
 import { createProjectSelector, createThreadSelector } from "~/storeSelectors";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 import { LazyBrowserPanel } from "./ChatThreadSurfacePrimitives";
 import { PanelStateMessage } from "./PanelStateMessage";
@@ -39,7 +39,7 @@ export function BrowserDockPane(props: {
   runtimeMode?: DockPaneRuntimeMode;
   onRequestLive?: () => void;
 }) {
-  const paneCopy = useMessages().chat.panes;
+  const { t } = useTranslation();
   const thread = useStore(useMemo(() => createThreadSelector(props.threadId), [props.threadId]));
   const projectId = thread?.projectId ?? null;
   const project = useStore(useMemo(() => createProjectSelector(projectId), [projectId]));
@@ -53,7 +53,6 @@ export function BrowserDockPane(props: {
   // Offered here as well as in the sidebar project menu: the difference between one shared
   // browser and one per thread is only felt while using the browser, so the switch belongs
   // within reach of it.
-  const sharingCopy = useMessages().browser.sharing;
   const projectBrowserSharing = useMemo(() => {
     if (projectId === null) return undefined;
     const shared = sharing === "shared";
@@ -63,11 +62,13 @@ export function BrowserDockPane(props: {
         void setProjectBrowserSharing({
           projectId,
           browserSharing: shared ? "isolated" : "shared",
-          failureTitle: shared ? sharingCopy.isolateFailed : sharingCopy.shareFailed,
+          failureTitle: t(
+            shared ? "chat:browserSharing_isolateFailed" : "chat:browserSharing_shareFailed",
+          ),
         });
       },
     };
-  }, [projectId, sharing, sharingCopy.isolateFailed, sharingCopy.shareFailed]);
+  }, [projectId, sharing, t]);
 
   const ownerKey = `${props.threadId}\u0000${props.paneId}`;
   const { isOwner, takeOver } = useBrowserSurfaceClaim({ surfaceId: browserSurfaceId, ownerKey });
@@ -84,7 +85,9 @@ export function BrowserDockPane(props: {
   }, [props.onRequestLive, takeOver]);
 
   return (
-    <Suspense fallback={<PanelStateMessage>{paneCopy.loadingBrowser}</PanelStateMessage>}>
+    <Suspense
+      fallback={<PanelStateMessage>{t("chat:browserSharing_loadingBrowser")}</PanelStateMessage>}
+    >
       <LazyBrowserPanel
         mode={props.mode ?? "sidebar"}
         threadId={props.threadId}

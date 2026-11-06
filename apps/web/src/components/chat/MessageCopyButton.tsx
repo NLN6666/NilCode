@@ -3,7 +3,7 @@ import { CheckIcon, CopyIcon } from "~/lib/icons";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { anchoredToastManager } from "../ui/toast";
 import { MessageActionButton, MESSAGE_ACTION_ICON_CLASS_NAME } from "./MessageActionButton";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 const ANCHORED_TOAST_TIMEOUT_MS = 1000;
 
@@ -28,7 +28,8 @@ function showCopyToast(
 }
 
 export function MessageCopyButton({ text, className }: { text: string; className?: string }) {
-  const copy = useMessages().chat.message;
+  const { t } = useTranslation();
+
   const ref = useRef<HTMLButtonElement>(null);
   const { copyToClipboard, isCopied } = useCopyToClipboard<void>({
     onCopy: () => showCopyToast(ref, "Copied!"),
@@ -39,8 +40,8 @@ export function MessageCopyButton({ text, className }: { text: string; className
   return (
     <MessageActionButton
       ref={ref}
-      label={copy.copy}
-      tooltip={copy.copyTooltip}
+      label={t("chat:messageCopy_copyMessage")}
+      tooltip={t("chat:messageCopy_copyToClipboard")}
       disabled={isCopied}
       className={className}
       onClick={() => copyToClipboard(text)}

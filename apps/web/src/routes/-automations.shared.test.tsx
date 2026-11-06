@@ -18,7 +18,7 @@ import {
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
-import { en } from "../i18n/locales/en";
+import { i18n } from "~/i18n";
 import {
   applyScheduleToForm,
   applyAutomationEvent,
@@ -50,6 +50,9 @@ import {
   updateWeeklyScheduleTime,
   unresolvedTriageRuns,
 } from "./-automations.shared";
+
+const translate = (message: string, values?: Record<string, unknown>) =>
+  i18n.t(message, { ...values, lng: "en" });
 
 describe("automation definition update ordering", () => {
   it("serializes successful edits in submission order", async () => {
@@ -229,41 +232,32 @@ function definitionWith(overrides: Partial<AutomationDefinition>): AutomationDef
 describe("automation shared route helpers", () => {
   it("phrases the next-run countdown with pluralized units", () => {
     const now = Date.parse("2026-06-19T00:00:00.000Z");
-    expect(formatNextRun("2026-06-19T00:00:30.000Z", now)).toBe("now");
-    expect(formatNextRun("2026-06-18T23:00:00.000Z", now)).toBe("now");
-    expect(formatNextRun("2026-06-19T00:01:30.000Z", now)).toBe("in 2 minutes");
-    expect(formatNextRun("2026-06-19T00:59:00.000Z", now)).toBe("in 59 minutes");
-    expect(formatNextRun("2026-06-19T09:00:00.000Z", now)).toBe("in 9 hours");
-    expect(formatNextRun("2026-06-22T00:00:00.000Z", now)).toBe("in 3 days");
-    expect(formatNextRun(null, now)).toBeNull();
-    expect(formatNextRun("not-a-date", now)).toBeNull();
+    expect(formatNextRun("2026-06-19T00:00:30.000Z", now, "en", translate)).toBe("now");
+    expect(formatNextRun("2026-06-18T23:00:00.000Z", now, "en", translate)).toBe("now");
+    expect(formatNextRun("2026-06-19T00:01:30.000Z", now, "en", translate)).toBe("in 2 minutes");
+    expect(formatNextRun("2026-06-19T00:59:00.000Z", now, "en", translate)).toBe("in 59 minutes");
+    expect(formatNextRun("2026-06-19T09:00:00.000Z", now, "en", translate)).toBe("in 9 hours");
+    expect(formatNextRun("2026-06-22T00:00:00.000Z", now, "en", translate)).toBe("in 3 days");
+    expect(formatNextRun(null, now, "en", translate)).toBeNull();
+    expect(formatNextRun("not-a-date", now, "en", translate)).toBeNull();
   });
 
   it("labels only badly-ended or approval-blocked runs as needing attention", () => {
-    expect(automationAttentionLabel(runWith({ status: "failed" }), en.automations.attention)).toBe(
+    expect(automationAttentionLabel(runWith({ status: "failed" }), translate)).toBe(
       "Last run failed",
     );
-    expect(
-      automationAttentionLabel(runWith({ status: "cancelled" }), en.automations.attention),
-    ).toBe("Last run cancelled");
-    expect(
-      automationAttentionLabel(runWith({ status: "interrupted" }), en.automations.attention),
-    ).toBe("Last run interrupted");
-    expect(
-      automationAttentionLabel(
-        runWith({ status: "waiting-for-approval" }),
-        en.automations.attention,
-      ),
-    ).toBe("Waiting for approval");
-    expect(
-      automationAttentionLabel(runWith({ status: "succeeded" }), en.automations.attention),
-    ).toBeNull();
-    expect(
-      automationAttentionLabel(runWith({ status: "running" }), en.automations.attention),
-    ).toBeNull();
-    expect(
-      automationAttentionLabel(runWith({ status: "skipped" }), en.automations.attention),
-    ).toBeNull();
+    expect(automationAttentionLabel(runWith({ status: "cancelled" }), translate)).toBe(
+      "Last run cancelled",
+    );
+    expect(automationAttentionLabel(runWith({ status: "interrupted" }), translate)).toBe(
+      "Last run interrupted",
+    );
+    expect(automationAttentionLabel(runWith({ status: "waiting-for-approval" }), translate)).toBe(
+      "Waiting for approval",
+    );
+    expect(automationAttentionLabel(runWith({ status: "succeeded" }), translate)).toBeNull();
+    expect(automationAttentionLabel(runWith({ status: "running" }), translate)).toBeNull();
+    expect(automationAttentionLabel(runWith({ status: "skipped" }), translate)).toBeNull();
   });
 
   it.each([
@@ -356,7 +350,7 @@ describe("automation shared route helpers", () => {
 
   it("uses human labels for resultless and unknown-result runs", () => {
     expect(
-      runResultSummary(runWith({ result: null, status: "waiting-for-approval" }), en.automations),
+      runResultSummary(runWith({ result: null, status: "waiting-for-approval" }), translate),
     ).toBe("Waiting for approval");
     expect(
       runResultSummary(
@@ -364,7 +358,7 @@ describe("automation shared route helpers", () => {
           result: { ...baseRun.result!, summary: null, outcome: "unknown" },
           status: "succeeded",
         }),
-        en.automations,
+        translate,
       ),
     ).toBe("Completed; open the thread for the reply");
   });
@@ -408,8 +402,8 @@ describe("automation shared route helpers", () => {
   it("labels non-minute interval cadences without rounding", () => {
     const schedule = { type: "interval", everySeconds: 90 } as const;
 
-    expect(formatSchedule(schedule)).toBe("Every 90 sec");
-    expect(formatCadence(schedule)).toBe("Every 90s");
+    expect(formatSchedule(schedule, "en", translate)).toBe("Every 90 sec");
+    expect(formatCadence(schedule, "en", translate)).toBe("Every 90s");
   });
 
   it("requires a hard iteration cap for sub-minute interval forms", () => {
@@ -423,20 +417,20 @@ describe("automation shared route helpers", () => {
     };
     const cappedForm = { ...form, maxIterations: "10" };
 
-    expect(automationFastIntervalLimitMessage(form)).toBe(
+    expect(automationFastIntervalLimitMessage(form, "en", translate)).toBe(
       "Intervals under one minute need max iterations set to 10 runs or fewer.",
     );
-    expect(isFormSubmittable(form)).toBe(false);
-    expect(automationFastIntervalLimitMessage(cappedForm)).toBeNull();
-    expect(isFormSubmittable(cappedForm)).toBe(true);
+    expect(isFormSubmittable(form, "en", translate)).toBe(false);
+    expect(automationFastIntervalLimitMessage(cappedForm, "en", translate)).toBeNull();
+    expect(isFormSubmittable(cappedForm, "en", translate)).toBe(true);
   });
 
   it("keeps custom max-iteration caps visible in picker options", () => {
-    expect(maxIterationOptions("3", en.automations.maxIterationOption)[0]).toEqual({
+    expect(maxIterationOptions("3", translate)[0]).toEqual({
       value: "3",
       label: "3 runs",
     });
-    expect(maxIterationOptions(10, en.automations.maxIterationOption)[0]).toEqual({
+    expect(maxIterationOptions(10, translate)[0]).toEqual({
       value: "",
       label: "Unlimited",
     });
@@ -528,8 +522,8 @@ describe("automation shared route helpers", () => {
       timezone: "",
     };
 
-    expect(isFormSubmittable(form)).toBe(false);
-    expect(isFormSubmittable({ ...form, timezone: "UTC" })).toBe(true);
+    expect(isFormSubmittable(form, "en", translate)).toBe(false);
+    expect(isFormSubmittable({ ...form, timezone: "UTC" }, "en", translate)).toBe(true);
   });
 
   it("serializes heartbeat stop clauses as completion policies", () => {

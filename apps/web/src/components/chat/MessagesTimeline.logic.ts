@@ -1,5 +1,5 @@
 // FILE: MessagesTimeline.logic.ts
-// Purpose: Owns the pure row-derivation helpers used by the transcript hot path.
+// Purpose: Owns row derivation and localized labels used by the transcript hot path.
 // Layer: Web chat presentation helpers
 // Exports: row derivation, structural sharing, copy/timer helpers
 
@@ -11,6 +11,7 @@ import {
   type TurnId,
 } from "@synara/contracts";
 import { readInlineVisualEmbedIds } from "@synara/shared/inlineVisual";
+import { t } from "~/i18n";
 import { type TimelineEntry, type WorkLogEntry, formatElapsed } from "../../session-logic";
 import type { WorkLogAdvisorNote, WorkLogAdvisorObservation } from "../../workLog";
 import { isCodexRuntimeWarningType, type WorkLogUserInputExchangeItem } from "../../workLog";
@@ -510,16 +511,39 @@ export function isPinnedBackgroundTaskEntry(
   return completedMs > endedMs;
 }
 
-// "“Run delayed echo” finished", or a count when several tasks woke the turn.
-export function formatTurnResumedBy(resumedBy: ReadonlyArray<TurnResumedBy>): string {
+const TURN_RESUMED_TASK_MESSAGES = {
+  finished: "chat:turnResumedTaskFinished",
+  failed: "chat:turnResumedTaskFailed",
+  stopped: "chat:turnResumedTaskStopped",
+  updated: "chat:turnResumedTaskUpdated",
+} as const;
+
+const TURN_RESUMED_TASKS_MESSAGES = {
+  finished: "chat:turnResumedTasksFinished",
+  failed: "chat:turnResumedTasksFailed",
+  stopped: "chat:turnResumedTasksStopped",
+  updated: "chat:turnResumedTasksUpdated",
+} as const;
+
+// React callers pass their hook translator so the compiler observes locale changes.
+// Whole messages keep outcome grammar localizable without translating provider descriptions.
+export function formatTurnResumedBy(
+  resumedBy: ReadonlyArray<TurnResumedBy>,
+  translate: typeof t = t,
+): string {
   if (resumedBy.length === 1) {
-    const [only] = resumedBy;
-    return `“${only!.description ?? "Background task"}” ${only!.outcome}`;
+    const only = resumedBy[0]!;
+    return translate(TURN_RESUMED_TASK_MESSAGES[only.outcome], {
+      description: only.description ?? translate("chat:backgroundTask"),
+    });
   }
   const outcomes = new Set(resumedBy.map((item) => item.outcome));
-  return outcomes.size === 1
-    ? `${resumedBy.length} background tasks ${resumedBy[0]!.outcome}`
-    : `${resumedBy.length} background tasks ended`;
+  return translate(
+    outcomes.size === 1
+      ? TURN_RESUMED_TASKS_MESSAGES[resumedBy[0]!.outcome]
+      : "chat:turnResumedTasksEnded",
+    { count: resumedBy.length },
+  );
 }
 
 // The text of a settled turn header, without the clock time or icon:
@@ -527,20 +551,29 @@ export function formatTurnResumedBy(resumedBy: ReadonlyArray<TurnResumedBy>): st
 // limit reached", "Resumed: “Run delayed echo” finished · 3s".
 export function formatTurnHeaderLabel(
   header: Pick<TurnHeader, "elapsed" | "outcome" | "reason" | "resumedBy">,
+  translate: typeof t = t,
 ): string {
   switch (header.outcome) {
     case "stopped":
-      return header.elapsed ? `Stopped by you after ${header.elapsed}` : "Stopped by you";
+      return header.elapsed
+        ? translate("chat:turnStoppedByYouAfter", { elapsed: header.elapsed })
+        : translate("chat:turnStoppedByYou");
     case "interrupted": {
-      const base = header.elapsed ? `Interrupted after ${header.elapsed}` : "Interrupted";
+      const base = header.elapsed
+        ? translate("chat:turnInterruptedAfter", { elapsed: header.elapsed })
+        : translate("chat:runStatus_interrupted");
       return header.reason ? `${base} · ${header.reason}` : base;
     }
     case "completed":
       if (header.resumedBy && header.resumedBy.length > 0) {
-        const resumed = `Resumed: ${formatTurnResumedBy(header.resumedBy)}`;
-        return header.elapsed ? `${resumed} · ${header.elapsed}` : resumed;
+        const task = formatTurnResumedBy(header.resumedBy, translate);
+        return header.elapsed
+          ? translate("chat:turnResumedAfter", { task, elapsed: header.elapsed })
+          : translate("chat:turnResumed", { task });
       }
-      return header.elapsed ? `Worked for ${header.elapsed}` : "Details";
+      return header.elapsed
+        ? translate("chat:turnWorkedFor", { elapsed: header.elapsed })
+        : translate("common:detail_details");
   }
 }
 
@@ -603,6 +636,7 @@ export type MessagesTimelineRow =
       inlineWorkEntries?: WorkLogEntry[];
       inlineWorkGroupId?: string;
       collapsedTurnItems?: CollapsedTurnItem[];
+      connectorProposalIds?: string[];
       // Set on the terminal assistant, or the request if an interrupted turn
       // produced no assistant/work rows.
       turnHeader?: TurnHeader;
@@ -1010,11 +1044,12 @@ export function deriveTerminalAssistantMessageIds(
   return terminalAssistantMessageIds;
 }
 
-// Thread-scoped notices and provider handoff boundaries keep their own row:
-// they are not turn work, so they never merge into or fold with a turn.
+// Notices, handoff boundaries, and connector proposals stay visible in their
+// own rows when a turn's work is grouped or folded.
 export function isStandaloneWorkEntry(
   entry: Pick<
     WorkLogEntry,
+    | "connectorProposalId"
     | "synaraWorkerNotice"
     | "providerHandoff"
     | "turnFailure"
@@ -1025,6 +1060,7 @@ export function isStandaloneWorkEntry(
   >,
 ): boolean {
   return Boolean(
+    entry.connectorProposalId ||
     entry.synaraWorkerNotice ||
     entry.providerHandoff ||
     entry.turnFailure ||
@@ -1636,6 +1672,8 @@ function collapseSettledTurns(
     // mini-turns can have distinct turnIds inside one assistant answer, so the
     // user message boundary is the stable UI grouping point.
     const foldIndices: number[] = [];
+    const recapIndices: number[] = [];
+    const connectorProposalIds: string[] = [];
     // Scanning backwards, so this ends as the earliest visual the turn keeps.
     let firstKeptVisual: Extract<MessagesTimelineRow, { kind: "inline-visual" }> | null = null;
     let wokenAt: string | null = null;
@@ -1652,9 +1690,13 @@ function collapseSettledTurns(
         break;
       }
       if (prev.kind === "work") {
-        // Coordinator monitor rows are server-posted system pills, not turn
-        // work — folding them into a collapsed turn would hide them on
-        // conversation-only surfaces.
+        const connectorProposalId = prev.groupedEntries[0]?.connectorProposalId;
+        if (connectorProposalId) {
+          recapIndices.push(scan);
+          connectorProposalIds.push(connectorProposalId);
+          continue;
+        }
+        // Standalone rows stay visible without stopping the fold of nearby work.
         if (prev.groupedEntries.some(isStandaloneWorkEntry)) continue;
         foldIndices.push(scan);
         continue;
@@ -1837,6 +1879,10 @@ function collapseSettledTurns(
       }
     }
 
+    if (connectorProposalIds.length > 0) {
+      row.connectorProposalIds = [...new Set(connectorProposalIds.reverse())];
+    }
+
     if (!options.collapseWork) {
       const firstAssistant = foldIndices
         .map((index) => rows[index]!)
@@ -1845,27 +1891,28 @@ function collapseSettledTurns(
         );
       if (firstAssistant?.kind === "message") firstAssistant.turnHeader = header;
       else row.turnHeader = header;
-      continue;
-    }
-    row.turnHeader = header;
-    if (firstKeptVisual) {
-      // The header opens the whole response; kept visuals belong to the answer
-      // below it. Their row renders it, so a live frame never changes parent.
-      row.turnHeaderRowId = firstKeptVisual.id;
-      firstKeptVisual.turnHeaderSource = row;
-    }
-    if (collapsedItems.length > 0) {
-      row.collapsedTurnItems = collapsedItems;
-      delete row.leadingWorkEntries;
-      delete row.leadingWorkGroupId;
-      delete row.inlineWorkEntries;
-      delete row.inlineWorkGroupId;
-
-      for (const index of foldIndices.toSorted((a, b) => b - a)) {
-        rows.splice(index, 1);
+    } else {
+      row.turnHeader = header;
+      if (firstKeptVisual) {
+        // The header opens the whole response; kept visuals belong to the answer
+        // below it. Their row renders it, so a live frame never changes parent.
+        row.turnHeaderRowId = firstKeptVisual.id;
+        firstKeptVisual.turnHeaderSource = row;
       }
-      pass -= foldIndices.length;
+      if (collapsedItems.length > 0) {
+        row.collapsedTurnItems = collapsedItems;
+        delete row.leadingWorkEntries;
+        delete row.leadingWorkGroupId;
+        delete row.inlineWorkEntries;
+        delete row.inlineWorkGroupId;
+        recapIndices.push(...foldIndices);
+      }
     }
+
+    for (const index of recapIndices.toSorted((a, b) => b - a)) {
+      rows.splice(index, 1);
+    }
+    pass -= recapIndices.length;
   }
 
   if (consumedCompletions.size === 0) return;
@@ -2040,6 +2087,8 @@ function workLogSynaraThreadCreationsEqual(
     a.operationId !== b.operationId ||
     a.requestedCount !== b.requestedCount ||
     a.createdCount !== b.createdCount ||
+    a.environmentId !== b.environmentId ||
+    a.hostName !== b.hostName ||
     a.threads.length !== b.threads.length
   ) {
     return false;
@@ -2146,6 +2195,7 @@ function workLogEntryContentEqual(a: WorkLogEntry, b: WorkLogEntry): boolean {
     workLogSubagentsEqual(a.subagents, b.subagents) &&
     workLogSubagentRunsEqual(a.subagentRun, b.subagentRun) &&
     workLogAutomationsEqual(a.automation, b.automation) &&
+    a.connectorProposalId === b.connectorProposalId &&
     workLogSynaraThreadCreationsEqual(a.synaraThreadCreation, b.synaraThreadCreation) &&
     workLogLiveActivitiesEqual(a.liveActivity, b.liveActivity) &&
     workLogToolDetailsEqual(a.toolDetails, b.toolDetails) &&
@@ -2323,6 +2373,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         workLogEntryArraysEqual(a.inlineWorkEntries, bm.inlineWorkEntries) &&
         a.inlineWorkGroupId === bm.inlineWorkGroupId &&
         collapsedTurnItemsEqual(a.collapsedTurnItems, bm.collapsedTurnItems) &&
+        stringArraysEqual(a.connectorProposalIds, bm.connectorProposalIds) &&
         turnHeadersEqual(a.turnHeader, bm.turnHeader) &&
         a.turnHeaderRowId === bm.turnHeaderRowId &&
         turnEndMarkersEqual(a.turnEndMarker, bm.turnEndMarker) &&

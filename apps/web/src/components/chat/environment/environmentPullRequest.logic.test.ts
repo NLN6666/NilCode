@@ -7,6 +7,8 @@ import {
   type PullRequestComment,
 } from "@synara/contracts";
 
+import { t } from "~/i18n";
+
 import {
   describePullRequestAutoFix,
   findPullRequestAutoFixState,
@@ -248,47 +250,62 @@ describe("buildPullRequestContextCard", () => {
 
 describe("summarizePullRequestChecks", () => {
   it("reports failing checks ahead of pending ones", () => {
-    const summary = summarizePullRequestChecks([
-      { name: "lint", status: "failure", url: null },
-      { name: "test", status: "pending", url: null },
-      { name: "build", status: "success", url: null },
-    ]);
-    expect(summary).toEqual({ label: "1 failing check", tone: "failure" });
+    const summary = summarizePullRequestChecks(
+      [
+        { name: "lint", status: "failure", url: null },
+        { name: "test", status: "pending", url: null },
+        { name: "build", status: "success", url: null },
+      ],
+      t,
+    );
+    expect(summary.tone).toBe("failure");
   });
 
   it("reports pending checks when nothing fails", () => {
-    const summary = summarizePullRequestChecks([
-      { name: "test", status: "pending", url: null },
-      { name: "release", status: "pending", url: null },
-      { name: "build", status: "success", url: null },
-      { name: "sync", status: "skipped", url: null },
-    ]);
-    expect(summary).toEqual({ label: "2 pending checks", tone: "pending" });
+    const summary = summarizePullRequestChecks(
+      [
+        { name: "test", status: "pending", url: null },
+        { name: "release", status: "pending", url: null },
+        { name: "build", status: "success", url: null },
+        { name: "sync", status: "skipped", url: null },
+      ],
+      t,
+    );
+    expect(summary.tone).toBe("pending");
   });
 
   it("treats skipped and neutral checks as passing", () => {
-    const summary = summarizePullRequestChecks([
-      { name: "build", status: "success", url: null },
-      { name: "sync", status: "skipped", url: null },
-      { name: "optional", status: "neutral", url: null },
-    ]);
-    expect(summary).toEqual({ label: "All checks passed", tone: "success" });
+    const summary = summarizePullRequestChecks(
+      [
+        { name: "build", status: "success", url: null },
+        { name: "sync", status: "skipped", url: null },
+        { name: "optional", status: "neutral", url: null },
+      ],
+      t,
+    );
+    expect(summary.tone).toBe("success");
   });
 
   it("does not treat cancelled checks as passing", () => {
-    const summary = summarizePullRequestChecks([
-      { name: "test", status: "cancelled", url: null },
-      { name: "optional", status: "neutral", url: null },
-    ]);
-    expect(summary).toEqual({ label: "1 cancelled check", tone: "failure" });
+    const summary = summarizePullRequestChecks(
+      [
+        { name: "test", status: "cancelled", url: null },
+        { name: "optional", status: "neutral", url: null },
+      ],
+      t,
+    );
+    expect(summary.tone).toBe("failure");
   });
 
   it("does not treat skipped-only checks as passing", () => {
-    const summary = summarizePullRequestChecks([
-      { name: "sync", status: "skipped", url: null },
-      { name: "optional", status: "neutral", url: null },
-    ]);
-    expect(summary).toEqual({ label: "No required checks", tone: "none" });
+    const summary = summarizePullRequestChecks(
+      [
+        { name: "sync", status: "skipped", url: null },
+        { name: "optional", status: "neutral", url: null },
+      ],
+      t,
+    );
+    expect(summary.tone).toBe("none");
   });
 });
 

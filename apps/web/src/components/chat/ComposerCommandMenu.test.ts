@@ -1,9 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { en } from "~/i18n/locales/en";
 import { groupCommandItems, type ComposerCommandItem } from "./ComposerCommandMenu";
 
-const GROUP_LABELS = en.composer.commandMenu.groups;
+const GROUP_LABELS: Record<string, string> = {
+  "common:plugin_pluginsTab": "Plugins",
+  "workspace:general_chats": "Chats",
+  "chat:subagents": "Subagents",
+  "chat:builtIn": "Built-in",
+  "workspace:nav_models": "Models",
+  "chat:mode_label": "Mode",
+  "computer:worktreeMode_local": "Local",
+  "workspace:models_customModelProvider": "Provider",
+  "common:plugin_skillsSection": "Skills",
+  "chat:commandMenu_githubReferences": "Pull requests and issues",
+  "settings:connectors": "Connectors",
+};
+const translate = ((key: string) => GROUP_LABELS[key] ?? key) as Parameters<
+  typeof groupCommandItems
+>[3];
 
 describe("groupCommandItems", () => {
   it("groups mention suggestions as plugins, chats, agents, then local", () => {
@@ -89,7 +103,7 @@ describe("groupCommandItems", () => {
       },
     ];
 
-    expect(groupCommandItems(items, "mention", true, GROUP_LABELS)).toEqual([
+    expect(groupCommandItems(items, "mention", true, translate)).toEqual([
       {
         id: "plugins",
         label: "Plugins",
@@ -102,12 +116,12 @@ describe("groupCommandItems", () => {
       },
       {
         id: "subagents",
-        label: "Your agents",
+        label: "Subagents",
         items: [items[5]],
       },
       {
         id: "built-in-agents",
-        label: "Synara agents",
+        label: "Built-in",
         items: [items[6]],
       },
       {
@@ -139,7 +153,7 @@ describe("groupCommandItems", () => {
         id: "color-preview",
         type: "color-preview",
         label: "@Preview",
-        description: en.composer.commandMenu.colorPreview.description,
+        description: "Preview mode",
       },
       {
         id: "path:file:/workspace/AGENTS.md",
@@ -151,9 +165,9 @@ describe("groupCommandItems", () => {
       },
     ];
 
-    expect(groupCommandItems(items, "mention", true, GROUP_LABELS)).toEqual([
-      { id: "subagents", label: "Your agents", items: [items[0]] },
-      { id: "modes", label: "Modes", items: [items[1]] },
+    expect(groupCommandItems(items, "mention", true, translate)).toEqual([
+      { id: "subagents", label: "Subagents", items: [items[0]] },
+      { id: "modes", label: "Mode", items: [items[1]] },
       { id: "local", label: "Local", items: [items[2]] },
     ]);
   });
@@ -191,7 +205,7 @@ describe("groupCommandItems", () => {
       },
     ];
 
-    expect(groupCommandItems(items, "slash-command", true, GROUP_LABELS)).toEqual([
+    expect(groupCommandItems(items, "slash-command", true, translate)).toEqual([
       {
         id: "built-in",
         label: "Built-in",
@@ -228,7 +242,7 @@ describe("groupCommandItems", () => {
       },
     ];
 
-    expect(groupCommandItems(items, "github-reference", true, GROUP_LABELS)).toEqual([
+    expect(groupCommandItems(items, "github-reference", true, translate)).toEqual([
       { id: "github", label: "Pull requests and issues", items },
     ]);
   });

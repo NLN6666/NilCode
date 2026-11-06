@@ -1,5 +1,5 @@
 // FILE: fileReferenceContextMenu.test.ts
-// Purpose: Verifies file-reference menu labels and desktop reveal/copy actions.
+// Purpose: Verifies file-reference menu actions and desktop reveal/copy outcomes.
 // Layer: Web UI helper tests
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -55,13 +55,13 @@ describe("showFileReferenceContextMenu", () => {
       onReferenceInChat: undefined,
     });
 
-    expect(harness.showContextMenu).toHaveBeenCalledWith(
-      [
-        { id: "reveal-in-folder", label: "Open in Explorer" },
-        { id: "copy-path", label: "Copy path" },
-      ],
-      { x: 12, y: 34 },
-    );
+    const [items, position] = harness.showContextMenu.mock.calls[0] ?? [];
+    expect(items).toHaveLength(2);
+    expect((items as Array<{ id: string }>).map(({ id }) => id)).toEqual([
+      "reveal-in-folder",
+      "copy-path",
+    ]);
+    expect(position).toEqual({ x: 12, y: 34 });
   });
 
   it("hides the desktop-only reveal action in the browser", async () => {
@@ -74,10 +74,9 @@ describe("showFileReferenceContextMenu", () => {
       onReferenceInChat: undefined,
     });
 
-    expect(harness.showContextMenu).toHaveBeenCalledWith(
-      [{ id: "copy-path", label: "Copy path" }],
-      { x: 12, y: 34 },
-    );
+    const [items, position] = harness.showContextMenu.mock.calls[0] ?? [];
+    expect((items as Array<{ id: string }>).map(({ id }) => id)).toEqual(["copy-path"]);
+    expect(position).toEqual({ x: 12, y: 34 });
   });
 
   it("reveals the requested file through the desktop shell", async () => {
@@ -107,11 +106,12 @@ describe("showFileReferenceContextMenu", () => {
       }),
     ).resolves.toBeUndefined();
 
-    expect(harness.toast).toHaveBeenCalledWith({
-      type: "error",
-      title: "Unable to reveal file",
-      description: "Folder not found: /repo/output/video.mp4",
-    });
+    expect(harness.toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "error",
+        description: "Folder not found: /repo/output/video.mp4",
+      }),
+    );
   });
 
   it("copies the displayed filesystem path with the shared clipboard fallback", async () => {

@@ -9,7 +9,7 @@ import { ChevronDownIcon, PlusIcon, SearchIcon, SettingsIcon, StopIcon } from "~
 import React, { useCallback, useMemo, useState } from "react";
 
 import { shortcutLabelForCommand } from "~/keybindings";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { commandForProjectScript, primaryProjectScript } from "~/projectScripts";
 import {
@@ -62,7 +62,8 @@ export default function ProjectScriptsControl({
   onUpdateScript,
   onDeleteScript,
 }: ProjectScriptsControlProps) {
-  const copy = useMessages().projectTools.scripts;
+  const { t } = useTranslation();
+
   const preferredScriptId = preferredScriptIdProp ?? null;
   const showInlineControls = showInlineControlsProp ?? true;
   const hideInlineLabel = hideInlineLabelProp ?? false;
@@ -117,16 +118,18 @@ export default function ProjectScriptsControl({
     <>
       <MenuItem className={actionMenuItemClassName} onClick={openAddDialog}>
         <PlusIcon className="size-4 text-muted-foreground" />
-        <span className="col-span-2 min-w-0 truncate">{copy.add}</span>
+        <span className="col-span-2 min-w-0 truncate">{t("workspace:scripts_addActionTitle")}</span>
       </MenuItem>
       {onDetectServices ? (
         <MenuItem
           className={actionMenuItemClassName}
           onClick={onDetectServices}
-          title={copy.detectServicesHint}
+          title={t("workspace:scripts_detectServicesHint")}
         >
           <SearchIcon className="size-4 text-muted-foreground" />
-          <span className="col-span-2 min-w-0 truncate">{copy.detectServices}</span>
+          <span className="col-span-2 min-w-0 truncate">
+            {t("workspace:scripts_detectServices")}
+          </span>
         </MenuItem>
       ) : null}
     </>
@@ -146,7 +149,7 @@ export default function ProjectScriptsControl({
   return (
     <>
       {showInlineControls && primaryScript ? (
-        <ChatHeaderSplitGroup label={copy.group}>
+        <ChatHeaderSplitGroup label={t("workspace:projectActions")}>
           <ChatHeaderButton
             className={cn(
               CHAT_HEADER_SPLIT_LEADING_CLASS_NAME,
@@ -156,13 +159,13 @@ export default function ProjectScriptsControl({
             onClick={() => toggleScript(primaryScript)}
             aria-label={
               runningScriptIds.has(primaryScript.id)
-                ? copy.stopAria(primaryScript.name)
-                : copy.run(primaryScript.name)
+                ? t("chat:stop2", { value0: primaryScript.name })
+                : t("workspace:run", { value0: primaryScript.name })
             }
             title={
               runningScriptIds.has(primaryScript.id)
-                ? copy.stopAria(primaryScript.name)
-                : copy.run(primaryScript.name)
+                ? t("chat:stop2", { value0: primaryScript.name })
+                : t("workspace:run", { value0: primaryScript.name })
             }
           >
             {runningScriptIds.has(primaryScript.id) ? (
@@ -185,8 +188,8 @@ export default function ProjectScriptsControl({
               render={
                 <ChatHeaderIconButton
                   tone="surface"
-                  label={copy.menu}
-                  title={copy.menu}
+                  label={t("workspace:scripts_scriptActions")}
+                  title={t("workspace:scripts_scriptActions")}
                   className={CHAT_HEADER_SPLIT_TRAILING_CLASS_NAME}
                 />
               }
@@ -205,7 +208,11 @@ export default function ProjectScriptsControl({
                     key={script.id}
                     className={actionMenuItemClassName}
                     onClick={() => toggleScript(script)}
-                    aria-label={isRunning ? copy.stopAria(script.name) : copy.run(script.name)}
+                    aria-label={
+                      isRunning
+                        ? t("chat:stop2", { value0: script.name })
+                        : t("workspace:run", { value0: script.name })
+                    }
                   >
                     {isRunning ? (
                       <StopIcon className="size-4 text-destructive" />
@@ -213,7 +220,9 @@ export default function ProjectScriptsControl({
                       <ScriptIcon icon={script.icon} className="size-4 text-muted-foreground" />
                     )}
                     <span className="min-w-0 truncate">
-                      {script.runOnWorktreeCreate ? `${script.name} (setup)` : script.name}
+                      {script.runOnWorktreeCreate
+                        ? t("workspace:setup", { value0: script.name })
+                        : script.name}
                     </span>
                     <span className="flex min-w-0 items-center justify-end">
                       {shortcutLabel && (
@@ -226,7 +235,7 @@ export default function ProjectScriptsControl({
                         variant="ghost"
                         size="icon-xs"
                         className="size-6 rounded-lg opacity-50 transition-opacity sm:pointer-events-none sm:opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 sm:group-focus-visible:pointer-events-auto sm:group-focus-visible:opacity-100"
-                        aria-label={`Edit ${script.name}`}
+                        aria-label={t("workspace:edit", { value0: script.name })}
                         onPointerDown={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
@@ -248,7 +257,7 @@ export default function ProjectScriptsControl({
           </Menu>
         </ChatHeaderSplitGroup>
       ) : showInlineControls && onDetectServices ? (
-        <ChatHeaderSplitGroup label={copy.group}>
+        <ChatHeaderSplitGroup label={t("workspace:projectActions")}>
           <ChatHeaderButton
             className={cn(
               CHAT_HEADER_SPLIT_LEADING_CLASS_NAME,
@@ -256,12 +265,12 @@ export default function ProjectScriptsControl({
               hideInlineLabel && "px-2",
             )}
             onClick={openAddDialog}
-            aria-label={copy.add}
-            title={copy.add}
+            aria-label={t("workspace:scripts_addActionTitle")}
+            title={t("workspace:scripts_addActionTitle")}
           >
             <PlusIcon className="size-3.5" />
             <span className={cn("font-normal", hideInlineLabel ? "sr-only" : "hidden sm:inline")}>
-              {copy.add}
+              {t("workspace:scripts_addActionTitle")}
             </span>
           </ChatHeaderButton>
           <ChatHeaderSplitDivider />
@@ -269,7 +278,7 @@ export default function ProjectScriptsControl({
             <MenuTrigger
               render={
                 <ChatHeaderIconButton
-                  label={copy.menu}
+                  label={t("workspace:scripts_scriptActions")}
                   tone="outline"
                   className={CHAT_HEADER_SPLIT_TRAILING_CLASS_NAME}
                 />
@@ -286,12 +295,12 @@ export default function ProjectScriptsControl({
         <ChatHeaderButton
           className={cn("gap-1.5 px-2.5", hideInlineLabel && "px-2")}
           onClick={openAddDialog}
-          aria-label={copy.add}
-          title={copy.add}
+          aria-label={t("workspace:scripts_addActionTitle")}
+          title={t("workspace:scripts_addActionTitle")}
         >
           <PlusIcon className="size-3.5" />
           <span className={cn("font-normal", hideInlineLabel ? "sr-only" : "hidden sm:inline")}>
-            {copy.add}
+            {t("workspace:scripts_addActionTitle")}
           </span>
         </ChatHeaderButton>
       ) : null}

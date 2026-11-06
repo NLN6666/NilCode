@@ -14,7 +14,7 @@ import { useOnboardingDialogStore } from "../onboarding/onboardingDialogStore";
 import { CentralIcon } from "../lib/central-icons";
 import { useAnnouncementSheetSlotStore } from "./announcementSheetSlot";
 import { AnnouncementSheet } from "./AnnouncementSheet";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 const APP_SNAP_WELCOME_STORAGE_KEY = "synara:appsnap-welcome:v1";
 
@@ -26,7 +26,8 @@ type AppSnapWelcomeStorage = typeof AppSnapWelcomeStorageSchema.Type;
 const INITIAL_STORAGE: AppSnapWelcomeStorage = { acknowledged: false };
 
 export function AppSnapWelcomeDialog({ children }: { children?: ReactNode }) {
-  const copy = useMessages().dialogs.appSnapWelcome;
+  const { t } = useTranslation();
+
   const navigate = useNavigate();
   const [storage, setStorage] = useLocalStorage(
     APP_SNAP_WELCOME_STORAGE_KEY,
@@ -98,10 +99,10 @@ export function AppSnapWelcomeDialog({ children }: { children?: ReactNode }) {
             <CentralIcon name="screen-capture" className="size-8" />
           </span>
         }
-        title={copy.title}
-        description={copy.description}
-        dismissLabel={copy.notNow}
-        confirmLabel={copy.setUp}
+        title={t("common:synaraAppSnapsAreLive")}
+        description={<>{t("common:pressBothOptionKeysToSnapAnyAppS")}</>}
+        dismissLabel={t("common:notNow")}
+        confirmLabel={t("common:setUpAppSnap")}
         onDismiss={acknowledge}
         onConfirm={openSettings}
       />

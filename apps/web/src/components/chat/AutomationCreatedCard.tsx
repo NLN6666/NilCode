@@ -8,12 +8,12 @@ import {
   AutomationProposalActions,
   automationProposalListQueryKey,
 } from "~/components/automation/AutomationProposalActions";
-import { useMessages } from "~/i18n/context";
 import { Button } from "~/components/ui/button";
 import { ClockIcon } from "~/lib/icons";
 import { ensureNativeApi } from "~/nativeApi";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useTranslation } from "~/i18n";
 
 export function AutomationCreatedCard({
   automationId,
@@ -32,7 +32,7 @@ export function AutomationCreatedCard({
   readonly metaFontSizePx?: number;
   readonly onOpen?: () => void;
 }) {
-  const copy = useMessages().automations;
+  const { t } = useTranslation();
   const [currentProposalState, setCurrentProposalState] = useState(proposalState);
   const proposalListQuery = useQuery({
     queryKey: automationProposalListQueryKey,
@@ -71,10 +71,10 @@ export function AutomationCreatedCard({
             className="truncate text-[var(--color-text-foreground-secondary)]"
             style={metaFontSizePx ? { fontSize: `${metaFontSizePx}px` } : undefined}
           >
-            {currentProposalState === "pending" ? copy.proposal.suggestedPrefix : ""}
+            {currentProposalState === "pending" ? t("automation:suggested") : ""}
             {cadenceLabel}
-            {currentProposalState === "accepted" ? copy.proposal.acceptedSuffix : ""}
-            {currentProposalState === "dismissed" ? copy.proposal.dismissedSuffix : ""}
+            {currentProposalState === "accepted" ? t("automation:accepted") : ""}
+            {currentProposalState === "dismissed" ? t("automation:dismissed") : ""}
           </p>
         ) : null}
       </div>
@@ -86,7 +86,7 @@ export function AutomationCreatedCard({
       ) : null}
       {onOpen && currentProposalState !== "pending" ? (
         <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={onOpen}>
-          {copy.actions.open}
+          {t("onboarding:notification_open")}
         </Button>
       ) : null}
     </div>

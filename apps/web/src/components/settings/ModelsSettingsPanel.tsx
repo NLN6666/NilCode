@@ -27,7 +27,6 @@ import {
   isGitTextGenerationSettingsDirty,
   patchCustomModels,
 } from "~/appSettings";
-import { useMessages } from "../../i18n/context";
 import { useProviderModelCatalog } from "~/hooks/useProviderModelCatalog";
 import { PlusIcon, XIcon } from "~/lib/icons";
 import { resolveProviderDiscoveryCwd } from "~/lib/providerDiscovery";
@@ -62,6 +61,7 @@ import {
 import { AdvisorSettingsSection } from "./AdvisorSettingsSection";
 import { SettingsRow, SettingsSection, SettingsSelectPopup } from "./SettingsPanelPrimitives";
 import { DebouncedSettingTextarea } from "./DebouncedSettingTextInput";
+import { useTranslation } from "~/i18n";
 
 const SOURCE_CONTROL_WRITING_OPTIONS: readonly {
   value: SourceControlWritingStyle;
@@ -70,24 +70,27 @@ const SOURCE_CONTROL_WRITING_OPTIONS: readonly {
 }[] = [
   {
     value: "repository",
-    label: "Repository conventions",
-    description: "In each project, matches recent change descriptions and change request titles.",
+    label: "settings:repositoryConventions",
+    description: "settings:inEachProjectMatchesRecentChangeDescriptionsAndChange",
   },
   {
     value: "conventional",
-    label: "Conventional Commits",
-    description: "Use Conventional Commit prefixes and keep change request text concise.",
+    label: "settings:conventionalCommits",
+    description: "settings:useConventionalCommitPrefixesAndKeepChangeRequestText",
   },
   {
     value: "custom",
-    label: "Custom instructions",
-    description:
-      "Use your instructions for change descriptions and change requests in every project.",
+    label: "settings:customInstructions",
+    description: "settings:useYourInstructionsForChangeDescriptionsAndChangeRequests",
   },
 ];
 
-/** Locale-free reason a custom slug was rejected; the panel maps it to copy. */
-export type CustomModelValidationError = "empty" | "builtIn" | "tooLong" | "duplicate";
+/** Locale-free translation key for a rejected custom slug. */
+export type CustomModelValidationError =
+  | "settings:modelSlugRequired"
+  | "settings:modelAlreadyBuiltIn"
+  | "settings:modelSlugTooLong"
+  | "settings:customModelAlreadySaved";
 
 type CustomModelValidationResult =
   | { readonly model: string; readonly error?: never }
@@ -107,16 +110,16 @@ export function validateCustomModelInput(input: {
 }): CustomModelValidationResult {
   const normalized = normalizeModelSlug(input.value, input.provider);
   if (!normalized) {
-    return { error: "empty" };
+    return { error: "settings:modelSlugRequired" };
   }
   if (getModelOptions(input.provider).some((option) => option.slug === normalized)) {
-    return { error: "builtIn" };
+    return { error: "settings:modelAlreadyBuiltIn" };
   }
   if (normalized.length > MAX_CUSTOM_MODEL_LENGTH) {
-    return { error: "tooLong" };
+    return { error: "settings:modelSlugTooLong" };
   }
   if (input.savedModels.includes(normalized)) {
-    return { error: "duplicate" };
+    return { error: "settings:customModelAlreadySaved" };
   }
   return { model: normalized };
 }
@@ -132,7 +135,7 @@ export function ModelsSettingsPanel({
   resetEpoch,
   active,
 }: AppSettingsBinding & { readonly resetEpoch: number; readonly active: boolean }) {
-  const m = useMessages();
+  const { t } = useTranslation();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const queryClient = useQueryClient();
   const [selectedCustomModelProvider, setSelectedCustomModelProvider] =
@@ -240,7 +243,10 @@ export function ModelsSettingsPanel({
     selectedGitTextGenerationInstanceLabel &&
     selectedGitTextGenerationInstanceLabel !==
       PROVIDER_DISPLAY_NAMES[currentGitTextGenerationProvider]
-      ? `${selectedGitTextGenerationInstanceLabel} · ${selectedGitTextGenerationModelName}`
+      ? t("common:symbol9", {
+          value0: selectedGitTextGenerationInstanceLabel,
+          value1: selectedGitTextGenerationModelName,
+        })
       : selectedGitTextGenerationModelName;
   const selectedCustomModelProviderSettings =
     enabledCustomModelProviderSettings.find(
@@ -250,13 +256,10 @@ export function ModelsSettingsPanel({
     selectedCustomModelProviderSettings?.provider ?? selectedCustomModelProvider;
   const selectedCustomModelInput = customModelInputByProvider[activeCustomModelProvider] ?? "";
   const selectedCustomModelErrorKey = customModelErrorByProvider[activeCustomModelProvider] ?? null;
-  const customModelErrors = m.settings.models.custom.errors;
   const selectedCustomModelError =
     selectedCustomModelErrorKey === null
       ? null
-      : selectedCustomModelErrorKey === "tooLong"
-        ? customModelErrors.tooLong(MAX_CUSTOM_MODEL_LENGTH)
-        : customModelErrors[selectedCustomModelErrorKey];
+      : t(selectedCustomModelErrorKey, { limit: MAX_CUSTOM_MODEL_LENGTH });
   const savedCustomModelRows = useMemo(
     () =>
       enabledCustomModelProviderSettings.flatMap((config) =>
@@ -341,7 +344,7 @@ export function ModelsSettingsPanel({
       <button
         type="button"
         className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 hover:opacity-100"
-        aria-label={m.settings.models.custom.remove(row.slug)}
+        aria-label={t("workspace:remove", { value0: row.slug })}
         onClick={() => removeCustomModel(row.provider, row.slug)}
       >
         <XIcon className="size-3.5 text-muted-foreground hover:text-foreground" />
@@ -356,7 +359,7 @@ export function ModelsSettingsPanel({
     resolveDefaultModelSlug(settings.defaultModelByProvider, defaultModelProvider) ?? "";
   const selectedDefaultModelLabel =
     selectedDefaultModelSlug.length === 0
-      ? m.settings.models.defaults.builtIn
+      ? t("settings:models_builtInDefault")
       : (defaultModelCandidates.find((option) => option.slug === selectedDefaultModelSlug)?.name ??
         selectedDefaultModelSlug);
   const selectedDefaultRef = resolveDefaultModelRef(
@@ -445,23 +448,25 @@ export function ModelsSettingsPanel({
         modelCount > 0
           ? {
               type: "success",
-              title: m.settings.models.catalog.refreshedTitle,
-              description: m.settings.models.catalog.refreshedDescription(modelCount),
+              title: t("settings:modelCatalog_refreshedTitle"),
+              description: t("settings:modelCatalog_refreshedDescription", {
+                value0: modelCount,
+              }),
             }
           : {
               type: "warning",
-              title: m.settings.models.catalog.unavailableTitle,
-              description: m.settings.models.catalog.unavailableDescription,
+              title: t("settings:modelCatalog_unavailableTitle"),
+              description: t("settings:modelCatalog_unavailableDescription"),
             },
       ),
     onError: (error: unknown) =>
       toastManager.add({
         type: "error",
-        title: m.settings.models.catalog.refreshFailedTitle,
+        title: t("settings:modelCatalog_refreshFailedTitle"),
         description:
           error instanceof Error
             ? error.message
-            : m.settings.models.catalog.refreshFailedDescription,
+            : t("settings:modelCatalog_refreshFailedDescription"),
       }),
   });
 
@@ -476,34 +481,15 @@ export function ModelsSettingsPanel({
 
   return (
     <div className="space-y-6">
-      <SettingsSection title={m.settings.models.catalog.title}>
+      <SettingsSection title="settings:models_generationDefaults">
         <SettingsRow
-          title={m.settings.models.catalog.cloud.title}
-          anchorKey="models:cloud-catalog"
-          description={m.settings.models.catalog.cloud.description}
-          control={
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={refreshCatalogMutation.isPending}
-              onClick={() => refreshCatalogMutation.mutate()}
-            >
-              {refreshCatalogMutation.isPending
-                ? m.settings.models.catalog.refreshing
-                : m.settings.models.catalog.refresh}
-            </Button>
-          }
-        />
-      </SettingsSection>
-
-      <SettingsSection title={m.settings.models.generationDefaults.title}>
-        <SettingsRow
-          title="Source control writing style"
-          description={writingOption.description}
+          id="setting-source-control-writing-style"
+          title="settings:sourceControlWritingStyle"
+          description={t(writingOption.description)}
           resetAction={
             isWritingStyleDirty ? (
               <SettingResetButton
-                label="source control writing style"
+                label={t("settings:sourceControlWritingStyle2")}
                 onClick={() =>
                   updateSettings({
                     sourceControlWritingStyle: defaults.sourceControlWritingStyle,
@@ -522,13 +508,13 @@ export function ModelsSettingsPanel({
                 );
                 if (option) updateSettings({ sourceControlWritingStyle: option.value });
               }}
-              ariaLabel="Source control writing style"
+              ariaLabel={t("settings:sourceControlWritingStyle")}
               triggerClassName="w-full sm:w-60"
-              valueContent={writingOption.label}
+              valueContent={t(writingOption.label)}
             >
               {SOURCE_CONTROL_WRITING_OPTIONS.map((option) => (
                 <SelectItem hideIndicator key={option.value} value={option.value}>
-                  {option.label}
+                  {t(option.label)}
                 </SelectItem>
               ))}
             </SettingsSelectControl>
@@ -538,8 +524,8 @@ export function ModelsSettingsPanel({
             <DebouncedSettingTextarea
               key={resetEpoch}
               className="mt-3 [&_textarea]:min-h-28 [&_textarea]:resize-y"
-              aria-label="Custom source control writing instructions"
-              placeholder="Keep titles concise. Use short bullet points in descriptions."
+              aria-label={t("settings:customSourceControlWritingInstructions")}
+              placeholder={t("settings:keepTitlesConciseUseShortBulletPointsInDescriptions")}
               maxLength={MAX_SOURCE_CONTROL_CUSTOM_INSTRUCTIONS_LENGTH}
               value={settings.sourceControlCustomInstructions}
               onCommit={(value) => updateSettings({ sourceControlCustomInstructions: value })}
@@ -547,12 +533,13 @@ export function ModelsSettingsPanel({
           </DisclosureRegion>
         </SettingsRow>
         <SettingsRow
-          title={m.settings.models.generationDefaults.gitWritingModel.title}
-          description={m.settings.models.generationDefaults.gitWritingModel.description}
+          id="setting-git-writing-model"
+          title="settings:changed_gitWritingModel"
+          description="settings:usedForGeneratedCommitMessagesPRTitlesAndBranch"
           resetAction={
             isGitTextGenerationModelDirty ? (
               <SettingResetButton
-                label={m.settings.models.generationDefaults.gitWritingModel.resetLabel}
+                label={t("settings:gitWritingModel")}
                 onClick={() =>
                   updateSettings({
                     textGenerationProvider: defaults.textGenerationProvider,
@@ -577,7 +564,7 @@ export function ModelsSettingsPanel({
                   textGenerationModel: model,
                 });
               }}
-              ariaLabel={m.settings.models.generationDefaults.gitWritingModel.ariaLabel}
+              ariaLabel={t("settings:gitTextGenerationModel")}
               triggerClassName="w-full sm:w-52"
               valueContent={selectedGitTextGenerationModelLabel}
             >
@@ -593,15 +580,15 @@ export function ModelsSettingsPanel({
 
       <AdvisorSettingsSection />
 
-      <SettingsSection title={m.settings.models.defaults.title}>
+      <SettingsSection title="settings:models_defaultModels">
         <SettingsRow
-          title={m.settings.models.defaults.picker.title}
+          title="settings:models_defaultModelPickerTitle"
           anchorKey="models:default-models"
-          description={m.settings.models.defaults.picker.description}
+          description="settings:models_defaultModelPickerDescription"
           resetAction={
             settings.defaultModelByProvider.length > 0 ? (
               <SettingResetButton
-                label={m.settings.models.defaults.picker.resetLabel}
+                label={t("settings:models_defaultModelChoices")}
                 onClick={() => updateSettings({ defaultModelByProvider: [] })}
               />
             ) : null
@@ -622,7 +609,7 @@ export function ModelsSettingsPanel({
               <SelectTrigger
                 size="sm"
                 className="w-full sm:w-40"
-                aria-label={m.settings.models.defaults.providerAriaLabel}
+                aria-label={t("settings:models_defaultProvider")}
               >
                 <SelectValue>{PROVIDER_DISPLAY_NAMES[defaultModelProvider]}</SelectValue>
               </SelectTrigger>
@@ -639,12 +626,12 @@ export function ModelsSettingsPanel({
               <SettingsSelectControl
                 value={selectedDefaultModelSlug}
                 onValueChange={setDefaultModel}
-                ariaLabel={m.settings.models.defaults.modelAriaLabel}
+                ariaLabel={t("settings:models_defaultModel")}
                 triggerClassName="w-full sm:w-56"
                 valueContent={selectedDefaultModelLabel}
               >
                 <SelectItem hideIndicator value="">
-                  {m.settings.models.defaults.builtIn}
+                  {t("settings:models_builtInDefault")}
                 </SelectItem>
                 {defaultModelCandidates.map((option) => (
                   <SelectItem hideIndicator key={option.slug} value={option.slug}>
@@ -653,7 +640,7 @@ export function ModelsSettingsPanel({
                 ))}
               </SettingsSelectControl>
             ) : (
-              <p className="text-xs text-muted-foreground">{m.settings.models.defaults.noModels}</p>
+              <p className="text-xs text-muted-foreground">{t("settings:models_noModels")}</p>
             )}
           </div>
           {showsDefaultTraits ? (
@@ -662,15 +649,15 @@ export function ModelsSettingsPanel({
                 <SettingsSelectControl
                   value={selectedDefaultRef?.effort ?? ""}
                   onValueChange={(value) => setDefaultModelTrait("effort", value)}
-                  ariaLabel={m.settings.models.defaults.effortAriaLabel}
+                  ariaLabel={t("settings:models_defaultReasoningLevel")}
                   triggerClassName="w-full sm:w-44"
                   valueContent={
                     defaultEffortLevels.find((level) => level.value === selectedDefaultRef?.effort)
-                      ?.label ?? m.settings.models.defaults.modelDefault
+                      ?.label ?? t("settings:models_modelDefault")
                   }
                 >
                   <SelectItem hideIndicator value="">
-                    {m.settings.models.defaults.modelDefault}
+                    {t("settings:models_modelDefault")}
                   </SelectItem>
                   {defaultEffortLevels.map((level) => (
                     <SelectItem hideIndicator key={level.value} value={level.value}>
@@ -683,16 +670,16 @@ export function ModelsSettingsPanel({
                 <SettingsSelectControl
                   value={selectedDefaultRef?.contextWindow ?? ""}
                   onValueChange={(value) => setDefaultModelTrait("contextWindow", value)}
-                  ariaLabel={m.settings.models.defaults.contextWindowAriaLabel}
+                  ariaLabel={t("settings:models_defaultContextWindow")}
                   triggerClassName="w-full sm:w-44"
                   valueContent={
                     defaultContextWindowOptions.find(
                       (option) => option.value === selectedDefaultRef?.contextWindow,
-                    )?.label ?? m.settings.models.defaults.modelDefault
+                    )?.label ?? t("settings:models_modelDefault")
                   }
                 >
                   <SelectItem hideIndicator value="">
-                    {m.settings.models.defaults.modelDefault}
+                    {t("settings:models_modelDefault")}
                   </SelectItem>
                   {defaultContextWindowOptions.map((option) => (
                     <SelectItem hideIndicator key={option.value} value={option.value}>
@@ -706,15 +693,15 @@ export function ModelsSettingsPanel({
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection title={m.settings.models.visible.title}>
+      <SettingsSection title="settings:models_visibleModels">
         <SettingsRow
-          title={m.settings.models.visible.picker.title}
+          title="settings:models_visibleModelPickerTitle"
           anchorKey="models:visible-models"
-          description={m.settings.models.visible.picker.description}
+          description="settings:models_visibleModelPickerDescription"
           resetAction={
             settings.hiddenModels.length > 0 ? (
               <SettingResetButton
-                label={m.settings.models.visible.picker.resetLabel}
+                label={t("settings:models_visibleModelsResetLabel")}
                 onClick={() => updateSettings({ hiddenModels: [] })}
               />
             ) : null
@@ -730,7 +717,7 @@ export function ModelsSettingsPanel({
               <SelectTrigger
                 size="sm"
                 className="w-full sm:w-40"
-                aria-label={m.settings.models.visible.providerAriaLabel}
+                aria-label={t("settings:models_provider")}
               >
                 <SelectValue>{PROVIDER_DISPLAY_NAMES[visibilityProvider]}</SelectValue>
               </SelectTrigger>
@@ -761,32 +748,28 @@ export function ModelsSettingsPanel({
                       <Switch
                         checked={visible}
                         onCheckedChange={(next) => toggleModelVisibility(model.slug, next)}
-                        aria-label={m.settings.models.visible.showModel(model.name)}
+                        aria-label={t("settings:models_showModel", { value0: model.name })}
                       />
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <p className="mt-3 text-xs text-muted-foreground">
-                {m.settings.models.visible.noModels}
-              </p>
+              <p className="mt-3 text-xs text-muted-foreground">{t("settings:models_noModels")}</p>
             )}
           </div>
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection title={m.settings.models.custom.title}>
+      <SettingsSection title="settings:changed_customModels">
         <SettingsRow
-          title={m.settings.models.custom.saved.title}
+          id="setting-saved-model-slugs"
+          title="settings:models_savedModelSlugs"
           anchorKey="models:saved-model-slugs"
-          description={m.settings.models.custom.saved.description}
+          description="settings:addCustomModelSlugsForSupportedProviders"
           resetAction={
             savedCustomModelRows.length > 0 ? (
-              <SettingResetButton
-                label={m.settings.models.custom.saved.resetLabel}
-                onClick={resetCustomModels}
-              />
+              <SettingResetButton label={t("settings:customModels")} onClick={resetCustomModels} />
             ) : null
           }
         >
@@ -804,7 +787,7 @@ export function ModelsSettingsPanel({
                   <SelectTrigger
                     size="sm"
                     className="w-full sm:w-40"
-                    aria-label={m.settings.models.custom.providerAriaLabel}
+                    aria-label={t("settings:customModelProvider")}
                   >
                     <SelectValue>{selectedCustomModelProviderSettings.title}</SelectValue>
                   </SelectTrigger>
@@ -848,18 +831,18 @@ export function ModelsSettingsPanel({
                   onClick={() => addCustomModel(activeCustomModelProvider)}
                 >
                   <PlusIcon className="size-3.5" />
-                  {m.settings.models.custom.add}
+                  {t("workspace:models_add")}
                 </Button>
               </div>
             ) : (
               <p className="text-ui text-muted-foreground">
-                {m.settings.models.custom.enableProvider}
+                {t("settings:enableAProviderInSettingsProvidersToAddCustom")}
               </p>
             )}
 
             {selectedCustomModelError ? (
               <p className="mt-2 text-ui leading-snug text-destructive">
-                {selectedCustomModelError}
+                {t(selectedCustomModelError, { limit: MAX_CUSTOM_MODEL_LENGTH })}
               </p>
             ) : null}
 
@@ -880,8 +863,8 @@ export function ModelsSettingsPanel({
                       onClick={() => setShowAllCustomModels((value) => !value)}
                     >
                       {showAllCustomModels
-                        ? m.settings.models.custom.showLess
-                        : m.settings.models.custom.showMore(overflowCustomModelRows.length)}
+                        ? t("workspace:timeline_showLess")
+                        : t("settings:showMore", { value0: overflowCustomModelRows.length })}
                     </button>
                   </>
                 ) : null}

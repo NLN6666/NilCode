@@ -10,14 +10,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toastManager } from "~/components/ui/toast";
 import { serverQueryKeys, serverSettingsQueryOptions } from "~/lib/serverReactQuery";
 import { ensureNativeApi } from "~/nativeApi";
-import { useMessages } from "../../i18n/context";
 import { SettingsSegmentedControl } from "./SettingControls";
 import { DebouncedSettingTextInput } from "./DebouncedSettingTextInput";
 import { SettingsRow, SettingsSection } from "./SettingsPanelPrimitives";
+import { useTranslation } from "~/i18n";
 
 export function NetworkSettingsSection() {
-  const m = useMessages();
-  const copy = m.settings.advanced.network.proxy;
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const serverSettingsQuery = useQuery(serverSettingsQueryOptions());
   const proxy = serverSettingsQuery.data?.network.proxy;
@@ -48,7 +47,7 @@ export function NetworkSettingsSection() {
       } catch {
         // Refuse loudly: a rejected address that looked saved would leave every
         // outbound request quietly unproxied.
-        toastManager.add({ type: "warning", title: copy.url.invalid });
+        toastManager.add({ type: "warning", title: t("settings:network_proxyUrlInvalid") });
         return;
       }
     }
@@ -61,21 +60,21 @@ export function NetworkSettingsSection() {
   const isManual = proxy.mode === "manual";
 
   return (
-    <SettingsSection title={m.settings.advanced.network.title}>
+    <SettingsSection title="settings:network_title">
       <SettingsRow
-        title={copy.title}
+        title="settings:network_proxyTitle"
         anchorKey="advanced:proxy-mode"
-        description={copy.description}
-        status={copy.modeHints[proxy.mode]}
+        description="settings:network_proxyDescription"
+        status={t(`settings:network_proxyModeHint_${proxy.mode}`)}
         control={
           <SettingsSegmentedControl<OutboundProxyMode>
             value={proxy.mode}
             onValueChange={(mode) => patchProxy({ mode })}
-            ariaLabel={copy.ariaLabel}
+            ariaLabel={t("settings:network_proxyModeAriaLabel")}
             options={[
-              { value: "off", label: copy.modes.off },
-              { value: "env", label: copy.modes.env },
-              { value: "manual", label: copy.modes.manual },
+              { value: "off", label: "settings:network_proxyModeOff" },
+              { value: "env", label: "settings:network_proxyModeEnvironment" },
+              { value: "manual", label: "settings:network_proxyModeManual" },
             ]}
           />
         }
@@ -84,36 +83,36 @@ export function NetworkSettingsSection() {
       {isManual ? (
         <>
           <SettingsRow
-            title={copy.url.title}
+            title="settings:network_proxyUrlTitle"
             anchorKey="advanced:proxy-url"
-            description={copy.url.description}
+            description="settings:network_proxyUrlDescription"
             control={
               <DebouncedSettingTextInput
                 size="sm"
                 variant="soft"
                 className="w-full sm:w-64"
                 value={proxy.url}
-                placeholder={copy.url.placeholder}
+                placeholder={t("settings:network_proxyUrlPlaceholder")}
                 onCommit={commitUrl}
-                aria-label={copy.url.ariaLabel}
+                aria-label={t("settings:network_proxyUrlAriaLabel")}
               />
             }
           />
 
           <SettingsRow
-            title={copy.noProxy.title}
+            title="settings:network_bypassListTitle"
             anchorKey="advanced:proxy-no-proxy"
-            description={copy.noProxy.description}
-            status={copy.failClosedNote}
+            description="settings:network_bypassListDescription"
+            status={t("settings:network_failClosedNote")}
             control={
               <DebouncedSettingTextInput
                 size="sm"
                 variant="soft"
                 className="w-full sm:w-64"
                 value={proxy.noProxy}
-                placeholder={copy.noProxy.placeholder}
+                placeholder={t("settings:network_bypassListPlaceholder")}
                 onCommit={(value) => patchProxy({ noProxy: value.trim() })}
-                aria-label={copy.noProxy.ariaLabel}
+                aria-label={t("settings:network_bypassListAriaLabel")}
               />
             }
           />

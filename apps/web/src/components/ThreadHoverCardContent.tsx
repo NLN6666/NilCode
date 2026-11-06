@@ -1,8 +1,8 @@
 // FILE: ThreadHoverCardContent.tsx
 // Purpose: Rich hover-card body shown when hovering a sidebar thread/chat row —
 //          the title with a relative time on the header line, then project,
-//          source folder, git branch, worktree identity, pull request, and the chat's current
-//          model rows when available, plus an excerpt of any unsent draft.
+//          source folder, the remote computer, git branch, worktree identity, pull request,
+//          and the chat's current model rows when available, plus an excerpt of any unsent draft.
 // Layer: Sidebar UI component
 // Exports: ThreadHoverCardContent
 // Why: Shared by both the pinned and the nested thread-row tooltips so the two
@@ -13,9 +13,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { MouseEvent, ReactNode } from "react";
 
 import { useThreadDraftPreviewText } from "~/composerDraftStore";
-import { useMessages } from "~/i18n/context";
 import { useThreadFastModeNotice } from "~/hooks/useThreadFastModeNotice";
-import { GitBranchIcon, WorktreeIcon, FolderIcon } from "~/lib/icons";
+import { GitBranchIcon, GlobeIcon, WorktreeIcon, FolderIcon } from "~/lib/icons";
 import type { ProjectAppearance } from "~/lib/projectAppearance";
 import type { providerModelsQueryOptions } from "~/lib/providerDiscoveryReactQuery";
 import { resolveThreadModelSummary } from "~/lib/threadModelSummary";
@@ -25,15 +24,17 @@ import { ProviderIcon } from "./ProviderIcon";
 import { resolveRuntimeModelDescriptor } from "./chat/runtimeModelCapabilities";
 import {
   PR_STATE_PRESENTATION_ICONS,
+  PR_STATE_LABEL_KEYS,
   resolvePrStatePresentation,
 } from "./pullRequest/pullRequestStatePresentation";
 import { FastModeBadgeIcon } from "./chat/FastModeBadgeIcon";
-import type { ThreadStatusPill } from "./Sidebar.logic";
+import { THREAD_STATUS_LABEL_KEYS, type ThreadStatusPill } from "./Sidebar.logic";
 import { SidebarDraftGlyph, SidebarStatusTrailingGlyph } from "./SidebarStatusTrailingGlyph";
 import {
   SIDEBAR_HOVER_CARD_CONTAINER_PADDING_CLASS_NAME,
   SIDEBAR_HOVER_CARD_ROW_CLASS_NAME,
 } from "./sidebarHoverCardStyles";
+import { useTranslation } from "~/i18n";
 
 export type ThreadHoverCardContentProps = {
   threadId: ThreadId;
@@ -58,10 +59,14 @@ export type ThreadHoverCardContentProps = {
   modelCatalogQueryOptions: ReturnType<typeof providerModelsQueryOptions>;
   /** Current live/actionable state, shown as text so compact row glyphs stay discoverable. */
   status: ThreadStatusPill | null;
+  /** Computer a remote chat runs on: the row's connection globe, repeated on the card. */
+  hostName?: string | null;
 };
 
 const META_ROW_CLASS_NAME = `${SIDEBAR_HOVER_CARD_ROW_CLASS_NAME} text-foreground/80`;
 const META_ICON_CLASS_NAME = "size-3.5 shrink-0 text-muted-foreground/75";
+// Same sky globe the sidebar rows use to mark a chat on another computer.
+const REMOTE_GLOBE_CLASS_NAME = "size-3.5 shrink-0 text-sky-600 dark:text-sky-400";
 
 function MetaRow({ icon, children }: { icon: ReactNode; children: string }) {
   return (
@@ -83,7 +88,7 @@ function ModelRow({
   modelSelection: ModelSelection;
   catalogQueryOptions: ThreadHoverCardContentProps["modelCatalogQueryOptions"];
 }) {
-  const statusLabels = useMessages().composer.modelPicker;
+  const { t } = useTranslation();
   const catalog = useQuery({
     ...catalogQueryOptions,
     enabled: false,
@@ -92,12 +97,12 @@ function ModelRow({
   });
   const model = resolveThreadModelSummary(
     modelSelection,
-    statusLabels,
     resolveRuntimeModelDescriptor({
       provider: modelSelection.provider,
       model: modelSelection.model,
       runtimeModels: catalog.data?.models,
     }),
+    t,
   );
   const fastModeNotice = useThreadFastModeNotice(
     modelSelection.provider === "claudeAgent" ? threadId : null,
@@ -135,10 +140,13 @@ export function ThreadHoverCardContent({
   model,
   modelCatalogQueryOptions,
   status,
+  hostName = null,
 }: ThreadHoverCardContentProps) {
+  const { t } = useTranslation();
   const hasMeta =
     Boolean(projectName) ||
     Boolean(sourceProjectName) ||
+    Boolean(hostName) ||
     Boolean(branch) ||
     Boolean(worktreeName) ||
     Boolean(pullRequest) ||
@@ -152,6 +160,12 @@ export function ThreadHoverCardContent({
       <div className={SIDEBAR_HOVER_CARD_ROW_CLASS_NAME}>
         <span className="min-w-0 flex-1 whitespace-normal font-medium leading-tight text-foreground">
           {title}
+          {hostName ? (
+            <GlobeIcon
+              className={cn(REMOTE_GLOBE_CLASS_NAME, "ml-1.5 inline-block align-[-0.15em]")}
+              aria-hidden
+            />
+          ) : null}
         </span>
         {timeLabel ? (
           <span className="shrink-0 text-ui-xs tabular-nums text-muted-foreground/55">
@@ -172,7 +186,7 @@ export function ThreadHoverCardContent({
                 </span>
               }
             >
-              {status.label}
+              {t(THREAD_STATUS_LABEL_KEYS[status.label])}
             </MetaRow>
           ) : null}
           {projectName ? (
@@ -199,6 +213,13 @@ export function ThreadHoverCardContent({
             <MetaRow icon={<FolderIcon className={META_ICON_CLASS_NAME} aria-hidden />}>
               {sourceProjectName}
             </MetaRow>
+          ) : null}
+          {hostName ? (
+            <span className={META_ROW_CLASS_NAME}>
+              <GlobeIcon className={REMOTE_GLOBE_CLASS_NAME} aria-hidden />
+              <span className="sr-only">{t("common:computer")}</span>
+              <span className="min-w-0 truncate">{hostName}</span>
+            </span>
           ) : null}
           {branch ? (
             <MetaRow icon={<GitBranchIcon className={META_ICON_CLASS_NAME} aria-hidden />}>
@@ -227,6 +248,8 @@ export function ThreadHoverCardContent({
 
 // Unsent composer text, clamped so a long draft cannot stretch the card.
 function DraftPreviewRow({ threadId }: { threadId: ThreadId }) {
+  const { t } = useTranslation();
+
   const previewText = useThreadDraftPreviewText(threadId);
   if (!previewText) return null;
   return (
@@ -237,7 +260,7 @@ function DraftPreviewRow({ threadId }: { threadId: ThreadId }) {
       >
         <SidebarDraftGlyph />
       </span>
-      <span className="sr-only">Unsent draft:</span>
+      <span className="sr-only">{t("common:unsentDraft")}</span>
       <span className="line-clamp-3 min-w-0 whitespace-normal break-words leading-snug">
         {previewText}
       </span>
@@ -252,6 +275,8 @@ function PullRequestRow({
   pr: OrchestrationThreadPullRequest;
   onOpen: ThreadHoverCardContentProps["onOpenPullRequest"];
 }) {
+  const { t } = useTranslation();
+
   const presentation = resolvePrStatePresentation(pr);
   const PrIcon = PR_STATE_PRESENTATION_ICONS[presentation.iconKind];
 
@@ -260,7 +285,11 @@ function PullRequestRow({
       href={pr.url}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={`#${pr.number} ${presentation.label}: ${pr.title}`}
+      aria-label={t("workspace:symbol4", {
+        value0: pr.number,
+        value1: t(PR_STATE_LABEL_KEYS[presentation.label]),
+        value2: pr.title,
+      })}
       className={`${META_ROW_CLASS_NAME} cursor-pointer outline-hidden hover:bg-[var(--color-background-button-secondary-hover)] focus-visible:ring-1 focus-visible:ring-ring`}
       onClick={(event) => onOpen(event, pr.url)}
       onAuxClick={(event) => {

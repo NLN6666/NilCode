@@ -5,6 +5,7 @@ node_modules
 *.log
 *.tsbuildinfo
 apps/*/dist
+apps/api/ui/dist
 .astro
 packages/*/dist
 .env
@@ -40,6 +41,7 @@ __screenshots__/
 /browser-sidebar-comment-preload.js.map
 /preload.js.map
 /bootstrap.js.map
+.vercel/
 
 # Local scratch notes and agent tooling artifacts. These are per-machine: the
 # local-code-context index and its ignore rules, agent worktrees, and the
@@ -62,3 +64,6 @@ apps/server/Python/
 
 # Local implementation plans.
 /plans/
+
+# Local Cloudflare deployment bundles and source maps.
+.wrangler/

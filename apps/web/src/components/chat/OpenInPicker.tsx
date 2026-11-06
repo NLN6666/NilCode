@@ -1,3 +1,5 @@
+import { readExecutionContext } from "~/lib/hosts/executionContext";
+import { REMOTE_NATIVE_UNAVAILABLE } from "@synara/shared/remoteCapabilities";
 // FILE: OpenInPicker.tsx
 // Purpose: Render the chat/file header "Open In" controls for the active editor target.
 // Layer: Chat header action
@@ -28,7 +30,7 @@ import {
   CHAT_HEADER_SPLIT_LEADING_CLASS_NAME,
   CHAT_HEADER_SPLIT_TRAILING_CLASS_NAME,
 } from "./chatHeaderControls";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const EMPTY_AVAILABLE_EDITORS: ReadonlyArray<EditorId> = [];
@@ -77,6 +79,16 @@ type OpenInPickerContentProps = OpenInPickerProps & {
 };
 
 export function OpenInPicker(props: OpenInPickerProps) {
+  if (readExecutionContext()?.remote && !props.primaryAction)
+    return (
+      <span className="text-ui-xs text-muted-foreground" title={REMOTE_NATIVE_UNAVAILABLE}>
+        External editor unavailable remotely
+      </span>
+    );
+  return <LocalOpenInPicker {...props} />;
+}
+
+function LocalOpenInPicker(props: OpenInPickerProps) {
   if (props.keybindings !== undefined && props.availableEditors !== undefined) {
     return (
       <OpenInPickerContent
@@ -131,7 +143,8 @@ const COMPACT_ACTION_BUTTON_CLASS_NAME =
   "inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[var(--color-background-button-secondary-hover)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:pointer-events-none disabled:opacity-50 data-popup-open:bg-[var(--color-background-button-secondary-hover)] data-popup-open:text-foreground";
 
 function OpenInPickerFrame(props: OpenInPickerFrameProps) {
-  const copy = useMessages().chat.openIn;
+  const { t } = useTranslation();
+
   if (props.variant === "compact") {
     return (
       <div
@@ -146,7 +159,7 @@ function OpenInPickerFrame(props: OpenInPickerFrameProps) {
           onClick={props.primaryAction.onClick}
         >
           {props.primaryAction.icon ?? null}
-          <span className="sr-only">{copy.open}</span>
+          <span className="sr-only">{t("onboarding:notification_open")}</span>
         </button>
         <Menu {...(props.onMenuOpenChange ? { onOpenChange: props.onMenuOpenChange } : {})}>
           <MenuTrigger
@@ -182,7 +195,7 @@ function OpenInPickerFrame(props: OpenInPickerFrameProps) {
               : "sr-only @sm/header-actions:not-sr-only @sm/header-actions:ml-0.5",
           )}
         >
-          {copy.open}
+          {t("onboarding:notification_open")}
         </span>
       </ChatHeaderButton>
       <ChatHeaderSplitDivider />
@@ -205,7 +218,7 @@ function OpenInPickerFrame(props: OpenInPickerFrameProps) {
 }
 
 function EditorActionOpenInPicker(props: OpenInPickerContentProps) {
-  const copy = useMessages().chat.openIn;
+  const { t } = useTranslation();
   const launchers = useEditorLaunchers(props);
   const PrimaryIcon = launchers.primaryOption?.Icon;
 
@@ -213,8 +226,8 @@ function EditorActionOpenInPicker(props: OpenInPickerContentProps) {
     <OpenInPickerFrame
       labelMode={props.labelMode ?? "responsive"}
       variant={props.variant ?? "split"}
-      groupLabel={props.groupLabel ?? copy.group}
-      menuLabel={props.menuLabel ?? copy.options}
+      groupLabel={props.groupLabel ?? t("chat:environment_openInEditorDefault")}
+      menuLabel={props.menuLabel ?? t("chat:editorOptions")}
       primaryAction={{
         disabled: !launchers.preferredEditor || !props.openInTarget,
         icon: PrimaryIcon ? <PrimaryIcon aria-hidden="true" className="size-3.5" /> : null,
@@ -237,15 +250,15 @@ type PrimaryActionOpenInPickerProps = OpenInPickerContentProps & {
 };
 
 function PrimaryActionOpenInPicker({ primaryAction, ...props }: PrimaryActionOpenInPickerProps) {
-  const copy = useMessages().chat.openIn;
+  const { t } = useTranslation();
   const [launcherMenuMounted, setLauncherMenuMounted] = useState(false);
 
   return (
     <OpenInPickerFrame
       labelMode={props.labelMode ?? "responsive"}
       variant={props.variant ?? "split"}
-      groupLabel={props.groupLabel ?? copy.group}
-      menuLabel={props.menuLabel ?? copy.options}
+      groupLabel={props.groupLabel ?? t("chat:environment_openInEditorDefault")}
+      menuLabel={props.menuLabel ?? t("chat:editorOptions")}
       primaryAction={primaryAction}
       onMenuOpenChange={(open) => {
         if (open) setLauncherMenuMounted(true);
@@ -278,22 +291,28 @@ function OpenInPickerMenuPopup({
   additionalMenuItems: ReactNode;
   menuEditorOrder: ReadonlyArray<EditorId> | undefined;
 }) {
-  const copy = useMessages().chat.openIn;
-  const { options, preferredEditor, openFavoriteShortcutLabel, setDefaultEditor, openInEditor } =
+  const { t } = useTranslation();
+  const { options, preferredEditor, openFavoriteShortcutLabel, setPreferredEditor, openInEditor } =
     launchers;
-  const displayedOptions = menuEditorOrder
-    ? [
-        ...menuEditorOrder.flatMap((editorId) => options.filter(({ value }) => value === editorId)),
-        ...options.filter(({ value }) => !menuEditorOrder.includes(value)),
-      ]
-    : options;
+  const displayedOptions = readExecutionContext()?.remote
+    ? []
+    : menuEditorOrder
+      ? [
+          ...menuEditorOrder.flatMap((editorId) =>
+            options.filter(({ value }) => value === editorId),
+          ),
+          ...options.filter(({ value }) => !menuEditorOrder.includes(value)),
+        ]
+      : options;
 
   return (
     <ComposerPickerMenuPopup align="end" side="bottom" className="w-44 min-w-44">
-      {displayedOptions.length === 0 && <MenuItem disabled>{copy.noEditors}</MenuItem>}
+      {displayedOptions.length === 0 && (
+        <MenuItem disabled>{t("chat:openInPicker_noEditorsFound")}</MenuItem>
+      )}
       <MenuRadioGroup
         value={preferredEditor ?? ""}
-        onValueChange={(value) => setDefaultEditor(value as EditorId)}
+        onValueChange={(value) => setPreferredEditor(value as EditorId)}
       >
         {displayedOptions.map(({ label, Icon, value }) => (
           <MenuRadioItem

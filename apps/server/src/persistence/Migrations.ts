@@ -1,3 +1,15 @@
+import Migration0142 from "./Migrations/142_AuthAccessOrigin.ts";
+import Migration0140 from "./Migrations/140_RemoteAccessControls.ts";
+import Migration0139 from "./Migrations/139_RemoteConnectionPreferences.ts";
+import Migration0138 from "./Migrations/138_RemoteDeviceTrust.ts";
+import {
+  classifyAccountMigrationLineage,
+  migrationTrackerFingerprint,
+  validateAccountMigrationSchema,
+  type MigrationIdentity,
+} from "./AccountMigrationLineage.ts";
+import Migration0136 from "./Migrations/136_AccountUsageSync.ts";
+import Migration0137 from "./Migrations/137_AccountUsageSyncIdentity.ts";
 /**
  * MigrationsLive - Migration runner with inline loader
  *
@@ -124,8 +136,8 @@ import AsyncUserInputMigration from "./Migrations/105_AsyncUserInput.ts";
 import ProjectImportOriginsMigration from "./Migrations/106_ProjectImportOrigins.ts";
 import Migration0107 from "./Migrations/107_ProjectionThreadsHumanMessage.ts";
 import Migration0108 from "./Migrations/108_GatewayCompletions.ts";
-import BrowserSharingMigration from "./Migrations/136_ProjectionProjectsBrowserSharing.ts";
-import AdvisorEnabledMigration from "./Migrations/137_ProjectionThreadsAdvisorEnabled.ts";
+import BrowserSharingMigration from "./Migrations/143_ProjectionProjectsBrowserSharing.ts";
+import AdvisorEnabledMigration from "./Migrations/144_ProjectionThreadsAdvisorEnabled.ts";
 import Migration0109 from "./Migrations/109_ProjectAgent.ts";
 import Migration0110 from "./Migrations/110_Groups.ts";
 import Migration0111 from "./Migrations/111_GroupLibraryHosting.ts";
@@ -153,6 +165,8 @@ import Migration0132 from "./Migrations/132_ExternalMcpTurnCapacityRecovery.ts";
 import Migration0133 from "./Migrations/133_ProjectionTurnsWorkspaceInitialization.ts";
 import Migration0134 from "./Migrations/134_ProjectionThreadsForkSourceMessage.ts";
 import Migration0135 from "./Migrations/135_ProjectionMessageTurnActivityIndex.ts";
+// Slots 136–140 are already released in the Remote lineage; new common migrations follow them.
+import Migration0141 from "./Migrations/141_ProjectionThreadsUsageLimitRecovery.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -304,8 +318,15 @@ export const migrationEntries = [
   [133, "ProjectionTurnsWorkspaceInitialization", Migration0133],
   [134, "ProjectionThreadsForkSourceMessage", Migration0134],
   [135, "ProjectionMessageTurnActivityIndex", Migration0135],
-  [136, "ProjectionProjectsBrowserSharing", BrowserSharingMigration],
-  [137, "ProjectionThreadsAdvisorEnabled", AdvisorEnabledMigration],
+  [136, "AccountUsageSync", Migration0136],
+  [137, "AccountUsageSyncIdentity", Migration0137],
+  [138, "RemoteDeviceTrust", Migration0138],
+  [139, "RemoteConnectionPreferences", Migration0139],
+  [140, "RemoteAccessControls", Migration0140],
+  [141, "ProjectionThreadsUsageLimitRecovery", Migration0141],
+  [142, "AuthAccessOrigin", Migration0142],
+  [143, "ProjectionProjectsBrowserSharing", BrowserSharingMigration],
+  [144, "ProjectionThreadsAdvisorEnabled", AdvisorEnabledMigration],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>
@@ -336,6 +357,30 @@ export const LATEST_MIGRATION_ID = Math.max(...migrationEntries.map(([id]) => id
 const canonicalMigrationNamesById: ReadonlyMap<number, string> = new Map(
   migrationEntries.map(([id, name]) => [id, name] as const),
 );
+
+export const planAccountMigrationRepair = (rows: readonly MigrationIdentity[]) =>
+  classifyAccountMigrationLineage(rows, canonicalMigrationNamesById);
+
+export const inspectAccountMigrationRepair = (rows: readonly MigrationIdentity[]) =>
+  Effect.gen(function* () {
+    const fail = (cause: unknown) =>
+      new MigrationLineageError({
+        firstDivergedId: rows.find((r) => r.name.startsWith("AccountUsageSync"))?.migration_id ?? 0,
+        expectedName: "recognized account lineage and schema",
+        recordedName: cause instanceof Error ? cause.message : String(cause),
+      });
+    const plan = yield* Effect.try({ try: () => planAccountMigrationRepair(rows), catch: fail });
+    if (!plan) return null;
+    const sql = yield* SqlClient.SqlClient;
+    const columns = yield* sql<Record<string, unknown>>`PRAGMA table_info(account_usage_sync)`;
+    if (columns.length === 0) return yield* Effect.fail(fail("Missing account_usage_sync table"));
+    const values = yield* sql<Record<string, unknown>>`SELECT * FROM account_usage_sync`;
+    yield* Effect.try({
+      try: () => validateAccountMigrationSchema(columns, values, plan.requiresIdentity),
+      catch: fail,
+    });
+    return plan;
+  });
 
 const IMPORTED_SCHEMA_RECONCILIATION_MIGRATION_ID = 32;
 
@@ -416,7 +461,7 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // migrations there). The canonical 88 migration must actually run.
     historicalId: 88,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 136,
+    currentId: 143,
     historicalSlotRequiresRerun: true,
   },
   {
@@ -424,7 +469,7 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // moved for the same reason as the ProjectionProjectsBrowserSharing alias.
     historicalId: 91,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 137,
+    currentId: 144,
     historicalSlotRequiresRerun: true,
   },
   {
@@ -432,13 +477,13 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // migrations now occupying those slots have never run on that database.
     historicalId: 97,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 136,
+    currentId: 143,
     historicalSlotRequiresRerun: true,
   },
   {
     historicalId: 98,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 137,
+    currentId: 144,
     historicalSlotRequiresRerun: true,
   },
   {
@@ -447,13 +492,13 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // migrations must still run; the relocated fork migrations are idempotent.
     historicalId: 100,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 136,
+    currentId: 143,
     historicalSlotRequiresRerun: true,
   },
   {
     historicalId: 101,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 137,
+    currentId: 144,
     historicalSlotRequiresRerun: true,
   },
   {
@@ -461,26 +506,40 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     // uses them for different migrations, so replay both newly occupied slots.
     historicalId: 104,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 136,
+    currentId: 143,
     historicalSlotRequiresRerun: true,
   },
   {
     historicalId: 105,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 137,
+    currentId: 144,
     historicalSlotRequiresRerun: true,
   },
   {
     // v0.9.2 dev used these slots before upstream released the Hub migrations.
     historicalId: 109,
     historicalName: "ProjectionProjectsBrowserSharing",
-    currentId: 136,
+    currentId: 143,
     historicalSlotRequiresRerun: true,
   },
   {
     historicalId: 110,
     historicalName: "ProjectionThreadsAdvisorEnabled",
-    currentId: 137,
+    currentId: 144,
+    historicalSlotRequiresRerun: true,
+  },
+  {
+    // v1.0.9 released the fork migrations at IDs now occupied by main's
+    // account and remote migrations; replay them at their new canonical IDs.
+    historicalId: 136,
+    historicalName: "ProjectionProjectsBrowserSharing",
+    currentId: 143,
+    historicalSlotRequiresRerun: true,
+  },
+  {
+    historicalId: 137,
+    historicalName: "ProjectionThreadsAdvisorEnabled",
+    currentId: 144,
     historicalSlotRequiresRerun: true,
   },
 ];
@@ -574,6 +633,31 @@ export const reconcileMigrationLineage = Effect.gen(function* () {
   let recorded = yield* sql<{ readonly migration_id: number; readonly name: string }>`
     SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id ASC
   `;
+  // Classify and validate before even a legacy rename can mutate this database.
+  // Startup holds the lifecycle lock and has persisted the recovery marker first.
+  const accountRepair = yield* inspectAccountMigrationRepair(recorded);
+  if (accountRepair) {
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const current =
+          yield* sql<MigrationIdentity>`SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id ASC`;
+        if (migrationTrackerFingerprint(current) !== accountRepair.fingerprint) {
+          return yield* Effect.fail(
+            new MigrationLineageError({
+              firstDivergedId: accountRepair.resumeAfter + 1,
+              expectedName: "unchanged tracker",
+              recordedName: "tracker changed during repair",
+            }),
+          );
+        }
+        for (const row of accountRepair.removeTrackerRows) {
+          yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id = ${row.migration_id} AND name = ${row.name}`;
+        }
+      }),
+    );
+    recorded =
+      yield* sql<MigrationIdentity>`SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id ASC`;
+  }
   const recordedNamesBeforeCanonicalization = new Map(
     recorded.map((row) => [row.migration_id, row.name]),
   );

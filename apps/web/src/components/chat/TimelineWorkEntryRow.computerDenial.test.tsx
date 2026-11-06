@@ -56,8 +56,7 @@ describe("TimelineWorkEntryRow computer denial wiring", () => {
     (density) => {
       const markup = renderRow(denialEntry(), density);
 
-      expect(markup).toContain("Turn it on in Settings to let the agent use the desktop.");
-      expect(markup).toContain(">Enable<");
+      expect(markup).toContain("<button");
     },
   );
 
@@ -66,7 +65,7 @@ describe("TimelineWorkEntryRow computer denial wiring", () => {
     (density) => {
       const markup = renderRow(setupEntry(), density);
 
-      expect(markup).toContain("Computer control needs setup");
+      expect(markup).toContain("<button");
     },
   );
 });

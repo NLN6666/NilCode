@@ -8,18 +8,16 @@ import {
   type ServerCodexResetCredits,
   type ServerGetProviderUsageSnapshotResult,
 } from "@synara/contracts";
-import { providerUsageNeedsAuthDetail } from "@synara/shared/providerUsage";
 import { type ReactNode } from "react";
 
 import { useAppSettings } from "~/appSettings";
-import { useMessages } from "~/i18n/context";
-import type { Messages } from "~/i18n/locales/en";
 import {
   type ProviderUsageSummaryData,
   useProviderUsageSummary,
 } from "~/hooks/useProviderUsageSummary";
 import {
   deriveProviderUsageDisplayRows,
+  localizedProviderUsageNeedsAuthDetail,
   selectPrimaryProviderUsageDisplayRow,
   type ProviderUsageDisplayRow,
 } from "~/lib/providerUsageDisplay";
@@ -34,6 +32,7 @@ import { ProviderIcon } from "./ProviderIcon";
 import { ProviderUsagePanelContent } from "./ProviderUsagePanelContent";
 import { Menu, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { t, useTranslation } from "~/i18n";
 
 export interface ProviderUsageMenuModel {
   menuTitle: string;
@@ -47,22 +46,26 @@ export interface ProviderUsageMenuModel {
   resetCredits?: ServerCodexResetCredits | undefined;
 }
 
-export function buildProviderUsageMenuModel(input: {
-  copy: Messages["chat"]["usageStatus"];
-  provider: ProviderKind;
-  providerSnapshot?: ServerGetProviderUsageSnapshotResult | undefined;
-  usageSummary: ProviderUsageSummaryData & { readonly isLoading: boolean };
-}): ProviderUsageMenuModel {
-  const rows = deriveProviderUsageDisplayRows(input.usageSummary.rateLimits);
+export function buildProviderUsageMenuModel(
+  input: {
+    provider: ProviderKind;
+    providerSnapshot?: ServerGetProviderUsageSnapshotResult | undefined;
+    usageSummary: ProviderUsageSummaryData & { readonly isLoading: boolean };
+  },
+  translate: typeof t = t,
+): ProviderUsageMenuModel {
+  const rows = deriveProviderUsageDisplayRows(input.usageSummary.rateLimits, translate);
 
   return {
-    menuTitle: input.copy.menuTitle(PROVIDER_DISPLAY_NAMES[input.provider]),
+    menuTitle: translate("common:providerUsageTitle", {
+      provider: PROVIDER_DISPLAY_NAMES[input.provider],
+    }),
     primaryRow: selectPrimaryProviderUsageDisplayRow(rows),
     rows,
     rateLimits: input.usageSummary.rateLimits,
     usageLines: input.usageSummary.usageLines,
     notice: input.usageSummary.usageNotice,
-    emptyMessage: providerUsageEmptyMessage(input.provider, input.providerSnapshot, input.copy),
+    emptyMessage: providerUsageEmptyMessage(input.provider, input.providerSnapshot, translate),
     isLoading: input.usageSummary.isLoading,
     resetCredits: input.usageSummary.resetCredits,
   };
@@ -75,15 +78,17 @@ const selectAccountRateLimitThreads = createAccountRateLimitThreadsSelector();
 function providerUsageEmptyMessage(
   provider: ProviderKind,
   snapshot: ServerGetProviderUsageSnapshotResult | undefined,
-  copy: Messages["chat"]["usageStatus"],
+  translate: typeof t = t,
 ): string | undefined {
   switch (snapshot?.status) {
     case "needs-auth":
-      return snapshot.detail ?? providerUsageNeedsAuthDetail(provider);
+      return snapshot.detail ?? localizedProviderUsageNeedsAuthDetail(provider, translate);
     case "unsupported":
-      return snapshot.detail ?? copy.unsupportedDetail;
+      return (
+        snapshot.detail ?? translate("common:liveUsageIsNotAvailableForThisProviderConfiguration")
+      );
     case "error":
-      return snapshot.detail ?? copy.unavailableDetail;
+      return snapshot.detail ?? translate("common:usageIsCurrentlyUnavailable");
     default:
       return undefined;
   }
@@ -96,7 +101,7 @@ export function useProviderUsageMenuModel(
     providerSnapshot?: ServerGetProviderUsageSnapshotResult | undefined;
   } = {},
 ): ProviderUsageMenuModel {
-  const copy = useMessages().chat.usageStatus;
+  const { t } = useTranslation();
   const { settings } = useAppSettings();
   const threads = useStore(selectAccountRateLimitThreads);
   const usageSummary = useProviderUsageSummary({
@@ -108,12 +113,14 @@ export function useProviderUsageMenuModel(
     fetchOpenUsageData: false,
   });
 
-  return buildProviderUsageMenuModel({
-    copy,
-    provider,
-    providerSnapshot: input.providerSnapshot,
-    usageSummary,
-  });
+  return buildProviderUsageMenuModel(
+    {
+      provider,
+      providerSnapshot: input.providerSnapshot,
+      usageSummary,
+    },
+    t,
+  );
 }
 
 export function ProviderUsageMenuPopup({

@@ -9,7 +9,7 @@ import { displayLabelFor } from "~/pinnedMessages";
 
 import { EnvironmentEditableChecklistRow } from "./EnvironmentEditableChecklistRow";
 import { EnvironmentCollapsibleSection } from "./EnvironmentRow";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 interface EnvironmentPinnedSectionProps {
   pins: readonly PinnedMessage[];
@@ -29,12 +29,13 @@ export function EnvironmentPinnedSection({
   onUnpin,
   onRename,
 }: EnvironmentPinnedSectionProps) {
-  const copy = useMessages().chat.environment;
+  const { t } = useTranslation();
+
   if (pins.length === 0) {
     return null;
   }
   return (
-    <EnvironmentCollapsibleSection label={copy.pinned}>
+    <EnvironmentCollapsibleSection label={t("common:app_pinned")}>
       <ul className="flex flex-col">
         {pins.map((pin) => (
           <PinnedMessageRow
@@ -67,9 +68,12 @@ const PinnedMessageRow = function PinnedMessageRow({
   onUnpin: (messageId: MessageId) => void;
   onRename: (messageId: MessageId, label: string | null) => void;
 }) {
+  const { t } = useTranslation();
+
   const available = text !== undefined;
   const resolvedLabel = displayLabelFor(pin, text);
-  const displayLabel = resolvedLabel.length > 0 ? resolvedLabel : "(message unavailable)";
+  const displayLabel =
+    resolvedLabel.length > 0 ? resolvedLabel : t("chat:pinned_messageUnavailable");
 
   return (
     <EnvironmentEditableChecklistRow

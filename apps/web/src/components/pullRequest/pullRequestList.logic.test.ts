@@ -113,7 +113,7 @@ describe("groupPullRequestEntriesByInvolvement", () => {
       viewerReviewRequested: true,
     });
     const groups = groupPullRequestEntriesByInvolvement([entry], "viewer");
-    expect(groups).toEqual([{ key: "authored", label: "Authored by me", entries: [entry] }]);
+    expect(groups).toEqual([{ key: "authored", entries: [entry] }]);
   });
 
   it("buckets entries with an active review request into Review requested", () => {
@@ -122,9 +122,7 @@ describe("groupPullRequestEntriesByInvolvement", () => {
       viewerReviewRequested: true,
     });
     const groups = groupPullRequestEntriesByInvolvement([entry], "viewer");
-    expect(groups).toEqual([
-      { key: "reviewRequested", label: "Needs my review", entries: [entry] },
-    ]);
+    expect(groups).toEqual([{ key: "reviewRequested", entries: [entry] }]);
   });
 
   it("buckets every other entry into Others without inventing review history", () => {
@@ -133,7 +131,7 @@ describe("groupPullRequestEntriesByInvolvement", () => {
       viewerReviewRequested: false,
     });
     const groups = groupPullRequestEntriesByInvolvement([entry], "viewer");
-    expect(groups).toEqual([{ key: "others", label: "Everything else", entries: [entry] }]);
+    expect(groups).toEqual([{ key: "others", entries: [entry] }]);
   });
 
   it("matches viewer logins case-insensitively", () => {
@@ -184,13 +182,11 @@ describe("groupPullRequestEntriesByInvolvement", () => {
       [mentionedIssue, authoredIssue, assignedIssue, reviewing, pinnedIssue],
       "viewer",
     );
-    expect(
-      groups.map((group) => [group.label, group.entries.map((entry) => entry.number)]),
-    ).toEqual([
-      ["Pinned", [10]],
-      ["Authored by me", [13, 12]],
-      ["Needs my review", [11]],
-      ["Involving me", [14]],
+    expect(groups.map((group) => [group.key, group.entries.map((entry) => entry.number)])).toEqual([
+      ["pinned", [10]],
+      ["authored", [13, 12]],
+      ["reviewRequested", [11]],
+      ["involved", [14]],
     ]);
   });
 

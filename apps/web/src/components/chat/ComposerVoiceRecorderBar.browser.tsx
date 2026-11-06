@@ -9,10 +9,11 @@ import { page } from "vitest/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
 
-import { en } from "~/i18n/locales/en";
+import { t } from "~/i18n";
 import { ComposerVoiceRecorderBar } from "./ComposerVoiceRecorderBar";
 
-const voice = en.composer.voice;
+const stopLabel = t("chat:stopVoiceRecording");
+const cancelLabel = t("chat:cancelVoiceRecording");
 
 describe("ComposerVoiceRecorderBar", () => {
   afterEach(() => {
@@ -89,20 +90,20 @@ describe("ComposerVoiceRecorderBar", () => {
     );
 
     const stopButton = document.querySelector<HTMLButtonElement>(
-      `button[aria-label="${voice.send}"]`,
+      `button[aria-label="${stopLabel}"]`,
     );
     expect(stopButton).not.toBeNull();
     expect(stopButton?.className).toContain("bg-[var(--color-text-foreground)]");
     expect(stopButton?.className).toContain("text-[var(--color-background-surface)]");
     // The primary action submits the recording, so it is the only send affordance: the
     // cancel button must not pick up the same treatment or label.
-    expect(document.querySelectorAll(`button[aria-label="${voice.send}"]`)).toHaveLength(1);
+    expect(document.querySelectorAll(`button[aria-label="${stopLabel}"]`)).toHaveLength(1);
 
-    await page.getByRole("button", { name: voice.send }).click();
+    await page.getByRole("button", { name: stopLabel }).click();
     expect(onStop).toHaveBeenCalledTimes(1);
     expect(onDiscard).not.toHaveBeenCalled();
 
-    await page.getByRole("button", { name: voice.cancel }).click();
+    await page.getByRole("button", { name: cancelLabel }).click();
     expect(onDiscard).toHaveBeenCalledTimes(1);
     expect(onStop).toHaveBeenCalledTimes(1);
 

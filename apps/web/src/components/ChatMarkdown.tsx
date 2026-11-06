@@ -127,6 +127,7 @@ import {
   FindAwareMarkdownText,
   FindAwareShikiHtml,
 } from "./ChatMarkdownFind";
+import { useTranslation } from "~/i18n";
 
 const EXTERNAL_HTTP_HREF_PATTERN = /^https?:\/\//i;
 // Trailing `:line` / `:line:col` position suffix on a resolved file link. Kept on
@@ -1238,6 +1239,8 @@ function MarkdownCodeBlock({
   children: ReactNode;
   direction?: "ltr" | undefined;
 }) {
+  const { t } = useTranslation();
+
   const [copied, setCopied] = useState(false);
   const [wrap, setWrap] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1275,8 +1278,8 @@ function MarkdownCodeBlock({
           <IconButton
             className="chat-markdown-codeblock__action"
             onClick={toggleWrap}
-            title={wrap ? "Disable soft wrap" : "Enable soft wrap"}
-            label={wrap ? "Disable soft wrap" : "Enable soft wrap"}
+            title={wrap ? t("chat:disableSoftWrap") : t("chat:enableSoftWrap")}
+            label={wrap ? t("chat:disableSoftWrap") : t("chat:enableSoftWrap")}
             aria-pressed={wrap}
             data-active={wrap ? "true" : "false"}
             size="icon-xs"
@@ -1287,8 +1290,8 @@ function MarkdownCodeBlock({
           <IconButton
             className="chat-markdown-codeblock__action"
             onClick={handleCopy}
-            title={copied ? "Copied" : "Copy code"}
-            label={copied ? "Copied" : "Copy code"}
+            title={copied ? t("chat:theme_copied") : t("chat:copyCode")}
+            label={copied ? t("chat:theme_copied") : t("chat:copyCode")}
             size="icon-xs"
             variant="ghost"
           >
@@ -1457,12 +1460,12 @@ const MarkdownRenderContext = createContext<MarkdownRenderContextValue | null>(n
 const MarkdownSourceTextContext = createContext("");
 
 // Stable component types preserve code highlighting timers, copy state and image state.
-const GITHUB_ALERTS: Record<GithubAlertKind, { title: string; icon: LucideIcon }> = {
-  note: { title: "Note", icon: InfoIcon },
-  tip: { title: "Tip", icon: LightbulbIcon },
-  important: { title: "Important", icon: InfoIcon },
-  warning: { title: "Warning", icon: TriangleAlertIcon },
-  caution: { title: "Caution", icon: OctagonAlertIcon },
+const GITHUB_ALERTS: Record<GithubAlertKind, { titleKey: string; icon: LucideIcon }> = {
+  note: { titleKey: "chat:note", icon: InfoIcon },
+  tip: { titleKey: "chat:tip", icon: LightbulbIcon },
+  important: { titleKey: "chat:important", icon: InfoIcon },
+  warning: { titleKey: "chat:warning", icon: TriangleAlertIcon },
+  caution: { titleKey: "chat:caution", icon: OctagonAlertIcon },
 };
 
 function TechnicalBidiIsolate(props: { active: boolean; children: ReactNode }) {
@@ -1478,6 +1481,7 @@ function TechnicalBidiIsolate(props: { active: boolean; children: ReactNode }) {
 
 const MARKDOWN_COMPONENTS: Components = {
   blockquote: function MarkdownBlockquote({ node: _node, children, ...props }) {
+    const { t } = useTranslation();
     const kind = (props as { "data-github-alert"?: GithubAlertKind })["data-github-alert"];
     const alert = kind ? GITHUB_ALERTS[kind] : undefined;
     if (!alert) return <blockquote {...props}>{children}</blockquote>;
@@ -1486,7 +1490,7 @@ const MARKDOWN_COMPONENTS: Components = {
       <blockquote {...props}>
         <p className="markdown-alert-title">
           <Icon aria-hidden className="size-[1.1em] shrink-0" />
-          {alert.title}
+          {t(alert.titleKey)}
         </p>
         {children}
       </blockquote>

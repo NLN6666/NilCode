@@ -5,7 +5,9 @@ import {
   buildComposerAutomationDraft,
   resolveComposerAutomationRequest,
 } from "../../lib/composerAutomation";
+import type { AutomationTranslator } from "../../lib/automationFailurePolicy";
 import { projectModelSelection as automationProjectModelSelection } from "../../routes/-automations.shared";
+import { getFormatLocale } from "~/i18n";
 import type { Project } from "../../types";
 import { type Thread } from "../../types";
 import { useChatAutomationCreation } from "./useChatAutomationCreation";
@@ -41,6 +43,7 @@ interface ChatAutomationSendInput {
   >["setPendingAutomationConversation"];
   automationProjects: ReturnType<typeof useChatAutomationSetup>["automationProjects"];
   selectedModelSelectionForSend: ModelSelection;
+  translate: AutomationTranslator;
   setAutomationDraftWarningContext: ReturnType<
     typeof useChatAutomationSetup
   >["setAutomationDraftWarningContext"];
@@ -81,6 +84,7 @@ export async function handleChatAutomationSend({
   setPendingAutomationConversation,
   automationProjects,
   selectedModelSelectionForSend,
+  translate,
   setAutomationDraftWarningContext,
   setAutomationDraftForm,
   setAutomationDraftWarnings,
@@ -123,17 +127,16 @@ export async function handleChatAutomationSend({
       if (!hasPromptOnlySendableContent || hasLiveTurn) {
         toastManager.add({
           type: "warning",
-          title: "Automation needs a bit more detail",
+          title: translate("chat:automationSend_needsMoreDetail"),
           description:
-            automationRequest.reason ??
-            'Add what it should do and how often, e.g. "every weekday at 9am, summarize my PRs".',
+            automationRequest.reason ?? translate("chat:automationSend_addWhatAndHowOften"),
         });
         return true;
       }
       // Render the exchange in-thread: echo the user's words as a bubble and ask for
       // what's missing as an assistant bubble. Nothing reaches a provider; the cleaned
       // automationMessage accumulates for the next re-resolve and for Cancel's restore.
-      const question = automationClarificationPrompt(automationRequest.missingFields);
+      const question = automationClarificationPrompt(automationRequest.missingFields, translate);
       const priorBubbles = conversation?.bubbles ?? [];
       // Drop the submitted request from the composer (it is captured in
       // accumulatedMessage, so re-folding it would duplicate the scaffold) while
@@ -171,6 +174,8 @@ export async function handleChatAutomationSend({
       selectedModelSelection: selectedModelSelectionForSend,
       targetThreadId: automationTargetThreadId,
       hasEphemeralContext: !hasPromptOnlySendableContent,
+      formatLocale: getFormatLocale(),
+      translate,
     });
     // A multi-turn setup always confirms before creating, so the user reviews the
     // parsed task/schedule (and any scaffolding the parser kept) rather than it

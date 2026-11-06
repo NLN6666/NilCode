@@ -5,6 +5,7 @@
 //          useSettingsRestoreSignal
 
 import { type ReactNode, useEffect, useEffectEvent, useRef } from "react";
+import { useTranslation } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { Select, SelectTrigger, SelectValue } from "~/components/ui/select";
@@ -12,7 +13,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useRadioGroupKeyboardNav } from "~/hooks/useRadioGroupKeyboardNav";
 import { ResetIcon } from "~/lib/icons";
 import { SETTINGS_CONTROL_RADIUS_CLASS_NAME } from "~/settingsPanelStyles";
-import { useMessages } from "~/i18n/context";
 import { SettingsSelectPopup } from "./SettingsPanelPrimitives";
 
 export function useSettingsRestoreSignal(epoch: number, onRestore: () => void): void {
@@ -27,7 +27,7 @@ export function useSettingsRestoreSignal(epoch: number, onRestore: () => void): 
 }
 
 export function SettingResetButton({ label, onClick }: { label: string; onClick: () => void }) {
-  const m = useMessages();
+  const { t } = useTranslation();
   return (
     <Tooltip>
       <TooltipTrigger
@@ -35,7 +35,7 @@ export function SettingResetButton({ label, onClick }: { label: string; onClick:
           <Button
             size="icon-xs"
             variant="ghost"
-            aria-label={m.settings.controls.resetAriaLabel(label)}
+            aria-label={t("settings:resetToDefault", { setting: label })}
             className="size-5 rounded-lg p-0 text-muted-foreground hover:text-foreground"
             onClick={(event) => {
               event.stopPropagation();
@@ -46,7 +46,7 @@ export function SettingResetButton({ label, onClick }: { label: string; onClick:
           </Button>
         }
       />
-      <TooltipPopup side="top">{m.settings.controls.resetTooltip}</TooltipPopup>
+      <TooltipPopup side="top">{t("common:theme_resetToDefault")}</TooltipPopup>
     </Tooltip>
   );
 }
@@ -107,6 +107,7 @@ export function SettingsSegmentedControl<T extends string>({
   options: readonly SettingsSegmentedOption<T>[];
   ariaLabel: string;
 }) {
+  const { t } = useTranslation();
   const radioItemProps = useRadioGroupKeyboardNav({
     values: options.map((option) => option.value),
     value,
@@ -135,7 +136,7 @@ export function SettingsSegmentedControl<T extends string>({
             onClick={() => onValueChange(option.value)}
             {...radioItemProps(option.value)}
           >
-            {option.label}
+            {t(option.label)}
           </Button>
         );
       })}

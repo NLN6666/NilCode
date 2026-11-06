@@ -40,7 +40,7 @@ import { EXPLORER_ROW_PROPS, useExplorerListNavigation } from "./explorerListNav
 import { FileEntryIcon } from "./FileEntryIcon";
 import { fileRowClassName, fileRowIndentStyle } from "./fileRowStyles";
 import { PanelStateMessage } from "./PanelStateMessage";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 const EXPLORER_HIDDEN_DIRECTORY_NAMES = new Set([
   ".cache",
@@ -196,13 +196,14 @@ const ExplorerRow = forwardRef<
 const EXPLORER_SKELETON_ROW_WIDTHS = ["w-9/12", "w-6/12", "w-7/12"];
 
 function ExplorerLoadingRows(props: { depth: number }) {
-  const copy = useMessages().chat.explorer;
+  const { t } = useTranslation();
+
   return (
     <div
       className="space-y-1.5 py-1.5 pr-2"
       style={fileRowIndentStyle(props.depth)}
       role="status"
-      aria-label={copy.loadingDirectory}
+      aria-label={t("workspace:workspaceExplorer_loadingDirectory")}
     >
       {EXPLORER_SKELETON_ROW_WIDTHS.map((width) => (
         <div key={width} className="flex h-5 items-center gap-1.5">
@@ -225,6 +226,8 @@ function WorkspaceDirectory(props: {
   onPrefetchEntry: (entry: ProjectFileSystemEntry) => void;
   onEntryContextMenu: (entry: ProjectFileSystemEntry, position: { x: number; y: number }) => void;
 }) {
+  const { t } = useTranslation();
+
   const query = useQuery(
     projectListDirectoriesQueryOptions({
       cwd: props.cwd,
@@ -240,7 +243,9 @@ function WorkspaceDirectory(props: {
   if (query.error) {
     return (
       <p className="px-3 py-2 text-ui-sm text-destructive/80">
-        {query.error instanceof Error ? query.error.message : "Could not load directory."}
+        {query.error instanceof Error
+          ? query.error.message
+          : t("workspace:workspaceExplorer_couldNotLoadDirectory")}
       </p>
     );
   }
@@ -334,7 +339,8 @@ function WorkspaceFilesTreeBody(props: {
   onPrefetchEntry: (entry: ProjectFileSystemEntry) => void;
   onEntryContextMenu: (entry: ProjectFileSystemEntry, position: { x: number; y: number }) => void;
 }) {
-  const copy = useMessages().chat.explorer;
+  const { t } = useTranslation();
+
   return (
     <div className="min-h-0 flex-1 overflow-auto px-1 py-1">
       {props.workspaceRoot ? (
@@ -351,7 +357,7 @@ function WorkspaceFilesTreeBody(props: {
         />
       ) : (
         <PanelStateMessage density="compact" fill="flex">
-          <p>{copy.noWorkspace}</p>
+          <p>{t("workspace:workspaceExplorer_noWorkspace")}</p>
         </PanelStateMessage>
       )}
     </div>
@@ -488,7 +494,8 @@ function WorkspaceSearchInputHeader(props: {
   onQueryChange: (query: string) => void;
   onSelectFile: (path: string) => void;
 }) {
-  const copy = useMessages().chat.explorer;
+  const { t } = useTranslation();
+
   const { onQueryChange, onSelectFile, query, search } = props;
   const handleInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -516,8 +523,8 @@ function WorkspaceSearchInputHeader(props: {
         spellCheck={false}
         autoCorrect="off"
         autoCapitalize="off"
-        placeholder={copy.searchPlaceholder}
-        aria-label={copy.searchLabel}
+        placeholder={t("workspace:workspaceExplorer_searchFiles")}
+        aria-label={t("workspace:editor_searchFiles")}
         onChange={(event) => onQueryChange(event.target.value)}
         onKeyDown={handleInputKeyDown}
       />
@@ -535,7 +542,8 @@ function WorkspaceSearchResultsBody(props: {
   onPrefetchEntry: (entry: Pick<ProjectFileSystemEntry, "path" | "kind">) => void;
   onEntryContextMenu: (path: string, position: { x: number; y: number }) => void;
 }) {
-  const copy = useMessages().chat.explorer;
+  const { t } = useTranslation();
+
   const { fileMatches } = props.search;
   return (
     <>
@@ -547,14 +555,14 @@ function WorkspaceSearchResultsBody(props: {
       >
         {!props.workspaceRoot ? (
           <PanelStateMessage density="compact" fill="flex">
-            <p>{copy.noWorkspace}</p>
+            <p>{t("workspace:workspaceExplorer_noWorkspace")}</p>
           </PanelStateMessage>
         ) : props.search.searchResultsCurrent && props.search.error ? (
           <PanelStateMessage density="compact" fill="flex">
             <p className="text-destructive/85">
               {props.search.error instanceof Error
                 ? props.search.error.message
-                : "Could not search files."}
+                : t("workspace:workspaceExplorer_couldNotSearchFiles")}
             </p>
           </PanelStateMessage>
         ) : fileMatches.length === 0 ? (
@@ -562,7 +570,7 @@ function WorkspaceSearchResultsBody(props: {
             <ExplorerLoadingRows depth={0} />
           ) : (
             <PanelStateMessage density="compact" fill="flex">
-              <p>{copy.noMatches}</p>
+              <p>{t("common:workspaceExplorer_noMatchingFiles")}</p>
             </PanelStateMessage>
           )
         ) : (
@@ -579,8 +587,8 @@ function WorkspaceSearchResultsBody(props: {
         )}
       </div>
       {fileMatches.length > 0 && props.search.truncated ? (
-        <p className="shrink-0 border-t border-border/45 px-3 py-1.5 text-[10px] text-muted-foreground/70">
-          {copy.topMatches}
+        <p className="shrink-0 border-t border-border/45 px-3 py-1.5 text-ui-xs text-muted-foreground/70">
+          {t("workspace:workspaceExplorer_showingTopMatches")}
         </p>
       ) : null}
     </>
@@ -596,7 +604,8 @@ export function WorkspaceSearchSidebar(props: {
   onSelectFile: (path: string) => void;
   onReferenceInChat: ((reference: ChatFileReference) => void) | undefined;
 }) {
-  const copy = useMessages().chat.explorer;
+  const { t } = useTranslation();
+
   const prefetchEntry = useExplorerEntryPrefetch(props.workspaceRoot);
   const handleEntryContextMenu = useResultEntryContextMenu(props.onReferenceInChat);
   const handleListKeyDown = useExplorerListNavigation();
@@ -617,7 +626,7 @@ export function WorkspaceSearchSidebar(props: {
       {search.inputQuery.length === 0 ? (
         <div className="flex min-h-0 flex-1 flex-col px-1 py-1">
           <PanelStateMessage density="compact" fill="flex">
-            <p>{copy.searchHint}</p>
+            <p>{t("workspace:workspaceExplorer_searchFilesByPath")}</p>
           </PanelStateMessage>
         </div>
       ) : (

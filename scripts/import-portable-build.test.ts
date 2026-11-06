@@ -33,9 +33,13 @@ it("imports a verified portable archive from a path containing a drive colon", (
       "desktopHangWatchdogProcess",
       "cuaDriverHostStandalone",
     ].map((name) => `apps/desktop/dist-electron/${name}.js`),
-    ...["index", "restoreMigrationBackup", "runtimeDependencySmoke"].map(
-      (name) => `apps/server/dist/${name}.mjs`,
-    ),
+    ...[
+      "index",
+      "restoreMigrationBackup",
+      "compactDatabase",
+      "runtimeDependencySmoke",
+      "languageWorker",
+    ].map((name) => `apps/server/dist/${name}.mjs`),
     "apps/server/dist/client/index.html",
     "apps/server/dist/device-helper/build.sh",
   ]) {
@@ -62,4 +66,13 @@ it("imports a verified portable archive from a path containing a drive colon", (
   expect(readFileSync(join(destination, "apps/server/dist/index.mjs"), "utf8")).toBe(
     "apps/server/dist/index.mjs",
   );
+  expect(readFileSync(join(destination, "apps/server/dist/languageWorker.mjs"), "utf8")).toBe(
+    "apps/server/dist/languageWorker.mjs",
+  );
+  expect(
+    readFileSync(
+      join(destination, "apps/desktop/dist-electron/desktopHangWatchdogProcess.js"),
+      "utf8",
+    ),
+  ).toBe("apps/desktop/dist-electron/desktopHangWatchdogProcess.js");
 });

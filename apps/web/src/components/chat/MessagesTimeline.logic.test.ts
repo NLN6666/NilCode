@@ -7,6 +7,7 @@ import {
   type OrchestrationThreadActivity,
 } from "@synara/contracts";
 import { describe, expect, it } from "vitest";
+import { setLanguagePreference } from "~/i18n";
 import {
   buildTurnDiffSummaryByAssistantMessageId,
   canSubmitUserMessageEdit,
@@ -22,6 +23,7 @@ import {
   deriveTurnTimingByTurnId,
   findLastLiveWorkGroupId,
   formatTurnHeaderLabel,
+  formatTurnResumedBy,
   isPinnedBackgroundTaskEntry,
   normalizeCompactToolLabel,
   summarizeTurnFailureReason,
@@ -49,6 +51,101 @@ describe("canSubmitUserMessageEdit", () => {
     expect(canSubmitUserMessageEdit({ draft: "", allowEmpty: false, disabled: false })).toBe(false);
     expect(canSubmitUserMessageEdit({ draft: "", allowEmpty: true, disabled: true })).toBe(false);
   });
+});
+
+describe("turn header copy", () => {
+  it.each([
+    [
+      "en",
+      [
+        "Worked for 20s",
+        "Details",
+        "Stopped by you after 20s",
+        "Stopped by you",
+        "Interrupted after 20s · chat:taskInterrupted",
+        "Interrupted",
+        "Resumed: “settings:accessibility” finished · 20s",
+        "Resumed: “settings:accessibility” finished",
+        "“settings:accessibility” finished",
+        "“settings:accessibility” failed",
+        "“settings:accessibility” stopped",
+        "“settings:accessibility” updated",
+        "2 background tasks finished",
+        "2 background tasks failed",
+        "2 background tasks stopped",
+        "2 background tasks updated",
+        "“Background task” finished",
+        "2 background tasks ended",
+      ],
+    ],
+    [
+      "zh-CN",
+      [
+        "已工作 20s",
+        "详情",
+        "你在 20s 后停止了任务",
+        "你已停止任务",
+        "20s 后中断 · chat:taskInterrupted",
+        "已中断",
+        "已恢复：“settings:accessibility”已完成 · 20s",
+        "已恢复：“settings:accessibility”已完成",
+        "“settings:accessibility”已完成",
+        "“settings:accessibility”失败",
+        "“settings:accessibility”已停止",
+        "“settings:accessibility”已更新",
+        "2 个后台任务已完成",
+        "2 个后台任务失败",
+        "2 个后台任务已停止",
+        "2 个后台任务已更新",
+        "“后台任务”已完成",
+        "2 个后台任务已结束",
+      ],
+    ],
+  ] as const)(
+    "localizes labels while preserving timing and provider text (%s)",
+    (language, expected) => {
+      setLanguagePreference(language);
+      try {
+        // Catalog-shaped provider text is data, even when it names a real UI message.
+        const resumedBy = [{ description: "settings:accessibility", outcome: "finished" }] as const;
+        const header = {
+          elapsed: "20s",
+          outcome: "completed",
+          reason: null,
+          resumedBy: null,
+        } as const;
+        const outcomes = ["finished", "failed", "stopped", "updated"] as const;
+        expect([
+          formatTurnHeaderLabel(header),
+          formatTurnHeaderLabel({ ...header, elapsed: null }),
+          formatTurnHeaderLabel({ ...header, outcome: "stopped" }),
+          formatTurnHeaderLabel({ ...header, outcome: "stopped", elapsed: null }),
+          formatTurnHeaderLabel({
+            ...header,
+            outcome: "interrupted",
+            reason: "chat:taskInterrupted",
+          }),
+          formatTurnHeaderLabel({ ...header, outcome: "interrupted", elapsed: null }),
+          formatTurnHeaderLabel({ ...header, resumedBy }),
+          formatTurnHeaderLabel({ ...header, resumedBy, elapsed: null }),
+          ...outcomes.map((outcome) => formatTurnResumedBy([{ ...resumedBy[0], outcome }])),
+          ...outcomes.map((outcome) =>
+            formatTurnResumedBy([
+              { ...resumedBy[0], outcome },
+              { ...resumedBy[0], outcome },
+            ]),
+          ),
+          formatTurnResumedBy([{ description: null, outcome: "finished" }]),
+          formatTurnResumedBy([
+            { ...resumedBy[0], outcome: "finished" },
+            { ...resumedBy[0], outcome: "failed" },
+          ]),
+        ]).toEqual(expected);
+      } finally {
+        setLanguagePreference("en");
+      }
+    },
+  );
 });
 
 function makeSummary(
@@ -3012,6 +3109,46 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(rows.map((row) => row.kind)).toEqual(["message", "working"]);
   });
+  it.each([true, false])(
+    "puts MCP proposals in the answer recap with collapseFinishedTurns=%s",
+    (collapseFinishedTurns) => {
+      const createdAt = "2026-01-01T00:00:02Z";
+      const proposal: TimelineEntry = {
+        id: "entry-mcp",
+        kind: "work",
+        createdAt,
+        entry: {
+          id: "mcp",
+          createdAt,
+          label: "Connect Paper",
+          tone: "info",
+          connectorProposalId: "paper",
+        },
+      };
+      const rows = deriveMessagesTimelineRows({
+        ...baseInput,
+        collapseFinishedTurns,
+        timelineEntries: [
+          userEntry("u1", "2026-01-01T00:00:00Z"),
+          workEntry("w1", "2026-01-01T00:00:01Z", "List connectors"),
+          proposal,
+          workEntry("w2", "2026-01-01T00:00:03Z", "Read connector docs"),
+          assistantEntry("a1", "2026-01-01T00:00:04Z", {
+            turnId: "t1",
+            text: "Review the connection to continue.",
+            completedAt: "2026-01-01T00:00:05Z",
+          }),
+        ],
+      });
+
+      const answer = messageRow(rows, "a1")!;
+      expect(answer.connectorProposalIds).toEqual(["paper"]);
+      expect(rows.some((row) => row.id === proposal.id)).toBe(false);
+      expect(collapsedSignature(answer)).toEqual(
+        collapseFinishedTurns ? ["work:w1", "work:w2"] : [],
+      );
+    },
+  );
 
   it("keeps a published visual visible while the rest of its turn collapses", () => {
     const visualPayload = {

@@ -15,6 +15,7 @@ import {
 } from "~/lib/composerMentions";
 import { resolveProviderSendAvailabilityWithRefresh } from "~/lib/providerAvailability";
 import { newMessageId, randomUUID } from "~/lib/utils";
+import { useTranslation } from "~/i18n";
 import { readNativeApi } from "~/nativeApi";
 import { resolveFollowUpDispatchMode } from "../../appSettings";
 import { useComposerDraftStore, type QueuedComposerChatTurn } from "../../composerDraftStore";
@@ -213,6 +214,7 @@ export function useChatTurnSubmission({
   runProjectScript,
   persistThreadSettingsForNextTurn,
 }: ChatTurnSubmissionInput) {
+  const { t } = useTranslation();
   const anchorSentMessagesToTopRef = useRef(settings.anchorSentMessagesToTop);
   useLayoutEffect(() => {
     anchorSentMessagesToTopRef.current = settings.anchorSentMessagesToTop;
@@ -332,8 +334,9 @@ export function useChatTurnSubmission({
       }
       if (!queuedTurn) {
         sendPreflightInFlightRef.current = true;
-        await waitForPendingComposerImages();
+        const imagesReady = await waitForPendingComposerImages();
         sendPreflightInFlightRef.current = false;
+        if (!imagesReady) return false;
       }
       if (
         !activePendingProgress &&
@@ -611,6 +614,7 @@ export function useChatTurnSubmission({
           setPendingAutomationConversation,
           automationProjects,
           selectedModelSelectionForSend,
+          translate: t,
           setAutomationDraftWarningContext,
           setAutomationDraftForm,
           setAutomationDraftWarnings,
@@ -1143,6 +1147,7 @@ export function useChatTurnSubmission({
       setOptimisticUserMessages,
       executePreparedTurn,
       canSendWithProviderHandoff,
+      t,
     ],
   );
   return { onSend };

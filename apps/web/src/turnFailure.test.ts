@@ -129,7 +129,10 @@ describe("durable turn failure feedback", () => {
       payload: { message: cause, data: { willRetry: true } },
     });
     const entries = deriveWorkLogEntries([warning], turnId);
-    expect(entries[0]?.label).toBe("Provider retrying");
+    expect(entries[0]).toMatchObject({
+      tone: "info",
+      detail: cause,
+    });
     expect(entries.some((entry) => entry.turnFailure)).toBe(false);
     const success = {
       ...completed,
@@ -163,8 +166,12 @@ describe("durable turn failure feedback", () => {
       ...failure,
       payload: { message: "Temporarily unavailable", errorCode: "server_overloaded" },
     };
-    expect(deriveWorkLogEntries([changed], turnId)[0]?.turnFailure?.message).toContain(
-      "model is at capacity",
+    expect(deriveWorkLogEntries([changed], turnId)[0]?.turnFailure).toMatchObject({
+      cause: "Temporarily unavailable",
+      errorCode: "server_overloaded",
+    });
+    expect(deriveWorkLogEntries([changed], turnId)[0]?.turnFailure?.message).not.toBe(
+      "Temporarily unavailable",
     );
   });
 

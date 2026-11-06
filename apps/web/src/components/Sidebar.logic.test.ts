@@ -161,20 +161,12 @@ describe("sidebar Space thread lists", () => {
 
 describe("resolvePullRequestReviewBadge", () => {
   it("distinguishes complete, partial, and unavailable review counts", () => {
-    expect(resolvePullRequestReviewBadge({ count: 3, incomplete: false })).toEqual({
-      text: "3",
-      accessibleLabel: "3 pull requests are waiting for your review",
-    });
-    expect(resolvePullRequestReviewBadge({ count: 3, incomplete: true })).toEqual({
-      text: "3+",
-      accessibleLabel: "At least 3 pull requests are waiting for your review",
-    });
+    expect(resolvePullRequestReviewBadge({ count: 3, incomplete: false })?.text).toBe("3");
+    expect(resolvePullRequestReviewBadge({ count: 3, incomplete: true })?.text).toBe("3+");
     expect(resolvePullRequestReviewBadge({ count: 0, incomplete: true })).toBeNull();
     expect(resolvePullRequestReviewBadge({ count: 0, incomplete: false })).toBeNull();
     expect(resolvePullRequestReviewBadge(undefined)).toBeNull();
-    expect(resolvePullRequestReviewBadge({ count: 1, incomplete: false })?.accessibleLabel).toBe(
-      "1 pull request is waiting for your review",
-    );
+    expect(resolvePullRequestReviewBadge({ count: 1, incomplete: false })?.text).toBe("1");
   });
 });
 
@@ -182,11 +174,8 @@ describe("resolveAutomationCountBadge", () => {
   it("counts configured automations and hides the badge at zero or before load", () => {
     expect(resolveAutomationCountBadge(undefined)).toBeNull();
     expect(resolveAutomationCountBadge(0)).toBeNull();
-    expect(resolveAutomationCountBadge(2)).toEqual({
-      text: "2",
-      accessibleLabel: "2 automations",
-    });
-    expect(resolveAutomationCountBadge(1)?.accessibleLabel).toBe("1 automation");
+    expect(resolveAutomationCountBadge(2)?.text).toBe("2");
+    expect(resolveAutomationCountBadge(1)?.text).toBe("1");
   });
 });
 

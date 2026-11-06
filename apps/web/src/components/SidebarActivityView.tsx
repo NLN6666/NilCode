@@ -21,12 +21,12 @@ import { resolveThreadEnvironmentMode } from "@synara/shared/threadEnvironment";
 
 import {
   AddPlusIcon,
-  CircleCheckIcon,
+  ClearReadIcon,
   ClockIcon,
   GitBranchIcon,
+  GlobeIcon,
   NewThreadIcon,
   SortIcon,
-  Undo2Icon,
   WorktreeIcon,
   FolderIcon,
 } from "~/lib/icons";
@@ -44,6 +44,8 @@ import {
 import { resolveThreadPullRequestFallback } from "../hooks/useThreadPullRequests";
 import { useThreadIdsWithPendingDraft } from "../composerDraftStore";
 import type { Project, SidebarThreadSummary } from "../types";
+import type { WorkspaceThreadEntry } from "../lib/hosts/workspaceSidebar";
+import { WorkspaceThreadActions } from "./hosts/WorkspaceProjects";
 import { ComposerPickerMenuPopup } from "./chat/ComposerPickerMenuPopup";
 import { ProviderIcon } from "./ProviderIcon";
 import { SnoozeCountdown } from "./SnoozeCountdown";
@@ -83,6 +85,7 @@ import { SIDEBAR_HOVER_CARD_TRIGGER_PROPS } from "./sidebarHoverCardStyles";
 import {
   createSidebarThreadRowGestures,
   type SidebarRowContextMenuPosition,
+  type SidebarThreadRowGestureProps,
 } from "./sidebarThreadRowGestures";
 import { SidebarIconButton } from "./SidebarIconButton";
 import {
@@ -92,8 +95,7 @@ import {
 } from "./SidebarListSection";
 import { SidebarSectionToolbar } from "./SidebarSectionToolbar";
 import { SidebarDraftGlyph, SidebarStatusTrailingGlyph } from "./SidebarStatusTrailingGlyph";
-import { ThreadArchiveActionButton } from "./ThreadArchiveActionButton";
-import { ThreadPinToggleButton } from "./ThreadPinToggleButton";
+import { ThreadRowQuickActions } from "./ThreadRowQuickActions";
 import { ShortcutKbd } from "./ui/kbd";
 import { DisclosureChevron } from "./ui/DisclosureChevron";
 import {
@@ -106,21 +108,24 @@ import {
   MenuTrigger,
 } from "./ui/menu";
 import { Tooltip, TooltipTrigger } from "./ui/tooltip";
+import { useTranslation } from "~/i18n";
 
 const ACTIVITY_LIST_BASE_LIMIT = 20;
 const ACTIVITY_LIST_PAGE_SIZE = 20;
 const EMPTY_PROJECT_GROUPS: ActivityProjectGroup[] = [];
 const EMPTY_THREADS: SidebarThreadSummary[] = [];
 
-/** Keeps a row action (pin, archive, done) from also opening the thread. */
-function stopRowActivation(event: MouseEvent) {
-  event.preventDefault();
-  event.stopPropagation();
+interface ExternalActivityRow {
+  hostName: string;
+  onOpen: () => void;
+  status: ThreadStatusPill | null;
+  entry?: WorkspaceThreadEntry;
 }
 
 export function ActivityThreadRow({
   thread,
   project,
+  external,
   isActive,
   isOpen = isActive,
   isSettled,
@@ -143,6 +148,7 @@ export function ActivityThreadRow({
 }: {
   thread: SidebarThreadSummary;
   project: Project | undefined;
+  external?: ExternalActivityRow | undefined;
   isActive: boolean;
   isOpen?: boolean;
   isSettled: boolean;
@@ -163,6 +169,8 @@ export function ActivityThreadRow({
   renderHoverCard: (anchorId: string) => ReactNode;
   rowRef?: Ref<HTMLButtonElement>;
 }) {
+  const { t } = useTranslation();
+
   const provider = thread.session?.provider ?? thread.modelSelection.provider;
   const branch = resolveThreadDisplayBranch(thread);
   const isWorktree =
@@ -186,14 +194,174 @@ export function ActivityThreadRow({
   // Rename/context-menu gestures live on the row wrapper (not the title button) so
   // they also fire over the trailing status and hover-action cluster, which are
   // absolutely positioned siblings of the button.
-  const rowGestures = createSidebarThreadRowGestures({
-    threadId: thread.id,
-    onRename,
-    onRenamePointerUp,
-    onContextMenu,
-  });
+  const rowGestures = external
+    ? undefined
+    : createSidebarThreadRowGestures({
+        threadId: thread.id,
+        onRename,
+        onRenamePointerUp,
+        onContextMenu,
+      });
 
-  return (
+  const rowContent = (
+    <>
+      <button
+        ref={rowRef}
+        aria-current={isActive ? "page" : undefined}
+        type="button"
+        onClick={onOpen}
+        title={external ? `${thread.title} — ${external.hostName}` : undefined}
+        aria-label={external ? `${thread.title}, ${external.hostName}` : undefined}
+        // Same native drag as the classic thread rows: drop on a chat pane to
+        // split, or on a composer to @mention the chat.
+        draggable={!external}
+        onDragStart={external ? undefined : (event) => beginThreadDrag(event, thread.id)}
+        onDragEnd={external ? undefined : endThreadDrag}
+        data-testid={`activity-thread-${thread.id}`}
+        className={cn(
+          "flex w-full min-w-0 cursor-pointer flex-col gap-1 rounded-lg px-2.5 py-2 text-left select-none",
+          SIDEBAR_ROW_FOCUS_CLASS_NAME,
+          isActive ? SIDEBAR_ROW_ACTIVE_CLASS_NAME : SIDEBAR_ROW_HOVER_CLASS_NAME,
+          isSettled && "opacity-55 transition-opacity hover:opacity-85",
+          // Snoozed rows carry a tint on top of the clock line so they read apart at a glance.
+          thread.snoozedUntil != null && !isActive && "bg-info/6",
+          status?.label === "Reminder" && !isActive && SIDEBAR_ROW_SNOOZE_REMINDER_CLASS_NAME,
+        )}
+      >
+        <span
+          className={cn(
+            "flex min-w-0 items-center gap-1.5 overflow-hidden transition-[padding] duration-150 ease-out",
+            // Room for the status glyph only when there is one, so a remote row's globe
+            // otherwise sits at the edge.
+            trailingStatus && !threadJumpLabel && "pr-4",
+            // Local and connected remote rows yield the same space to their three actions.
+            (!external || external.entry) &&
+              "group-hover/activity-row:pr-[4.25rem] group-focus-within/activity-row:pr-[4.25rem]",
+          )}
+        >
+          <ProviderIcon
+            provider={provider}
+            className="size-3 shrink-0"
+            fallback={
+              <span className="size-3 shrink-0 rounded-full border border-dashed border-muted-foreground/40" />
+            }
+          />
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-ui leading-5 font-normal",
+              isActive ? "text-foreground" : SIDEBAR_ROW_LABEL_TEXT_CLASS_NAME,
+            )}
+          >
+            {thread.title}
+          </span>
+          {external ? (
+            <span
+              data-slot="remote-thread-marker"
+              className={cn(
+                "inline-flex shrink-0",
+                external.entry && sidebarHoverRevealHideClassName("activity-row"),
+              )}
+            >
+              <GlobeIcon
+                className={cn(SIDEBAR_TRAILING_ICON_CLASS, "text-sky-600 dark:text-sky-400")}
+                aria-hidden
+              />
+            </span>
+          ) : null}
+          {thread.snoozedUntil != null ? (
+            <ClockIcon
+              className={sidebarGlyphClass("meta", "shrink-0 text-info")}
+              aria-label={t("workspace:detail_scheduled")}
+            />
+          ) : null}
+          {hasPendingDraft ? <SidebarDraftGlyph /> : null}
+          {threadJumpLabel ? (
+            <ShortcutKbd
+              shortcutLabel={threadJumpLabel}
+              title={threadJumpLabel}
+              groupClassName={sidebarHoverRevealHideClassName("activity-row")}
+            />
+          ) : null}
+        </span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          {project?.cwd && !external ? (
+            <ProjectSidebarIcon
+              cwd={project.cwd}
+              expanded={false}
+              appearance={project.appearance}
+              glyphClassName={sidebarGlyphClass("meta", "text-muted-foreground/70")}
+            />
+          ) : (
+            <FolderIcon
+              className={sidebarGlyphClass("meta", "text-muted-foreground/70")}
+              aria-hidden
+            />
+          )}
+          <span className="mr-auto min-w-0 truncate text-ui-sm text-muted-foreground/80">
+            {resolveThreadProjectLabel(project)}
+          </span>
+          {isWorktree ? (
+            <WorktreeIcon
+              className={sidebarGlyphClass("meta", "text-muted-foreground/70")}
+              aria-label={t("common:worktreeMode_worktree")}
+            />
+          ) : null}
+          <span className="flex min-w-0 shrink-[100] items-center gap-1.5">
+            {pr && !external ? (
+              <PrStateChip
+                pr={pr}
+                className="min-h-5 min-w-5 shrink-0 justify-center [&_svg]:size-3"
+                onOpen={(event) => onOpenPullRequest(event, pr)}
+              />
+            ) : null}
+            {branch ? (
+              <span className="flex min-w-0 items-center gap-1 text-ui-sm text-muted-foreground/70">
+                <GitBranchIcon className={sidebarGlyphClass("meta")} aria-hidden />
+                <span className="max-w-36 truncate">{branch}</span>
+              </span>
+            ) : null}
+          </span>
+        </span>
+        {thread.snoozedUntil != null ? (
+          <span className="flex min-w-0 items-center gap-1 text-ui-sm text-muted-foreground/80">
+            <span className="truncate">
+              <SnoozeCountdown snoozedUntil={thread.snoozedUntil} />
+            </span>
+          </span>
+        ) : null}
+      </button>
+      {trailingStatus ? (
+        <span
+          data-slot="activity-completion-status"
+          className={cn(
+            "pointer-events-none absolute top-2 right-1 inline-flex size-5 items-center justify-center",
+            sidebarHoverRevealHideClassName("activity-row"),
+          )}
+        >
+          <SidebarStatusTrailingGlyph status={trailingStatus} />
+        </span>
+      ) : null}
+      {!external ? (
+        <span className="absolute top-2 right-1 inline-flex opacity-0 transition-opacity group-hover/activity-row:opacity-100 group-focus-within/activity-row:opacity-100">
+          <ThreadRowQuickActions
+            threadId={thread.id}
+            isPinned={isPinned}
+            isSettled={isSettled}
+            isSnoozed={thread.snoozedUntil != null}
+            toneClassName={actionToneClassName}
+            onTogglePinned={onTogglePinned}
+            onArchive={onArchive}
+            onDone={() => {
+              if (thread.snoozedUntil != null) onReturnSnoozed();
+              else onSetSettled(!isSettled);
+            }}
+          />
+        </span>
+      ) : null}
+    </>
+  );
+  // Every row, local or on another computer, opens the same hover card.
+  const withHoverCard = (children: ReactNode, rowProps?: SidebarThreadRowGestureProps) => (
     <Tooltip>
       <TooltipTrigger
         {...SIDEBAR_HOVER_CARD_TRIGGER_PROPS}
@@ -202,168 +370,33 @@ export function ActivityThreadRow({
             data-thread-hover-anchor={hoverAnchorId}
             className="group/activity-row relative"
             data-thread-item
-            {...rowGestures}
+            {...rowProps}
           />
         }
       >
-        <button
-          ref={rowRef}
-          type="button"
-          onClick={onOpen}
-          aria-current={isActive ? "page" : undefined}
-          // Same native drag as the classic thread rows: drop on a chat pane to
-          // split, or on a composer to @mention the chat.
-          draggable
-          onDragStart={(event) => beginThreadDrag(event, thread.id)}
-          onDragEnd={endThreadDrag}
-          data-testid={`activity-thread-${thread.id}`}
-          className={cn(
-            "flex w-full min-w-0 cursor-pointer flex-col gap-1 rounded-lg px-2.5 py-2 text-left select-none",
-            SIDEBAR_ROW_FOCUS_CLASS_NAME,
-            isActive ? SIDEBAR_ROW_ACTIVE_CLASS_NAME : SIDEBAR_ROW_HOVER_CLASS_NAME,
-            isSettled && "opacity-55 transition-opacity hover:opacity-85",
-            // Snoozed rows carry a tint on top of the clock line so they read apart at a glance.
-            thread.snoozedUntil != null && !isActive && "bg-info/6",
-            status?.label === "Reminder" && !isActive && SIDEBAR_ROW_SNOOZE_REMINDER_CLASS_NAME,
-          )}
-        >
-          <span
-            className={cn(
-              "flex min-w-0 items-center gap-1.5 overflow-hidden transition-[padding] duration-150 ease-out",
-              !threadJumpLabel && "pr-5",
-              // Yield the title row to the hover action cluster (pin + archive + done).
-              "group-hover/activity-row:pr-[4.25rem] group-focus-within/activity-row:pr-[4.25rem]",
-            )}
-          >
-            <ProviderIcon
-              provider={provider}
-              className="size-3 shrink-0"
-              fallback={
-                <span className="size-3 shrink-0 rounded-full border border-dashed border-muted-foreground/40" />
-              }
-            />
-            <span
-              className={cn(
-                "min-w-0 flex-1 truncate text-ui leading-5 font-normal",
-                isActive ? "text-foreground" : SIDEBAR_ROW_LABEL_TEXT_CLASS_NAME,
-              )}
-            >
-              {thread.title}
-            </span>
-            {thread.snoozedUntil != null ? (
-              <ClockIcon
-                className={sidebarGlyphClass("meta", "shrink-0 text-info")}
-                aria-label="Scheduled"
-              />
-            ) : null}
-            {hasPendingDraft ? <SidebarDraftGlyph /> : null}
-            {threadJumpLabel ? (
-              <ShortcutKbd
-                shortcutLabel={threadJumpLabel}
-                title={threadJumpLabel}
-                groupClassName={sidebarHoverRevealHideClassName("activity-row")}
-              />
-            ) : null}
-          </span>
-          <span className="flex min-w-0 items-center gap-1.5">
-            {project?.cwd ? (
-              <ProjectSidebarIcon
-                cwd={project.cwd}
-                expanded={false}
-                appearance={project.appearance}
-                glyphClassName={sidebarGlyphClass("meta", "text-muted-foreground/70")}
-              />
-            ) : (
-              <FolderIcon
-                className={sidebarGlyphClass("meta", "text-muted-foreground/70")}
-                aria-hidden
-              />
-            )}
-            {/* The folder outranks the branch: the branch shrinks first (weighted shrink). */}
-            <span className="mr-auto min-w-0 truncate text-ui-sm text-muted-foreground/80">
-              {resolveThreadProjectLabel(project)}
-            </span>
-            {isWorktree ? (
-              <span className="inline-flex size-5 shrink-0 items-center justify-center">
-                <WorktreeIcon
-                  className={sidebarGlyphClass("meta", "text-muted-foreground/70")}
-                  aria-label="Worktree"
-                />
-              </span>
-            ) : null}
-            {pr ? (
-              <PrStateChip
-                pr={pr}
-                className="min-h-5 min-w-5 justify-center [&_svg]:size-3"
-                onOpen={(event) => onOpenPullRequest(event, pr)}
-              />
-            ) : null}
-            {branch ? (
-              <span className="flex min-w-0 shrink-[100] items-center gap-1 text-ui-sm text-muted-foreground/70">
-                <GitBranchIcon className={sidebarGlyphClass("meta", "shrink-0")} aria-hidden />
-                <span className="min-w-0 max-w-36 truncate">{branch}</span>
-              </span>
-            ) : null}
-          </span>
-          {thread.snoozedUntil != null ? (
-            <span className="flex min-w-0 items-center gap-1 text-ui-sm text-muted-foreground/80">
-              <span className="truncate">
-                <SnoozeCountdown snoozedUntil={thread.snoozedUntil} />
-              </span>
-            </span>
-          ) : null}
-        </button>
-        {trailingStatus ? (
-          <span
-            data-slot="activity-completion-status"
-            className={cn(
-              "pointer-events-none absolute top-1 right-1 inline-flex size-5 items-center justify-center",
-              sidebarHoverRevealHideClassName("activity-row"),
-            )}
-          >
-            <SidebarStatusTrailingGlyph status={trailingStatus} />
-          </span>
-        ) : null}
-        <span
-          className="absolute top-1 right-1 inline-flex items-center gap-1 opacity-0 transition-opacity group-hover/activity-row:opacity-100 group-focus-within/activity-row:opacity-100"
-          // Double-clicking an action button toggles it twice; it must not also open
-          // the row's rename dialog. Pointer-up is the touch/pen double-tap signal,
-          // so keep action taps out of that detector too.
-          onDoubleClick={stopRowActivation}
-          onPointerUp={(event) => event.stopPropagation()}
-        >
-          <ThreadPinToggleButton
-            pinned={isPinned}
-            presentation="inline"
-            toneClassName={actionToneClassName}
-            onToggle={(event) => {
-              stopRowActivation(event);
-              onTogglePinned();
-            }}
-          />
-          <ThreadArchiveActionButton
-            threadId={thread.id}
-            toneClassName={actionToneClassName}
-            onArchive={onArchive}
-          />
-          <SidebarIconButton
-            icon={thread.snoozedUntil != null || isSettled ? Undo2Icon : CircleCheckIcon}
-            label={thread.snoozedUntil != null ? "Return now" : isSettled ? "Undo" : "Done"}
-            title={thread.snoozedUntil != null ? "Return now" : isSettled ? "Undo" : "Done"}
-            iconClassName={SIDEBAR_TRAILING_ICON_CLASS}
-            className={cn("hover:text-foreground/89", actionToneClassName)}
-            onMouseDown={stopRowActivation}
-            onClick={(event) => {
-              stopRowActivation(event);
-              if (thread.snoozedUntil != null) onReturnSnoozed();
-              else onSetSettled(!isSettled);
-            }}
-          />
-        </span>
+        {children}
       </TooltipTrigger>
       {renderHoverCard(hoverAnchorId)}
     </Tooltip>
   );
+  if (external?.entry) {
+    return (
+      <WorkspaceThreadActions entry={external.entry}>
+        {({ rowEvents, quickActions }) =>
+          withHoverCard(
+            <>
+              {rowContent}
+              <span className="absolute top-2 right-1 inline-flex opacity-0 transition-opacity group-hover/activity-row:opacity-100 group-focus-within/activity-row:opacity-100">
+                {quickActions}
+              </span>
+            </>,
+            rowEvents,
+          )
+        }
+      </WorkspaceThreadActions>
+    );
+  }
+  return withHoverCard(rowContent, external ? undefined : rowGestures);
 }
 
 /** The same accessible Snoozed section serves Activity and the classic sidebar. */
@@ -376,6 +409,8 @@ export function SidebarSnoozedThreadsSection({
   renderThreadRow: (thread: SidebarThreadSummary) => ReactNode;
   onVisibleThreadIdsChange?: (threadIds: readonly ThreadId[]) => void;
 }) {
+  const { t } = useTranslation();
+
   const [open, setOpen] = useState(false);
   const [extraPages, setExtraPages] = useState(0);
   const paging = resolveSidebarThreadListPaging({
@@ -403,7 +438,7 @@ export function SidebarSnoozedThreadsSection({
   if (threads.length === 0) return null;
   return (
     <SidebarCollapsibleSection
-      label="Snoozed"
+      label={t("workspace:snoozed")}
       open={open}
       onToggle={() => setOpen((current) => !current)}
     >
@@ -433,10 +468,12 @@ function ActivityScopeMenu({
   scopeSelection: ActivityScopeSelection;
   onChangeScopeSelection: (selection: ActivityScopeSelection) => void;
 }) {
+  const { t } = useTranslation();
+
   const [menuOpen, setMenuOpen] = useState(false);
   const scopeLabel =
     scopeSelection === null
-      ? "All activity"
+      ? t("workspace:allActivity")
       : scopeSelection === "chats"
         ? "Synara"
         : resolveThreadProjectLabel(projectById.get(scopeSelection));
@@ -447,7 +484,7 @@ function ActivityScopeMenu({
         render={
           <button
             type="button"
-            aria-label="Filter activity by project"
+            aria-label={t("workspace:filterActivityByProject")}
             className={cn(
               "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-md text-left",
               SIDEBAR_ROW_FOCUS_CLASS_NAME,
@@ -469,7 +506,7 @@ function ActivityScopeMenu({
       <ComposerPickerMenuPopup align="start" side="bottom" className="min-w-44">
         <MenuGroup>
           <div className="px-2 py-1 sm:text-ui leading-snug font-medium text-muted-foreground">
-            Activity scope
+            {t("workspace:activityScope")}
           </div>
           <MenuRadioGroup
             value={scopeSelection ?? "all"}
@@ -480,7 +517,7 @@ function ActivityScopeMenu({
             }}
           >
             <MenuRadioItem value="all" className="min-h-7 py-1 sm:text-ui leading-snug">
-              All activity
+              {t("workspace:allActivity")}
             </MenuRadioItem>
             {options.map((option) => (
               <MenuRadioItem
@@ -524,29 +561,31 @@ function ActivityFilterMenu({
   clearReadPriorityDisabled: boolean;
   onClearReadPriority: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <Menu>
       <SidebarIconButton
         icon={SortIcon}
-        label="Activity options"
-        tooltip="Activity options"
+        label={t("workspace:activityOptions")}
+        tooltip={t("workspace:activityOptions")}
         tooltipSide="bottom"
         render={<MenuTrigger />}
       />
       <ComposerPickerMenuPopup align="end" side="bottom" className="min-w-44">
         <MenuGroup>
           <div className="px-2 py-1 sm:text-ui leading-snug font-medium text-muted-foreground">
-            Group by
+            {t("workspace:groupBy")}
           </div>
           <MenuRadioGroup
             value={groupMode}
             onValueChange={(value) => onChangeGroupMode(value as ActivityGroupMode)}
           >
             <MenuRadioItem value="time" className="min-h-7 py-1 sm:text-ui leading-snug">
-              Time
+              {t("workspace:schedule_time")}
             </MenuRadioItem>
             <MenuRadioItem value="project" className="min-h-7 py-1 sm:text-ui leading-snug">
-              Project
+              {t("chat:detail_project")}
             </MenuRadioItem>
           </MenuRadioGroup>
         </MenuGroup>
@@ -556,14 +595,14 @@ function ActivityFilterMenu({
           disabled={markAllReadDisabled}
           onClick={onMarkAllRead}
         >
-          Mark all as read
+          {t("workspace:markAllAsRead")}
         </MenuItem>
         <MenuItem
           className="min-h-7 py-1 sm:text-ui leading-snug"
           disabled={clearReadPriorityDisabled}
           onClick={onClearReadPriority}
         >
-          Clear read from Priority
+          {t("workspace:clearReadPriority")}
         </MenuItem>
       </ComposerPickerMenuPopup>
     </Menu>
@@ -573,6 +612,7 @@ function ActivityFilterMenu({
 export function SidebarActivityView({
   threads,
   projectById,
+  externalRows,
   activeThreadId,
   visualActiveThreadId = activeThreadId,
   pinnedThreadIdSet,
@@ -603,6 +643,7 @@ export function SidebarActivityView({
 }: {
   threads: readonly SidebarThreadSummary[];
   projectById: ReadonlyMap<ProjectId, Project>;
+  externalRows?: ReadonlyMap<ThreadId, ExternalActivityRow> | undefined;
   activeThreadId: ThreadId | null;
   /** A hidden child can select its root row while the real chat still owns unread/draft state. */
   visualActiveThreadId?: ThreadId | null;
@@ -646,6 +687,8 @@ export function SidebarActivityView({
   /** Same "Add project" action the Projects section header runs. */
   onAddProject: () => void;
 }) {
+  const { t } = useTranslation();
+
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [earlierOpen, setEarlierOpen] = useState(false);
   const [earlierExtraPages, setEarlierExtraPages] = useState(0);
@@ -663,6 +706,14 @@ export function SidebarActivityView({
     state: ActivityPriorityState;
   } | null>(null);
 
+  // Remote rows carry the status resolved by their owner, never the controller's store.
+  const resolveRowStatus = useCallback(
+    (thread: SidebarThreadSummary) =>
+      externalRows?.has(thread.id)
+        ? externalRows.get(thread.id)!.status
+        : resolveThreadStatus(thread),
+    [externalRows, resolveThreadStatus],
+  );
   const draftThreadIdSet = useThreadIdsWithPendingDraft();
   const isRealProject = useCallback(
     (projectId: ProjectId) => projectById.get(projectId)?.kind === "project",
@@ -677,10 +728,10 @@ export function SidebarActivityView({
     () =>
       new Set(
         threads
-          .filter((thread) => resolveThreadStatus(thread)?.label === "Preparing worktree")
+          .filter((thread) => resolveRowStatus(thread)?.label === "Preparing worktree")
           .map((thread) => thread.id),
       ),
-    [threads, resolveThreadStatus],
+    [threads, resolveRowStatus],
   );
   const scopeOptions = useMemo(
     () => collectActivityScopeOptions(threads, isRealProject, preparingThreadIdSet),
@@ -733,12 +784,12 @@ export function SidebarActivityView({
               ...model.drafts,
               ...model.active,
             ],
-            resolveTier: (thread) => resolveActivityPriorityTier(resolveThreadStatus(thread)),
+            resolveTier: (thread) => resolveActivityPriorityTier(resolveRowStatus(thread)),
             previous: previousPriority,
             nowMs: Date.now(),
           })
         : null,
-    [groupMode, model, previousPriority, resolveThreadStatus, settledOverrideByThreadId],
+    [groupMode, model, previousPriority, resolveRowStatus, settledOverrideByThreadId],
   );
   useEffect(() => {
     // Before hydration every thread is missing; storing that would sort later rows as
@@ -762,8 +813,9 @@ export function SidebarActivityView({
     [model, priorityThreads],
   );
   const clearReadPriorityDisabled = !priorityThreads.some(
-    (thread) => resolveActivityPriorityTier(resolveThreadStatus(thread)) === null,
+    (thread) => resolveActivityPriorityTier(resolveRowStatus(thread)) === null,
   );
+  const clearReadPriority = () => setPriorityGeneration((generation) => generation + 1);
   // Coarse clock so the date bucketing memo stays effective across renders that
   // happen within the same minute; buckets are day-granular anyway.
   const nowMs = Math.floor(Date.now() / 60_000) * 60_000;
@@ -917,7 +969,7 @@ export function SidebarActivityView({
   visibleThreadIdsRef.current = visibleThreadIds;
   useEffect(() => {
     onVisibleThreadIdsChange(visibleThreadIdsRef.current);
-  }, [onVisibleThreadIdsChange, visibleThreadIdsFingerprint]);
+  }, [externalRows, onVisibleThreadIdsChange, visibleThreadIdsFingerprint]);
   useEffect(
     () => () => {
       onVisibleThreadIdsChange([]);
@@ -927,6 +979,7 @@ export function SidebarActivityView({
 
   const markAllRead = () => {
     for (const thread of unreadThreads) {
+      if (externalRows?.has(thread.id)) continue;
       onMarkThreadRead(thread.id, resolveActivityThreadReadAt(thread));
     }
   };
@@ -935,47 +988,55 @@ export function SidebarActivityView({
     thread: SidebarThreadSummary,
     isSettled: boolean,
     registerActiveRow = true,
-  ) => (
-    <ActivityThreadRow
-      key={thread.id}
-      thread={thread}
-      project={projectById.get(thread.projectId)}
-      isActive={visualActiveThreadId === thread.id}
-      isOpen={activeThreadId === thread.id}
-      isSettled={isSettled}
-      isPinned={pinnedThreadIdSet.has(thread.id)}
-      hasPendingDraft={draftThreadIdSet.has(thread.id)}
-      pr={
-        // An explicit null from the resolver means the persisted PR was ruled out (e.g. the
-        // checkout moved on); falling back to raw lastKnownPr would resurrect that stale
-        // badge. Rows not yet covered (revealed by paging a paint before the parent's map
-        // catches up) get the same resolution without live status instead.
-        prByThreadId.has(thread.id)
-          ? (prByThreadId.get(thread.id) ?? null)
-          : resolveThreadPullRequestFallback({
-              branch: thread.branch,
-              hasDedicatedWorktree: thread.worktreePath !== null,
-              lastKnownPr: thread.lastKnownPr ?? null,
-            })
-      }
-      status={resolveThreadStatus(thread)}
-      threadJumpLabel={threadJumpLabelByThreadId.get(thread.id) ?? null}
-      onOpen={() => onOpenThread(thread.id)}
-      onOpenPullRequest={(event, pr) => onOpenThreadPullRequest(event, thread, pr)}
-      onSetSettled={(settled) => {
-        if (settled) onMarkThreadRead(thread.id, resolveActivityThreadReadAt(thread));
-        onSetThreadSettled(thread.id, settled);
-      }}
-      onReturnSnoozed={() => onReturnSnoozedThread(thread.id)}
-      onTogglePinned={() => onToggleThreadPinned(thread.id)}
-      onArchive={() => onArchiveThread(thread.id)}
-      onRename={onRenameThread}
-      onRenamePointerUp={onThreadRenamePointerUp}
-      onContextMenu={onThreadContextMenu}
-      renderHoverCard={(anchorId) => renderThreadHoverCard(thread, anchorId)}
-      {...(registerActiveRow && visualActiveThreadId === thread.id ? { rowRef: activeRowRef } : {})}
-    />
-  );
+  ) => {
+    const external = externalRows?.get(thread.id);
+    return (
+      <ActivityThreadRow
+        key={thread.id}
+        thread={thread}
+        project={projectById.get(thread.projectId)}
+        external={external}
+        {...(registerActiveRow && visualActiveThreadId === thread.id
+          ? { rowRef: activeRowRef }
+          : {})}
+        isActive={visualActiveThreadId === thread.id}
+        isOpen={activeThreadId === thread.id}
+        isSettled={isSettled}
+        isPinned={pinnedThreadIdSet.has(thread.id)}
+        hasPendingDraft={!external && draftThreadIdSet.has(thread.id)}
+        threadJumpLabel={threadJumpLabelByThreadId.get(thread.id) ?? null}
+        pr={
+          external
+            ? null
+            : // An explicit null from the resolver means the persisted PR was ruled out (e.g. the
+              // checkout moved on); falling back to raw lastKnownPr would resurrect that stale
+              // badge. Rows not yet covered (revealed by paging a paint before the parent's map
+              // catches up) get the same resolution without live status instead.
+              prByThreadId.has(thread.id)
+              ? (prByThreadId.get(thread.id) ?? null)
+              : resolveThreadPullRequestFallback({
+                  branch: thread.branch,
+                  hasDedicatedWorktree: thread.worktreePath !== null,
+                  lastKnownPr: thread.lastKnownPr ?? null,
+                })
+        }
+        status={external ? external.status : resolveThreadStatus(thread)}
+        onOpen={external?.onOpen ?? (() => onOpenThread(thread.id))}
+        onOpenPullRequest={(event, pr) => onOpenThreadPullRequest(event, thread, pr)}
+        onSetSettled={(settled) => {
+          if (settled) onMarkThreadRead(thread.id, resolveActivityThreadReadAt(thread));
+          onSetThreadSettled(thread.id, settled);
+        }}
+        onReturnSnoozed={() => onReturnSnoozedThread(thread.id)}
+        onTogglePinned={() => onToggleThreadPinned(thread.id)}
+        onArchive={() => onArchiveThread(thread.id)}
+        onRename={onRenameThread}
+        onRenamePointerUp={onThreadRenamePointerUp}
+        onContextMenu={onThreadContextMenu}
+        renderHoverCard={(anchorId) => renderThreadHoverCard(thread, anchorId)}
+      />
+    );
+  };
   const renderActiveRow = (thread: SidebarThreadSummary) =>
     renderRow(thread, isThreadSettledForActivity(thread, settledOverrideByThreadId));
 
@@ -990,16 +1051,16 @@ export function SidebarActivityView({
     model.pinned.length === 0;
   const emptyLabel =
     activeScope === null
-      ? "No activity yet"
+      ? t("workspace:noActivityYet")
       : activeScope === "chats"
-        ? "No activity in Synara chats"
-        : "No activity for this project";
+        ? t("workspace:noActivityInSynaraChats")
+        : t("workspace:noActivityForThisProject");
 
   return (
     <div className="flex flex-col gap-3">
       {scopedPinnedThreads.length > 0 ? (
         <SidebarCollapsibleSection
-          label="Pinned"
+          label={t("common:app_pinned")}
           open={pinnedOpen}
           onToggle={() => setPinnedOpen((open) => !open)}
           revealedChildren={pinnedRows.revealed.map(renderActiveRow)}
@@ -1026,15 +1087,15 @@ export function SidebarActivityView({
         <SidebarSectionToolbar revealOnHover className="mr-0">
           <SidebarIconButton
             icon={NewThreadIcon}
-            label="Start new chat in last used project"
-            tooltip="New chat"
+            label={t("workspace:startNewChatInLastUsedProject")}
+            tooltip={t("workspace:sections_newChat")}
             tooltipSide="bottom"
             onClick={onCreateChat}
           />
           <SidebarIconButton
             icon={AddPlusIcon}
-            label="Add project"
-            tooltip="Add project"
+            label={t("workspace:sections_addProject")}
+            tooltip={t("workspace:sections_addProject")}
             tooltipSide="bottom"
             onClick={onAddProject}
           />
@@ -1042,16 +1103,16 @@ export function SidebarActivityView({
         <ActivityFilterMenu
           groupMode={groupMode}
           onChangeGroupMode={onChangeGroupMode}
-          markAllReadDisabled={unreadThreads.length === 0}
+          markAllReadDisabled={!unreadThreads.some((thread) => !externalRows?.has(thread.id))}
           onMarkAllRead={markAllRead}
           clearReadPriorityDisabled={clearReadPriorityDisabled}
-          onClearReadPriority={() => setPriorityGeneration((generation) => generation + 1)}
+          onClearReadPriority={clearReadPriority}
         />
       </div>
 
       {isEmpty ? (
         <div className="px-2 pt-4 text-center text-ui text-muted-foreground/58">
-          {threadsHydrated ? emptyLabel : "Loading activity..."}
+          {threadsHydrated ? emptyLabel : t("workspace:loadingActivity")}
         </div>
       ) : groupMode === "project" ? (
         pagedProjectGroups.map(({ group, paging, threads: visibleThreads }) => (
@@ -1062,7 +1123,8 @@ export function SidebarActivityView({
                   ? "Synara"
                   : resolveThreadProjectLabel(projectById.get(group.projectId))
               }
-              {...(group.kind === "project"
+              {...(group.kind === "project" &&
+              !group.threads.some((thread) => externalRows?.has(thread.id))
                 ? {
                     onContextMenu: (position: SidebarRowContextMenuPosition) =>
                       onProjectContextMenu(group.projectId, position),
@@ -1098,25 +1160,38 @@ export function SidebarActivityView({
         <>
           {priorityThreads.length > 0 ? (
             <div>
-              <SidebarSectionLabel label="Priority" />
+              <SidebarSectionLabel
+                label={t("workspace:priority")}
+                action={
+                  clearReadPriorityDisabled ? null : (
+                    <SidebarIconButton
+                      icon={ClearReadIcon}
+                      label={t("workspace:clearReadPriority")}
+                      tooltip={t("workspace:clearReadPriority")}
+                      size="sm"
+                      onClick={clearReadPriority}
+                    />
+                  )
+                }
+              />
               <div className="flex flex-col gap-0.5">{priorityThreads.map(renderActiveRow)}</div>
             </div>
           ) : null}
           {draftThreads.length > 0 ? (
             <div>
-              <SidebarSectionLabel label="Drafts" />
+              <SidebarSectionLabel label={t("workspace:drafts")} />
               <div className="flex flex-col gap-0.5">{draftThreads.map(renderActiveRow)}</div>
             </div>
           ) : null}
           {dateBuckets.today.length > 0 ? (
             <div>
-              <SidebarSectionLabel label="Today" />
+              <SidebarSectionLabel label={t("workspace:today")} />
               <div className="flex flex-col gap-0.5">{dateBuckets.today.map(renderActiveRow)}</div>
             </div>
           ) : null}
           {dateBuckets.yesterday.length > 0 ? (
             <div>
-              <SidebarSectionLabel label="Yesterday" />
+              <SidebarSectionLabel label={t("workspace:yesterday")} />
               <div className="flex flex-col gap-0.5">
                 {dateBuckets.yesterday.map(renderActiveRow)}
               </div>
@@ -1124,7 +1199,7 @@ export function SidebarActivityView({
           ) : null}
           {dateBuckets.earlier.length > 0 ? (
             <SidebarCollapsibleSection
-              label="Earlier"
+              label={t("workspace:earlier")}
               open={earlierOpen}
               onToggle={() => setEarlierOpen((open) => !open)}
               revealedChildren={earlierRows.revealed.map(renderActiveRow)}
@@ -1145,7 +1220,7 @@ export function SidebarActivityView({
 
       {model.settled.length > 0 ? (
         <SidebarCollapsibleSection
-          label="Done"
+          label={t("git:detail_done")}
           open={settledOpen}
           onToggle={() => setSettledOpen((open) => !open)}
           revealedChildren={settledRows.revealed.map((thread) => renderRow(thread, true))}

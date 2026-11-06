@@ -8,13 +8,13 @@ import { validateCustomModelInput } from "./ModelsSettingsPanel";
 describe("validateCustomModelInput", () => {
   it("returns a locale-free reason key the panel can render", () => {
     expect(validateCustomModelInput({ provider: "codex", value: "   ", savedModels: [] })).toEqual({
-      error: "empty",
+      error: "settings:modelSlugRequired",
     });
 
     const builtIn = getModelOptions("codex")[0]!.slug;
     expect(
       validateCustomModelInput({ provider: "codex", value: builtIn, savedModels: [] }),
-    ).toEqual({ error: "builtIn" });
+    ).toEqual({ error: "settings:modelAlreadyBuiltIn" });
 
     expect(
       validateCustomModelInput({
@@ -22,7 +22,9 @@ describe("validateCustomModelInput", () => {
         value: "x".repeat(MAX_CUSTOM_MODEL_LENGTH + 1),
         savedModels: [],
       }),
-    ).toEqual({ error: "tooLong" });
+    ).toEqual({
+      error: "settings:modelSlugTooLong",
+    });
 
     expect(
       validateCustomModelInput({
@@ -30,7 +32,7 @@ describe("validateCustomModelInput", () => {
         value: " custom/model ",
         savedModels: ["custom/model"],
       }),
-    ).toEqual({ error: "duplicate" });
+    ).toEqual({ error: "settings:customModelAlreadySaved" });
   });
 
   it("returns the normalized model when it can be saved", () => {

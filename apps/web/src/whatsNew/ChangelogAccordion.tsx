@@ -8,14 +8,14 @@
 
 import { useState } from "react";
 
-import { pluralize } from "@synara/shared/text";
+import { pluralize } from "~/i18n/pluralize";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { DisclosureChevron } from "~/components/ui/DisclosureChevron";
 import { cn } from "~/lib/utils";
 
 import { FeatureSection } from "./FeatureSection";
 import type { WhatsNewEntry } from "./logic";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 export interface ChangelogAccordionProps {
   readonly entries: readonly WhatsNewEntry[];
@@ -34,10 +34,15 @@ export function ChangelogAccordion({
   defaultExpandedVersion: defaultExpandedVersionProp,
   className,
 }: ChangelogAccordionProps) {
-  const copy = useMessages().dialogs.whatsNew;
+  const { t } = useTranslation();
+
   const defaultExpandedVersion = defaultExpandedVersionProp ?? null;
   if (entries.length === 0) {
-    return <p className={cn("text-xs text-muted-foreground", className)}>{copy.noReleaseNotes}</p>;
+    return (
+      <p className={cn("text-ui leading-snug text-muted-foreground", className)}>
+        {t("common:noReleaseNotesYetCheckBackAfterTheNext")}
+      </p>
+    );
   }
 
   return (
@@ -63,11 +68,15 @@ function ChangelogAccordionRow({
   readonly defaultOpen: boolean;
   readonly isLast: boolean;
 }) {
-  const rowCopy = useMessages().dialogs.whatsNew;
+  const { t } = useTranslation();
+
   const [open, setOpen] = useState(defaultOpen);
 
   const featureCount = entry.features.length;
-  const featureLabel = `${featureCount} ${pluralize(featureCount, "update")}`;
+  const featureLabel = t("chat:symbol7", {
+    value0: featureCount,
+    value1: pluralize(featureCount, "update"),
+  });
 
   return (
     <li className={cn(!isLast && "border-b border-border/40")}>
@@ -75,11 +84,11 @@ function ChangelogAccordionRow({
         <CollapsibleTrigger className="group flex w-full items-center gap-3 py-3 text-left">
           <DisclosureChevron open={open} />
           <span className="flex flex-1 items-baseline gap-2">
-            <span className="text-xs text-muted-foreground">{entry.date}</span>
-            <span className="text-sm font-semibold text-foreground">
-              {rowCopy.version(entry.version)}
+            <span className="text-ui leading-snug text-muted-foreground">{entry.date}</span>
+            <span className="text-ui-lg font-semibold text-foreground">
+              {t("settings:advanced_version")} {entry.version}
             </span>
-            <span className="text-xs text-muted-foreground/70">({featureLabel})</span>
+            <span className="text-ui leading-snug text-muted-foreground/70">({featureLabel})</span>
           </span>
         </CollapsibleTrigger>
         <CollapsiblePanel>

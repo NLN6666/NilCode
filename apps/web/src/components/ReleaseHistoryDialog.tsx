@@ -19,7 +19,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "./ui/dialog";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 export interface ReleaseHistoryDialogProps {
   readonly open: boolean;
@@ -42,7 +42,8 @@ export default function ReleaseHistoryDialog({
   entries: entriesProp,
   defaultExpandedVersion: defaultExpandedVersionProp,
 }: ReleaseHistoryDialogProps) {
-  const copy = useMessages().dialogs.releaseHistory;
+  const { t } = useTranslation();
+
   const entries = entriesProp ?? WHATS_NEW_ENTRIES;
   const defaultExpandedVersion = defaultExpandedVersionProp ?? null;
   // Sort at render time so the source of truth (`entries.ts`) stays free of
@@ -53,8 +54,10 @@ export default function ReleaseHistoryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup className="max-w-lg gap-0 p-0">
         <DialogHeader className="gap-1 p-4 pr-12">
-          <DialogTitle className="text-base">{copy.title}</DialogTitle>
-          <DialogDescription className="text-xs">{copy.description}</DialogDescription>
+          <DialogTitle className="text-base">{t("common:advanced_releaseHistory")}</DialogTitle>
+          <DialogDescription className="text-ui leading-snug">
+            {t("common:everyCuratedReleaseNewestFirst")}
+          </DialogDescription>
         </DialogHeader>
 
         <DialogPanel className="max-h-[min(62vh,520px)] px-4 py-3">
@@ -63,7 +66,7 @@ export default function ReleaseHistoryDialog({
 
         <DialogFooter>
           <Button size="sm" onClick={() => onOpenChange(false)}>
-            {copy.close}
+            {t("common:app_close")}
           </Button>
         </DialogFooter>
       </DialogPopup>

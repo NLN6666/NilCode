@@ -25,7 +25,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { SearchInput } from "./ui/search-input";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 export function SpaceProjectPickerDialog(props: {
   open: boolean;
@@ -37,7 +37,8 @@ export function SpaceProjectPickerDialog(props: {
     projectIds: ReadonlyArray<ProjectId>,
   ) => Promise<ReadonlyArray<ProjectId> | void> | ReadonlyArray<ProjectId> | void;
 }) {
-  const copy = useMessages().workspace.spaces;
+  const { t } = useTranslation();
+
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<ProjectId>>(() => new Set());
   const [submitting, setSubmitting] = useState(false);
@@ -91,22 +92,25 @@ export function SpaceProjectPickerDialog(props: {
           normalizedQuery.length === 0 ||
           project.name.toLocaleLowerCase().includes(normalizedQuery) ||
           project.cwd.toLocaleLowerCase().includes(normalizedQuery) ||
-          spaceDisplayName(project.spaceId, props.spaces, voidSpace)
+          spaceDisplayName(project.spaceId, props.spaces, voidSpace, t)
             .toLocaleLowerCase()
             .includes(normalizedQuery),
       )
       .toSorted((left, right) => left.name.localeCompare(right.name));
-  }, [movableProjects, props.spaces, query, voidSpace]);
+  }, [movableProjects, props.spaces, query, voidSpace, t]);
   const candidateGroups = useMemo(
     () =>
-      groupItemsBySpace({
-        items: candidates,
-        spaces: props.spaces,
-        activeSpaceId,
-        spaceIdOf: (project) => project.spaceId ?? null,
-        voidSpace,
-      }),
-    [activeSpaceId, candidates, props.spaces, voidSpace],
+      groupItemsBySpace(
+        {
+          items: candidates,
+          spaces: props.spaces,
+          activeSpaceId,
+          spaceIdOf: (project) => project.spaceId ?? null,
+          voidSpace,
+        },
+        t,
+      ),
+    [activeSpaceId, candidates, props.spaces, voidSpace, t],
   );
 
   const submit = async () => {
@@ -118,17 +122,19 @@ export function SpaceProjectPickerDialog(props: {
       if (failedProjectIds.length > 0) {
         setSelectedIds(new Set(failedProjectIds));
         setError(
-          copy.movePartialFailure(
-            failedProjectIds.length,
-            props.targetSpace?.name ?? copy.targetSpaceFallback,
-          ),
+          t("workspace:projectPicker_partialMoveFailure", {
+            count: failedProjectIds.length,
+            value0: props.targetSpace?.name ?? t("workspace:projectPicker_targetSpaceFallback"),
+          }),
         );
         setSubmitting(false);
         return;
       }
       props.onOpenChange(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : copy.moveFailed);
+      setError(
+        cause instanceof Error ? cause.message : t("workspace:unableToMoveTheSelectedProjects"),
+      );
       setSubmitting(false);
     }
   };
@@ -136,26 +142,30 @@ export function SpaceProjectPickerDialog(props: {
   // Three different nothings: no projects at all, none left to move, none matching the search.
   const emptyMessage =
     props.projects.length === 0
-      ? copy.noProjects
+      ? t("workspace:noProjectsYet")
       : movableProjects.length === 0
-        ? copy.allAlreadyHere(props.targetSpace?.name ?? copy.thisSpace)
-        : copy.noMatchingProjects;
+        ? t("workspace:everyProjectIsAlreadyIn", {
+            value0: props.targetSpace?.name ?? t("workspace:thisSpace"),
+          })
+        : t("workspace:noMatchingProjects2");
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogPopup className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {copy.moveTitle(props.targetSpace?.name ?? copy.moveFallbackSpace)}
+            {t("workspace:moveProjectsTo")} {props.targetSpace?.name ?? t("common:space2")}
           </DialogTitle>
-          <DialogDescription>{copy.moveDescription}</DialogDescription>
+          <DialogDescription>
+            {t("workspace:chooseExistingProjectsTheirChatsAndPinnedStateMove")}
+          </DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-3">
           <SearchInput
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={copy.searchProjects}
-            aria-label={copy.searchProjects}
+            placeholder={t("workspace:projectPicker_searchProjects")}
+            aria-label={t("workspace:projectPicker_searchProjects")}
           />
           <div className="max-h-72 space-y-3 overflow-y-auto">
             {candidates.length === 0 ? (
@@ -230,14 +240,14 @@ export function SpaceProjectPickerDialog(props: {
         </DialogPanel>
         <DialogFooter>
           <Button variant="ghost" onClick={() => props.onOpenChange(false)} disabled={submitting}>
-            {copy.cancel}
+            {t("common:form_cancel")}
           </Button>
           <Button onClick={() => void submit()} disabled={selectedIds.size === 0 || submitting}>
             {submitting
-              ? copy.moving
+              ? t("workspace:moving")
               : selectedIds.size === 0
-                ? copy.moveProjects
-                : copy.moveCount(selectedIds.size)}
+                ? t("workspace:moveProjects")
+                : t("workspace:moveSelectedProjects", { count: selectedIds.size })}
           </Button>
         </DialogFooter>
       </DialogPopup>

@@ -9,46 +9,35 @@ import type { AutomationMode, AutomationWorktreeMode } from "@synara/contracts";
 import { CentralIcon } from "~/lib/central-icons";
 import { useCommitDraft, useCommitDraftBlurHandlers } from "~/lib/automationInlineDraft";
 import { cn } from "~/lib/utils";
-import { useMessages } from "~/i18n/context";
-import { automations as defaultAutomationsCopy } from "~/i18n/locales/en/automations";
-
-/** The `automations.mode` catalog group, threaded into {@link modeLabels}. */
-type AutomationModeCopy = typeof defaultAutomationsCopy.mode;
-/** The `automations.worktreeMode` catalog group, threaded into {@link worktreeOptions}. */
-type WorktreeModeCopy = typeof defaultAutomationsCopy.worktreeMode;
+import { t, useTranslation } from "~/i18n";
 
 export type SelectOption = {
   readonly value: string;
   readonly label: string;
+  readonly labelKey?: string;
   readonly disabled?: boolean | undefined;
   readonly title?: string | undefined;
 };
 
-export function modeLabels(
-  copy: AutomationModeCopy = defaultAutomationsCopy.mode,
-): Record<AutomationMode, string> {
-  return {
-    standalone: copy.standalone,
-    heartbeat: copy.heartbeat,
-    dedicated: copy.dedicated,
-  };
-}
+export const MODE_LABEL_KEYS: Record<AutomationMode, string> = {
+  standalone: "automation:mode_standalone",
+  heartbeat: "automation:mode_heartbeat",
+  dedicated: "automation:dedicatedThread",
+};
 
-export function worktreeOptions(
-  copy: WorktreeModeCopy = defaultAutomationsCopy.worktreeMode,
-): readonly SelectOption[] {
-  return [
-    { value: "auto", label: copy.auto },
-    { value: "local", label: copy.local },
-    { value: "worktree", label: copy.worktree },
-  ];
-}
+export const WORKTREE_OPTIONS: readonly SelectOption[] = [
+  { value: "auto", label: "common:worktreeMode_auto", labelKey: "common:worktreeMode_auto" },
+  { value: "local", label: "computer:worktreeMode_local", labelKey: "computer:worktreeMode_local" },
+  {
+    value: "worktree",
+    label: "common:worktreeMode_worktree",
+    labelKey: "common:worktreeMode_worktree",
+  },
+];
 
-export function worktreeModeLabel(
-  mode: AutomationWorktreeMode,
-  copy: WorktreeModeCopy = defaultAutomationsCopy.worktreeMode,
-): string {
-  return worktreeOptions(copy).find((option) => option.value === mode)?.label ?? mode;
+export function worktreeModeLabel(mode: AutomationWorktreeMode, translate: typeof t = t): string {
+  const labelKey = WORKTREE_OPTIONS.find((option) => option.value === mode)?.labelKey;
+  return labelKey ? translate(labelKey) : mode;
 }
 
 export function DetailGroup({
@@ -176,7 +165,8 @@ export function InlineToggle({
   readonly disabled?: boolean | undefined;
   readonly title?: string | undefined;
 }) {
-  const copy = useMessages().automations.detail;
+  const { t } = useTranslation();
+
   return (
     <button
       type="button"
@@ -185,7 +175,7 @@ export function InlineToggle({
       onClick={() => onChange(!value)}
       className={cn(INLINE_CONTROL_CLASS, "min-w-[3rem]")}
     >
-      {value ? copy.on : copy.off}
+      {value ? t("automation:modelEffort_thinkingOn") : t("automation:traitsPicker_off")}
     </button>
   );
 }

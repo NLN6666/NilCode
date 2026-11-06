@@ -7,6 +7,7 @@
 // Depends on: DisclosureRegion/DisclosureChevron (shared disclosure motion)
 
 import { useEffect, useState, type ReactNode } from "react";
+import { useTranslation } from "../../i18n";
 
 import { CollapseRail } from "../ui/CollapseRail";
 import { DisclosureChevron } from "../ui/DisclosureChevron";
@@ -30,7 +31,6 @@ import { LinkChipIcon } from "../LinkChipIcon";
 import { McpServerIcon } from "./McpServerIcon";
 import type { WorkLogEntry } from "../../session-logic";
 import { multiFileEditLabel, type ToolCallGroupSummary } from "./toolCallGroup.logic";
-import { useMessages } from "~/i18n/context";
 import {
   renderWorkEntryIcon,
   renderWorkEntrySentence,
@@ -79,8 +79,8 @@ export function ToolCallGroupSummaryRow(
     renderChildren: () => ReactNode;
   },
 ) {
+  const { t } = useTranslation();
   const { liveEntry, open, onToggle, fontSizePx, renderChildren } = props;
-  const { chat } = useMessages();
   const [keepChildrenMounted, setKeepChildrenMounted] = useState(open);
 
   useEffect(() => {
@@ -110,7 +110,7 @@ export function ToolCallGroupSummaryRow(
     : summary
       ? summaryIcon(summary)
       : props.icon!;
-  const liveMultiFileLabel = liveEntry ? multiFileEditLabel(liveEntry) : null;
+  const liveMultiFileLabel = liveEntry ? multiFileEditLabel(liveEntry, t) : null;
 
   return (
     <div>
@@ -139,8 +139,7 @@ export function ToolCallGroupSummaryRow(
         </span>
         <span className="min-w-0 truncate" data-tool-group-live={liveEntry ? "true" : undefined}>
           {liveEntry ? (
-            (liveMultiFileLabel ??
-            renderWorkEntrySentence(workEntryDisplayParts(liveEntry, chat.work, chat.activity)))
+            (liveMultiFileLabel ?? renderWorkEntrySentence(workEntryDisplayParts(liveEntry, t)))
           ) : !summary ? (
             props.label
           ) : (

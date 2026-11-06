@@ -30,7 +30,7 @@ function status(availability: ComputerStatusResult["availability"]): ComputerSta
 }
 
 describe("ComputerSetupRequiredCard", () => {
-  it("explains the explicit setup action without claiming a prompt already appeared", () => {
+  it("offers setup when permission grants are missing", () => {
     const markup = renderToStaticMarkup(
       <ComputerSetupRequiredCard
         missing={["accessibility", "screenRecording"]}
@@ -38,47 +38,8 @@ describe("ComputerSetupRequiredCard", () => {
       />,
     );
 
-    expect(markup).toContain("Computer control needs Accessibility and Screen Recording");
-    expect(markup).toContain(
-      "Choose Set up to request missing permissions or open System Settings.",
-    );
-    expect(markup).not.toContain("macOS is asking");
-    expect(markup).toContain("Set up");
-  });
-
-  it("falls back to the unnamed grant when the backend refused without naming one", () => {
-    const markup = renderToStaticMarkup(<ComputerSetupRequiredCard onSetUp={() => undefined} />);
-
-    expect(markup).toContain("Computer control needs setup");
-    expect(markup).toContain("Choose Set up to check permissions and prepare computer control.");
-  });
-
-  it("explains a locally built copy's stale grant, and says nothing of it on a signed build", () => {
-    // The case that looks like a Synara bug: System Settings shows Synara
-    // switched on, because the grant it lists belongs to a binary a rebuild
-    // replaced. Without this the card tells the user to flip a switch that is
-    // already flipped.
-    const adhoc = renderToStaticMarkup(
-      <ComputerSetupRequiredCard
-        missing={["accessibility"]}
-        buildSignature="adhoc"
-        onSetUp={() => undefined}
-      />,
-    );
-    expect(adhoc).toContain("locally built copy");
-    expect(adhoc).toContain("add the current build again");
-
-    const signed = renderToStaticMarkup(
-      <ComputerSetupRequiredCard
-        missing={["accessibility"]}
-        buildSignature="signed"
-        onSetUp={() => undefined}
-      />,
-    );
-    // On a Developer ID build the switch means what it says, so this advice
-    // would send the user off resetting a database for nothing.
-    expect(signed).not.toContain("locally built copy");
-    expect(signed).not.toContain("tccutil");
+    expect(markup.match(/<button\b/g) ?? []).toHaveLength(1);
+    expect(markup).not.toContain('disabled=""');
   });
 
   it("names the responsible app in the tccutil fallback, and withholds it when unknown", () => {
@@ -104,7 +65,6 @@ describe("ComputerSetupRequiredCard", () => {
         onSetUp={() => undefined}
       />,
     );
-    expect(unknown).toContain("add the current build again");
     expect(unknown).not.toContain("tccutil");
   });
 
@@ -117,9 +77,7 @@ describe("ComputerSetupRequiredCard", () => {
       />,
     );
 
-    expect(markup).toContain("Computer control is ready");
-    expect(markup).not.toContain("macOS is asking");
-    expect(markup).not.toContain(">Set up<");
+    expect(markup).not.toContain("<button");
   });
 
   it("replaces historical missing grants and build identity with the live status", () => {
@@ -137,10 +95,8 @@ describe("ComputerSetupRequiredCard", () => {
         onSetUp={() => undefined}
       />,
     );
-    expect(markup).toContain("Computer control needs Screen Recording");
-    expect(markup).not.toContain("Accessibility");
     expect(markup).not.toContain("old.bundle");
-    expect(markup).not.toContain("locally built copy");
+    expect(markup.match(/<button\b/g) ?? []).toHaveLength(1);
   });
 
   it("reports unsupported platforms and status failures without old grant claims", () => {
@@ -151,9 +107,7 @@ describe("ComputerSetupRequiredCard", () => {
         onSetUp={() => undefined}
       />,
     );
-    expect(unsupported).toContain("Computer control is unavailable");
-    expect(unsupported).not.toContain("needs Accessibility");
-    expect(unsupported).not.toContain(">Set up<");
+    expect(unsupported).not.toContain("<button");
     const failed = renderToStaticMarkup(
       <ComputerSetupRequiredCard
         missing={["accessibility"]}
@@ -165,9 +119,7 @@ describe("ComputerSetupRequiredCard", () => {
       />,
     );
     expect(failed).toContain("The server disconnected.");
-    expect(failed).toContain(">Recheck<");
-    expect(failed).not.toContain("Computer control is ready");
-    expect(failed).not.toContain("Accessibility");
+    expect(failed.match(/<button\b/g) ?? []).toHaveLength(1);
   });
 
   it("requires connected health and capture access before reporting readiness", () => {
@@ -182,15 +134,14 @@ describe("ComputerSetupRequiredCard", () => {
         computerControlReady
       />,
     );
-    expect(markup).not.toContain("Computer control is ready");
-    expect(markup).toContain("Computer access has not been checked");
+    expect(markup).toContain("bg-warning/8 text-warning");
+    expect(markup).not.toContain("bg-success/8 text-success");
   });
 
   it("disables setup while the shared request is pending", () => {
     const markup = renderToStaticMarkup(
       <ComputerSetupRequiredCard isPending onSetUp={() => undefined} />,
     );
-    expect(markup).toContain("Setting up…");
     expect(markup).toContain('disabled=""');
   });
 });

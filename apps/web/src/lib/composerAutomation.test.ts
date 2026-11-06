@@ -19,6 +19,7 @@ const MODEL_SELECTION: ModelSelection = {
   model: "gpt-5",
 };
 const NOW_ISO = "2026-06-22T08:00:00.000Z";
+const passThroughTranslation = (message: string): string => message;
 
 describe("composerAutomation", () => {
   it("keeps unmarked automation questions as normal chat", async () => {
@@ -216,6 +217,8 @@ describe("composerAutomation", () => {
       selectedModelSelection: MODEL_SELECTION,
       targetThreadId: THREAD_ID,
       hasEphemeralContext: false,
+      formatLocale: "en",
+      translate: passThroughTranslation,
     });
 
     expect(draft.needsDraftReview).toBe(true);
@@ -268,6 +271,8 @@ describe("composerAutomation", () => {
       selectedModelSelection: MODEL_SELECTION,
       targetThreadId: THREAD_ID,
       hasEphemeralContext: false,
+      formatLocale: "en",
+      translate: passThroughTranslation,
     });
 
     expect(draft.needsDraftReview).toBe(false);
@@ -315,6 +320,8 @@ describe("composerAutomation", () => {
       selectedModelSelection: MODEL_SELECTION,
       targetThreadId: null,
       hasEphemeralContext: false,
+      formatLocale: "en",
+      translate: passThroughTranslation,
     });
 
     expect(draft.needsDraftReview).toBe(true);
@@ -367,6 +374,8 @@ describe("composerAutomation", () => {
       selectedModelSelection: MODEL_SELECTION,
       targetThreadId: THREAD_ID,
       hasEphemeralContext: false,
+      formatLocale: "en",
+      translate: passThroughTranslation,
     });
 
     expect(draft.form).toMatchObject({
@@ -708,21 +717,21 @@ describe("composerAutomation", () => {
 
   describe("automationClarificationPrompt", () => {
     it("asks only for the cadence when just the schedule is missing", () => {
-      const prompt = automationClarificationPrompt(["schedule"]);
-      expect(prompt).toContain("How often");
-      expect(prompt).not.toContain("what should this automation do");
+      const prompt = automationClarificationPrompt(["schedule"], passThroughTranslation);
+      expect(prompt).toBe("automation:clarifySchedule");
     });
 
     it("asks only for the task when the cadence is already known", () => {
-      const prompt = automationClarificationPrompt(["taskPrompt"]);
-      expect(prompt).toContain("What should this automation do");
-      expect(prompt).not.toContain("How often");
+      const prompt = automationClarificationPrompt(["taskPrompt"], passThroughTranslation);
+      expect(prompt).toBe("automation:clarifyTask");
     });
 
     it("asks for task and cadence when nothing was reported, so setup can recover", () => {
       // Empty missingFields (generation timed out/failed) must not loop on cadence for a
       // bare request that has no task yet.
-      expect(automationClarificationPrompt([])).toContain("what should this automation do");
+      expect(automationClarificationPrompt([], passThroughTranslation)).toBe(
+        "automation:clarifyTaskSchedule",
+      );
     });
   });
 

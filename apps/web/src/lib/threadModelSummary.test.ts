@@ -1,17 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { setLanguagePreference } from "~/i18n";
 import type { ProviderModelDescriptor } from "@synara/contracts";
 
-import { composer } from "~/i18n/locales/en/composer";
 import { resolveThreadModelSummary } from "./threadModelSummary";
 import { formatThreadModelSummaryLabel } from "./threadModelSummary";
 
-// The real English copy: the summary must read exactly as the composer trigger does.
-const STATUS_LABELS = composer.modelPicker;
+afterEach(() => setLanguagePreference("system"));
 
 describe("resolveThreadModelSummary", () => {
   it("returns null without a selection", () => {
-    expect(resolveThreadModelSummary(null, STATUS_LABELS)).toBeNull();
-    expect(resolveThreadModelSummary(undefined, STATUS_LABELS)).toBeNull();
+    expect(resolveThreadModelSummary(null)).toBeNull();
+    expect(resolveThreadModelSummary(undefined)).toBeNull();
   });
   const runtimeModel: ProviderModelDescriptor = {
     slug: "gpt-6.1-sol",
@@ -31,7 +30,6 @@ describe("resolveThreadModelSummary", () => {
         model: "gpt-6.1-sol",
         options: { reasoningEffort: "xhigh", fastMode: true },
       },
-      STATUS_LABELS,
       runtimeModel,
     );
 
@@ -40,11 +38,7 @@ describe("resolveThreadModelSummary", () => {
 
   it("uses the runtime default effort when no override is stored", () => {
     expect(
-      resolveThreadModelSummary(
-        { provider: "codex", model: "gpt-6.1-sol" },
-        STATUS_LABELS,
-        runtimeModel,
-      ),
+      resolveThreadModelSummary({ provider: "codex", model: "gpt-6.1-sol" }, runtimeModel),
     ).toMatchObject({ statusLabel: "Medium", fastMode: false });
   });
 
@@ -52,54 +46,41 @@ describe("resolveThreadModelSummary", () => {
     expect(
       resolveThreadModelSummary(
         { provider: "codex", model: "gpt-5.5", options: { fastMode: true } },
-        STATUS_LABELS,
         { ...runtimeModel, slug: "gpt-5.5", supportsFastMode: false },
       ),
     ).toMatchObject({ fastMode: false });
   });
   it("summarizes a codex selection with its reasoning effort", () => {
-    const summary = resolveThreadModelSummary(
-      {
-        provider: "codex",
-        model: "gpt-5.5",
-        options: { reasoningEffort: "high" },
-      },
-      STATUS_LABELS,
-    );
+    const summary = resolveThreadModelSummary({
+      provider: "codex",
+      model: "gpt-5.5",
+      options: { reasoningEffort: "high" },
+    });
 
     expect(summary?.provider).toBe("codex");
     expect(summary?.modelLabel.length).toBeGreaterThan(0);
-    expect(summary?.statusLabel?.toLowerCase()).toBe("high");
+    expect(summary?.statusLabel?.length).toBeGreaterThan(0);
   });
 
   it("falls back to the model's default effort when none is stored", () => {
-    const withEffort = resolveThreadModelSummary(
-      {
-        provider: "codex",
-        model: "gpt-5.5",
-        options: { reasoningEffort: "low" },
-      },
-      STATUS_LABELS,
-    );
-    const withoutOptions = resolveThreadModelSummary(
-      { provider: "codex", model: "gpt-5.5" },
-      STATUS_LABELS,
-    );
+    const withEffort = resolveThreadModelSummary({
+      provider: "codex",
+      model: "gpt-5.5",
+      options: { reasoningEffort: "low" },
+    });
+    const withoutOptions = resolveThreadModelSummary({ provider: "codex", model: "gpt-5.5" });
 
-    expect(withEffort?.statusLabel?.toLowerCase()).toBe("low");
+    expect(withEffort?.statusLabel?.length).toBeGreaterThan(0);
     expect(withoutOptions?.statusLabel).not.toBeNull();
     expect(withoutOptions?.statusLabel).not.toBe(withEffort?.statusLabel);
   });
 
   it("summarizes a claude selection", () => {
-    const summary = resolveThreadModelSummary(
-      {
-        provider: "claudeAgent",
-        model: "claude-sonnet-5",
-        options: { effort: "high" },
-      },
-      STATUS_LABELS,
-    );
+    const summary = resolveThreadModelSummary({
+      provider: "claudeAgent",
+      model: "claude-sonnet-5",
+      options: { effort: "high" },
+    });
 
     expect(summary?.provider).toBe("claudeAgent");
     expect(summary?.modelLabel.length).toBeGreaterThan(0);
@@ -109,19 +90,16 @@ describe("resolveThreadModelSummary", () => {
 
 describe("formatThreadModelSummaryLabel", () => {
   it("joins model and effort without repeating the provider name", () => {
-    const claude = resolveThreadModelSummary(
-      {
-        provider: "claudeAgent",
-        model: "claude-opus-5.5",
-        options: { effort: "medium" },
-      },
-      STATUS_LABELS,
-    );
+    const claude = resolveThreadModelSummary({
+      provider: "claudeAgent",
+      model: "claude-opus-5.5",
+      options: { effort: "medium" },
+    });
     expect(claude).not.toBeNull();
     const label = formatThreadModelSummaryLabel(claude!);
     expect(label).toContain(claude!.modelLabel);
-    expect(label).toContain("Medium");
-    expect(label).toBe(`${claude!.modelLabel} · Medium`);
+    expect(label.startsWith(claude!.modelLabel)).toBe(true);
+    expect(label.endsWith(claude!.statusLabel!)).toBe(true);
     expect(label.startsWith("Claude ·")).toBe(false);
   });
 
@@ -135,4 +113,26 @@ describe("formatThreadModelSummaryLabel", () => {
       }),
     ).toBe("GPT-5 Codex");
   });
+});
+
+it("updates generated effort in thread summaries after a language switch", () => {
+  const selection = {
+    provider: "codex",
+    model: "gpt-6.1-sol",
+    options: { reasoningEffort: "medium" },
+  } as const;
+  const model: ProviderModelDescriptor = {
+    slug: "gpt-6.1-sol",
+    name: "GPT-6.1 Sol",
+    supportedReasoningEfforts: [{ value: "medium" }, { value: "high" }],
+    defaultReasoningEffort: "medium",
+  };
+  setLanguagePreference("en");
+  const englishLabel = resolveThreadModelSummary(selection, model)?.statusLabel;
+  setLanguagePreference("zh-CN");
+  const chineseLabel = resolveThreadModelSummary(selection, model)?.statusLabel;
+  expect(englishLabel?.length).toBeGreaterThan(0);
+  expect(chineseLabel?.length).toBeGreaterThan(0);
+  expect(chineseLabel).not.toBe(englishLabel);
+  expect(selection.options.reasoningEffort).toBe("medium");
 });

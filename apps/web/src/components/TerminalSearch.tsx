@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { IconButton } from "~/components/ui/icon-button";
 import { ChevronDownIcon, ChevronUpIcon, XIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 interface TerminalSearchProps {
   searchAddon: SearchAddon | null;
@@ -27,7 +27,8 @@ const SEARCH_DECORATIONS = {
 const SEARCH_DEBOUNCE_MS = 90;
 
 export function TerminalSearch({ searchAddon, isOpen, onClose }: TerminalSearchProps) {
-  const copy = useMessages().editor.terminal.search;
+  const { t } = useTranslation();
+
   const inputRef = useRef<HTMLInputElement>(null);
   const searchTimerRef = useRef<number | null>(null);
   const [query, setQuery] = useState("");
@@ -142,18 +143,18 @@ export function TerminalSearch({ searchAddon, isOpen, onClose }: TerminalSearchP
         value={query}
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}
-        placeholder={copy.placeholder}
-        className="h-6 w-28 min-w-0 flex-shrink bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+        placeholder={t("common:find")}
+        className="h-6 w-28 min-w-0 flex-shrink bg-transparent text-ui leading-snug text-foreground placeholder:text-muted-foreground focus:outline-none"
       />
       {hasResults === false && query && (
-        <span className="whitespace-nowrap px-1 text-xs text-muted-foreground">
-          {copy.noResults}
+        <span className="whitespace-nowrap px-1 text-ui leading-snug text-muted-foreground">
+          {t("common:noResults")}
         </span>
       )}
       <div className="flex shrink-0 items-center">
         <IconButton
           onClick={() => setCaseSensitive((v) => !v)}
-          label={copy.matchCase}
+          label={t("common:terminal_toggleCaseSensitive")}
           className={cn(
             "size-6 rounded-sm border-transparent bg-transparent shadow-none sm:size-6",
             caseSensitive
@@ -161,26 +162,26 @@ export function TerminalSearch({ searchAddon, isOpen, onClose }: TerminalSearchP
               : "text-muted-foreground hover:bg-muted-foreground/20 hover:text-foreground",
           )}
         >
-          <span className="text-ui-xs font-bold leading-none">Aa</span>
+          <span className="text-ui-xs font-bold leading-none">{t("workspace:aa")}</span>
         </IconButton>
         <IconButton
           onClick={() => handleSearch("previous")}
           className="size-6 rounded-sm border-transparent bg-transparent text-muted-foreground shadow-none hover:bg-muted-foreground/20 hover:text-foreground sm:size-6"
-          label={copy.previous}
+          label={t("common:previousMatchShiftEnter")}
         >
           <ChevronUpIcon className="size-3.5" />
         </IconButton>
         <IconButton
           onClick={() => handleSearch("next")}
           className="size-6 rounded-sm border-transparent bg-transparent text-muted-foreground shadow-none hover:bg-muted-foreground/20 hover:text-foreground sm:size-6"
-          label={copy.next}
+          label={t("common:nextMatchEnter")}
         >
           <ChevronDownIcon className="size-3.5" />
         </IconButton>
         <IconButton
           onClick={handleClose}
           className="size-6 rounded-sm border-transparent bg-transparent text-muted-foreground shadow-none hover:bg-muted-foreground/20 hover:text-foreground sm:size-6"
-          label={copy.close}
+          label={t("common:closeSearchEsc")}
         >
           <XIcon className="size-3.5" />
         </IconButton>

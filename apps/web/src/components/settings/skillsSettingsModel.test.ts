@@ -6,16 +6,12 @@
 import type { DisabledSkillsByProvider, ProviderSkillDescriptor } from "@synara/contracts";
 import { describe, expect, it } from "vitest";
 
-import { en } from "../../i18n/locales/en";
 import {
   buildSettingsSkillGroups,
   buildSettingsSkillSectionsFromGroups,
   nextDisabledSkills,
   skillToggleState,
 } from "./skillsSettingsModel";
-
-// Rank/title assertions read against the real English catalog, exactly what the panel passes in.
-const SKILL_LABELS = en.settings.skills;
 
 const NONE_DISABLED: DisabledSkillsByProvider = {
   codex: [],
@@ -45,28 +41,25 @@ function skill(partial: Partial<ProviderSkillDescriptor>): ProviderSkillDescript
 
 describe("buildSettingsSkillGroups", () => {
   it("renders duplicate provider copies as one shared skill group", () => {
-    const groups = buildSettingsSkillGroups(
-      [
-        skill({
-          name: "check-code",
-          description: "Codex copy",
-          path: "/Users/test/.codex/skills/check-code/SKILL.md",
-          scope: "codex",
-        }),
-        skill({
-          name: "check-code",
-          description: "Claude copy",
-          path: "/Users/test/.claude/skills/check-code/SKILL.md",
-          scope: "claude",
-        }),
-        skill({
-          name: "cursor-only",
-          path: "/Users/test/.cursor/skills/cursor-only/SKILL.md",
-          scope: "cursor",
-        }),
-      ],
-      SKILL_LABELS,
-    );
+    const groups = buildSettingsSkillGroups([
+      skill({
+        name: "check-code",
+        description: "Codex copy",
+        path: "/Users/test/.codex/skills/check-code/SKILL.md",
+        scope: "codex",
+      }),
+      skill({
+        name: "check-code",
+        description: "Claude copy",
+        path: "/Users/test/.claude/skills/check-code/SKILL.md",
+        scope: "claude",
+      }),
+      skill({
+        name: "cursor-only",
+        path: "/Users/test/.cursor/skills/cursor-only/SKILL.md",
+        scope: "cursor",
+      }),
+    ]);
 
     const shared = groups.find((group) => group.key === "check-code");
     expect(shared?.section).toBe("shared");
@@ -79,29 +72,29 @@ describe("buildSettingsSkillGroups", () => {
     const cursorOnly = groups.find((group) => group.key === "cursor-only");
     expect(cursorOnly?.section).toBe("cursor");
     expect(cursorOnly?.providers).toEqual(["cursor"]);
-    const sections = buildSettingsSkillSectionsFromGroups(groups, SKILL_LABELS);
-    expect(sections.map((section) => section.title)).toEqual(["Shared skills", "From Cursor"]);
+    const sections = buildSettingsSkillSectionsFromGroups(groups);
+    expect(sections.map((section) => [section.titleKey, section.titleValue])).toEqual([
+      ["settings:skills_sharedSkills", undefined],
+      ["settings:skills_fromOrigin", "Cursor"],
+    ]);
     expect(sections[0]?.groups.map((group) => group.key)).toEqual(["check-code"]);
   });
 
   // Reach, not ownership: Cursor and Droid read Codex's and Claude's folders, so a skill in
   // either one is loaded by more agents than the folder's owner.
   it("reports every provider that reads the origin folder, not just its owner", () => {
-    const groups = buildSettingsSkillGroups(
-      [
-        skill({
-          name: "check-code",
-          path: "/Users/test/.codex/skills/check-code/SKILL.md",
-          scope: "codex",
-        }),
-        skill({
-          name: "check-code",
-          path: "/Users/test/.claude/skills/check-code/SKILL.md",
-          scope: "claude",
-        }),
-      ],
-      SKILL_LABELS,
-    );
+    const groups = buildSettingsSkillGroups([
+      skill({
+        name: "check-code",
+        path: "/Users/test/.codex/skills/check-code/SKILL.md",
+        scope: "codex",
+      }),
+      skill({
+        name: "check-code",
+        path: "/Users/test/.claude/skills/check-code/SKILL.md",
+        scope: "claude",
+      }),
+    ]);
 
     expect(groups[0]?.providers).toEqual([
       "codex",
@@ -115,33 +108,27 @@ describe("buildSettingsSkillGroups", () => {
   });
 
   it("treats `~/.factory/skills` as Droid's folder", () => {
-    const groups = buildSettingsSkillGroups(
-      [
-        skill({
-          name: "droid-only",
-          path: "/Users/test/.factory/skills/droid-only/SKILL.md",
-          scope: "factory",
-        }),
-      ],
-      SKILL_LABELS,
-    );
+    const groups = buildSettingsSkillGroups([
+      skill({
+        name: "droid-only",
+        path: "/Users/test/.factory/skills/droid-only/SKILL.md",
+        scope: "factory",
+      }),
+    ]);
 
     expect(groups[0]?.providers).toEqual(["droid"]);
     expect(groups[0]?.sources[0]?.originInfo.provider).toBe("droid");
   });
 
   it("reaches every provider that reads the shared .agents folder", () => {
-    const groups = buildSettingsSkillGroups(
-      [
-        skill({
-          name: "portable-review",
-          description: "Shared standard copy",
-          path: "/Users/test/.agents/skills/portable-review/SKILL.md",
-          scope: "agents",
-        }),
-      ],
-      SKILL_LABELS,
-    );
+    const groups = buildSettingsSkillGroups([
+      skill({
+        name: "portable-review",
+        description: "Shared standard copy",
+        path: "/Users/test/.agents/skills/portable-review/SKILL.md",
+        scope: "agents",
+      }),
+    ]);
 
     // Claude is the one agent that does not read `.agents`.
     expect(groups[0]?.providers).not.toContain("claudeAgent");
@@ -150,16 +137,13 @@ describe("buildSettingsSkillGroups", () => {
   });
 
   it("reaches every provider from the portable Synara folder", () => {
-    const groups = buildSettingsSkillGroups(
-      [
-        skill({
-          name: "portable",
-          path: "/Users/test/.synara/skills/portable/SKILL.md",
-          scope: "synara",
-        }),
-      ],
-      SKILL_LABELS,
-    );
+    const groups = buildSettingsSkillGroups([
+      skill({
+        name: "portable",
+        path: "/Users/test/.synara/skills/portable/SKILL.md",
+        scope: "synara",
+      }),
+    ]);
 
     expect(groups[0]?.providers).toHaveLength(10);
   });
@@ -168,30 +152,29 @@ describe("buildSettingsSkillGroups", () => {
 describe("buildSettingsSkillSectionsFromGroups", () => {
   it("places shared skill groups before provider-only sections", () => {
     const sections = buildSettingsSkillSectionsFromGroups(
-      buildSettingsSkillGroups(
-        [
-          skill({
-            name: "logic-consolidator",
-            path: "/Users/test/.codex/skills/logic-consolidator/SKILL.md",
-            scope: "codex",
-          }),
-          skill({
-            name: "logic-consolidator",
-            path: "/Users/test/.claude/skills/logic-consolidator/SKILL.md",
-            scope: "claude",
-          }),
-          skill({
-            name: "cursor-only",
-            path: "/Users/test/.cursor/skills/cursor-only/SKILL.md",
-            scope: "cursor",
-          }),
-        ],
-        SKILL_LABELS,
-      ),
-      SKILL_LABELS,
+      buildSettingsSkillGroups([
+        skill({
+          name: "logic-consolidator",
+          path: "/Users/test/.codex/skills/logic-consolidator/SKILL.md",
+          scope: "codex",
+        }),
+        skill({
+          name: "logic-consolidator",
+          path: "/Users/test/.claude/skills/logic-consolidator/SKILL.md",
+          scope: "claude",
+        }),
+        skill({
+          name: "cursor-only",
+          path: "/Users/test/.cursor/skills/cursor-only/SKILL.md",
+          scope: "cursor",
+        }),
+      ]),
     );
 
-    expect(sections.map((section) => section.title)).toEqual(["Shared skills", "From Cursor"]);
+    expect(sections.map((section) => [section.titleKey, section.titleValue])).toEqual([
+      ["settings:skills_sharedSkills", undefined],
+      ["settings:skills_fromOrigin", "Cursor"],
+    ]);
     expect(sections[0]?.groups.map((group) => group.key)).toEqual(["logic-consolidator"]);
   });
 });

@@ -5,9 +5,9 @@
 import { type ProviderKind, type ThreadId } from "@synara/contracts";
 import { memo, type ReactNode } from "react";
 
-import { SynaraLogo } from "../SynaraLogo";
+import { SynaraLogo } from "@synara/profile-ui/logo";
 import { cn } from "~/lib/utils";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 export interface CrossTaskOrigin {
   readonly sourceThreadId: ThreadId;
@@ -23,10 +23,12 @@ export interface CrossTaskOrigin {
 // handed it the task and where the result goes back to.
 function crossTaskOriginText(
   origin: CrossTaskOrigin,
-  copy: ReturnType<typeof useMessages>["chat"]["message"],
+  translate: ReturnType<typeof useTranslation>["t"],
 ): string {
   const groupName = origin.coordinatorGroupName?.trim();
-  return groupName ? copy.sentByCoordinator(groupName) : copy.sentFromAnotherThread;
+  return groupName
+    ? translate("chat:sentByTheCoordinator", { value0: groupName })
+    : translate("chat:sentBySynaraFromAnotherThread");
 }
 
 function OriginContent({ text }: { readonly text: string }): ReactNode {
@@ -47,7 +49,8 @@ export const CrossTaskOriginLabel = memo(function CrossTaskOriginLabel({
   readonly origin: CrossTaskOrigin;
   readonly onOpenSourceThread?: (threadId: ThreadId) => void;
 }) {
-  const linkCopy = useMessages().chat.message;
+  const { t } = useTranslation();
+
   const className = cn(
     "inline-flex max-w-full items-center gap-2 self-end rounded-md py-1",
     "font-system-ui text-ui font-normal text-muted-foreground/72",
@@ -62,18 +65,18 @@ export const CrossTaskOriginLabel = memo(function CrossTaskOriginLabel({
         className={className}
         data-cross-task-origin="true"
         aria-label={
-          origin.coordinatorGroupName ? linkCopy.openCoordinator : linkCopy.openSourceThread
+          origin.coordinatorGroupName ? t("chat:openCoordinator") : t("chat:openSourceThread")
         }
         onClick={() => onOpenSourceThread(origin.sourceThreadId)}
       >
-        <OriginContent text={crossTaskOriginText(origin, linkCopy)} />
+        <OriginContent text={crossTaskOriginText(origin, t)} />
       </button>
     );
   }
 
   return (
     <div className={className} data-cross-task-origin="true">
-      <OriginContent text={crossTaskOriginText(origin, linkCopy)} />
+      <OriginContent text={crossTaskOriginText(origin, t)} />
     </div>
   );
 });

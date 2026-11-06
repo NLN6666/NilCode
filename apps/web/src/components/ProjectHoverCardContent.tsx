@@ -17,7 +17,7 @@ import {
   SIDEBAR_HOVER_CARD_CONTAINER_PADDING_CLASS_NAME,
   SIDEBAR_HOVER_CARD_ROW_CLASS_NAME,
 } from "./sidebarHoverCardStyles";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 export type ProjectHoverCardContentProps = {
   name: string;
@@ -42,8 +42,11 @@ const ROW_CLASS_NAME = SIDEBAR_HOVER_CARD_ROW_CLASS_NAME;
 // the explicit text color here tints them directly.
 const ICON_CLASS_NAME = "size-3.5 shrink-0 text-muted-foreground";
 
-function formatChatCount(count: number): string {
-  return `${count} ${count === 1 ? "chat" : "chats"}`;
+function formatChatCount(
+  count: number,
+  translate: (key: string, values?: Record<string, unknown>) => string,
+): string {
+  return `${count} ${translate("common:countUnitConversation", { count })}`;
 }
 
 export function ProjectHoverCardContent({
@@ -57,7 +60,8 @@ export function ProjectHoverCardContent({
   onEditProject,
   onEditProjectAgent,
 }: ProjectHoverCardContentProps) {
-  const copy = useMessages().dialogs.projectHoverCard;
+  const { t } = useTranslation();
+
   return (
     <div
       className={cn("flex w-full flex-col gap-0", SIDEBAR_HOVER_CARD_CONTAINER_PADDING_CLASS_NAME)}
@@ -87,7 +91,7 @@ export function ProjectHoverCardContent({
       </div>
       <div className={cn(ROW_CLASS_NAME, "text-foreground/80")}>
         <MessageCircleIcon className={ICON_CLASS_NAME} aria-hidden />
-        <span className="min-w-0 truncate">{formatChatCount(chatCount)}</span>
+        <span className="min-w-0 truncate">{formatChatCount(chatCount, t)}</span>
       </div>
       <div className="-mx-0.5 my-0.5 h-px bg-[color:var(--color-border)]" aria-hidden />
       <div className={cn(ROW_CLASS_NAME, "text-foreground/80")}>
@@ -104,7 +108,7 @@ export function ProjectHoverCardContent({
         )}
       >
         <SettingsIcon className={ICON_CLASS_NAME} aria-hidden />
-        <span className="min-w-0 truncate">{copy.editProject}</span>
+        <span className="min-w-0 truncate">{t("workspace:editProject")}</span>
       </button>
       {onEditProjectAgent ? (
         <button
@@ -116,7 +120,7 @@ export function ProjectHoverCardContent({
           )}
         >
           <BotIcon className={ICON_CLASS_NAME} aria-hidden />
-          <span className="min-w-0 truncate">Edit coordinator</span>
+          <span className="min-w-0 truncate">{t("workspace:editCoordinator")}</span>
         </button>
       ) : null}
     </div>

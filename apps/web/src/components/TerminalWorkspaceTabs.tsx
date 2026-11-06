@@ -16,7 +16,7 @@ import { cn } from "~/lib/utils";
 
 import TerminalActivityIndicator from "./terminal/TerminalActivityIndicator";
 import { type ThreadTerminalWorkspaceLayout, type ThreadTerminalWorkspaceTab } from "../types";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 interface TerminalWorkspaceTabsProps {
   activeTab: ThreadTerminalWorkspaceTab;
@@ -35,7 +35,8 @@ export default function TerminalWorkspaceTabs({
   onSelectTab,
   onClose,
 }: TerminalWorkspaceTabsProps) {
-  const copy = useMessages().editor.terminal;
+  const { t } = useTranslation();
+
   const stripRef = useRef<HTMLDivElement>(null);
   useHorizontalWheelScroll(stripRef);
   const tabClassName =
@@ -60,7 +61,7 @@ export default function TerminalWorkspaceTabs({
             onSelectTab("terminal");
           }}
         >
-          <span className="font-mono tracking-wide">{copy.label}</span>
+          <span className="font-mono tracking-wide">{t("workspace:viewportPane_terminal")}</span>
           {terminalHasRunningActivity ? (
             <TerminalActivityIndicator className="ml-1.5 text-foreground/75" />
           ) : null}
@@ -78,15 +79,15 @@ export default function TerminalWorkspaceTabs({
               onSelectTab("chat");
             }}
           >
-            <span className="font-mono tracking-wide">Chat</span>
+            <span className="font-mono tracking-wide">{t("workspace:editor_chatLabel")}</span>
             {isWorking ? (
               <span className="ml-1.5 inline-flex size-1.5 rounded-full bg-emerald-500/80" />
             ) : null}
           </button>
         ) : null}
         <IconButton
-          label="Close terminal"
-          tooltip="Close terminal"
+          label={t("workspace:closeTerminal")}
+          tooltip={t("workspace:closeTerminal")}
           onClick={onClose}
           size="icon-xs"
           variant="chrome"

@@ -11,9 +11,9 @@
 
 import { forwardRef, type ComponentPropsWithoutRef } from "react";
 
-import { useMessages } from "~/i18n/context";
 import { CircleAlertIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
+import { useTranslation } from "~/i18n";
 
 // `inline` sits in a card's detail row; `badge` floats over an image thumbnail
 // (opaque surface + shadow so it stays legible on any preview).
@@ -28,14 +28,14 @@ export const DraftAttachmentWarningIcon = forwardRef<
   HTMLSpanElement,
   DraftAttachmentWarningIconProps
 >(function DraftAttachmentWarningIcon({ variant: variantProp, className, ...rest }, ref) {
-  const copy = useMessages().composer.attachments;
+  const { t } = useTranslation();
   const variant = variantProp ?? "inline";
   return (
     <span
       ref={ref}
       {...rest}
       role="img"
-      aria-label={copy.draftWarningLabel}
+      aria-label={t("chat:attachment_draftWarningLabel")}
       className={cn(
         "inline-flex shrink-0 items-center justify-center rounded-full text-amber-600",
         variant === "badge" ? "size-5 bg-[var(--composer-surface)] shadow-sm" : "size-4",

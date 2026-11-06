@@ -1,6 +1,8 @@
 import { DEFAULT_SERVER_SETTINGS_VIEW } from "@synara/contracts";
 import { deriveProviderInstances } from "@synara/shared/providerInstances";
 import { describe, expect, it } from "vitest";
+import { setLanguagePreference, t } from "~/i18n";
+import { resolveEnvironmentProviderUsageSummary } from "./chat/environment/EnvironmentUsageSection.logic";
 
 import { deriveProviderUsageDisplayRows } from "~/lib/providerUsageDisplay";
 
@@ -47,14 +49,12 @@ describe("rail usage accounts", () => {
 
   it("allows two accounts of the same provider and distinguishes their names", () => {
     const selected = resolveRailUsageAccounts(["claudeAgent", "claude_work"], accounts);
-    expect(selected.map((account) => account.label)).toEqual([
-      "Claude · Default account",
-      "Claude · Work",
-    ]);
     expect(selected.map((account) => account.instance.instanceId)).toEqual([
       "claudeAgent",
       "claude_work",
     ]);
+    expect(selected[0]?.label).not.toBe(selected[1]?.label);
+    expect(selected[1]?.label).toContain("Work");
   });
 
   it("drops duplicate, removed, and disabled accounts before applying the cap", () => {
@@ -114,6 +114,29 @@ describe("selectRailUsageRows", () => {
     expect(labels(rows, null, "both")).toEqual(["Weekly", "5h"]);
     expect(labels(rows, null, "fiveHour")).toEqual(["5h"]);
     expect(labels(rows, null, "weekly")).toEqual(["Weekly"]);
+  });
+
+  it("localizes quota descriptions while preserving canonical window selection", () => {
+    try {
+      setLanguagePreference("zh-CN");
+      const selected = selectRailUsageRows(rows, null, "both");
+      expect(selected.map((row) => row.label)).toEqual(["Weekly", "5h"]);
+      const summary = resolveEnvironmentProviderUsageSummary(
+        {
+          providerName: "Codex",
+          rows: selected,
+          snapshot: undefined,
+          hasUsageLines: true,
+        },
+        t,
+      );
+      expect(summary.ariaLabel).toContain("Codex");
+      expect(summary.ariaLabel).toContain("40%");
+      expect(summary.rows).toBe(selected);
+      expect(rows.map((row) => row.label)).toEqual(["5h", "Weekly"]);
+    } finally {
+      setLanguagePreference("system");
+    }
   });
 
   it("falls back to the other account window, then to the primary row", () => {

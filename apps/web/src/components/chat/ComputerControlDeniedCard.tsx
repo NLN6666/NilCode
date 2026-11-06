@@ -5,7 +5,7 @@
 // Layer: Chat transcript UI
 
 import { ComputerActionCard } from "./ComputerActionCard";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 export function ComputerControlDeniedCard({
   computerControlEnabled,
@@ -20,18 +20,22 @@ export function ComputerControlDeniedCard({
   readonly metaFontSizePx?: number;
   readonly onEnable?: () => void;
 }) {
-  const copy = useMessages().chat.computerControl;
+  const { t } = useTranslation();
   const enabled = computerControlEnabled === true;
   return (
     <ComputerActionCard
       tone={enabled ? "success" : "warning"}
-      title={enabled ? copy.enabledTitle : copy.disabledTitle}
+      title={
+        enabled ? t("computer:computerControlIsOnForThisChat") : t("computer:computerControlIsOff")
+      }
       textFontSizePx={textFontSizePx}
       metaFontSizePx={metaFontSizePx}
-      action={onEnable && !enabled ? { label: copy.enable, onClick: onEnable } : undefined}
+      action={onEnable && !enabled ? { label: t("computer:enable"), onClick: onEnable } : undefined}
     >
       <p>
-        {enabled ? copy.enabledDescription : copy.disabledDescription}
+        {enabled
+          ? t("computer:queuedDesktopTurnsStayCancelledSendAFreshMessage")
+          : t("computer:turnItOnInSettingsToLetTheAgent")}
       </p>
     </ComputerActionCard>
   );

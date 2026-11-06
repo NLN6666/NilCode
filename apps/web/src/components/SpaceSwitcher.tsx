@@ -44,7 +44,7 @@ import {
 } from "./sidebarContextMenuStyles";
 import { Menu, MenuGroup, MenuItem } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 export type SpaceActivityTone = "attention" | "running" | "completed";
 
@@ -77,13 +77,6 @@ const SPACE_ACTIVITY_DOT_CLASS_NAME: Record<SpaceActivityTone, string> = {
   attention: "bg-amber-500 dark:bg-amber-300/90",
   running: "bg-sky-500 dark:bg-sky-300/80",
   completed: "bg-emerald-500 dark:bg-emerald-300/90",
-};
-
-/** Spoken and hover wording for a tone. The internal tone keys must never reach a user. */
-const SPACE_ACTIVITY_LABEL: Record<SpaceActivityTone, string> = {
-  attention: "Needs attention",
-  running: "Working",
-  completed: "Done",
 };
 
 /**
@@ -138,6 +131,8 @@ function SpaceTab(props: {
   name: string;
   /** Extra tooltip/spoken context that the icon alone cannot carry (Void). */
   hint?: string;
+  /** Localized status accompanying the activity dot. */
+  activityLabel: string | null;
   /** Rendered jump-chord label (e.g. "⌘⌥2") appended to the tooltip. */
   shortcutLabel?: string | null;
   active: boolean;
@@ -152,7 +147,7 @@ function SpaceTab(props: {
   onProjectDrop?: (projectId: ProjectId) => void;
   sortable?: SpaceTabSortable;
 }) {
-  const toneLabel = props.activityTone ? SPACE_ACTIVITY_LABEL[props.activityTone] : null;
+  const toneLabel = props.activityLabel;
   const detail = toneLabel ?? props.hint ?? null;
   // Counter, not a boolean: dragenter/dragleave also fire for the tab's child spans, and
   // a boolean would flicker off while the pointer crosses them.
@@ -243,6 +238,8 @@ function SortableSpaceTab(props: {
   shortcutLabel: string | null;
   active: boolean;
   activityTone: SpaceActivityTone | null;
+  activityLabel: string | null;
+  gestureHint: string;
   onSelect: () => void;
   onEdit: () => void;
   onContextMenu: (event: MouseEvent<HTMLButtonElement>) => void;
@@ -262,7 +259,8 @@ function SortableSpaceTab(props: {
       shortcutLabel={props.shortcutLabel}
       active={props.active}
       activityTone={props.activityTone}
-      gestureHint="Double-click to edit · Drag to reorder"
+      activityLabel={props.activityLabel}
+      gestureHint={props.gestureHint}
       onSelect={props.onSelect}
       onEdit={props.onEdit}
       onContextMenu={props.onContextMenu}
@@ -336,7 +334,8 @@ function SpaceNameLabel(props: {
   takenNames: ReadonlyArray<string>;
   onRename: (name: string) => void;
 }) {
-  const copy = useMessages().workspace.spaces;
+  const { t } = useTranslation();
+
   const [draft, setDraft] = useState<string | null>(null);
 
   if (draft === null) {
@@ -344,7 +343,7 @@ function SpaceNameLabel(props: {
       <span
         className="cursor-text truncate"
         onDoubleClick={() => setDraft(props.displayName)}
-        title="Double-click to rename"
+        title={t("common:workspace_doubleClickToRename")}
       >
         {props.displayName}
       </span>
@@ -365,7 +364,7 @@ function SpaceNameLabel(props: {
       value={draft}
       autoFocus
       maxLength={SPACE_NAME_MAX_LENGTH}
-      aria-label={copy.nameLabel}
+      aria-label={t("common:spaceName")}
       aria-invalid={!isValid}
       onFocus={(event) => event.currentTarget.select()}
       onChange={(event) => setDraft(event.target.value)}
@@ -419,8 +418,16 @@ export function SpaceSwitcher(props: SpaceSwitcherProps) {
 }
 
 function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
-  const copy = useMessages().workspace.spaces;
+  const { t } = useTranslation();
+
   const { onSelect } = props;
+  const activityLabels: Record<SpaceActivityTone, string> = {
+    attention: t("workspace:spaceActivity_needsAttention"),
+    running: t("workspace:spaceActivity_working"),
+    completed: t("workspace:spaceActivity_done"),
+  };
+  const editGestureHint = t("workspace:spaceTab_doubleClickToEdit");
+  const reorderGestureHint = t("workspace:spaceTab_doubleClickToEditDragToReorder");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const [contextState, setContextState] = useState<{
     /** `null` targets Void, which has no row but still owns a name and an icon. */
@@ -452,7 +459,7 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
   const activeSpace = activeSpaceId
     ? (props.spaces.find((space) => space.id === activeSpaceId) ?? null)
     : null;
-  const activeSpaceName = spaceDisplayName(activeSpaceId, props.spaces, props.voidSpace);
+  const activeSpaceName = spaceDisplayName(activeSpaceId, props.spaces, props.voidSpace, t);
   /** Every name the header rename must not land on: the other spaces, plus Void or itself. */
   const takenNames = [
     ...props.spaces.filter((space) => space.id !== activeSpaceId).map((space) => space.name),
@@ -461,6 +468,7 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
   const voidIsCustomized =
     props.voidSpace.name !== DEFAULT_VOID_SPACE.name ||
     props.voidSpace.icon !== DEFAULT_VOID_SPACE.icon;
+  const voidActivityTone = props.activityBySpaceId.get(null) ?? null;
 
   /**
    * A tab click that only ends a drag is dropped rather than navigating (see `dragEndedRef`).
@@ -538,7 +546,7 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
       <div className="flex items-center gap-1 px-1">
         <div
           role="tablist"
-          aria-label={copy.label}
+          aria-label={t("common:spaces")}
           aria-orientation="horizontal"
           className="flex min-w-0 flex-1 items-center gap-1"
           onKeyDown={handleTabStripKeyDown}
@@ -554,11 +562,12 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
           <SpaceTab
             icon={props.voidSpace.icon}
             name={props.voidSpace.name}
-            hint="Unassigned projects"
-            gestureHint="Double-click to edit"
+            hint={t("workspace:spaceUnassignedProjects")}
+            gestureHint={editGestureHint}
             shortcutLabel={props.jumpShortcutLabelForTab?.(0) ?? null}
             active={activeSpaceId === null}
-            activityTone={props.activityBySpaceId.get(null) ?? null}
+            activityTone={voidActivityTone}
+            activityLabel={voidActivityTone ? activityLabels[voidActivityTone] : null}
             onSelect={() => selectFromClick(null)}
             onEdit={props.onEditVoid}
             onContextMenu={(event) => {
@@ -598,25 +607,30 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
                 items={props.spaces.map((space) => space.id)}
                 strategy={horizontalListSortingStrategy}
               >
-                {props.spaces.map((space, index) => (
-                  <SortableSpaceTab
-                    key={space.id}
-                    space={space}
-                    shortcutLabel={props.jumpShortcutLabelForTab?.(index + 1) ?? null}
-                    active={activeSpaceId === space.id}
-                    activityTone={props.activityBySpaceId.get(space.id) ?? null}
-                    onSelect={() => selectFromClick(space.id)}
-                    onEdit={() => props.onEdit(space)}
-                    onProjectDrop={(projectId) => props.onDropProject(projectId, space.id)}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      setContextState({
-                        space,
-                        position: { x: event.clientX, y: event.clientY },
-                      });
-                    }}
-                  />
-                ))}
+                {props.spaces.map((space, index) => {
+                  const activityTone = props.activityBySpaceId.get(space.id) ?? null;
+                  return (
+                    <SortableSpaceTab
+                      key={space.id}
+                      space={space}
+                      shortcutLabel={props.jumpShortcutLabelForTab?.(index + 1) ?? null}
+                      active={activeSpaceId === space.id}
+                      activityTone={activityTone}
+                      activityLabel={activityTone ? activityLabels[activityTone] : null}
+                      gestureHint={reorderGestureHint}
+                      onSelect={() => selectFromClick(space.id)}
+                      onEdit={() => props.onEdit(space)}
+                      onProjectDrop={(projectId) => props.onDropProject(projectId, space.id)}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setContextState({
+                          space,
+                          position: { x: event.clientX, y: event.clientY },
+                        });
+                      }}
+                    />
+                  );
+                })}
               </SortableContext>
             </div>
           </DndContext>
@@ -627,7 +641,7 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
             render={
               <button
                 type="button"
-                aria-label={copy.newSpace}
+                aria-label={t("workspace:newSpace")}
                 onClick={props.onCreate}
                 className={cn(SPACE_TAB_CLASS_NAME, "text-muted-foreground/55")}
               />
@@ -635,7 +649,7 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
           >
             <PlusIcon className="size-3.5" />
           </TooltipTrigger>
-          <TooltipPopup side="bottom">{copy.newSpace}</TooltipPopup>
+          <TooltipPopup side="bottom">{t("workspace:newSpace")}</TooltipPopup>
         </Tooltip>
       </div>
 
@@ -659,7 +673,9 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
                 }}
               >
                 <SidebarContextMenuIcon icon={PencilIcon} />
-                <span>{contextState.space ? copy.editSpace : copy.editVoidSpace}</span>
+                <span>
+                  {contextState.space ? t("common:editSpace2") : t("common:editNameAndIcon")}
+                </span>
               </MenuItem>
               {contextState.space ? (
                 // Neutral, not red: deleting a space only files its projects back into
@@ -674,7 +690,7 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
                   }}
                 >
                   <SidebarContextMenuIcon icon={Trash2} />
-                  <span>Delete space</span>
+                  <span>{t("common:deleteSpace")}</span>
                 </MenuItem>
               ) : voidIsCustomized ? (
                 // Void cannot be deleted — it is where projects live when they are nowhere —
@@ -687,7 +703,9 @@ function SpaceSwitcherStrip(props: SpaceSwitcherProps) {
                   }}
                 >
                   <SidebarContextMenuIcon icon={ResetIcon} />
-                  <span>Reset to {DEFAULT_VOID_SPACE.name}</span>
+                  <span>
+                    {t("common:resetTo")} {DEFAULT_VOID_SPACE.name}
+                  </span>
                 </MenuItem>
               ) : null}
             </MenuGroup>

@@ -62,7 +62,10 @@ import {
   isReasoningUpdateWorkEntry,
 } from "./agentActivity.logic";
 import { AutomationCreatedCard } from "./AutomationCreatedCard";
+import { McpConnectorProposalCard } from "../settings/McpConnectorProposalCard";
+import { MCP_CONNECTORS_ON } from "~/betaFeatures";
 import { BackgroundTaskRow } from "./BackgroundTaskRow";
+import { ReasoningStreamRegion } from "./ReasoningStreamRegion";
 import { getChatTranscriptTextStyle, INLINE_COMMAND_CHIP_CLASS_NAME } from "./chatTypography";
 import { SubagentRunCard } from "./SubagentRunCard";
 import { ConnectedComputerSetupRequiredCard } from "./ComputerSetupRequiredCard";
@@ -73,8 +76,7 @@ import { type ExpandedImagePreview } from "./ExpandedImagePreview";
 import { LinkChipIcon } from "../LinkChipIcon";
 import { McpServerIcon } from "./McpServerIcon";
 import { normalizeCompactToolLabel } from "./MessagesTimeline.logic";
-import { ReasoningStreamRegion } from "./ReasoningStreamRegion";
-import { SynaraLogo } from "../SynaraLogo";
+import { SynaraLogo } from "@synara/profile-ui/logo";
 import { ToolCallDetailsContent } from "./ToolCallDetailsDialog";
 import { CollapseRail } from "../ui/CollapseRail";
 import { DisclosureChevron } from "../ui/DisclosureChevron";
@@ -105,10 +107,9 @@ import {
 } from "../../lib/liveActivityPresentation";
 import { deriveToolFailureSummary } from "../../lib/toolCallDetails";
 import { openWorkspaceFileReference, useWorkspaceFileOpener } from "../../lib/workspaceFileOpener";
-import { useMessages } from "~/i18n/context";
-import type { Messages } from "~/i18n/locales/en";
 import { DISCLOSURE_CLEANUP_BUFFER_MS, DISCLOSURE_TRANSITION_MS } from "../../lib/disclosureMotion";
 import { MUTED_LABEL_TEXT_CLASS_NAME, MUTED_LABEL_TEXT_COLOR } from "~/surfaceStyles";
+import { useTranslation } from "~/i18n";
 
 // Rest tone is the shared quiet-label gray (same one the composer pickers use for
 // their effort/thinking labels) so a tool row and the picker below it read as one
@@ -121,8 +122,7 @@ const EMPTY_FILE_DIFF_STATS: ReadonlyMap<string, { additions: number; deletions:
   new Map();
 
 type TimelineWorkEntry = WorkLogEntry;
-type WorkCopy = Messages["chat"]["work"];
-type ActivityCopy = Messages["chat"]["activity"];
+type ChatTranslator = ReturnType<typeof useTranslation>["t"];
 
 const AgentTaskIcon: LucideIcon = (props) => <BotIcon {...props} />;
 
@@ -179,7 +179,7 @@ function extractFilePathFromDetail(detail: string): string | null {
   });
 }
 
-function workEntryPreview(workEntry: TimelineWorkEntry, copy: WorkCopy): string | null {
+function workEntryPreview(workEntry: TimelineWorkEntry, translate: ChatTranslator): string | null {
   if (workEntry.monitorNotification) return null;
   if (isReasoningUpdateWorkEntry(workEntry)) {
     return formatAgentActivityEntryPreview(workEntry);
@@ -202,7 +202,7 @@ function workEntryPreview(workEntry: TimelineWorkEntry, copy: WorkCopy): string 
   if (workEntry.changedFiles && workEntry.changedFiles.length > 0) {
     const names = workEntry.changedFiles.map((p) => basenameOfPath(p));
     if (names.length === 1) return names[0]!;
-    return copy.files(names.length);
+    return translate("chat:filesChangedCount", { count: names.length });
   }
 
   if (workEntry.itemType === "collab_agent_tool_call") {
@@ -432,18 +432,18 @@ function capitalizePhrase(value: string): string {
   return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
 }
 
-function toolWorkEntryHeading(workEntry: TimelineWorkEntry, reasoningTraceTitle: string): string {
-  // `agentActivity.logic` writes a translation key onto the rows it synthesizes,
-  // so resolve it before any label-derived heading path runs on the raw key.
+function toolWorkEntryHeading(workEntry: TimelineWorkEntry, translate: ChatTranslator): string {
+  if (workEntry.displayToolTitle) return capitalizePhrase(workEntry.displayToolTitle);
   if (isReasoningTraceTitleKey(workEntry.toolTitle ?? workEntry.label)) {
-    return reasoningTraceTitle;
+    return translate("chat:sessionStatus_reasoning");
   }
   if (computerToolName(workEntry.toolName)) {
     const title = normalizeCompactToolLabel(workEntry.toolTitle ?? "");
     if (title && !isGenericToolTitle(title) && !computerToolName(title)) {
       return capitalizePhrase(title);
     }
-    return describeComputerToolCall({ toolName: workEntry.toolName, args: undefined })!.summary;
+    return describeComputerToolCall({ toolName: workEntry.toolName, args: undefined }, translate)!
+      .summary;
   }
   // Task progress is semantic copy, not a tool lifecycle status. Preserve the
   // trailing "completed" instead of passing it through the compact tool-label
@@ -451,12 +451,15 @@ function toolWorkEntryHeading(workEntry: TimelineWorkEntry, reasoningTraceTitle:
   if (workEntry.activityKind === "turn.tasks.updated" || workEntry.monitorNotification) {
     return capitalizePhrase(workEntry.label);
   }
-  const synaraTitle = deriveSynaraMcpToolTitle({
-    toolName: workEntry.toolName,
-    title: workEntry.toolTitle,
-    fallbackLabel: workEntry.label,
-    status: toolWorkEntryStatus(workEntry),
-  });
+  const synaraTitle = deriveSynaraMcpToolTitle(
+    {
+      toolName: workEntry.toolName,
+      title: workEntry.toolTitle,
+      fallbackLabel: workEntry.label,
+      status: toolWorkEntryStatus(workEntry),
+    },
+    translate,
+  );
   if (synaraTitle) {
     return synaraTitle;
   }
@@ -466,26 +469,17 @@ function toolWorkEntryHeading(workEntry: TimelineWorkEntry, reasoningTraceTitle:
   return capitalizePhrase(normalizeCompactToolLabel(workEntry.toolTitle));
 }
 
-/** "N updates - <latest>" for a compacted reasoning group; plain preview otherwise. */
-function reasoningTraceDisplayText(
-  workEntry: TimelineWorkEntry,
+function combineWorkEntryDisplayText(
+  heading: string,
   preview: string | null,
-  copy: ActivityCopy,
-): string | null {
-  const updateCount = workEntry.reasoningUpdateCount ?? 0;
-  if (updateCount > 1) {
-    return preview ? copy.updatesWithPreview(updateCount, preview) : copy.updates(updateCount);
-  }
-  return preview;
-}
-
-function combineWorkEntryDisplayText(heading: string, preview: string | null): string {
+  translate: ChatTranslator,
+): string {
   if (!preview) {
     return heading;
   }
   return normalizeToolTextForComparison(heading) === normalizeToolTextForComparison(preview)
     ? heading
-    : `${heading} ${preview}`;
+    : translate("chat:symbol7", { value0: heading, value1: preview });
 }
 
 // Shell command rows read "Ran <command>" with the command verbatim; a plain
@@ -494,7 +488,6 @@ function combineWorkEntryDisplayText(heading: string, preview: string | null): s
 // status rows keep their own wording.
 function commandRowDisplay(
   workEntry: TimelineWorkEntry,
-  copy: WorkCopy,
 ): { heading: string; object: string; literal: boolean } | null {
   const command = workEntry.rawCommand ?? workEntry.command;
   if (
@@ -512,14 +505,14 @@ function commandRowDisplay(
   const readTargets = deriveCommandReadTargets(command);
   if (readTargets) {
     return {
-      heading: running ? copy.commandReading : copy.commandRead,
+      heading: running ? "chat:reading" : "chat:detail_read",
       object: readTargets.join(", "),
       literal: false,
     };
   }
   const literal = deriveLiteralCommand(command);
   return literal
-    ? { heading: running ? copy.commandRunning : copy.commandRan, object: literal, literal: true }
+    ? { heading: running ? "chat:runStatus_running" : "chat:ran", object: literal, literal: true }
     : null;
 }
 
@@ -552,38 +545,39 @@ export function renderWorkEntrySentence(parts: WorkEntryDisplayParts): ReactNode
 // Shared with the live tool-group line, which wears its newest call's sentence.
 export function workEntryDisplayParts(
   workEntry: TimelineWorkEntry,
-  rowCopy: WorkCopy,
-  activityCopy: ActivityCopy,
+  translate: ChatTranslator,
 ): WorkEntryDisplayParts {
-  const commandDisplay = commandRowDisplay(workEntry, rowCopy);
+  const commandDisplay = commandRowDisplay(workEntry);
   if (commandDisplay) {
+    const heading = translate(commandDisplay.heading, { context: "command" });
     return {
-      heading: commandDisplay.heading,
+      heading,
       preview: commandDisplay.object,
-      displayText: `${commandDisplay.heading} ${commandDisplay.object}`,
+      displayText: `${heading} ${commandDisplay.object}`,
       commandLiteral: commandDisplay.literal ? commandDisplay.object : null,
     };
   }
   const webFetchUrl = extractWebFetchUrl(workEntry);
-  const heading = toolWorkEntryHeading(workEntry, activityCopy.titles.reasoningTrace);
-  const rawPreview = workEntryPreview(workEntry, rowCopy);
+  const heading = toolWorkEntryHeading(workEntry, translate);
+  const rawPreview = workEntryPreview(workEntry, translate);
   const preview =
     !isGitHubMcpToolCall(workEntry) &&
     (isSynaraBrowserWorkEntry(workEntry) || isSynaraToolCall(workEntry))
-      ? sanitizeSynaraMcpToolPreview({
-          preview: rawPreview,
-          heading,
-          status: toolWorkEntryStatus(workEntry),
-        })
+      ? sanitizeSynaraMcpToolPreview(
+          {
+            preview: rawPreview,
+            heading,
+            status: toolWorkEntryStatus(workEntry),
+          },
+          translate,
+        )
       : rawPreview;
   const displayText = webFetchUrl
     ? describeLinkChip(webFetchUrl).label
-    : isReasoningUpdateWorkEntry(workEntry)
-      ? (reasoningTraceDisplayText(workEntry, preview, activityCopy) ??
-        combineWorkEntryDisplayText(heading, preview))
-      : workEntry.activityKind === "tool.summary" && preview
-        ? preview
-        : combineWorkEntryDisplayText(heading, preview);
+    : (isReasoningUpdateWorkEntry(workEntry) || workEntry.activityKind === "tool.summary") &&
+        preview
+      ? preview
+      : combineWorkEntryDisplayText(heading, preview, translate);
   return { heading, preview, displayText, commandLiteral: null };
 }
 
@@ -607,16 +601,16 @@ function proseWorkEntryText(workEntry: TimelineWorkEntry, displayText: string): 
   return text.length > 0 ? text : null;
 }
 
-function commandTooltipContent(command: string, displayText: string, copy: WorkCopy) {
+function commandTooltipContent(command: string, displayText: string, translate: ChatTranslator) {
   return (
     <div className="max-w-96 whitespace-pre-wrap leading-tight">
       <div className="space-y-2">
         <div className="space-y-0.5">
-          <div className="text-muted-foreground/70">{copy.summary}</div>
+          <div className="text-muted-foreground/70">{translate("chat:timeline_summaryLabel")}</div>
           <div>{displayText}</div>
         </div>
         <div className="space-y-0.5">
-          <div className="text-muted-foreground/70">{copy.rawCall}</div>
+          <div className="text-muted-foreground/70">{translate("chat:timeline_rawCall")}</div>
           <code className="block whitespace-pre-wrap break-words font-chat-code text-chat-code text-foreground/92">
             {command}
           </code>
@@ -633,10 +627,10 @@ function toolRowTooltipContent(
   rawCommand: string | null | undefined,
   displayText: string,
   fallback: string | undefined,
-  copy: WorkCopy,
+  translate: ChatTranslator,
 ): ReactNode {
   if (rawCommand) {
-    return commandTooltipContent(rawCommand, displayText, copy);
+    return commandTooltipContent(rawCommand, displayText, translate);
   }
   return fallback ? <span className="whitespace-pre-wrap">{fallback}</span> : null;
 }
@@ -677,9 +671,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
   onEnableComputerControl?: () => void;
   timestampFormat: TimestampFormat;
 }) {
-  const messages = useMessages();
-  const rowCopy = messages.chat.work;
-  const activityCopy = messages.chat.activity;
+  const { t, formatLocale } = useTranslation();
   // Defaults are applied in the body (not in the destructuring pattern): a default
   // value inside a destructuring pattern makes React Compiler bail out on the whole
   // component, silently dropping memoization for every tool-call row.
@@ -737,7 +729,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
             : isMcpToolRow
               ? "mcp"
               : undefined;
-  const displayParts = workEntryDisplayParts(workEntry, rowCopy, activityCopy);
+  const displayParts = workEntryDisplayParts(workEntry, t);
   const { heading, preview, displayText } = displayParts;
   // While a reasoning trace streams the row shows the trace itself in a
   // fixed-height region; once it settles it collapses back to the summary line.
@@ -837,6 +829,11 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
   // A created-automation row renders as its own card instead of a tool-call line.
   // Kept after the hooks above so the early return never changes hook order.
   const automation = workEntry.automation;
+  if (workEntry.connectorProposalId) {
+    return MCP_CONNECTORS_ON ? (
+      <McpConnectorProposalCard proposalId={workEntry.connectorProposalId} />
+    ) : null;
+  }
   if (automation) {
     return (
       <div className={cn(compact ? "py-0.5" : "py-1")}>
@@ -1083,7 +1080,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
                         className="text-ui-xs text-muted-foreground"
                         dateTime={workEntry.createdAt}
                       >
-                        {formatTimestamp(workEntry.createdAt, timestampFormat)}
+                        {formatTimestamp(workEntry.createdAt, timestampFormat, formatLocale)}
                       </time>
                       <pre className="whitespace-pre-wrap break-words font-chat-code">
                         {monitorNotification.output}
@@ -1097,7 +1094,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
                 }
                 compact={compact}
                 timestampFormat={timestampFormat}
-                tooltip={toolRowTooltipContent(rawCommand, displayText, displayText, rowCopy)}
+                tooltip={toolRowTooltipContent(rawCommand, displayText, displayText, t)}
               >
                 {rowContentChildren}
               </ToolDetailsDisclosure>
@@ -1114,7 +1111,7 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
                 rawCommand,
                 displayText,
                 canOpenReadFile ? (readFilePath ?? hoverText) : hoverText,
-                rowCopy,
+                t,
               )}
             >
               {rowContentChildren}
@@ -1137,8 +1134,9 @@ export function EditedFileRowContent(props: {
   fontSizePx: number;
   compact: boolean;
 }) {
+  const { t } = useTranslation();
+
   const { filePath, additions, deletions, fontSizePx, compact } = props;
-  const editedLabel = useMessages().chat.work.edited;
   const hasStat = (additions ?? 0) + (deletions ?? 0) > 0;
   return (
     <>
@@ -1156,7 +1154,7 @@ export function EditedFileRowContent(props: {
         className={cn("font-system-ui shrink-0", WORK_ROW_MUTED_HOVER_TONE["file-row"])}
         style={{ fontSize: `${fontSizePx}px` }}
       >
-        {editedLabel}
+        {t("chat:timeline_edited")}
       </span>
       <span
         className={cn(
@@ -1221,35 +1219,63 @@ function AgentActivityOpenSurface(props: {
   return <ToolRowTooltip content={props.tooltip}>{surface}</ToolRowTooltip>;
 }
 
+function providerContextLifecycleReasonLabel(
+  reason: NonNullable<TimelineWorkEntry["providerContextLifecycle"]>["restartReason"],
+  translate: ChatTranslator,
+): string {
+  switch (reason) {
+    case "conversation-rebuilt":
+      return translate("chat:conversationRebuiltFromASummary");
+    case "fork-from-earlier-turn":
+      return translate("chat:forkRebuiltUpToTheChosenTurn");
+    case "fresh-session":
+      return translate("chat:newSessionStarted");
+    case "interrupt-escalation":
+      return translate("chat:turnStopEscalatedToASessionRestart");
+    case "native-history-unavailable":
+      return translate("chat:previousHistoryUnavailable");
+    case "native-resume-failed":
+      return translate("chat:couldNotResumeThePreviousSession");
+  }
+}
+
 function ProviderContextLifecycleDetails(props: {
   info: NonNullable<TimelineWorkEntry["providerContextLifecycle"]>;
 }) {
-  const copy = useMessages().chat.providerContextLifecycle;
+  const { t, formatLocale } = useTranslation();
   const { info } = props;
   const provider =
     PROVIDER_DESCRIPTORS.find((descriptor) => descriptor.kind === info.provider)?.displayName ??
     info.provider;
   return (
     <div className="space-y-3" data-provider-context-lifecycle-details="true">
-      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-lg border border-border/45 bg-background/60 px-3 py-2.5 text-[11px]">
-        <dt className="text-muted-foreground/56">{copy.provider}</dt>
+      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-lg border border-border/45 bg-background/60 px-3 py-2.5 text-ui-sm">
+        <dt className="text-muted-foreground/56">{t("workspace:models_customModelProvider")}</dt>
         <dd className="text-foreground/84">{provider}</dd>
-        <dt className="text-muted-foreground/56">{copy.nativeHistory}</dt>
+        <dt className="text-muted-foreground/56">{t("chat:previousHistory")}</dt>
         <dd className="text-foreground/84">
-          {info.nativeHistory === "available" ? copy.available : copy.unavailable}
+          {info.nativeHistory === "available" ? t("chat:available") : t("chat:lost")}
         </dd>
-        <dt className="text-muted-foreground/56">{copy.restart}</dt>
-        <dd className="text-foreground/84">{info.sessionRestarted ? copy.yes : copy.no}</dd>
-        <dt className="text-muted-foreground/56">{copy.contextChange}</dt>
-        <dd className="text-foreground/84">{copy.reasons[info.restartReason]}</dd>
-        <dt className="text-muted-foreground/56">{copy.recap}</dt>
+        <dt className="text-muted-foreground/56">{t("chat:sessionRestarted")}</dt>
         <dd className="text-foreground/84">
-          {info.recapInjected ? copy.recapCharacters(info.recapCharacters) : copy.notSent}
+          {info.sessionRestarted ? t("chat:common_yes") : t("chat:common_no")}
+        </dd>
+        <dt className="text-muted-foreground/56">{t("chat:why")}</dt>
+        <dd className="text-foreground/84">
+          {providerContextLifecycleReasonLabel(info.restartReason, t)}
+        </dd>
+        <dt className="text-muted-foreground/56">{t("chat:summaryIncluded")}</dt>
+        <dd className="text-foreground/84">
+          {info.recapInjected
+            ? t("chat:characters", { value0: info.recapCharacters.toLocaleString(formatLocale) })
+            : t("chat:common_no")}
         </dd>
       </dl>
       {info.recapPreview ? (
         <section className="space-y-2">
-          <h3 className="text-[11px] font-medium text-muted-foreground/56">{copy.preview}</h3>
+          <h3 className="text-ui-sm font-medium text-muted-foreground/56">
+            {t("chat:summaryPreview")}
+          </h3>
           <pre
             className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/45 bg-background/60 px-3 py-2.5 font-chat-code text-chat-code leading-relaxed text-foreground/84"
             data-session-context-recap-preview="true"
@@ -1257,7 +1283,9 @@ function ProviderContextLifecycleDetails(props: {
             {info.recapPreview}
           </pre>
           {info.recapPreviewTruncated ? (
-            <p className="text-[10px] text-muted-foreground/56">{copy.boundedPreview}</p>
+            <p className="text-ui-xs text-muted-foreground/56">
+              {t("chat:showingAShortPreviewOfTheSummarySentWith")}
+            </p>
           ) : null}
         </section>
       ) : null}
@@ -1267,54 +1295,66 @@ function ProviderContextLifecycleDetails(props: {
 
 function providerModelLabel(
   selection: ModelSelection,
-  copy: ReturnType<typeof useMessages>["composer"],
-  fastModeNotice?: FastModeNotice | null,
+  fastModeNotice: FastModeNotice | null | undefined,
+  translate: ChatTranslator,
 ): string {
   const displayName =
     PROVIDER_DESCRIPTORS.find((descriptor) => descriptor.kind === selection.provider)
       ?.displayName ?? selection.provider;
-  const summary = resolveThreadModelSummary(selection, copy.modelPicker);
+  const summary = resolveThreadModelSummary(selection, undefined, translate);
   const modelLabel = summary
-    ? `${formatThreadModelSummaryLabel(summary)}${summary.fastMode ? ` · ${fastModeNotice?.label ?? copy.extras.fast}` : ""}`
+    ? translate("common:symbol6", {
+        value0: formatThreadModelSummaryLabel(summary),
+        value1: summary.fastMode
+          ? ` · ${fastModeNotice?.label ?? translate("chat:traitsPicker_fast")}`
+          : "",
+      })
     : selection.model;
-  return `${displayName} · ${modelLabel}`;
+  return translate("common:symbol9", { value0: displayName, value1: modelLabel });
 }
 
 export function ProviderHandoffDetails(props: {
   info: NonNullable<TimelineWorkEntry["providerHandoff"]>;
 }) {
+  const { t, formatLocale } = useTranslation();
+
   const { info } = props;
-  const copy = useMessages().composer;
   return (
     <div className="space-y-3" data-provider-handoff-details="true">
       <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-lg border border-border/45 bg-background/60 px-3 py-2.5 text-ui-sm">
-        <dt className="text-muted-foreground/56">From</dt>
+        <dt className="text-muted-foreground/56">{t("chat:from")}</dt>
         <dd className="text-foreground/84">
-          {providerModelLabel(info.sourceModelSelection, copy, info.sourceFastModeNotice)}
+          {providerModelLabel(info.sourceModelSelection, info.sourceFastModeNotice, t)}
         </dd>
-        <dt className="text-muted-foreground/56">To</dt>
+        <dt className="text-muted-foreground/56">{t("chat:to")}</dt>
         <dd className="text-foreground/84">
-          {providerModelLabel(info.targetModelSelection, copy, info.targetFastModeNotice)}
+          {providerModelLabel(info.targetModelSelection, info.targetFastModeNotice, t)}
         </dd>
         {info.status === "failed" ? (
           <>
-            <dt className="text-muted-foreground/56">Error</dt>
+            <dt className="text-muted-foreground/56">{t("chat:providerUsage_error")}</dt>
             <dd className="text-foreground/84">
-              {info.failureDetail ?? "The session did not start."}
+              {info.failureDetail ?? t("chat:theSessionDidNotStart")}
             </dd>
           </>
         ) : (
           <>
-            <dt className="text-muted-foreground/56">Context</dt>
+            <dt className="text-muted-foreground/56">{t("chat:traitsPicker_context")}</dt>
             <dd className="text-foreground/84">
-              {info.contextText ? `${info.contextText.length.toLocaleString()} characters` : "None"}
+              {info.contextText
+                ? t("chat:characters", {
+                    value0: info.contextText.length.toLocaleString(formatLocale),
+                  })
+                : t("chat:none")}
             </dd>
           </>
         )}
       </dl>
       {info.status === "completed" && info.contextText ? (
         <section className="space-y-2">
-          <h3 className="text-ui-sm font-medium text-muted-foreground/56">Transferred context</h3>
+          <h3 className="text-ui-sm font-medium text-muted-foreground/56">
+            {t("chat:transferredContext")}
+          </h3>
           <pre
             className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/45 bg-background/60 px-3 py-2.5 font-chat-code text-chat-code leading-relaxed text-foreground/84"
             data-provider-handoff-context="true"
@@ -1322,7 +1362,7 @@ export function ProviderHandoffDetails(props: {
             {info.contextText}
           </pre>
           <p className="text-ui-xs text-muted-foreground/56">
-            Sent ahead of your next message so the new model can continue this thread.
+            {t("chat:sentAheadOfYourNextMessageSoTheNew")}
           </p>
         </section>
       ) : null}

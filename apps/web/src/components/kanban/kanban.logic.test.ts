@@ -396,7 +396,7 @@ describe("buildKanbanBoard", () => {
     );
 
     const draftCard = board.projects[0]!.draft[0]!;
-    expect(draftCard.title).toBe("Attached references");
+    expect(draftCard.titleKey).toBe("common:attachedReferences");
     expect(draftCard.draftHasAttachments).toBe(true);
     expect(draftCard.provider).toBe("cursor");
     expect(resolveDraftDropAction(draftCard)).toBe("dispatch");

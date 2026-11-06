@@ -7,6 +7,7 @@ import type * as Acp from "@agentclientprotocol/sdk";
 import { describe, expect, it } from "vitest";
 
 import * as AcpErrors from "./AcpErrors.ts";
+import type { AcpSessionModeState } from "./AcpRuntimeModel.ts";
 import { OH_MY_PI_ACP_17_3_3_FIXTURE } from "./fixtures/ohMyPiAcp17_3_3.ts";
 import {
   applyOhMyPiAcpSessionConfiguration,
@@ -15,13 +16,13 @@ import {
   OH_MY_PI_ACP_CLIENT_CAPABILITIES,
   resolveOhMyPiAcpAuthMethodId,
 } from "./OhMyPiAcpSupport.ts";
+import { makeOhMyPiAcpRuntimeFixtures } from "./fixtures/ohMyPiAcp17_3_3.ts";
 
-const fixtureInitialize =
-  OH_MY_PI_ACP_17_3_3_FIXTURE.initializeResponse as unknown as Acp.InitializeResponse;
-const fixtureConfigOptions = OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse
-  .configOptions as unknown as ReadonlyArray<Acp.SessionConfigOption>;
-const fixtureModes = OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse
-  .modes as unknown as Acp.SessionModeState;
+const {
+  initializeResponse: fixtureInitialize,
+  configOptions: fixtureConfigOptions,
+  modes: fixtureModes,
+} = makeOhMyPiAcpRuntimeFixtures();
 
 describe("buildOhMyPiAcpSpawnInput", () => {
   it("passes the Synara overlay as a distinct argv even when Windows paths contain spaces", () => {
@@ -87,7 +88,7 @@ describe("resolveOhMyPiAcpAuthMethodId", () => {
 
 describe("applyOhMyPiAcpSessionConfiguration", () => {
   function recordingRuntime(input?: {
-    readonly modes?: Acp.SessionModeState;
+    readonly modes?: AcpSessionModeState;
     readonly options?: ReadonlyArray<Acp.SessionConfigOption>;
   }) {
     let options = [...(input?.options ?? fixtureConfigOptions)];
@@ -103,11 +104,13 @@ describe("applyOhMyPiAcpSessionConfiguration", () => {
         },
         setConfigOption: (configId: string, value: string | boolean) => {
           calls.push({ kind: "config", id: configId, value });
-          options = options.map((option) =>
-            option.id === configId
-              ? ({ ...option, currentValue: value } as Acp.SessionConfigOption)
-              : option,
-          );
+          options = options.map((option) => {
+            if (option.id !== configId) return option;
+            if (option.type === "select") {
+              return typeof value === "string" ? { ...option, currentValue: value } : option;
+            }
+            return typeof value === "boolean" ? { ...option, currentValue: value } : option;
+          });
           return Effect.succeed({ configOptions: options });
         },
       },
@@ -209,10 +212,12 @@ describe("discoverOhMyPiAcpModels", () => {
     let currentModel = "fixture/model-a";
     let currentThinking = "high";
     const calls: Array<{ id: string; value: string | boolean }> = [];
-    const configOptions = (): ReadonlyArray<Acp.SessionConfigOption> =>
+    const configOptions = (): Acp.SessionConfigOption[] =>
       fixtureConfigOptions.map((option) => {
-        if (option.id === "model") return { ...option, currentValue: currentModel };
-        if (option.id === "thinking") {
+        if (option.type === "select" && option.id === "model") {
+          return { ...option, currentValue: currentModel };
+        }
+        if (option.type === "select" && option.id === "thinking") {
           const modelB = currentModel === "fixture/model-b";
           return {
             ...option,

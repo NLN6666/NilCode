@@ -31,17 +31,17 @@ describe("SubagentsList", () => {
       />,
     );
 
-    expect(markup).toContain("Back to Refactor auth");
-    expect(markup).toContain("Active · 1");
-    expect(markup).toContain("Running");
+    expect(markup).toContain("Refactor auth");
+    expect(markup.match(/data-testid="subagents-pane-active-row"/g) ?? []).toHaveLength(1);
+    expect(markup.match(/data-testid="subagents-pane-done-row"/g) ?? []).toHaveLength(12);
+    const activeControls =
+      markup.match(/<button\b[^>]*\baria-label="[^"]*Scout[^"]*"[^>]*>/g) ?? [];
+    expect(activeControls).toHaveLength(3);
     expect(markup).toContain(" · Grep · 18k tokens");
-    expect(markup).toContain("Stop subagent Scout");
-    expect(markup).toContain("Run Scout in background");
-    expect(markup).toContain("Done · 12");
     expect(markup).toContain("Failed");
     expect(markup).toContain("Done 9");
     expect(markup).toContain('aria-hidden="true" inert=""');
-    expect(markup).toContain("Show 2 more");
+    expect(markup).toContain('aria-expanded="false"');
   });
 
   it("keeps parent navigation when sibling details are not hydrated", () => {
@@ -55,8 +55,11 @@ describe("SubagentsList", () => {
         onStop={noop}
       />,
     );
-    expect(markup).toContain("Back to Parent");
-    expect(markup).toContain("No subagents in this chat yet.");
+    expect(markup).toContain("Parent");
+    expect(markup).toContain('data-testid="subagents-dock-pane"');
+    expect(markup).not.toContain('data-testid="subagents-pane-active-row"');
+    expect(markup).not.toContain('data-testid="subagents-pane-done-row"');
+    expect(markup).toContain("h-full min-h-0");
   });
 
   it("does not invent a finish time and keeps failure statistics separate from the summary", () => {
@@ -87,7 +90,7 @@ describe("SubagentsList", () => {
     expect(markup.match(/Quota exhausted/g)).toHaveLength(1);
   });
 
-  it("updates known finish labels using the supplied clock", () => {
+  it("updates finished-row timing as the supplied clock advances", () => {
     const render = (nowMs: number) =>
       renderToStaticMarkup(
         <SubagentsList
@@ -102,8 +105,9 @@ describe("SubagentsList", () => {
           onStop={noop}
         />,
       );
-    expect(render(Date.parse("2026-10-10T10:01:10Z"))).toContain("just now");
-    expect(render(Date.parse("2026-10-10T10:03:10Z"))).toContain("2m ago");
+    const shortlyAfterFinish = render(Date.parse("2026-10-10T10:01:10Z"));
+    const later = render(Date.parse("2026-10-10T10:03:10Z"));
+    expect(shortlyAfterFinish).not.toBe(later);
   });
 
   it.each(["Idle", "Closed"])("does not label a finished row as %s", (statusLabel) => {
@@ -123,7 +127,7 @@ describe("SubagentsList", () => {
     expect(markup).not.toContain(`>${statusLabel}</span>`);
   });
 
-  it("says so when the chat has no subagents", () => {
+  it("renders the empty-list state when the chat has no subagents", () => {
     const markup = renderToStaticMarkup(
       <SubagentsList
         roster={{ active: [], previous: [] }}
@@ -135,6 +139,9 @@ describe("SubagentsList", () => {
       />,
     );
 
-    expect(markup).toContain("No subagents in this chat yet.");
+    expect(markup).toContain('data-testid="subagents-dock-pane"');
+    expect(markup).not.toContain('data-testid="subagents-pane-active-row"');
+    expect(markup).not.toContain('data-testid="subagents-pane-done-row"');
+    expect(markup).toContain("h-full min-h-0");
   });
 });

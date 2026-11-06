@@ -3,6 +3,7 @@ import "../index.css";
 import { page } from "vitest/browser";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
+import { t } from "~/i18n";
 
 // A see-through desktop window: macOS vibrancy by default, Hyprland's compositor blur on demand.
 const windowTranslucency = vi.hoisted(() => ({ current: "native" as "native" | "compositor" }));
@@ -53,11 +54,15 @@ it("tunes opacity, desktop blur, and scope, then switches to a solid window", as
   await expect.poll(() => root.getAttribute("data-window-material")).toBe("translucent");
   await expect.poll(() => root.getAttribute("data-window-translucency")).toBe("window");
 
-  const opacity = page.getByRole("slider", { name: "Dark theme translucency opacity" });
-  const blur = page.getByRole("slider", { name: "Dark theme background blur" });
+  const darkTheme = t("common:darkTheme");
+  const opacityLabel = t("common:translucencyOpacity", { value0: darkTheme });
+  const blurLabel = t("common:backgroundBlur", { value0: darkTheme });
+  const sidebarOnlyLabel = t("common:translucentSidebarOnly", { value0: darkTheme });
+  const opacity = page.getByRole("slider", { name: opacityLabel });
+  const blur = page.getByRole("slider", { name: blurLabel });
   await expect.element(opacity).toHaveValue("90");
   await expect.element(blur).toHaveValue("64");
-  const sidebarOnly = page.getByRole("switch", { name: "Dark theme translucent sidebar only" });
+  const sidebarOnly = page.getByRole("switch", { name: sidebarOnlyLabel });
   await expect.element(sidebarOnly).not.toBeChecked();
   await expect
     .poll(() => setWindowMaterial.mock.lastCall)
@@ -67,13 +72,13 @@ it("tunes opacity, desktop blur, and scope, then switches to a solid window", as
   await expect.poll(() => root.getAttribute("data-window-translucency")).toBe("sidebar");
 
   // Both sliders stop at a floor: no fill over no blur would leave a see-through window.
-  setSliderValue("Dark theme translucency opacity", 0);
-  setSliderValue("Dark theme background blur", 0);
+  setSliderValue(opacityLabel, 0);
+  setSliderValue(blurLabel, 0);
   await expect
     .poll(() => root.style.getPropertyValue("--app-sidebar-surface"))
     .toMatch(/ 15%, transparent\)$/);
 
-  await page.getByRole("switch", { name: "Dark theme translucent sidebar only" }).click();
+  await page.getByRole("switch", { name: sidebarOnlyLabel }).click();
   await expect.poll(() => root.getAttribute("data-window-translucency")).toBe("window");
   await expect
     .poll(() => root.style.getPropertyValue("--app-window-background"))
@@ -82,7 +87,7 @@ it("tunes opacity, desktop blur, and scope, then switches to a solid window", as
   const bodyAlpha = () =>
     Number(getComputedStyle(document.body).backgroundColor.match(/[\d.]+(?=\)$)/)?.[0]);
   await expect.poll(bodyAlpha).toBeCloseTo(0.15, 2);
-  setSliderValue("Dark theme translucency opacity", 60);
+  setSliderValue(opacityLabel, 60);
   await expect.poll(bodyAlpha).toBeCloseTo(0.6, 2);
   await expect
     .poll(() => setWindowMaterial.mock.lastCall)
@@ -93,7 +98,11 @@ it("tunes opacity, desktop blur, and scope, then switches to a solid window", as
     sidebarOnly: false,
   });
 
-  await page.getByRole("button", { name: "Dark theme automatic background blur" }).click();
+  await page
+    .getByRole("button", {
+      name: t("common:automaticBackgroundBlur", { value0: darkTheme }),
+    })
+    .click();
   await expect
     .poll(() => setWindowMaterial.mock.lastCall)
     .toEqual([{ material: "opaque", blurRadius: 0 }]);
@@ -101,7 +110,7 @@ it("tunes opacity, desktop blur, and scope, then switches to a solid window", as
     parseStoredThemeState(localStorage.getItem("synara:theme")).translucency.dark.blur,
   ).toBeNull();
 
-  await page.getByRole("radio", { name: "Solid" }).click();
+  await page.getByRole("radio", { name: t("common:solid") }).click();
   await expect.poll(() => root.getAttribute("data-window-material")).toBe("opaque");
   expect(root.getAttribute("data-window-translucency")).toBe("none");
   await expect
@@ -117,12 +126,16 @@ it("leaves the blur to Hyprland on a compositor-blurred window", async () => {
   await render(<ThemePackEditor variant="dark" />);
   await expect.poll(() => root.getAttribute("data-window-material")).toBe("translucent");
   await expect.poll(() => root.getAttribute("data-window-translucency")).toBe("window");
-  await expect.element(page.getByText("Set by your compositor")).toBeInTheDocument();
+  await expect.element(page.getByText(t("settings:compositorControlsBlur"))).toBeInTheDocument();
   await expect
-    .element(page.getByRole("slider", { name: "Dark theme background blur" }))
+    .element(
+      page.getByRole("slider", {
+        name: t("common:backgroundBlur", { value0: t("common:darkTheme") }),
+      }),
+    )
     .not.toBeInTheDocument();
   // Opacity still drives the CSS coat over the compositor blur.
-  setSliderValue("Dark theme translucency opacity", 60);
+  setSliderValue(t("common:translucencyOpacity", { value0: t("common:darkTheme") }), 60);
   await expect
     .poll(() => root.style.getPropertyValue("--app-window-background"))
     .toMatch(/ 60%, transparent\)$/);

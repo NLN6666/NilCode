@@ -14,7 +14,7 @@
 // severity rail and no message, because nothing was said.
 
 import { EyeIcon } from "~/lib/icons";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 import type { WorkLogAdvisorObservation } from "../../workLog";
 
 type ObservationReason = WorkLogAdvisorObservation["reason"];
@@ -35,19 +35,19 @@ export function AdvisorObservationRow({
   count: number;
   reasons: ReadonlyArray<WorkLogAdvisorObservation["reason"]>;
 }) {
-  const copy = useMessages().chat.advisor;
+  const { t } = useTranslation();
   const reason = dominantReason(reasons);
 
   // `count` only qualifies the plain-silence case. A withheld or quarantined run
   // already says the notable thing; appending "× 7" to it would bury the lede.
   const label =
     reason === "quarantined"
-      ? copy.observation.quarantined
+      ? t("chat:advisorObservation_quarantined")
       : reason === "withheld"
-        ? copy.observation.withheld
+        ? t("chat:advisorObservation_withheld")
         : count > 1
-          ? copy.observation.reviewedRepeated(count)
-          : copy.observation.reviewed;
+          ? t("chat:advisorObservation_reviewedRepeated", { count })
+          : t("chat:advisorObservation_reviewed");
 
   // A muted single line, matching the transcript's other metadata rows rather than
   // AdvisorNoteCard's severity rail: real advice must stay visibly louder than the

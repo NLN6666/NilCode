@@ -1,3 +1,4 @@
+import { useTranslation } from "~/i18n";
 // FILE: ComposerLiveChangesHeader.tsx
 // Purpose: Live file-changes capsule above the composer while a turn is running. The
 // caller supplies turn-scoped diff totals (or a null count before they land) and the
@@ -5,7 +6,6 @@
 // Layer: Chat composer UI
 // Exports: ComposerLiveChangesHeader
 
-import { useMessages } from "~/i18n/context";
 import { ChangesIcon } from "~/lib/icons";
 import { ComposerCapsule } from "./ComposerCapsule";
 import { COMPOSER_STACKED_PANEL_ICON_CLASS_NAME } from "./composerStackedPanelStyles";
@@ -26,20 +26,26 @@ export function ComposerLiveChangesHeader({
   deletions,
   onReview,
 }: ComposerLiveChangesHeaderProps) {
-  const copy = useMessages().composer.liveChanges;
+  const { t } = useTranslation();
+
   if (fileCount === 0) {
     return null;
   }
-  const filesLabel = fileCount === null ? copy.filesChanged : copy.filesChangedCount(fileCount);
+  const filesLabel =
+    fileCount === null
+      ? t(onReview ? "chat:reviewFilesChanged" : "chat:filesChanged")
+      : t(onReview ? "chat:reviewFilesChangedCount" : "chat:filesChangedCount", {
+          count: fileCount,
+        });
 
   return (
     <ComposerCapsule
       icon={<ChangesIcon className={COMPOSER_STACKED_PANEL_ICON_CLASS_NAME} />}
-      title={onReview ? `${filesLabel} · Review changes` : filesLabel}
+      title={filesLabel}
       onClick={onReview}
       testId="composer-live-changes"
     >
-      {copy.filesChanged}
+      {t("git:panel_changes")}
       {additions + deletions > 0 ? (
         <span className="ml-1.5 tabular-nums">
           <DiffStatLabel additions={additions} deletions={deletions} />

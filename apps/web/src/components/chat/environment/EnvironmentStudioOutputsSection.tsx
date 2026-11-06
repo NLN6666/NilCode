@@ -20,7 +20,7 @@ import { readNativeApi } from "~/nativeApi";
 
 import { FileEntryIcon } from "../FileEntryIcon";
 import { EnvironmentLabeledSection, EnvironmentRow } from "./EnvironmentRow";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 function revealEntryInFinder(entry: StudioOutputEntry) {
   const api = readNativeApi();
@@ -34,7 +34,8 @@ export function EnvironmentStudioOutputsSection({
   threadId: ThreadId;
   enabled: boolean;
 }) {
-  const copy = useMessages().chat.environment;
+  const { t, formatLocale } = useTranslation();
+
   const outputsQuery = useQuery(studioThreadOutputsQueryOptions({ threadId, enabled }));
   const fileOpener = useWorkspaceFileOpener();
 
@@ -52,7 +53,7 @@ export function EnvironmentStudioOutputsSection({
   }
 
   return (
-    <EnvironmentLabeledSection label={copy.output}>
+    <EnvironmentLabeledSection label={t("chat:toolCallDetails_outputSection")}>
       {entries.map((entry) => (
         <EnvironmentRow
           key={entry.fullPath}
@@ -78,7 +79,7 @@ export function EnvironmentStudioOutputsSection({
           // label keeps the full relative path for whoever needs it.
           trailing={
             <span className="text-ui-xs tabular-nums text-muted-foreground/50">
-              {formatRelativeTime(entry.modifiedAt)}
+              {formatRelativeTime(entry.modifiedAt, undefined, formatLocale)}
             </span>
           }
           onClick={(event) => openEntry(entry, event.metaKey || event.ctrlKey)}

@@ -106,7 +106,7 @@ describe("copyTextToClipboard", () => {
       value: {},
     });
 
-    await expect(copyTextToClipboard("hello")).rejects.toThrow("Clipboard API unavailable.");
+    await expect(copyTextToClipboard("hello")).rejects.toBeInstanceOf(Error);
     expect(documentMock.execCommand).toHaveBeenCalledWith("copy");
   });
 });

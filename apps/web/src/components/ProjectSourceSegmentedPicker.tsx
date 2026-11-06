@@ -1,7 +1,7 @@
 import { GitHubIcon, FolderIcon } from "~/lib/icons";
 
-import { useMessages } from "~/i18n/context";
 import { SegmentedPicker } from "./SegmentedPicker";
+import { useTranslation } from "~/i18n";
 
 export type ProjectSource = "local" | "github";
 /**
@@ -12,13 +12,15 @@ export function ProjectSourceSegmentedPicker(props: {
   readonly value: ProjectSource;
   readonly disabled: boolean;
   readonly githubAvailable: boolean;
+  readonly githubUnavailableReason?: string;
   readonly onValueChange: (value: ProjectSource) => void;
   readonly className?: string;
 }) {
-  const copy = useMessages().dialogs.createProject;
+  const { t } = useTranslation();
+
   return (
     <SegmentedPicker
-      ariaLabel={copy.sourceLabel}
+      ariaLabel={t("workspace:projectSource")}
       value={props.value}
       disabled={props.disabled}
       onValueChange={props.onValueChange}
@@ -26,15 +28,21 @@ export function ProjectSourceSegmentedPicker(props: {
       options={[
         {
           value: "local",
-          label: copy.sourceFolderOption,
+          label: t("workspace:folder"),
           icon: <FolderIcon className="size-3.5" aria-hidden="true" />,
         },
         {
           value: "github",
-          label: copy.sourceGitHubOption,
+          label: t("workspace:gitHub"),
           icon: <GitHubIcon className="size-3.5" aria-hidden="true" />,
           disabled: !props.githubAvailable,
-          ...(props.githubAvailable ? {} : { title: copy.githubUnavailableHint }),
+          ...(props.githubAvailable
+            ? {}
+            : {
+                title:
+                  props.githubUnavailableReason ??
+                  t("workspace:updateTheSynaraServerToAddGitHubProjects"),
+              }),
         },
       ]}
     />

@@ -2,8 +2,7 @@ import type { BrowserAnnotationMarker } from "@synara/contracts";
 
 import type { AnnotationGuestCommand } from "./protocol";
 
-// Literal, dependency-free mirror for the sandboxed preload. A focused test
-// keeps these values aligned with the public contracts.
+// Standalone literal copy: the sandbox preload cannot load the contracts package.
 export const GUEST_ANNOTATION_PROTOCOL_VERSION = 1 as const;
 export const GUEST_ANNOTATION_MAX_COMMENT_LENGTH = 4_000;
 export const GUEST_ANNOTATION_MAX_NAME_LENGTH = 256;
@@ -14,8 +13,7 @@ export const GUEST_ANNOTATION_MAX_TAG_NAME_LENGTH = 64;
 export const GUEST_ANNOTATION_MAX_TEXT_LENGTH = 280;
 export const GUEST_ANNOTATION_MAX_URL_LENGTH = 2_048;
 const GUEST_ANNOTATION_MAX_MARKERS = 32;
-/** Mirror of `BROWSER_ANNOTATION_LOCALES`; see the file header on why this is duplicated. */
-const GUEST_ANNOTATION_LOCALES: ReadonlySet<string> = new Set(["en", "zh-CN"]);
+const GUEST_ANNOTATION_LOCALES: ReadonlySet<string> = new Set(["en", "es", "zh-CN"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

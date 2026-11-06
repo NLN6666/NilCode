@@ -28,9 +28,9 @@ import { PanelStateMessage } from "./chat/PanelStateMessage";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "./ui/collapsible";
 import { DisclosureChevron } from "./ui/DisclosureChevron";
 import { IconButton } from "./ui/icon-button";
-import { useMessages } from "../i18n/context";
 import { SearchInput } from "./ui/search-input";
 import { Skeleton } from "./ui/skeleton";
+import { useTranslation } from "~/i18n";
 
 // Forwards its ref and spreads incoming props so directory rows can act as the
 // Collapsible trigger (Base UI injects onClick/aria/data + ref onto this element).
@@ -136,9 +136,14 @@ const ReviewFileTreeNodes = memo(function ReviewFileTreeNodes(props: {
 const REVIEW_TREE_SKELETON_ROW_WIDTHS = ["w-9/12", "w-6/12", "w-8/12", "w-5/12", "w-7/12"];
 
 function ReviewFileTreeLoadingRows() {
-  const copy = useMessages().diff;
+  const { t } = useTranslation();
+
   return (
-    <div className="space-y-1.5 px-1 py-1.5" role="status" aria-label={copy.fileTree.loading}>
+    <div
+      className="space-y-1.5 px-1 py-1.5"
+      role="status"
+      aria-label={t("workspace:diff_loadingChangedFiles")}
+    >
       {REVIEW_TREE_SKELETON_ROW_WIDTHS.map((width, index) => (
         <div
           key={width}
@@ -162,7 +167,7 @@ export const ReviewFileTreePanel = function ReviewFileTreePanel(props: {
   onSelectFile: (filePath: string) => void;
   onClose?: () => void;
 }) {
-  const copy = useMessages().diff;
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   // Default fully expanded (the diff file set is known upfront and usually
   // small), so we track which directories the user has *collapsed* rather than
@@ -207,7 +212,7 @@ export const ReviewFileTreePanel = function ReviewFileTreePanel(props: {
         "flex h-full w-full min-h-0 min-w-0 flex-col border-l border-border bg-[var(--color-background-surface)]",
         props.className,
       )}
-      aria-label={copy.fileTree.label}
+      aria-label={t("common:reviewFiles")}
     >
       <div className="flex shrink-0 items-center gap-1.5 border-b border-border/65 p-2">
         <SearchInput
@@ -215,8 +220,8 @@ export const ReviewFileTreePanel = function ReviewFileTreePanel(props: {
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
-          placeholder={copy.fileTree.filterPlaceholder}
-          aria-label={copy.fileTree.filterLabel}
+          placeholder={t("common:filterFiles")}
+          aria-label={t("common:diff_filterFiles")}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={handleSearchKeyDown}
         />
@@ -225,8 +230,8 @@ export const ReviewFileTreePanel = function ReviewFileTreePanel(props: {
             variant="ghost"
             size="icon-xs"
             className="shrink-0 text-muted-foreground hover:text-foreground"
-            label={copy.actions.hideFileTree}
-            title={copy.actions.hideFileTree}
+            label={t("common:diff_hideFileTree")}
+            title={t("common:diff_hideFileTree")}
             onClick={props.onClose}
           >
             <XIcon className="size-3.5" />
@@ -243,11 +248,11 @@ export const ReviewFileTreePanel = function ReviewFileTreePanel(props: {
           <ReviewFileTreeLoadingRows />
         ) : !hasFiles ? (
           <PanelStateMessage density="compact" fill="flex">
-            <p>{copy.empty.noFiles}</p>
+            <p>{t("common:editor_noFilesInDiff")}</p>
           </PanelStateMessage>
         ) : tree.length === 0 ? (
           <PanelStateMessage density="compact" fill="flex">
-            <p>{copy.empty.noMatches}</p>
+            <p>{t("common:workspaceExplorer_noMatchingFiles")}</p>
           </PanelStateMessage>
         ) : (
           <ReviewFileTreeNodes

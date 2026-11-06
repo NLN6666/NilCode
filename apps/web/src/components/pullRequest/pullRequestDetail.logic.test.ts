@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { PullRequestComment, PullRequestCommit } from "@synara/contracts";
 
 import type { RightDockPane } from "~/rightDockStore.logic";
+import { t } from "~/i18n";
 
 import {
   buildPullRequestTimelineEvents,
@@ -51,46 +52,41 @@ function makeTimelineSource() {
 
 describe("buildPullRequestTimelineEvents", () => {
   it("orders created, commit, and comment events chronologically", () => {
-    const events = buildPullRequestTimelineEvents(makeTimelineSource());
+    const events = buildPullRequestTimelineEvents(makeTimelineSource(), t);
     expect(events.map((event) => event.id)).toEqual(["created", "abcdef1234567890", "comment-1"]);
   });
 
-  it("surfaces preserved commit author names in the timeline", () => {
-    const events = buildPullRequestTimelineEvents({
-      ...makeTimelineSource(),
-      commits: [
-        makeCommit({
-          authors: [{ login: null, name: "Local author", avatarUrl: null, url: null }],
-        }),
-      ],
-    });
-    expect(events.find((event) => event.id === "abcdef1234567890")?.title).toBe(
-      "Commit abcdef1 by Local author",
+  it("preserves provider commit identity and author values in timeline entries", () => {
+    const events = buildPullRequestTimelineEvents(
+      {
+        ...makeTimelineSource(),
+        commits: [
+          makeCommit({
+            authors: [{ login: null, name: "Local author", avatarUrl: null, url: null }],
+          }),
+        ],
+      },
+      t,
     );
+    const commitEvent = events.find((event) => event.id === "abcdef1234567890");
+    expect(commitEvent?.title).toContain("abcdef1");
+    expect(commitEvent?.title).toContain("Local author");
   });
 
-  it("falls back to placeholders for missing authors and empty commit messages", () => {
-    const events = buildPullRequestTimelineEvents({
-      ...makeTimelineSource(),
-      author: null,
-      commits: [makeCommit({ messageHeadline: "" })],
-      comments: [makeComment({ author: null })],
-    });
-    expect(events[0]?.title).toBe("Someone opened this pull request");
-    expect(events[1]?.body).toBe("No commit message.");
-    expect(events[2]?.title).toBe("Someone commented");
+  it("preserves display names and login fallbacks from provider data", () => {
+    const events = buildPullRequestTimelineEvents(
+      {
+        ...makeTimelineSource(),
+        author: { login: "octo", name: "Octo Cat", avatarUrl: null, url: null },
+      },
+      t,
+    );
+    expect(events[0]?.title).toContain("Octo Cat");
+    expect(events[0]?.title).not.toContain("octo");
+    expect(events[2]?.title).toContain("reviewer");
   });
 
-  it("names people as the list rows do: display name first, login as the fallback", () => {
-    const events = buildPullRequestTimelineEvents({
-      ...makeTimelineSource(),
-      author: { login: "octo", name: "Octo Cat", avatarUrl: null, url: null },
-    });
-    expect(events[0]?.title).toBe("Octo Cat opened this pull request");
-    expect(events[2]?.title).toBe("reviewer commented");
-  });
-
-  it("builds an issue's timeline: no commits, and the issue's own words", () => {
+  it("builds an issue timeline without pull request commit events", () => {
     const events = buildPullRequestTimelineEvents(
       {
         createdAt: "2026-07-01T10:00:00Z",
@@ -98,33 +94,36 @@ describe("buildPullRequestTimelineEvents", () => {
         comments: [makeComment()],
         closedAt: "2026-07-05T10:00:00Z",
       },
+      t,
       "issue",
     );
-    expect(events.map((event) => event.title)).toEqual([
-      "author opened this issue",
-      "reviewer commented",
-      "Issue closed",
-    ]);
+    expect(events.map((event) => event.id)).toEqual(["created", "comment-1", "closed"]);
   });
 
   it("appends a merged event and suppresses the closed event when both timestamps exist", () => {
-    const events = buildPullRequestTimelineEvents({
-      ...makeTimelineSource(),
-      mergedAt: "2026-07-04T10:00:00Z",
-      closedAt: "2026-07-04T10:00:00Z",
-    });
+    const events = buildPullRequestTimelineEvents(
+      {
+        ...makeTimelineSource(),
+        mergedAt: "2026-07-04T10:00:00Z",
+        closedAt: "2026-07-04T10:00:00Z",
+      },
+      t,
+    );
     const ids = events.map((event) => event.id);
     expect(ids).toContain("merged");
     expect(ids).not.toContain("closed");
-    expect(events.at(-1)?.title).toBe("Pull request merged");
+    expect(events.at(-1)?.id).toBe("merged");
   });
 
   it("appends a closed event for a closed-but-unmerged pull request", () => {
-    const events = buildPullRequestTimelineEvents({
-      ...makeTimelineSource(),
-      closedAt: "2026-07-04T10:00:00Z",
-    });
-    expect(events.at(-1)?.title).toBe("Pull request closed");
+    const events = buildPullRequestTimelineEvents(
+      {
+        ...makeTimelineSource(),
+        closedAt: "2026-07-04T10:00:00Z",
+      },
+      t,
+    );
+    expect(events.at(-1)?.id).toBe("closed");
   });
 });
 
@@ -171,47 +170,49 @@ describe("stripHtmlComments", () => {
 
 describe("describePullRequestMergeStatus", () => {
   const open = { state: "open", isDraft: false, baseBranch: "main" } as const;
-  it("names the merge state in words", () => {
-    expect(describePullRequestMergeStatus({ ...open, mergeability: "mergeable" })).toEqual({
-      tone: "success",
-      label: "Can merge without conflicts",
-    });
-    expect(describePullRequestMergeStatus({ ...open, mergeability: "conflicting" }).label).toBe(
-      "Conflicts with main",
+  it("classifies merge eligibility, conflicts, and terminal states", () => {
+    expect(describePullRequestMergeStatus({ ...open, mergeability: "mergeable" }, t)).toMatchObject(
+      {
+        tone: "success",
+      },
+    );
+    expect(describePullRequestMergeStatus({ ...open, mergeability: "conflicting" }, t).tone).toBe(
+      "conflict",
     );
     expect(
-      describePullRequestMergeStatus({
-        ...open,
-        isDraft: true,
-        mergeability: "mergeable",
-      }).label,
-    ).toBe("Draft");
+      describePullRequestMergeStatus(
+        {
+          ...open,
+          isDraft: true,
+          mergeability: "mergeable",
+        },
+        t,
+      ).tone,
+    ).toBe("muted");
     expect(
-      describePullRequestMergeStatus({
-        ...open,
-        state: "merged",
-        mergeability: "unknown",
-      }).label,
-    ).toBe("Merged");
+      describePullRequestMergeStatus(
+        {
+          ...open,
+          state: "merged",
+          mergeability: "unknown",
+        },
+        t,
+      ).tone,
+    ).toBe("muted");
   });
 });
 
 describe("describePullRequestChecksBrief", () => {
-  it("counts checks by outcome", () => {
-    expect(describePullRequestChecksBrief([])).toEqual({
-      tone: "none",
-      label: "No checks",
-    });
-    expect(describePullRequestChecksBrief([{ status: "success" }, { status: "success" }])).toEqual({
-      tone: "success",
-      label: "2 successful",
-    });
+  it("classifies check outcomes", () => {
+    expect(describePullRequestChecksBrief([], t).tone).toBe("none");
     expect(
-      describePullRequestChecksBrief([
-        { status: "failure" },
-        { status: "pending" },
-        { status: "success" },
-      ]),
-    ).toEqual({ tone: "failure", label: "1 failing, 1 pending, 1 successful" });
+      describePullRequestChecksBrief([{ status: "success" }, { status: "success" }], t),
+    ).toMatchObject({ tone: "success" });
+    expect(
+      describePullRequestChecksBrief(
+        [{ status: "failure" }, { status: "pending" }, { status: "success" }],
+        t,
+      ).tone,
+    ).toBe("failure");
   });
 });

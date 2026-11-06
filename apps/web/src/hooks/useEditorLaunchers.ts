@@ -7,7 +7,9 @@
 // Layer: Chat editor action hook
 
 import type { EditorId, ResolvedKeybindingsConfig } from "@synara/contracts";
+import { REMOTE_NATIVE_UNAVAILABLE } from "@synara/shared/remoteCapabilities";
 
+import { toastManager } from "../components/ui/toast";
 import {
   type EditorOption,
   resolveAvailableEditorOptions,
@@ -15,6 +17,7 @@ import {
 } from "../editorMetadata";
 import { usePreferredEditor } from "../editorPreferences";
 import { shortcutLabelForCommand } from "../keybindings";
+import { readExecutionContext } from "../lib/hosts/executionContext";
 import { readNativeApi } from "../nativeApi";
 
 export interface EditorLaunchers {
@@ -22,12 +25,12 @@ export interface EditorLaunchers {
   options: ReadonlyArray<EditorOption>;
   /** Currently preferred editor (last used / first installed), or null when none. */
   preferredEditor: EditorId | null;
+  /** Persist the preferred editor for surfaces whose menu lets the user choose one. */
+  setPreferredEditor: (editorId: EditorId) => void;
   /** The option matching {@link preferredEditor}, or null. */
   primaryOption: EditorOption | null;
   /** Shortcut label for "open favorite editor", or null when unbound. */
   openFavoriteShortcutLabel: string | null;
-  /** Persist the editor used by primary open actions and the global shortcut. */
-  setDefaultEditor: (editorId: EditorId) => void;
   /** Open the requested target path in the given editor (or the preferred one when null). */
   openInEditor: (editorId: EditorId | null) => void;
 }
@@ -47,29 +50,47 @@ export function useEditorLaunchers({
   // touching the global code-editor preference shared by every other surface.
   defaultEditor?: EditorId | undefined;
 }): EditorLaunchers {
-  const [preferredEditor, setPreferredEditor] = usePreferredEditor(availableEditors);
+  const [preferredEditor, persistPreferredEditor] = usePreferredEditor(availableEditors);
   const isContextDefault = defaultEditor != null;
   // In context-default mode the primary action is pinned to `defaultEditor` and menu
   // selections are one-shot opens that must not overwrite the persisted preference.
   const effectivePreferred = defaultEditor ?? preferredEditor;
   const installedOptions = resolveAvailableEditorOptions(navigator.platform, availableEditors);
-  const options =
-    defaultEditor && !installedOptions.some(({ value }) => value === defaultEditor)
+  const remote = Boolean(readExecutionContext()?.remote);
+  const options = remote
+    ? []
+    : defaultEditor && !installedOptions.some(({ value }) => value === defaultEditor)
       ? [resolveEditorOption(defaultEditor, navigator.platform), ...installedOptions]
       : installedOptions;
   const primaryOption = options.find(({ value }) => value === effectivePreferred) ?? null;
-  const setDefaultEditor = (editorId: EditorId) => {
+  const setPreferredEditor = (editorId: EditorId) => {
     if (isContextDefault) return;
-    setPreferredEditor(editorId);
+    persistPreferredEditor(editorId);
   };
 
   const openInEditor = (editorId: EditorId | null) => {
+    if (remote) {
+      toastManager.add({
+        type: "error",
+        title: "Could not open editor",
+        description: REMOTE_NATIVE_UNAVAILABLE,
+      });
+      return;
+    }
     const api = readNativeApi();
     if (!api || !openInTarget) return;
     const editor = editorId ?? effectivePreferred;
     if (!editor) return;
-    void api.shell.openInEditor(openInTarget, editor);
-    setDefaultEditor(editor);
+    void api.shell
+      .openInEditor(openInTarget, editor)
+      .then(() => setPreferredEditor(editor))
+      .catch((error: unknown) => {
+        toastManager.add({
+          type: "error",
+          title: "Could not open editor",
+          description: error instanceof Error ? error.message : "Unable to open this editor.",
+        });
+      });
   };
 
   const openFavoriteShortcutLabel = shortcutLabelForCommand(keybindings, "editor.openFavorite");
@@ -77,9 +98,9 @@ export function useEditorLaunchers({
   return {
     options,
     preferredEditor: effectivePreferred,
+    setPreferredEditor,
     primaryOption,
     openFavoriteShortcutLabel,
-    setDefaultEditor,
     openInEditor,
   };
 }

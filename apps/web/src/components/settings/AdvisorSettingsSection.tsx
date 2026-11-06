@@ -14,7 +14,6 @@ import { SelectItem } from "~/components/ui/select";
 import { Switch } from "~/components/ui/switch";
 import { serverQueryKeys, serverSettingsQueryOptions } from "~/lib/serverReactQuery";
 import { ensureNativeApi } from "~/nativeApi";
-import { useMessages } from "../../i18n/context";
 import {
   ADVISOR_MODEL_OPTIONS,
   advisorEffortOptions,
@@ -25,10 +24,10 @@ import {
 } from "./advisorSettings.logic";
 import { SettingsSelectControl } from "./SettingControls";
 import { SettingsRow, SettingsSection } from "./SettingsPanelPrimitives";
+import { useTranslation } from "~/i18n";
 
 export function AdvisorSettingsSection() {
-  const m = useMessages();
-  const copy = m.settings.models.advisor;
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const serverSettingsQuery = useQuery(serverSettingsQueryOptions());
   const advisor = serverSettingsQuery.data?.advisor;
@@ -61,23 +60,23 @@ export function AdvisorSettingsSection() {
   const selectedEffort = effortOptions.find((level) => level.value === effortValue);
 
   return (
-    <SettingsSection title={copy.title}>
+    <SettingsSection title="settings:advisor_title">
       <SettingsRow
-        title={copy.enabled.title}
+        title="settings:advisor_enabledTitle"
         anchorKey="models:advisor-enabled"
-        description={copy.enabled.description}
+        description="settings:advisor_enabledDescription"
         control={
           <Switch
             checked={advisor.enabled}
-            aria-label={copy.enabled.ariaLabel}
+            aria-label={t("settings:advisor_enabledAriaLabel")}
             onCheckedChange={(enabled) => patchAdvisor({ enabled })}
           />
         }
       />
       <SettingsRow
-        title={copy.model.title}
+        title="settings:advisor_modelTitle"
         anchorKey="models:advisor-model"
-        description={copy.model.description}
+        description="settings:advisor_modelDescription"
         control={
           <SettingsSelectControl
             value={advisorModelValue(advisor.modelSelection)}
@@ -89,7 +88,7 @@ export function AdvisorSettingsSection() {
               if (modelSelection === null) return;
               patchAdvisor({ modelSelection });
             }}
-            ariaLabel={copy.model.ariaLabel}
+            ariaLabel={t("settings:advisor_modelAriaLabel")}
             triggerClassName="w-full sm:w-52"
             valueContent={
               selectedOption
@@ -111,9 +110,9 @@ export function AdvisorSettingsSection() {
       />
       {effortOptions.length > 0 ? (
         <SettingsRow
-          title={copy.effort.title}
+          title="settings:advisor_effortTitle"
           anchorKey="models:advisor-effort"
-          description={copy.effort.description}
+          description="settings:advisor_effortDescription"
           control={
             <SettingsSelectControl
               value={effortValue}
@@ -124,7 +123,7 @@ export function AdvisorSettingsSection() {
                 if (modelSelection === advisor.modelSelection) return;
                 patchAdvisor({ modelSelection });
               }}
-              ariaLabel={copy.effort.ariaLabel}
+              ariaLabel={t("settings:advisor_effortAriaLabel")}
               triggerClassName="w-full sm:w-52"
               valueContent={selectedEffort?.label ?? effortValue}
             >

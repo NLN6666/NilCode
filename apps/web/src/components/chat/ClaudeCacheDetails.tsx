@@ -1,8 +1,9 @@
 import type { ClaudeCacheObservation } from "@synara/contracts";
 import { assessClaudeCache } from "@synara/shared/claudeCache";
 import { formatContextWindowTokens } from "~/lib/contextWindow";
-import { useMessages } from "~/i18n/context";
-import type { Messages } from "~/i18n/locales/en";
+import { useTranslation } from "~/i18n";
+
+type ChatTranslator = ReturnType<typeof useTranslation>["t"];
 
 export function ClaudeCacheDetails({
   observation,
@@ -11,71 +12,82 @@ export function ClaudeCacheDetails({
   observation: ClaudeCacheObservation | undefined;
   nowMs: number;
 }) {
-  const copy = useMessages().chat.contextWindow.cache;
+  const { t } = useTranslation();
+
   const assessment = assessClaudeCache(observation, nowMs);
   const label =
     assessment.state === "likely-warm"
-      ? copy.warm
+      ? t("chat:likelyWarm")
       : assessment.state === "likely-expired"
-        ? copy.expired
-        : copy.unknown;
+        ? t("chat:likelyExpired")
+        : t("common:common_unknown");
   const usage = observation?.lastRequest;
 
   return (
     <div className="space-y-1.5 border-t border-border/50 pt-2 text-ui leading-snug text-muted-foreground">
-      <div className="font-medium text-foreground">{copy.state(label)}</div>
+      <div className="font-medium text-foreground">
+        {t("chat:claudePromptCache")} {label}
+      </div>
       {observation?.ttlSeconds !== undefined ? (
         <div>
-          {copy.observedLifetime(
-            observation.partialTtlSeconds !== undefined
-              ? copy.lifetimeRange(
-                  formatCacheDuration(observation.partialTtlSeconds, copy),
-                  formatCacheDuration(observation.ttlSeconds, copy),
-                )
-              : formatCacheDuration(observation.ttlSeconds, copy),
-          )}
+          {t("chat:observedLifetime")}{" "}
+          {observation.partialTtlSeconds !== undefined
+            ? t("chat:to2", {
+                value0: formatCacheDuration(observation.partialTtlSeconds, t),
+              })
+            : ""}
+          {formatCacheDuration(observation.ttlSeconds, t)}
         </div>
       ) : (
-        <div>{copy.lifetimeUnknown}</div>
+        <div>{t("chat:cacheLifetimeIsUnavailable")}</div>
       )}
       {assessment.idleSeconds !== undefined ? (
-        <div>{copy.lastResponse(formatCacheDuration(assessment.idleSeconds, copy))}</div>
+        <div>
+          {t("chat:lastResponseAgo", {
+            duration: formatCacheDuration(assessment.idleSeconds, t),
+          })}
+        </div>
       ) : null}
       {assessment.state === "likely-expired" && observation?.contextTokens !== undefined ? (
         <p className="max-w-72 leading-relaxed">
-          {copy.reprocessEstimate(formatContextWindowTokens(observation.contextTokens))}
+          {t("chat:theNextRequestMayReprocessAbout")}{" "}
+          {formatContextWindowTokens(observation.contextTokens)} {t("chat:tokens2")}
         </p>
       ) : null}
       {usage ? (
         <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1">
-          <dt>{copy.lastRequestCacheRead}</dt>
+          <dt>{t("chat:lastRequestCacheRead")}</dt>
           <dd className="text-right tabular-nums">
-            {formatCacheTokens(usage.cacheReadInputTokens, copy)}
+            {formatCacheTokens(usage.cacheReadInputTokens, t)}
           </dd>
-          <dt>{copy.cacheWritten}</dt>
+          <dt>{t("chat:cacheWritten")}</dt>
           <dd className="text-right tabular-nums">
-            {formatCacheTokens(usage.cacheCreationInputTokens, copy)}
+            {formatCacheTokens(usage.cacheCreationInputTokens, t)}
           </dd>
-          <dt>{copy.uncachedInput}</dt>
-          <dd className="text-right tabular-nums">{formatCacheTokens(usage.inputTokens, copy)}</dd>
+          <dt>{t("chat:inputOutsideCache")}</dt>
+          <dd className="text-right tabular-nums">{formatCacheTokens(usage.inputTokens, t)}</dd>
         </dl>
       ) : null}
-      <p className="max-w-72 leading-relaxed">{copy.estimateCaveat}</p>
+      <p className="max-w-72 leading-relaxed">
+        {t("chat:cacheStateIsEstimatedItDoesNotMeasureYour")}
+      </p>
     </div>
   );
 }
 
-type CacheCopy = Messages["chat"]["contextWindow"]["cache"];
-
-function formatCacheTokens(value: number | undefined, copy: CacheCopy): string {
-  return value === undefined ? copy.unavailable : copy.tokens(formatContextWindowTokens(value));
+function formatCacheTokens(value: number | undefined, translate: ChatTranslator): string {
+  return value === undefined
+    ? translate("chat:providerModelPicker_unavailable")
+    : translate("chat:tokens3", { count: formatContextWindowTokens(value) });
 }
 
-export function formatCacheDuration(seconds: number, copy: CacheCopy): string {
-  if (seconds < 60) return copy.lessThanMinute;
+export function formatCacheDuration(seconds: number, translate: ChatTranslator): string {
+  if (seconds < 60) return translate("chat:lessThanAMinute");
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return copy.minutes(minutes);
+  if (minutes < 60) return translate("chat:cacheDurationMinutes", { count: minutes });
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
-  return `${copy.hours(hours)}${remainingMinutes > 0 ? ` ${copy.remainingMinutes(remainingMinutes)}` : ""}`;
+  return remainingMinutes > 0
+    ? translate("chat:cacheDurationHoursMinutes", { count: hours, minutes: remainingMinutes })
+    : translate("chat:cacheDurationHours", { count: hours });
 }

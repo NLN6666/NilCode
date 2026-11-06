@@ -17,10 +17,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
 import { toastManager } from "~/components/ui/toast";
-import { useMessages } from "../../i18n/context";
-import type { Messages } from "../../i18n/locales/en";
 import { ensureNativeApi } from "~/nativeApi";
 import { SettingsListRow, SettingsSection } from "./SettingsPanelPrimitives";
+import { t, useTranslation } from "~/i18n";
 
 const AGENT_MCP_QUERY_KEY = ["server", "agentMcpServers"] as const;
 
@@ -37,16 +36,21 @@ const PROVIDER_LABELS: Record<AgentMcpProvider, string> = {
  * One line describing how the server is launched. Values are never available here: the server
  * sends key names only, so a config full of plaintext API keys renders as `Env: CONTEXT7_API_KEY`.
  */
-function describeTransport(transport: AgentMcpServerDescriptor["transport"], m: Messages): string {
+function describeTransport(
+  transport: AgentMcpServerDescriptor["transport"],
+  translate: typeof t,
+): string {
   if (transport._tag === "http") {
     const headers = transport.headerKeys.length
-      ? ` · Headers: ${transport.headerKeys.join(", ")}`
+      ? ` · ${translate("settings:agentMcp_headers")} ${transport.headerKeys.join(", ")}`
       : "";
     return `${transport.url}${headers}`;
   }
   const command = [transport.command, ...transport.args].join(" ").trim();
-  const env = transport.envKeys.length ? ` · Env: ${transport.envKeys.join(", ")}` : "";
-  return `${command || m.settings.agentMcp.noCommand}${env}`;
+  const env = transport.envKeys.length
+    ? ` · ${translate("settings:agentMcp_environment")} ${transport.envKeys.join(", ")}`
+    : "";
+  return `${command || translate("settings:agentMcp_noCommand")}${env}`;
 }
 
 function withServerEnabled(catalog: AgentMcpCatalog, input: AgentMcpSetEnabledInput) {
@@ -70,29 +74,40 @@ function AgentMcpSourceSection(props: {
   pendingName: string | null;
   onToggle: (server: AgentMcpServerDescriptor, enabled: boolean) => void;
 }) {
-  const m = useMessages();
+  const { t } = useTranslation();
   const { source, pendingName, onToggle } = props;
   const readOnly = source.parseError !== undefined;
 
   return (
-    <SettingsSection title={m.settings.agentMcp.sourceTitle(PROVIDER_LABELS[source.provider])}>
+    <SettingsSection
+      title={t("settings:agentMcp_sourceTitle", {
+        value0: PROVIDER_LABELS[source.provider],
+      })}
+      translateTitle={false}
+    >
       <SettingsListRow
         align="start"
         title={<span className="font-normal text-muted-foreground">{source.configPath}</span>}
         description={
-          readOnly ? m.settings.agentMcp.parseError(String(source.parseError)) : undefined
+          readOnly
+            ? t("settings:agentMcp_parseError", { value0: String(source.parseError) })
+            : undefined
         }
       />
       {!source.available ? (
         <SettingsListRow
-          title={m.settings.agentMcp.notConfigured}
-          description={m.settings.agentMcp.unavailable(PROVIDER_LABELS[source.provider])}
+          title={t("settings:agentMcp_notConfigured")}
+          description={t("settings:agentMcp_unavailable", {
+            value0: PROVIDER_LABELS[source.provider],
+          })}
         />
       ) : source.servers.length === 0 ? (
         <SettingsListRow
-          title={m.settings.agentMcp.noServers}
+          title={t("settings:agentMcp_noServers")}
           description={
-            readOnly ? undefined : m.settings.agentMcp.empty(PROVIDER_LABELS[source.provider])
+            readOnly
+              ? undefined
+              : t("settings:agentMcp_empty", { value0: PROVIDER_LABELS[source.provider] })
           }
         />
       ) : (
@@ -102,12 +117,13 @@ function AgentMcpSourceSection(props: {
             align="start"
             title={server.name}
             description={
-              <span className="block break-all">{describeTransport(server.transport, m)}</span>
+              <span className="block break-all">{describeTransport(server.transport, t)}</span>
             }
             actions={
               <Switch
                 checked={server.enabled}
                 disabled={readOnly || pendingName === server.name}
+                aria-label={t("settings:agentMcp_toggle", { value0: server.name })}
                 onCheckedChange={(checked) => onToggle(server, checked)}
               />
             }
@@ -119,7 +135,7 @@ function AgentMcpSourceSection(props: {
 }
 
 export function AgentMcpSettingsPanel(props: { active: boolean }) {
-  const m = useMessages();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   // No file watching: `.claude.json` is rewritten constantly with unrelated fields, so the
@@ -174,9 +190,9 @@ export function AgentMcpSettingsPanel(props: { active: boolean }) {
       void queryClient.invalidateQueries({ queryKey: AGENT_MCP_QUERY_KEY });
       toastManager.add({
         type: "error",
-        title: m.settings.agentMcp.updateFailedTitle,
+        title: t("settings:agentMcp_updateFailedTitle"),
         description:
-          error instanceof Error ? error.message : m.settings.agentMcp.updateFailedDescription,
+          error instanceof Error ? error.message : t("settings:agentMcp_updateFailedDescription"),
       });
     },
   });
@@ -189,10 +205,10 @@ export function AgentMcpSettingsPanel(props: { active: boolean }) {
 
   return (
     <div className="space-y-6">
-      <SettingsSection title={m.settings.agentMcp.sectionTitle}>
+      <SettingsSection title="settings:agentMcp_sectionTitle">
         <SettingsListRow
-          title={m.settings.agentMcp.overview.title}
-          description={m.settings.agentMcp.overview.description}
+          title={t("settings:agentMcp_overviewTitle")}
+          description={t("settings:agentMcp_overviewDescription")}
           actions={
             <Button
               size="xs"
@@ -201,25 +217,25 @@ export function AgentMcpSettingsPanel(props: { active: boolean }) {
               onClick={() => void catalogQuery.refetch()}
             >
               {catalogQuery.isFetching
-                ? m.settings.agentMcp.refreshing
-                : m.settings.agentMcp.refresh}
+                ? t("settings:agentMcp_refreshing")
+                : t("settings:agentMcp_refresh")}
             </Button>
           }
         />
       </SettingsSection>
 
       {catalogQuery.isLoading ? (
-        <SettingsSection title={m.settings.agentMcp.sectionTitle}>
-          <SettingsListRow title={m.settings.agentMcp.loading} />
+        <SettingsSection title="settings:agentMcp_sectionTitle">
+          <SettingsListRow title={t("settings:agentMcp_loading")} />
         </SettingsSection>
       ) : catalogQuery.isError ? (
-        <SettingsSection title={m.settings.agentMcp.sectionTitle}>
+        <SettingsSection title="settings:agentMcp_sectionTitle">
           <SettingsListRow
-            title={m.settings.agentMcp.readFailedTitle}
+            title={t("settings:agentMcp_readFailedTitle")}
             description={
               catalogQuery.error instanceof Error
                 ? catalogQuery.error.message
-                : m.settings.agentMcp.readFailedDescription
+                : t("settings:agentMcp_readFailedDescription")
             }
           />
         </SettingsSection>

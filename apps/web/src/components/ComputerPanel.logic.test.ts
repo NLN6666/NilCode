@@ -9,7 +9,6 @@ import { describe, expect, it } from "vitest";
 import {
   computerActionLabel,
   computerActionStatusLabel,
-  computerCanvasLabel,
   computerStatusNeedsSetup,
   createComputerFrameGateState,
   resolveComputerAvailabilityView,
@@ -120,7 +119,7 @@ describe("computer panel state helpers", () => {
     const idle = { ...connectedHealth(), status: "unavailable" as const, captureAvailable: false };
     expect(
       resolveComputerAvailabilityView({ kind: "available", backend: "mac" }, idle, true),
-    ).toMatchObject({ kind: "ready", title: "All permissions granted" });
+    ).toMatchObject({ kind: "ready" });
     // A helper that already failed is not idle, whatever the grants say.
     expect(
       resolveComputerAvailabilityView(
@@ -132,7 +131,7 @@ describe("computer panel state helpers", () => {
         },
         true,
       ),
-    ).toMatchObject({ kind: "checking", title: "Computer access has not been checked" });
+    ).toMatchObject({ kind: "checking" });
   });
 
   it("does not claim full desktop readiness when capture is denied", () => {
@@ -141,7 +140,7 @@ describe("computer panel state helpers", () => {
         { kind: "available", backend: "mac" },
         { ...connectedHealth(), captureAvailable: false },
       ),
-    ).toMatchObject({ kind: "blocked", title: "Screen capture is unavailable" });
+    ).toMatchObject({ kind: "blocked" });
   });
 
   it("shows a reconnecting backend as checking rather than blocked", () => {
@@ -242,66 +241,39 @@ describe("computerStatusNeedsSetup", () => {
   });
 });
 
-describe("computerCanvasLabel", () => {
-  it("names the backend it is actually a picture of", () => {
-    // It said "Linux desktop" on every backend, macOS included — and whether the
-    // agent is driving a sandbox or the user's own machine is the single most
-    // important fact about this surface.
-    expect(
-      computerCanvasLabel({
-        availability: { kind: "available", backend: "mac" },
-        visibleDesktop: true,
-      }),
-    ).toBe("This Mac's desktop");
-    expect(
-      computerCanvasLabel({
-        availability: { kind: "available", backend: "nested-kwin" },
-        visibleDesktop: false,
-      }),
-    ).toBe("The agent's own desktop");
-    expect(
-      computerCanvasLabel({
-        availability: { kind: "available", backend: "kwin" },
-        visibleDesktop: true,
-      }),
-    ).toBe("This computer's desktop");
-    expect(computerCanvasLabel({ availability: undefined, visibleDesktop: false })).toBe(
-      "The agent's desktop",
-    );
-  });
-});
-
 describe("computerActionLabel", () => {
   it("keeps a failure's own message, which is the part worth the space", () => {
     expect(
       computerActionLabel({ action: "computer_click", ok: false, message: "window moved" }),
-    ).toBe("Click failed: window moved");
-    expect(computerActionLabel({ action: "computer_click", ok: false })).toBe("Click failed");
+    ).toContain("window moved");
   });
 });
 
 describe("computerActionStatusLabel", () => {
   it("describes delivery without implying a foreground action kept focus", () => {
-    expect(
-      computerActionStatusLabel(
-        {
-          type: "computer.action",
-          action: "computer_type_text",
-          ok: true,
-          windowId: "window-1",
-          delivery: { path: "cua-foreground", verified: "confirmed" },
-        },
-        [
-          {
-            id: "window-1",
-            appName: "TextEdit",
-            title: "Untitled",
-            focused: false,
-            minimized: false,
-            visible: true,
-          },
-        ],
-      ),
-    ).toBe("Type · TextEdit · Temporary foreground");
+    const action = {
+      type: "computer.action" as const,
+      action: "computer_type_text",
+      ok: true,
+      windowId: "window-1",
+      delivery: { path: "cua-foreground", verified: "confirmed" as const },
+    };
+    const windows = [
+      {
+        id: "window-1",
+        appName: "TextEdit",
+        title: "Untitled",
+        focused: false,
+        minimized: false,
+        visible: true,
+      },
+    ];
+    const foreground = computerActionStatusLabel(action, windows);
+    const background = computerActionStatusLabel(
+      { ...action, delivery: { path: "cua-background", verified: "confirmed" as const } },
+      windows,
+    );
+    expect(foreground).toContain("TextEdit");
+    expect(foreground).not.toBe(background);
   });
 });

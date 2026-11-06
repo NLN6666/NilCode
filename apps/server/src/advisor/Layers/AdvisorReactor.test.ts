@@ -302,7 +302,10 @@ describe("AdvisorReactor", () => {
 
   it("does not run Synara Advisor for OMP-owned threads", async () => {
     const recorder = await withReactor(
-      { verdicts: [{ verdict: "concern", message: "duplicate advisor" }], threadProvider: "omp" },
+      {
+        verdicts: [{ verdict: "advise", severity: "nit", message: "duplicate advisor" }],
+        threadProvider: "omp",
+      },
       (input) => oneTurn(input).pipe(Effect.as(input.recorder)),
     );
 

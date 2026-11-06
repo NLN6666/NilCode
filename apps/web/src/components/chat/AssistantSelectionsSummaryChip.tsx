@@ -2,24 +2,20 @@
 // Purpose: Renders the compact assistant-selection count chip used in composer and user bubbles.
 // Layer: Chat attachment presentation
 
-import { pluralize } from "@synara/shared/text";
+import { pluralize } from "~/i18n/pluralize";
 
 import { MessageCircleIcon } from "~/lib/icons";
 import { type ChatAssistantSelectionAttachment } from "../../types";
 import { AttachmentSummaryChip } from "./AttachmentSummaryChip";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 interface AssistantSelectionsSummaryChipProps {
   selections: ReadonlyArray<ChatAssistantSelectionAttachment>;
   onRemove?: (() => void) | undefined;
 }
 
-function selectionCountLabel(count: number): string {
-  return `${count} ${pluralize(count, "selection")}`;
-}
-
 export function AssistantSelectionsSummaryChip(props: AssistantSelectionsSummaryChipProps) {
-  const copy = useMessages().composer.attachments;
+  const { t } = useTranslation();
   if (props.selections.length === 0) {
     return null;
   }
@@ -27,8 +23,11 @@ export function AssistantSelectionsSummaryChip(props: AssistantSelectionsSummary
   return (
     <AttachmentSummaryChip
       icon={MessageCircleIcon}
-      label={selectionCountLabel(props.selections.length)}
-      removeLabel={copy.removeSelections}
+      label={t("chat:symbol7", {
+        value0: props.selections.length,
+        value1: pluralize(props.selections.length, "selection"),
+      })}
+      removeLabel={t("chat:removeSelections")}
       onRemove={props.onRemove}
       tooltip={props.selections.map((selection) => (
         <p key={selection.id} className="text-ui leading-relaxed">

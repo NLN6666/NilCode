@@ -1,3 +1,5 @@
+import { RemoteHostTrustRepositoryLive } from "./persistence/Layers/RemoteHostTrust";
+import { RemoteDeviceTrustRepositoryLive } from "./persistence/Layers/RemoteDeviceTrust";
 import { ProjectionThreadMessageRepositoryLive } from "./persistence/Layers/ProjectionThreadMessages";
 import { OrchestrationCommandReceiptRepositoryLive } from "./persistence/Layers/OrchestrationCommandReceipts";
 import { QueuedTurnPromotionRepositoryLive } from "./persistence/Layers/QueuedTurnPromotions";
@@ -28,6 +30,7 @@ import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRun
 import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus";
 import { SidechatExpiryReactorLive } from "./orchestration/Layers/SidechatExpiryReactor";
 import { ThreadSnoozeReactorLive } from "./orchestration/Layers/ThreadSnoozeReactor";
+import { UsageLimitRecoveryReactorLive } from "./orchestration/Layers/UsageLimitRecoveryReactor";
 import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor";
 import { TurnCheckpointCoordinatorLive } from "./orchestration/Layers/TurnCheckpointCoordinator";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer";
@@ -83,6 +86,8 @@ import { PullRequestAutoFixServiceLive } from "./pullRequestAutoFix/Layers/PullR
 import { GitHubInboxServiceLive } from "./githubInbox/Layers/GitHubInboxService";
 import { ProviderHealthLive } from "./provider/Layers/ProviderHealth";
 import { makeServerProviderLayer } from "./provider/runtimeLayer";
+import { RemoteSessionRegistryLive } from "./remoteSessions/sessionRegistry";
+import { HostConnectionRegistryLive } from "./hostConnections/registry";
 
 export { makeServerProviderLayer } from "./provider/runtimeLayer";
 
@@ -128,6 +133,7 @@ export function makeServerRuntimeServicesLayer(
   );
   const runtimeIngestionLayer = ProviderRuntimeIngestionLive.pipe(
     Layer.provideMerge(runtimeServicesLayer),
+    Layer.provideMerge(serverSettingsLayer),
     Layer.provideMerge(GitCoreLive),
     // Share the gateway/deletion manager; a sibling layer cannot satisfy optional services.
     Layer.provideMerge(DeviceServiceLive),
@@ -180,6 +186,11 @@ export function makeServerRuntimeServicesLayer(
   const threadSnoozeReactorLayer = ThreadSnoozeReactorLive.pipe(
     Layer.provideMerge(OrchestrationLayerLive),
   );
+  const usageLimitRecoveryReactorLayer = UsageLimitRecoveryReactorLive.pipe(
+    Layer.provideMerge(providerCommandReactorLayer),
+    Layer.provideMerge(OrchestrationLayerLive),
+    Layer.provideMerge(serverSettingsLayer),
+  );
   const profileStatsArchiveLayer = ProfileStatsArchiveLive.pipe(
     Layer.provideMerge(checkpointStoreLayer),
   );
@@ -226,6 +237,7 @@ export function makeServerRuntimeServicesLayer(
     Layer.provide(sessionCredentialLayer),
   );
   const serverAuthLayer = ServerAuthLive.pipe(
+    Layer.provide(RemoteSessionRegistryLive),
     Layer.provide(ServerAuthPolicyLive),
     Layer.provide(BootstrapCredentialServiceLive),
     Layer.provide(sessionCredentialLayer),
@@ -271,7 +283,10 @@ export function makeServerRuntimeServicesLayer(
     Layer.provideMerge(ServerSecretStoreLive),
     Layer.provideMerge(agentGatewayCredentialsLayer),
   );
-  const agentGatewayLayer = AgentGatewayLive.pipe(
+  const agentGatewayBaseLayer = AgentGatewayLive.pipe(
+    Layer.provideMerge(mcpConnectorsLayer),
+    Layer.provideMerge(ServerEnvironmentLive),
+    Layer.provideMerge(HostConnectionRegistryLive),
     Layer.provideMerge(
       Layer.mergeAll(
         ProjectionThreadMessageRepositoryLive,
@@ -293,6 +308,8 @@ export function makeServerRuntimeServicesLayer(
     Layer.provideMerge(AgentGatewayOperationRepositoryLive),
     Layer.provideMerge(OrchestrationEventDeliveryRepositoryLive),
     Layer.provideMerge(ProviderRuntimeEventRepositoryLive),
+  );
+  const agentGatewayLayer = agentGatewayBaseLayer.pipe(
     Layer.provideMerge(ThreadDiagnosticsQueryLive),
     Layer.provideMerge(serverSettingsLayer),
     Layer.provideMerge(providerHealthLayer),
@@ -358,6 +375,7 @@ export function makeServerRuntimeServicesLayer(
     providerCommandReactorLayer,
     sidechatExpiryReactorLayer,
     threadSnoozeReactorLayer,
+    usageLimitRecoveryReactorLayer,
     threadGitMetadataReactorLayer,
     threadDeletionReactorLayer,
     advisorReactorLayer,
@@ -379,6 +397,10 @@ export function makeServerRuntimeServicesLayer(
     ServerRuntimeStartupLive,
     WorkspaceLayerLive,
     ProjectFaviconResolverLive,
+    RemoteSessionRegistryLive,
+    RemoteDeviceTrustRepositoryLive,
+    RemoteHostTrustRepositoryLive,
+    HostConnectionRegistryLive,
   ).pipe(Layer.provideMerge(serverSettingsLayer), Layer.provideMerge(NodeServices.layer));
 }
 

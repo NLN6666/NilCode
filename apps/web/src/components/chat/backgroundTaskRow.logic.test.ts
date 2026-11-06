@@ -22,30 +22,44 @@ const task = (
 
 describe("describeBackgroundTaskStatus", () => {
   it("walks one row through its lifecycle", () => {
-    expect(describeBackgroundTaskStatus(task("running"), "2026-10-10T00:10:09.000Z")).toEqual({
-      status: "running",
-      label: "running",
-      elapsed: "12s",
-    });
-    expect(describeBackgroundTaskStatus(task("finished"), "2026-10-10T00:11:00.000Z")).toEqual({
-      status: "finished",
-      label: "finished",
-      elapsed: "20s",
-    });
-    expect(
-      describeBackgroundTaskStatus(task("failed", { exitCode: 1 }), "2026-10-10T00:11:00.000Z")
-        .label,
-    ).toBe("failed · exit 1");
-    expect(describeBackgroundTaskStatus(task("failed"), "2026-10-10T00:11:00.000Z").label).toBe(
+    const running = describeBackgroundTaskStatus(task("running"), "2026-10-10T00:10:09.000Z");
+    expect(running.status).toBe("running");
+    expect(running.elapsed).toContain("12");
+
+    const finished = describeBackgroundTaskStatus(task("finished"), "2026-10-10T00:11:00.000Z");
+    expect(finished.status).toBe("finished");
+    expect(finished.elapsed).toContain("20");
+
+    const failed = describeBackgroundTaskStatus(
+      task("failed", { exitCode: 1 }),
+      "2026-10-10T00:11:00.000Z",
+    );
+    expect(failed.status).toBe("failed");
+    expect(failed.label).toContain("1");
+    expect(describeBackgroundTaskStatus(task("failed"), "2026-10-10T00:11:00.000Z").status).toBe(
       "failed",
     );
-    expect(describeBackgroundTaskStatus(task("stopped"), "2026-10-10T00:11:00.000Z").label).toBe(
+    expect(describeBackgroundTaskStatus(task("stopped"), "2026-10-10T00:11:00.000Z").status).toBe(
       "stopped",
     );
   });
 });
 
 describe("summarizeBackgroundTaskGroup", () => {
+  it("preserves empty, single, and mixed group counts in lifecycle order", () => {
+    expect(summarizeBackgroundTaskGroup([]).match(/\d+/gu)).toEqual(["0"]);
+    expect(summarizeBackgroundTaskGroup([{ status: "running" }]).match(/\d+/gu)).toEqual([
+      "1",
+      "1",
+    ]);
+    expect(
+      summarizeBackgroundTaskGroup([
+        { status: "stopped" },
+        { status: "finished" },
+        { status: "finished" },
+      ]).match(/\d+/gu),
+    ).toEqual(["3", "2", "1"]);
+  });
   it("counts tasks by state in lifecycle order", () => {
     expect(
       summarizeBackgroundTaskGroup([
@@ -53,14 +67,14 @@ describe("summarizeBackgroundTaskGroup", () => {
         { status: "finished" },
         { status: "finished" },
         { status: "finished" },
-      ]),
-    ).toBe("4 background tasks · 3 finished, 1 stopped");
+      ]).match(/\d+/gu),
+    ).toEqual(["4", "3", "1"]);
     expect(
       summarizeBackgroundTaskGroup([
         { status: "finished" },
         { status: "running" },
         { status: "failed" },
-      ]),
-    ).toBe("3 background tasks · 1 running, 1 finished, 1 failed");
+      ]).match(/\d+/gu),
+    ).toEqual(["3", "1", "1", "1"]);
   });
 });

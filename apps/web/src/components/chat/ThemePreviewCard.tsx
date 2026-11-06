@@ -33,7 +33,7 @@ import { newCommandId, newMessageId } from "../../lib/utils";
 import { readNativeApi } from "../../nativeApi";
 import { useStore } from "../../store";
 import { getThreadFromState } from "../../threadDerivation";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 import { CheckIcon, CopyIcon } from "~/lib/icons";
 import { Button } from "../ui/button";
 import { DisclosureChevron } from "../ui/DisclosureChevron";
@@ -130,11 +130,11 @@ function useAdoptAction(buildMessage: () => string | null) {
 
 /** Localized sentences of the adoption message, sourced from the chat locale. */
 function useThemeAdoptionCopy(): ThemeAdoptionMessageCopy {
-  const copy = useMessages().chat.themePreview;
+  const { t } = useTranslation();
   return {
-    namedHeading: copy.adoptionNamedHeading,
-    heading: copy.adoptionHeading,
-    request: copy.adoptionRequest,
+    namedHeading: (name) => t("chat:themePreview_adoptionNamedHeading", { value0: name }),
+    heading: t("chat:themePreview_adoptionHeading"),
+    request: t("chat:themePreview_adoptionRequest"),
   };
 }
 
@@ -174,13 +174,13 @@ function ThemePreviewShell(props: {
   onAdopt: () => void;
   children: ReactNode;
 }) {
-  const copy = useMessages().chat.themePreview;
+  const { t } = useTranslation();
   const adoptLabel =
     props.adoptState === "sent"
-      ? copy.adoptSent
+      ? t("chat:themePreview_adoptSent")
       : props.adoptState === "failed"
-        ? copy.adoptFailed
-        : copy.adopt;
+        ? t("chat:themePreview_adoptFailed")
+        : t("chat:themePreview_adopt");
   return (
     <div className="chat-markdown-codeblock chat-theme-preview">
       <div className="chat-markdown-codeblock__header">
@@ -208,7 +208,7 @@ function ThemePreviewShell(props: {
 }
 
 function StructuredThemePreviewCard(props: { payload: ThemeFencePayload }) {
-  const copy = useMessages().chat.themePreview;
+  const { t } = useTranslation();
   const adoptionCopy = useThemeAdoptionCopy();
   const { copiedKey, copy: copyValue } = useTransientCopy();
   const { adoptState, adopt, canAdopt } = useAdoptAction(() =>
@@ -219,13 +219,13 @@ function StructuredThemePreviewCard(props: { payload: ThemeFencePayload }) {
     .join("\n");
   return (
     <ThemePreviewShell
-      title={`${copy.label} · ${props.payload.name}`}
+      title={`${t("chat:themePreview_label")} · ${props.payload.name}`}
       actions={
         <IconButton
           className="chat-markdown-codeblock__action"
           onClick={() => copyValue("all", allColorsText)}
-          title={copiedKey === "all" ? copy.copied : copy.copyAll}
-          label={copiedKey === "all" ? copy.copied : copy.copyAll}
+          title={copiedKey === "all" ? t("chat:theme_copied") : t("chat:themePreview_copyAll")}
+          label={copiedKey === "all" ? t("chat:theme_copied") : t("chat:themePreview_copyAll")}
           size="icon-xs"
           variant="ghost"
         >
@@ -245,8 +245,12 @@ function StructuredThemePreviewCard(props: { payload: ThemeFencePayload }) {
                 type="button"
                 className="chat-theme-preview__swatch"
                 style={{ backgroundColor: color.hex }}
-                title={copiedKey === rowKey ? copy.copied : copy.copyHex(color.hex)}
-                aria-label={copy.copyHex(color.hex)}
+                title={
+                  copiedKey === rowKey
+                    ? t("chat:theme_copied")
+                    : t("chat:themePreview_copyHex", { value0: color.hex })
+                }
+                aria-label={t("chat:themePreview_copyHex", { value0: color.hex })}
                 onClick={() => copyValue(rowKey, color.hex)}
               />
               <span className="chat-theme-preview__token">{color.token}</span>
@@ -263,7 +267,7 @@ function StructuredThemePreviewCard(props: { payload: ThemeFencePayload }) {
 }
 
 function HtmlThemePreviewCard(props: { html: string }) {
-  const copy = useMessages().chat.themePreview;
+  const { t } = useTranslation();
   const adoptionCopy = useThemeAdoptionCopy();
   const [expanded, setExpanded] = useState(false);
   const { adoptState, adopt, canAdopt } = useAdoptAction(() =>
@@ -271,13 +275,13 @@ function HtmlThemePreviewCard(props: { html: string }) {
   );
   return (
     <ThemePreviewShell
-      title={copy.label}
+      title={t("chat:themePreview_label")}
       actions={
         <IconButton
           className="chat-markdown-codeblock__action"
           onClick={() => setExpanded((previous) => !previous)}
-          title={expanded ? copy.collapse : copy.expand}
-          label={expanded ? copy.collapse : copy.expand}
+          title={expanded ? t("chat:themePreview_collapse") : t("chat:themePreview_expand")}
+          label={expanded ? t("chat:themePreview_collapse") : t("chat:themePreview_expand")}
           aria-expanded={expanded}
           size="icon-xs"
           variant="ghost"
@@ -303,7 +307,7 @@ function HtmlThemePreviewCard(props: { html: string }) {
       >
         <iframe
           className="h-full w-full border-0"
-          title={copy.htmlTitle}
+          title={t("chat:themePreview_htmlTitle")}
           sandbox=""
           referrerPolicy="no-referrer"
           srcDoc={buildThemeFenceSrcdoc(props.html)}

@@ -5,7 +5,8 @@ import { page } from "vitest/browser";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
 
-vi.mock("~/appSettings", () => ({
+vi.mock("~/appSettings", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/appSettings")>()),
   useAppSettings: () => ({
     settings: { defaultProvider: "codex", sidebarProjectSortOrder: "manual" },
     setSetting: vi.fn(),
@@ -64,14 +65,20 @@ vi.mock("./useKanbanBoard", () => ({
 }));
 
 import type { ServerProviderStatus, ThreadId } from "@synara/contracts";
-import { KANBAN_ATTENTION_LABELS, KANBAN_COLUMN_V2_LABELS } from "@synara/shared/kanban";
 import { dispatchKanbanDraftCardAsGoal } from "../../lib/kanbanDispatch";
 import { KanbanProjectBoardView } from "./KanbanProjectBoardView";
-import { buildKanbanBoard, type KanbanCard, type KanbanProjectBoard } from "./kanban.logic";
+import {
+  buildKanbanBoard,
+  KANBAN_ATTENTION_LABEL_KEYS,
+  KANBAN_COLUMN_LABEL_KEYS,
+  type KanbanCard,
+  type KanbanProjectBoard,
+} from "./kanban.logic";
 import type { SidebarThreadSummary } from "../../types";
 import KanbanView from "./KanbanView";
 import { useKanbanUiStore } from "../../kanbanUiStore";
 import type { KanbanCardContextMenuController } from "./useKanbanCardContextMenu";
+import { t } from "~/i18n";
 
 const dispatchAsGoalMock = vi.mocked(dispatchKanbanDraftCardAsGoal);
 
@@ -209,11 +216,13 @@ describe("KanbanProjectBoardView v2 (browser)", () => {
     const screen = await render(<KanbanView projectId="project-1" />);
     try {
       // Immediate lookup makes the missing-control regression fail without a timeout.
-      expect(page.getByRole("button", { name: "Classic", exact: true }).elements()).toHaveLength(1);
-      await page.getByRole("button", { name: "Classic", exact: true }).click();
+      expect(
+        page.getByRole("button", { name: t("common:classic"), exact: true }).elements(),
+      ).toHaveLength(1);
+      await page.getByRole("button", { name: t("common:classic"), exact: true }).click();
       expect(useKanbanUiStore.getState().kanbanViewMode).toBe("classic");
       await expect
-        .element(page.getByRole("heading", { name: "Awaiting you" }))
+        .element(page.getByRole("heading", { name: t(KANBAN_COLUMN_LABEL_KEYS.awaitingYou) }))
         .not.toBeInTheDocument();
       expect(
         JSON.parse(localStorage.getItem("synara:kanban-ui:v1") ?? "null").state.kanbanViewMode,
@@ -224,10 +233,12 @@ describe("KanbanProjectBoardView v2 (browser)", () => {
     const remounted = await render(<KanbanView projectId="project-1" />);
     try {
       await expect
-        .element(page.getByRole("button", { name: "Classic", exact: true }))
+        .element(page.getByRole("button", { name: t("common:classic"), exact: true }))
         .toHaveAttribute("aria-pressed", "true");
-      await page.getByRole("button", { name: "Attention", exact: true }).click();
-      await expect.element(page.getByRole("heading", { name: "Awaiting you" })).toBeVisible();
+      await page.getByRole("button", { name: t("common:attention"), exact: true }).click();
+      await expect
+        .element(page.getByRole("heading", { name: t(KANBAN_COLUMN_LABEL_KEYS.awaitingYou) }))
+        .toBeVisible();
     } finally {
       await remounted.unmount();
     }
@@ -293,26 +304,32 @@ describe("KanbanProjectBoardView v2 (browser)", () => {
     const screen = await render(<ReviewBoard />);
     try {
       expect(document.querySelectorAll("li button").length).toBe(30);
-      await page.getByRole("button", { name: "Show 8 more", exact: true }).click();
+      await page
+        .getByRole("button", { name: t("chat:showMore", { value0: 8 }), exact: true })
+        .click();
       expect(
         [...document.querySelectorAll("li button")].filter((button) =>
           button.textContent?.includes("Review "),
         ).length,
       ).toBe(38);
       expect(
-        page.getByRole("button", { name: "Show 8 more", exact: true }).elements(),
+        page
+          .getByRole("button", { name: t("chat:showMore", { value0: 8 }), exact: true })
+          .elements(),
       ).toHaveLength(0);
-      await page.getByRole("button", { name: "Show fewer", exact: true }).click();
+      await page.getByRole("button", { name: t("common:showFewer"), exact: true }).click();
       expect(document.querySelectorAll("li button").length).toBe(30);
       // Leaving the review filter restores the ordinary column's thirty-card
       // cap and its own reveal, rather than removing that existing safeguard.
-      await page.getByRole("checkbox", { name: "Needs review" }).click();
+      await page.getByRole("checkbox", { name: t("common:list_needsReview") }).click();
       expect(
         [...document.querySelectorAll("li button")].filter((button) =>
           button.textContent?.includes("Review "),
         ).length,
       ).toBe(30);
-      await page.getByRole("button", { name: "Show 8 more", exact: true }).click();
+      await page
+        .getByRole("button", { name: t("chat:showMore", { value0: 8 }), exact: true })
+        .click();
       expect(document.querySelectorAll("li button").length).toBe(38);
     } finally {
       await screen.unmount();
@@ -331,16 +348,19 @@ describe("KanbanProjectBoardView v2 (browser)", () => {
       />,
     );
 
-    for (const label of Object.values(KANBAN_COLUMN_V2_LABELS)) {
+    for (const labelKey of Object.values(KANBAN_COLUMN_LABEL_KEYS)) {
+      const label = t(labelKey);
       await expect.element(page.getByRole("heading", { name: label })).toBeVisible();
     }
     for (const cardTitle of ["Card draft-1", "Card live-1", "Card awaiting-1", "Card done-1"]) {
       await expect.element(page.getByText(cardTitle)).toBeVisible();
     }
     await expect
-      .element(page.getByText(KANBAN_ATTENTION_LABELS["awaiting-approval"]))
+      .element(page.getByText(t(KANBAN_ATTENTION_LABEL_KEYS["awaiting-approval"])))
       .toBeVisible();
-    await expect.element(page.getByText("Needs review")).toBeVisible();
+    await expect
+      .element(page.getByText(t(KANBAN_ATTENTION_LABEL_KEYS["needs-review"])))
+      .toBeVisible();
   });
 
   it("keeps classic mode at three columns without the awaiting-you column", async () => {
@@ -355,10 +375,13 @@ describe("KanbanProjectBoardView v2 (browser)", () => {
       />,
     );
 
-    for (const label of ["Draft", "In Progress"] as const) {
+    for (const label of [
+      t(KANBAN_COLUMN_LABEL_KEYS.draft),
+      t(KANBAN_COLUMN_LABEL_KEYS.inProgress),
+    ]) {
       await expect.element(page.getByRole("heading", { name: label })).toBeVisible();
     }
-    expect(document.body.textContent).not.toContain(KANBAN_COLUMN_V2_LABELS.awaitingYou);
+    expect(document.body.textContent).not.toContain(t(KANBAN_COLUMN_LABEL_KEYS.awaitingYou));
     await unmount();
   });
 
@@ -386,7 +409,7 @@ describe("KanbanProjectBoardView v2 (browser)", () => {
     );
     try {
       await expect.poll(() => findCardButton("Sendable goal card") !== null).toBe(true);
-      await dragCardOntoColumn("Sendable goal card", KANBAN_COLUMN_V2_LABELS.inProgress);
+      await dragCardOntoColumn("Sendable goal card", t(KANBAN_COLUMN_LABEL_KEYS.inProgress));
       await expect.poll(() => dispatchAsGoalMock.mock.calls.length, { timeout: 5000 }).toBe(1);
       expect(dispatchAsGoalMock).toHaveBeenCalledWith(
         expect.objectContaining({

@@ -22,10 +22,17 @@ import {
 import { PullRequestActorLabel } from "./PullRequestActorLabel";
 import { GitHubItemStateGlyph } from "./PullRequestStateGlyph";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { useTranslation, t } from "~/i18n";
 
 /** How a row names its item in accessible labels: "pull request #42", "issue #7". */
-export function githubInboxItemLabel(item: Pick<GitHubInboxItem, "kind" | "number">): string {
-  return `${item.kind === "issue" ? "issue" : "pull request"} #${item.number}`;
+export function githubInboxItemLabel(
+  item: Pick<GitHubInboxItem, "kind" | "number">,
+  translate: typeof t = t,
+): string {
+  return translate("git:symbol2", {
+    value0: item.kind === "issue" ? translate("settings:issue") : translate("chat:pullRequest"),
+    value1: item.number,
+  });
 }
 
 export const PullRequestRow = function PullRequestRow({
@@ -47,18 +54,22 @@ export const PullRequestRow = function PullRequestRow({
   onClick: (entry: GitHubInboxItem) => void;
   onTogglePinned: (entry: GitHubInboxItem) => void;
 }) {
+  const { t, formatLocale } = useTranslation();
+
   const showProjectTitle = showProjectTitleProp ?? false;
   const timestamp = sort === "created" ? entry.createdAt : entry.updatedAt;
   const isPinned = entry.isPinned === true;
   const projectContexts = pullRequestListProjectContexts(entry);
   const projectLabel =
-    projectContexts.length > 1 ? `${projectContexts.length} projects` : entry.projectTitle;
+    projectContexts.length > 1
+      ? t("git:projects", { value0: projectContexts.length })
+      : entry.projectTitle;
   const projectTitle = projectContexts.map((context) => context.projectTitle).join(", ");
-  const itemLabel = githubInboxItemLabel(entry);
-  const pinLabel = pinActionLabel(
-    showProjectTitle ? `${itemLabel} in ${projectLabel}` : itemLabel,
-    isPinned,
-  );
+  const itemLabel = githubInboxItemLabel(entry, t);
+  const pinTarget = showProjectTitle
+    ? t("git:pullRequestItemInProject", { value0: itemLabel, value1: projectLabel })
+    : itemLabel;
+  const pinLabel = pinActionLabel(pinTarget, isPinned);
   return (
     <div
       className={cn(
@@ -78,7 +89,7 @@ export const PullRequestRow = function PullRequestRow({
         data-repository={entry.repository}
         data-pull-request-number={entry.number}
         aria-current={selected ? "true" : undefined}
-        title={`${entry.title} #${entry.number}`}
+        title={t("git:symbol2", { value0: entry.title, value1: entry.number })}
         onClick={() => onClick(entry)}
         className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg py-2 pl-3 pr-1 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
@@ -113,10 +124,10 @@ export const PullRequestRow = function PullRequestRow({
           </span>
           <time
             dateTime={timestamp}
-            title={sort === "created" ? "Opened" : "Updated"}
+            title={sort === "created" ? t("git:opened") : t("common:updated")}
             className="shrink-0 tabular-nums"
           >
-            {formatRelativeTime(timestamp)}
+            {formatRelativeTime(timestamp, undefined, formatLocale)}
           </time>
           <span className="ml-auto shrink-0 pl-1 tabular-nums opacity-80">#{entry.number}</span>
         </span>

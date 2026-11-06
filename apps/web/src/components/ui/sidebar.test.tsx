@@ -20,7 +20,7 @@ describe("sidebar header trigger", () => {
     );
 
     expect(html).toContain('data-slot="sidebar-trigger"');
-    expect(html).toContain("Toggle Sidebar");
+    expect(html.match(/<button\b/g) ?? []).toHaveLength(1);
   });
 
   it("omits the header trigger when the desktop sidebar is expanded", () => {
@@ -32,6 +32,5 @@ describe("sidebar header trigger", () => {
 
     expect(html).toContain('data-slot="sidebar-wrapper"');
     expect(html).not.toContain('data-slot="sidebar-trigger"');
-    expect(html).not.toContain("Toggle Sidebar");
   });
 });

@@ -18,7 +18,7 @@ import type { BrowserAnnotationDraft } from "../lib/browserAnnotations";
 import { BrowserAnnotationButton } from "./BrowserPanel";
 import { browserAnnotationTheme } from "./BrowserPanel.logic";
 import { useBrowserAnnotations } from "./browser/useBrowserAnnotations";
-import { en } from "~/i18n/locales/en";
+import { t } from "~/i18n";
 
 const THREAD_A = ThreadId.makeUnsafe("thread-a");
 const THREAD_B = ThreadId.makeUnsafe("thread-b");
@@ -123,7 +123,7 @@ function AnnotationHarness(props: {
     annotations,
     addAnnotation,
     onError: () => {},
-    errorCopy: en.browser.annotation.errors,
+    translate: t,
     locale: "en",
   });
 

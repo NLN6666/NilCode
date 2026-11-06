@@ -4,8 +4,8 @@
 // Exports: per-kind meta map, launcher items, and pane label/icon resolvers.
 
 import type { ReactNode } from "react";
+import { t } from "~/i18n";
 
-import type { Messages } from "~/i18n/locales/en";
 import { resolveSubagentPresentationForThread } from "~/lib/subagentPresentation";
 import { basenameOfPath } from "~/file-icons";
 import type { LucideIcon } from "~/lib/icons";
@@ -33,9 +33,6 @@ export interface RightDockPaneMeta {
   Icon: LucideIcon;
 }
 
-/** Pane labels for the active locale; the glyphs below stay locale-free. */
-export type RightDockPaneLabels = Messages["chat"]["panes"]["kinds"];
-
 export interface RightDockLauncherItem extends RightDockPaneMeta {
   kind: RightDockPaneKind;
 }
@@ -57,17 +54,28 @@ const RIGHT_DOCK_PANE_ICONS: Record<RightDockPaneKind, LucideIcon> = {
   subagents: BotIcon,
 };
 
+const RIGHT_DOCK_PANE_LABEL_KEYS: Record<RightDockPaneKind, string> = {
+  browser: "computer:browser",
+  device: "computer:iOSSimulator",
+  diff: "workspace:toolCallDetails_diffSection",
+  explorer: "chat:explorer",
+  file: "chat:file",
+  terminal: "workspace:viewportPane_terminal",
+  sidechat: "chat:sideChats",
+  git: "chat:git",
+  pullRequest: "git:general_environmentPullRequest",
+  services: "desktop:services",
+  subagents: "chat:subagents",
+};
+
 // Always resolve pane meta through this helper instead of indexing the map
-// directly, so an unknown kind degrades gracefully rather than throwing. An
-// unrecognized kind (e.g. stale persisted state) falls back to a neutral label
-// and glyph; persisted dock state is sanitized on rehydrate, so this is only a
-// defensive guard to keep a single bad pane from crashing render.
+// directly, so an unknown kind degrades gracefully rather than throwing.
 export function getRightDockPaneMeta(
   kind: RightDockPaneKind,
-  labels: RightDockPaneLabels,
+  translate: typeof t = t,
 ): RightDockPaneMeta {
   return {
-    label: labels[kind] ?? labels.fallback,
+    label: translate(RIGHT_DOCK_PANE_LABEL_KEYS[kind] ?? "common:panel"),
     Icon: RIGHT_DOCK_PANE_ICONS[kind] ?? InfoIcon,
   };
 }
@@ -88,38 +96,29 @@ const RIGHT_DOCK_LAUNCHER_ORDER: readonly RightDockPaneKind[] = [
   "git",
 ];
 
-/** Launcher names for the active locale; kinds absent here reuse their tab label. */
-export type RightDockLauncherLabels = Messages["chat"]["panes"]["launchers"];
+const RIGHT_DOCK_LAUNCHER_LABEL_KEYS: Partial<Record<RightDockPaneKind, string>> = {
+  diff: "chat:review",
+  explorer: "workspace:toolCallDetails_filesSection",
+  sidechat: "chat:sideChats",
+  git: "git:gitPanel_title",
+  services: "chat:backgroundServices",
+};
 
-/**
- * The one list of pane kinds a user can open, for both entry points.
- *
- * This drives the empty-dock launcher buttons AND the "+" add menu on a populated
- * dock (SingleChatSurface passes the result through as `addMenuKinds`). A kind left
- * out of `RIGHT_DOCK_LAUNCHER_ORDER` is therefore unreachable from the UI entirely,
- * not merely demoted to the menu — which is how the services pane shipped with no
- * way to open it at all. See findings.md #17.
- */
-export function resolveRightDockLauncherItems(input: {
-  hasWorkspace: boolean;
-  hasGitRepository: boolean;
-  hasReview: boolean;
-  /**
-   * Whether the daemon roster has any entry at all — including services that have
-   * already exited. Exited entries keep the launcher visible on purpose: a service
-   * that just crashed is exactly when its log matters most, and gating on "still
-   * alive" would retract the entry at that moment.
-   */
-  hasBackgroundServices: boolean;
-  labels: RightDockPaneLabels;
-  launcherLabels: RightDockLauncherLabels;
-  /**
-   * Simulators need a macOS server with Xcode. Off macOS the entry is hidden
-   * outright rather than shown disabled: there is nothing the user could do
-   * from this machine to make it work.
-   */
-  hasDeviceSupport?: boolean;
-}): readonly RightDockLauncherItem[] {
+export function resolveRightDockLauncherItems(
+  input: {
+    hasWorkspace: boolean;
+    hasGitRepository: boolean;
+    hasReview: boolean;
+    hasBackgroundServices: boolean;
+    /**
+     * Simulators need a macOS server with Xcode. Off macOS the entry is hidden
+     * outright rather than shown disabled: there is nothing the user could do
+     * from this machine to make it work.
+     */
+    hasDeviceSupport?: boolean;
+  },
+  translate: typeof t = t,
+): readonly RightDockLauncherItem[] {
   return RIGHT_DOCK_LAUNCHER_ORDER.flatMap((kind) => {
     if (kind === "diff" && !input.hasReview) {
       return [];
@@ -136,13 +135,13 @@ export function resolveRightDockLauncherItems(input: {
     if (kind === "device" && input.hasDeviceSupport !== true) {
       return [];
     }
-    const meta = getRightDockPaneMeta(kind, input.labels);
+    const meta = getRightDockPaneMeta(kind, translate);
+    const launcherLabel = RIGHT_DOCK_LAUNCHER_LABEL_KEYS[kind];
     return [
       {
         kind,
         Icon: meta.Icon,
-        label:
-          (input.launcherLabels as Partial<Record<RightDockPaneKind, string>>)[kind] ?? meta.label,
+        label: launcherLabel ? translate(launcherLabel) : meta.label,
       },
     ];
   });
@@ -152,10 +151,10 @@ export function resolveRightDockLauncherItems(input: {
 // embedded sidechat thread title) before falling back to the kind label.
 export function resolveRightDockPaneLabel(
   pane: RightDockPane,
-  labels: RightDockPaneLabels,
   overrides?: Record<string, string | undefined>,
+  translate: typeof t = t,
 ): string {
-  return overrides?.[pane.id] ?? getRightDockPaneMeta(pane.kind, labels).label;
+  return overrides?.[pane.id] ?? getRightDockPaneMeta(pane.kind, translate).label;
 }
 
 export function buildRightDockPaneLabelOverrides(

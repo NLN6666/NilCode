@@ -1,14 +1,12 @@
 // Exercises real Chromium viewport recovery after browser_resize emulation.
 // Uses an isolated Electron profile and a synthetic page through DesktopBrowserManager.
 import { strict as assert } from "node:assert";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { app, BrowserWindow, nativeImage } from "electron";
 import { ThreadId } from "@synara/contracts";
+import { SYNARA_DESKTOP_SMOKE_USER_DATA_ENV } from "@synara/shared/desktopIdentity";
 import { DesktopBrowserManager } from "../src/browserManager";
 
-const home = mkdtempSync(join(tmpdir(), "synara-browser-viewport-"));
+const home = process.env[SYNARA_DESKTOP_SMOKE_USER_DATA_ENV]!;
 app.setPath("userData", home);
 const deadline = setTimeout(() => app.exit(1), 30_000);
 
@@ -116,7 +114,6 @@ async function smoke(): Promise<void> {
 void smoke()
   .then(() => {
     clearTimeout(deadline);
-    rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     app.exit(0);
   })
   .catch((error) => {

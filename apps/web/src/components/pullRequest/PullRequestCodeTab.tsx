@@ -24,7 +24,7 @@ import { PullRequestDiffStat } from "./PullRequestDiffStat";
 import { PullRequestMetaLine } from "./PullRequestMetaLine";
 import { PR_META_TEXT_CLASS_NAME } from "./pullRequestText";
 import { PullRequestWarningNote } from "./PullRequestWarningNote";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 export function PullRequestCodeTab({
   input,
@@ -33,7 +33,8 @@ export function PullRequestCodeTab({
   input: PullRequestDetailInput;
   detail: PullRequestDetail;
 }) {
-  const copy = useMessages().pullRequests;
+  const { t } = useTranslation();
+
   const { resolvedTheme } = useTheme();
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(() => new Set());
   const diffQuery = useQuery(pullRequestDiffQueryOptions(input));
@@ -59,7 +60,9 @@ export function PullRequestCodeTab({
     <DiffWorkerPoolProvider>
       <div className="flex h-full min-h-0 flex-col">
         {diffQuery.data?.truncated ? (
-          <PullRequestWarningNote shape="banner">{copy.code.truncated}</PullRequestWarningNote>
+          <PullRequestWarningNote shape="banner">
+            {t("git:diffExceeded8MiBAndWasTruncated")}
+          </PullRequestWarningNote>
         ) : null}
         {patchTotals ? (
           <PullRequestMetaLine
@@ -68,7 +71,9 @@ export function PullRequestCodeTab({
               "border-b border-border/60 px-3 py-2 text-muted-foreground",
             )}
           >
-            <span>{copy.summary.fileCount(patchTotals.fileCount)}</span>
+            <span>
+              {patchTotals.fileCount} {t("common:countUnitFile", { count: patchTotals.fileCount })}
+            </span>
             <PullRequestDiffStat
               additions={patchTotals.additions}
               deletions={patchTotals.deletions}
@@ -77,7 +82,7 @@ export function PullRequestCodeTab({
           </PullRequestMetaLine>
         ) : null}
         {diffQuery.isPending ? (
-          <DiffPanelLoadingState label={copy.code.loading} />
+          <DiffPanelLoadingState label={t("git:loadingPullRequestDiff")} />
         ) : (
           <DiffPanelPatchViewport
             renderablePatch={renderablePatch}
@@ -101,12 +106,12 @@ export function PullRequestCodeTab({
               diffQuery.isError
                 ? diffQuery.error instanceof Error
                   ? diffQuery.error.message
-                  : "Could not load diff."
+                  : t("git:pullRequest_couldNotLoadData")
                 : null
             }
-            loadingLabel="Loading pull request diff…"
-            emptyLabel="This pull request has no file changes."
-            unavailableLabel="The pull request diff is unavailable."
+            loadingLabel={t("git:loadingPullRequestDiff")}
+            emptyLabel={t("common:diff_noChangesInSource")}
+            unavailableLabel={t("common:diff_noRepoDiff")}
             viewKind="repo"
           />
         )}

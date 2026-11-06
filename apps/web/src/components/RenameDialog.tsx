@@ -15,8 +15,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Input } from "./ui/input";
-import { useMessages } from "~/i18n/context";
-import { dialogs as defaultDialogCopy } from "~/i18n/locales/en/dialogs";
+import { useTranslation } from "~/i18n";
 
 export interface RenameDialogProps {
   open: boolean;
@@ -53,8 +52,10 @@ export function RenameDialog({
   onOpenChange,
   onSave,
 }: RenameDialogProps) {
+  const { t } = useTranslation();
+
   const allowEmpty = allowEmptyProp ?? false;
-  const saveLabel = saveLabelProp ?? defaultDialogCopy.rename.save;
+  const saveLabel = saveLabelProp ?? t("computer:form_save");
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup className="max-w-md">
@@ -102,7 +103,8 @@ function RenameDialogForm({
   onOpenChange: (open: boolean) => void;
   onSave: (value: string) => Promise<void> | void;
 }) {
-  const copy = useMessages().dialogs.rename;
+  const { t } = useTranslation();
+
   const [value, setValue] = useState(initialValue);
   const [isSaving, setIsSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -161,10 +163,10 @@ function RenameDialogForm({
       </DialogPanel>
       <DialogFooter>
         <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={isSaving}>
-          {copy.cancel}
+          {t("common:form_cancel")}
         </Button>
         <Button size="sm" onClick={() => void handleSubmit()} disabled={!canSave}>
-          {isSaving ? copy.saving : saveLabel}
+          {isSaving ? t("common:saving2") : saveLabel}
         </Button>
       </DialogFooter>
     </>

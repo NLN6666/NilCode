@@ -4,21 +4,21 @@
 // Depends on: appNavigation history helpers, header Button/Tooltip primitives
 
 import { goBackInAppHistory, goForwardInAppHistory, useAppNavigationState } from "~/appNavigation";
-import { isElectron } from "~/env";
+import { isDesktopPresentation } from "~/lib/hosts/workspacePresentation";
 import { cn, isMacNavigatorPlatform } from "~/lib/utils";
 import { IoIosArrowRoundBack, IoIosArrowRoundForward } from "react-icons/io";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 export function AppNavigationButtons({ className }: { className?: string }) {
-  const copy = useMessages().app.nav;
+  const { t } = useTranslation();
   const { canGoBack, canGoForward } = useAppNavigationState();
   const isMac = isMacNavigatorPlatform();
-  const backShortcutLabel = isMac ? "⌘[" : "Alt+Left";
-  const forwardShortcutLabel = isMac ? "⌘]" : "Alt+Right";
+  const backShortcutLabel = isMac ? "⌘[" : t("common:altLeft");
+  const forwardShortcutLabel = isMac ? "⌘]" : t("common:altRight");
 
-  if (!isElectron) {
+  if (!isDesktopPresentation) {
     return null;
   }
 
@@ -37,7 +37,7 @@ export function AppNavigationButtons({ className }: { className?: string }) {
               variant="ghost"
               size="icon-sm"
               className="size-8 rounded-lg"
-              aria-label={copy.back}
+              aria-label={t("common:app_back")}
               disabled={!canGoBack}
               onClick={() => goBackInAppHistory()}
             />
@@ -45,7 +45,10 @@ export function AppNavigationButtons({ className }: { className?: string }) {
         >
           <IoIosArrowRoundBack className="size-6" />
         </TooltipTrigger>
-        <TooltipPopup side="bottom">{copy.backWithShortcut(backShortcutLabel)}</TooltipPopup>
+        <TooltipPopup side="bottom">
+          {t("common:back")}
+          {backShortcutLabel})
+        </TooltipPopup>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger
@@ -55,7 +58,7 @@ export function AppNavigationButtons({ className }: { className?: string }) {
               variant="ghost"
               size="icon-sm"
               className="size-8 rounded-lg"
-              aria-label={copy.forward}
+              aria-label={t("common:app_forward")}
               disabled={!canGoForward}
               onClick={() => goForwardInAppHistory()}
             />
@@ -63,7 +66,10 @@ export function AppNavigationButtons({ className }: { className?: string }) {
         >
           <IoIosArrowRoundForward className="size-6" />
         </TooltipTrigger>
-        <TooltipPopup side="bottom">{copy.forwardWithShortcut(forwardShortcutLabel)}</TooltipPopup>
+        <TooltipPopup side="bottom">
+          {t("common:forward")}
+          {forwardShortcutLabel})
+        </TooltipPopup>
       </Tooltip>
     </div>
   );

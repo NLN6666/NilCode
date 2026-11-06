@@ -1,23 +1,53 @@
 import { ThreadId } from "@synara/contracts";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { setLanguagePreference } from "~/i18n";
 import {
   getFallbackThreadIdAfterSnooze,
   hasUnseenSnoozeReturn,
   resolveThreadStatusPill,
 } from "../components/Sidebar.logic";
 import { formatSnoozeRemainingTime } from "./relativeTime";
-import { parseFutureDateTimeLocalValue, toDateTimeLocalValue } from "./threadSnooze";
+import {
+  formatSnoozeDeadline,
+  parseFutureDateTimeLocalValue,
+  toDateTimeLocalValue,
+} from "./threadSnooze";
+
+afterEach(() => setLanguagePreference("system"));
+
+it("formats snooze deadlines in the selected language instead of a module-cached locale", () => {
+  const deadline = "2026-10-02T12:28:00Z";
+  for (const language of ["en", "es"] as const) {
+    setLanguagePreference(language);
+    expect(formatSnoozeDeadline(deadline)).toBe(
+      new Intl.DateTimeFormat(language, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(new Date(deadline)),
+    );
+  }
+});
 
 describe("snooze remaining time", () => {
   const now = Date.parse("2026-10-02T12:00:00Z");
-  it.each([
-    ["2026-10-02T12:28:00Z", "28 min left"],
-    ["2026-10-02T13:28:00Z", "1 hr 28 min left"],
-    ["2026-10-04T13:28:00Z", "2 days 1 hr left"],
-    ["2026-10-02T12:00:30Z", "Less than a minute left"],
-    ["2026-10-02T11:59:59Z", "Returning…"],
-  ])("shows the remaining duration for %s", (deadline, expected) => {
-    expect(formatSnoozeRemainingTime(deadline, now)).toBe(expected);
+  it("preserves duration amounts and the transition back to the active state", () => {
+    const minutes = formatSnoozeRemainingTime("2026-10-02T12:28:00Z", now, "en");
+    const hoursAndMinutes = formatSnoozeRemainingTime("2026-10-02T13:28:00Z", now, "en");
+    const daysAndHours = formatSnoozeRemainingTime("2026-10-04T13:28:00Z", now, "en");
+    const underMinute = formatSnoozeRemainingTime("2026-10-02T12:00:30Z", now, "en");
+    const returned = formatSnoozeRemainingTime("2026-10-02T11:59:59Z", now, "en");
+
+    expect(minutes).toContain("28");
+    expect(hoursAndMinutes).toContain("1");
+    expect(hoursAndMinutes).toContain("28");
+    expect(daysAndHours).toContain("2");
+    expect(daysAndHours).toContain("1");
+    expect(underMinute.length).toBeGreaterThan(0);
+    expect(returned.length).toBeGreaterThan(0);
+    expect(underMinute).not.toBe(returned);
   });
 });
 

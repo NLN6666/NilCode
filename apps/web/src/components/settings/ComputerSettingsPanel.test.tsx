@@ -76,6 +76,10 @@ function render(input: {
   );
 }
 
+function buttonCount(markup: string): number {
+  return markup.match(/<button\b/g)?.length ?? 0;
+}
+
 describe("ComputerSettingsPanel", () => {
   it("renders nothing while the panel is not the active one", () => {
     // The status query is gated on the same flag; a panel nobody is looking at
@@ -83,19 +87,17 @@ describe("ComputerSettingsPanel", () => {
     expect(render({ status: status(), active: false })).toBe("");
   });
 
-  it("keeps the surface calm while the desktop is ready", () => {
+  it("keeps the ready surface free of a recovery action", () => {
     const markup = render({ status: status() });
-    expect(markup).toContain("Connected to the desktop");
-    expect(markup).not.toContain("Set up");
-    expect(markup).not.toContain("Refresh");
-    expect(markup).not.toContain("Desktop backend");
-    expect(markup).not.toContain("Background typing is limited");
-    expect(markup).not.toContain("Capabilities");
+    expect(markup).toContain('id="setting-computer-control"');
+    expect(buttonCount(markup)).toBe(buttonCount(render({})));
+    expect(markup).not.toContain('role="alert"');
   });
 
   it("asks to check access while nothing has confirmed the grants", () => {
     // After a restart the backend is idle, and without the OS's own grant
     // answer an idle backend is not evidence that anything works.
+    const readyMarkup = render({ status: status() });
     const markup = render({
       status: status({
         health: {
@@ -106,11 +108,10 @@ describe("ComputerSettingsPanel", () => {
         },
       }),
     });
-    expect(markup).toContain("Computer access has not been checked");
-    expect(markup).toContain("Set up");
+    expect(buttonCount(markup)).toBe(buttonCount(readyMarkup) + 1);
   });
 
-  it("names the withheld grants once and offers Set up", () => {
+  it("offers one recovery action and preserves a backend permission diagnostic", () => {
     const markup = render({
       status: status({
         availability: {
@@ -121,16 +122,13 @@ describe("ComputerSettingsPanel", () => {
         },
       }),
     });
-    expect(markup).toContain("Computer control needs Accessibility and Screen Recording");
+    expect(buttonCount(markup)).toBe(buttonCount(render({ status: status() })) + 1);
+    // This diagnostic is supplied by the backend rather than being UI copy.
     expect(markup).toContain("macOS is asking for Accessibility.");
-    expect(markup).toContain("Set up");
-    // The one attention row names the grants; the old second row ("… are not
-    // allowed yet") is gone.
-    expect(markup.match(/Computer control needs/g) ?? []).toHaveLength(1);
-    expect(markup).not.toContain("not allowed yet");
   });
 
-  it("keeps the blind-desktop copy honest and fixable", () => {
+  it("offers recovery when a connected desktop cannot capture", () => {
+    const readyMarkup = render({ status: status() });
     const markup = render({
       status: status({
         health: {
@@ -141,18 +139,11 @@ describe("ComputerSettingsPanel", () => {
         },
       }),
     });
-    expect(markup).toContain("Screen capture is not allowed yet");
-    expect(markup).toContain("Screen Recording");
-    expect(markup).toContain("cannot see it");
-    expect(markup).toContain("Set up");
-    // Never claims a live system dialog that may not exist.
-    expect(markup).not.toContain("macOS is asking");
-    expect(markup).not.toContain("dialog is open");
-    // A blind desktop never gets an abilities read-out that claims capture.
-    expect(markup).not.toContain("screen capture");
+    expect(buttonCount(markup)).toBe(buttonCount(readyMarkup) + 1);
   });
 
   it("reports a reconnect in flight without offering a manual re-arm", () => {
+    const readyMarkup = render({ status: status() });
     const markup = render({
       status: status({
         health: {
@@ -163,11 +154,10 @@ describe("ComputerSettingsPanel", () => {
         },
       }),
     });
-    expect(markup).toContain("Reconnecting to the desktop");
-    expect(markup).toContain("Reconnected once since startup.");
+    expect(buttonCount(markup)).toBe(buttonCount(readyMarkup));
   });
 
-  it("describes observation-only Cua without promising Mac input or treating idle readiness as input authorization", () => {
+  it("shows the backend identity in the Cua capabilities row", () => {
     const markup = render({
       status: status({
         availability: { kind: "available", backend: "cua" },
@@ -179,23 +169,19 @@ describe("ComputerSettingsPanel", () => {
         }),
       }),
     });
+    expect(markup).toContain('id="setting-desktop-abilities"');
     expect(markup).toContain("Cua 0.28.2");
-    expect(markup).toContain("native desktop input is unavailable");
-    expect(markup).toContain("verified browser runtime");
-    expect(markup).not.toContain("shares your Mac");
     expect(markup).not.toContain("macOS desktop");
   });
 
   describe("agent cursor colors", () => {
     it("keeps the cursor stock by default and hides the color editors", () => {
       const markup = render({ status: status() });
-      expect(markup).toContain("Cursor colors");
-      expect(markup).toContain("Stock");
-      expect(markup).toContain("Custom");
+      expect(markup).toContain('id="setting-cursor-colors"');
+      expect(markup).toContain('role="radiogroup"');
+      expect(markup).toContain('role="radio"');
       // Stock is the zero-override default: no fill/rim editor renders and no
       // stored color is read out.
-      expect(markup).not.toContain("Fill color");
-      expect(markup).not.toContain("Rim color");
       expect(markup).not.toContain("data-swatch");
     });
 

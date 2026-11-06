@@ -6,7 +6,7 @@
 //      folded into the previous turn. Clicking it reveals the transferred context.
 
 import { memo, useState } from "react";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 import type { FastModeNotice } from "~/lib/fastModeState";
 import { ArrowRightIcon, CircleAlertIcon, HandoffIcon } from "~/lib/icons";
@@ -25,8 +25,8 @@ function HandoffEndpoint(props: {
   readonly fastModeNotice?: FastModeNotice | null | undefined;
   readonly className?: string;
 }) {
-  const statusLabels = useMessages().composer.modelPicker;
-  const summary = resolveThreadModelSummary(props.selection, statusLabels);
+  const { t } = useTranslation();
+  const summary = resolveThreadModelSummary(props.selection, undefined, t);
   return (
     <span className={cn("inline-flex min-w-0 items-center gap-1.5", props.className)}>
       <ProviderIcon provider={props.selection.provider} className="size-3.5 shrink-0" />
@@ -46,6 +46,8 @@ export const ProviderHandoffDivider = memo(function ProviderHandoffDivider({
 }: {
   readonly info: ProviderHandoffInfo;
 }) {
+  const { t } = useTranslation();
+
   const [open, setOpen] = useState(false);
   const failed = info.status === "failed";
 
@@ -67,7 +69,9 @@ export const ProviderHandoffDivider = memo(function ProviderHandoffDivider({
           ) : (
             <HandoffIcon className="size-3.5 shrink-0" aria-hidden />
           )}
-          <span className="shrink-0">{failed ? "Handoff failed" : "Context handoff"}</span>
+          <span className="shrink-0">
+            {failed ? t("chat:handoffFailed") : t("chat:contextHandoff")}
+          </span>
           <HandoffEndpoint
             selection={info.sourceModelSelection}
             fastModeNotice={info.sourceFastModeNotice}

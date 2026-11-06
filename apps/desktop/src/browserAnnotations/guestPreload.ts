@@ -47,9 +47,6 @@ const COMMENT_MAX_HEIGHT = 112;
 const INSPECTION_REFRESH_INTERVAL_MS = 100;
 /** Long enough to read a one-line notice, short enough not to sit in the way. */
 const NOTICE_DURATION_MS = 4_000;
-const UNANCHORABLE_NOTICE = "This element can't be pinned. Try one next to it.";
-const INVISIBLE_TARGET_NOTICE = "This element has no visible box. Try one next to it.";
-const STALE_TARGET_NOTICE = "This element changed. Pick it again — your comment is kept.";
 /** ASCII unit separator: never present in the tag/role parts it joins. */
 const FINGERPRINT_SEPARATOR = String.fromCharCode(31);
 const documentToken = createGuestIdentifier(globalThis.crypto);
@@ -94,6 +91,7 @@ let pointerNeedsHitTest = false;
 let noticeText: string | null = null;
 let noticeAnchor: { x: number; y: number } | null = null;
 let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+let guestLocale: BrowserAnnotationLocale = "en";
 
 let projectedMarkers: readonly BrowserAnnotationMarker[] = [];
 let projectionVersion = 0;
@@ -726,7 +724,7 @@ function renderOverlay(): void {
     document.documentElement.append(host);
   }
   if (selectedElement && !selectedElement.isConnected) {
-    releaseSelectionWithNotice(STALE_TARGET_NOTICE);
+    releaseSelectionWithNotice(GUEST_COPY[guestLocale].staleTargetNotice);
   }
   if (hoveredElement && !hoveredElement.isConnected) hoveredElement = null;
 
@@ -743,7 +741,7 @@ function renderOverlay(): void {
     // A selected node can collapse without disconnecting. Do not leave focus in
     // a hidden composer or let Enter publish an invisible target; release the
     // selection while preserving any comment the user already typed.
-    releaseSelectionWithNotice(INVISIBLE_TARGET_NOTICE);
+    releaseSelectionWithNotice(GUEST_COPY[guestLocale].invisibleTargetNotice);
   }
   const measuredMarkers = measureMarkers();
 
@@ -836,14 +834,14 @@ function releaseSelectionWithNotice(message: string): void {
 function selectTarget(target: Element, point: { x: number; y: number } | null): void {
   const bounds = boundsOf(target);
   if (!bounds) {
-    showNotice(INVISIBLE_TARGET_NOTICE);
+    showNotice(GUEST_COPY[guestLocale].invisibleTargetNotice);
     return;
   }
   // Refuse targets the guest cannot address before the composer opens. Letting
   // the user type into a comment that can never be committed is worse than
   // saying so up front.
   if (!annotationSelectorFor(target)) {
-    showNotice(UNANCHORABLE_NOTICE);
+    showNotice(GUEST_COPY[guestLocale].unanchorableNotice);
     return;
   }
   hideNotice();
@@ -895,12 +893,12 @@ function submitAnnotation(): void {
   const target = selectedElement;
   if (!session || !target) return;
   if (!target.isConnected) {
-    releaseSelectionWithNotice(STALE_TARGET_NOTICE);
+    releaseSelectionWithNotice(GUEST_COPY[guestLocale].staleTargetNotice);
     renderOverlay();
     return;
   }
   if (!boundsOf(target)) {
-    releaseSelectionWithNotice(INVISIBLE_TARGET_NOTICE);
+    releaseSelectionWithNotice(GUEST_COPY[guestLocale].invisibleTargetNotice);
     renderOverlay();
     return;
   }
@@ -910,7 +908,7 @@ function submitAnnotation(): void {
     // the session here would throw away the comment the user just wrote and
     // report it to the host as a deliberate cancel, so release the selection
     // only, keep the text, and say what happened.
-    releaseSelectionWithNotice(STALE_TARGET_NOTICE);
+    releaseSelectionWithNotice(GUEST_COPY[guestLocale].staleTargetNotice);
     renderOverlay();
     return;
   }
@@ -955,6 +953,20 @@ const GUEST_COPY = {
     noteLabel: "Annotation comment",
     submitLabel: "Save annotation",
     submitTitle: "Save annotation (Enter)",
+    unanchorableNotice: "This element can't be pinned. Try one next to it.",
+    invisibleTargetNotice: "This element has no visible box. Try one next to it.",
+    staleTargetNotice: "This element changed. Pick it again — your comment is kept.",
+  },
+  es: {
+    dialogLabel: "Anotar elemento",
+    notePlaceholder: "Añade un comentario…",
+    noteLabel: "Comentario de la anotación",
+    submitLabel: "Guardar anotación",
+    submitTitle: "Guardar anotación (Enter)",
+    unanchorableNotice: "Este elemento no se puede fijar. Prueba con otro cercano.",
+    invisibleTargetNotice: "Este elemento no tiene un área visible. Prueba con otro cercano.",
+    staleTargetNotice:
+      "Este elemento ha cambiado. Selecciónalo de nuevo; se conservará el comentario.",
   },
   "zh-CN": {
     dialogLabel: "标注元素",
@@ -962,10 +974,26 @@ const GUEST_COPY = {
     noteLabel: "标注备注",
     submitLabel: "保存标注",
     submitTitle: "保存标注（Enter）",
+    unanchorableNotice: "无法固定此元素。请尝试旁边的元素。",
+    invisibleTargetNotice: "此元素没有可见区域。请尝试旁边的元素。",
+    staleTargetNotice: "此元素已更改。请重新选择，评论会保留。",
   },
-} as const satisfies Record<BrowserAnnotationLocale, Record<string, string>>;
+} as const satisfies Record<
+  BrowserAnnotationLocale,
+  {
+    dialogLabel: string;
+    notePlaceholder: string;
+    noteLabel: string;
+    submitLabel: string;
+    submitTitle: string;
+    unanchorableNotice: string;
+    invisibleTargetNotice: string;
+    staleTargetNotice: string;
+  }
+>;
 
 function applyGuestCopy(locale: BrowserAnnotationLocale): void {
+  guestLocale = locale;
   const copy = GUEST_COPY[locale];
   popover?.setAttribute("aria-label", copy.dialogLabel);
   textarea?.setAttribute("placeholder", copy.notePlaceholder);

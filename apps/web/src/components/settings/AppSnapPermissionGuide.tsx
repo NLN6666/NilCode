@@ -7,7 +7,13 @@ import type { DesktopAppSnapSettingsPane } from "@synara/contracts";
 
 import { Button } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
+
+const GUIDE_PANE_LABELS: Record<DesktopAppSnapSettingsPane, string> = {
+  accessibility: "settings:accessibility",
+  "input-monitoring": "settings:inputMonitoring",
+  "screen-recording": "settings:screenRecording",
+};
 
 export function AppSnapPermissionGuide(props: {
   pane: DesktopAppSnapSettingsPane;
@@ -16,15 +22,8 @@ export function AppSnapPermissionGuide(props: {
   onOpenSettings: () => void;
   onRestart: () => void;
 }) {
-  const m = useMessages();
-  const copy = m.settings.appSnap.permissions.guide;
+  const { t } = useTranslation();
   const app = props.appDisplayName;
-  const paneLabel =
-    props.pane === "accessibility"
-      ? m.settings.computer.permissions.accessibility.title
-      : props.pane === "input-monitoring"
-        ? m.settings.appSnap.permissions.inputMonitoring.title
-        : m.settings.appSnap.permissions.screenRecording.title;
   const steps = [
     <Button
       key="open-settings"
@@ -33,10 +32,10 @@ export function AppSnapPermissionGuide(props: {
       variant="outline"
       onClick={props.onOpenSettings}
     >
-      {copy.openSettings(paneLabel)}
+      {t("settings:openSettings", { value0: t(GUIDE_PANE_LABELS[props.pane]) })}
     </Button>,
-    copy.listedApp(app),
-    copy.macAuth,
+    t("settings:permissionGuideEnableInstalledApp", { app }),
+    t("settings:permissionGuideCompleteAuthentication"),
   ];
 
   return (
@@ -62,18 +61,20 @@ export function AppSnapPermissionGuide(props: {
           <>
             <Spinner className="size-3.5" />
             <span className="text-ui-sm text-muted-foreground">
-              {copy.watching}
+              {t("settings:watchingForTheChangeThisPageUpdatesAutomatically")}
             </span>
           </>
         ) : (
-          <span className="text-ui-sm font-medium text-emerald-600">{copy.granted}</span>
+          <span className="text-ui-sm font-medium text-emerald-600">
+            {t("settings:permissionGranted2")}
+          </span>
         )}
       </div>
       <p className="text-ui-sm text-muted-foreground">
-        {copy.stillDenied}
+        {t("settings:stillDeniedAfterAnUpdateOrRebuildRemoveThis")}
       </p>
       <Button type="button" size="xs" variant="outline" onClick={props.onRestart}>
-        {copy.restart(app)}
+        {t("settings:restart", { value0: app })}
       </Button>
     </div>
   );

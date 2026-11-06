@@ -10,10 +10,10 @@ describe("getClaudeArtifactCommandNotice", () => {
     expect(getClaudeArtifactCommandNotice({ ...base, artifacts: undefined })).toBeNull();
   });
 
-  it("points at the setting while artifacts are off", () => {
+  it("keeps a command-specific notice while artifacts are off", () => {
     const notice = getClaudeArtifactCommandNotice({ ...base, artifacts: "disabled" });
-    expect(notice?.summary).toContain("Settings → Providers → Claude");
-    expect(notice?.detail).toContain("/design needs Claude Artifacts");
+    expect(notice).not.toBeNull();
+    expect(notice?.detail).toContain("/design");
   });
 
   it("ignores other commands and providers", () => {

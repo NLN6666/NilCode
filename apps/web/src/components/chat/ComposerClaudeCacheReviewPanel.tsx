@@ -8,7 +8,7 @@ import { cn } from "~/lib/utils";
 import { formatCacheDuration } from "./ClaudeCacheDetails";
 import { ComposerChoiceRow } from "./ComposerChoiceRow";
 import { COMPOSER_INPUT_SURFACE_CLASS_NAME } from "./composerPickerStyles";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 // "never" continues like "continue" and turns the review off, as Claude Code's
 // "Don't ask me again" does.
@@ -34,8 +34,7 @@ export function ComposerClaudeCacheReviewPanel({
     decision: ClaudeCacheReviewDecision,
   ) => Promise<void>;
 }) {
-  const copy = useMessages().composer.claudeCacheReview;
-  const cacheCopy = useMessages().chat.contextWindow.cache;
+  const { t } = useTranslation();
   const submittedReviewRef = useRef<PendingClaudeCacheReview | null>(null);
   const [submittedReview, setSubmittedReview] = useState<PendingClaudeCacheReview | null>(null);
   const reportGenerationRef = useRef(0);
@@ -67,15 +66,15 @@ export function ComposerClaudeCacheReviewPanel({
   // Claude Code's resume prompt wording, so both apps ask the same way.
   const title =
     review.status === "uncertain"
-      ? copy.uncertainTitle
+      ? t("chat:requestStatusIsUncertain")
       : isCompactionRequest
-        ? copy.compactTitle
+        ? t("chat:compactionWillReadTheExpiredContext")
         : idleSeconds !== undefined && contextTokens !== undefined
-          ? copy.expiredSession(
-              formatCacheDuration(idleSeconds, cacheCopy),
-              formatContextWindowTokens(contextTokens),
-            )
-          : copy.expiredTitle;
+          ? t("chat:thisSessionIsOldAndTokens", {
+              value0: formatCacheDuration(idleSeconds, t),
+              value1: formatContextWindowTokens(contextTokens),
+            })
+          : t("chat:claudeSPromptCacheLikelyExpired");
 
   const respondOnce = (decision: ClaudeCacheReviewDecision) => {
     if (disabled || submittedReviewRef.current === review) return;
@@ -90,7 +89,9 @@ export function ComposerClaudeCacheReviewPanel({
       if (submittedReviewRef.current !== review) return;
       submittedReviewRef.current = null;
       setSubmittedReview(null);
-      setDispatchError(error instanceof Error ? error.message : copy.submitFailed);
+      setDispatchError(
+        error instanceof Error ? error.message : t("chat:couldNotSubmitThisChoiceTryAgain"),
+      );
       void reportHandledIssue({
         code: "claude.cache.request-failed",
         reason: diagnosticIssueReason(error),
@@ -106,21 +107,24 @@ export function ComposerClaudeCacheReviewPanel({
 
   return (
     <section
-      aria-label={copy.ariaLabel}
+      aria-label={t("chat:claudeCacheReview")}
       aria-busy={submittedReview === review}
       className={cn(COMPOSER_INPUT_SURFACE_CLASS_NAME, "overflow-hidden px-3.5 py-3")}
     >
       <p className="text-ui-lg font-medium leading-snug text-foreground/90">{title}</p>
       <p className="mt-1.5 text-ui leading-relaxed text-muted-foreground">
         {review.status === "uncertain"
-          ? copy.uncertainDescription
+          ? t("chat:claudeMayHaveAcceptedTheRequestSendingIsPaused")
           : isCompactionRequest
-            ? copy.heldMessage(
-                contextTokens === undefined
-                  ? copy.contextUnknown
-                  : copy.contextTokens(formatContextWindowTokens(contextTokens)),
-              )
-            : copy.resumeDescription}
+            ? t("chat:yourMessageIsSavedAndOnHoldContinuingMay", {
+                value0:
+                  contextTokens === undefined
+                    ? t("chat:theConversationSContext")
+                    : t("chat:aboutTokenCount", {
+                        value0: formatContextWindowTokens(contextTokens),
+                      }),
+              })
+            : t("chat:resumingTheFullSessionWillConsumeASubstantialPortion")}
       </p>
       {review.error || dispatchError ? (
         <p role="alert" className="mt-2 text-ui leading-relaxed text-destructive">
@@ -135,8 +139,8 @@ export function ComposerClaudeCacheReviewPanel({
         {isCompactionRequest ? (
           <ComposerChoiceRow
             shortcut={null}
-            label={copy.compactExistingLabel}
-            description={copy.compactExistingDescription}
+            label={t("chat:compactThisConversation")}
+            description={t("chat:processTheExistingHistoryAndSaveItsSummary")}
             disabled={disabled}
             onSelect={() => respondOnce("continue")}
           />
@@ -144,23 +148,25 @@ export function ComposerClaudeCacheReviewPanel({
           <>
             <ComposerChoiceRow
               shortcut={null}
-              label={copy.compactThenSendLabel}
+              label={t("chat:resumeFromSummaryRecommended")}
               tone="primary"
-              description={compactDisabledReason ?? copy.compactThenSendDescription}
+              description={
+                compactDisabledReason ?? t("chat:summarizeThisSessionThenSendYourMessage")
+              }
               disabled={disabled || compactDisabledReason !== null}
               onSelect={() => respondOnce("compact")}
             />
             <ComposerChoiceRow
               shortcut={null}
-              label={copy.continueLabel}
-              description={copy.continueDescription}
+              label={t("chat:resumeFullSessionAsIs")}
+              description={t("chat:sendYourMessageWithTheFullHistory")}
               disabled={disabled}
               onSelect={() => respondOnce("continue")}
             />
             <ComposerChoiceRow
               shortcut={null}
-              label={copy.neverLabel}
-              description={copy.neverDescription}
+              label={t("chat:donTAskMeAgain")}
+              description={t("chat:resumeAsIsNowAndStopAskingTurnIt")}
               disabled={disabled}
               onSelect={() => respondOnce("never")}
             />
@@ -168,8 +174,8 @@ export function ComposerClaudeCacheReviewPanel({
         )}
         <ComposerChoiceRow
           shortcut={null}
-          label={copy.cancelLabel}
-          description={copy.cancelDescription}
+          label={t("chat:cancelThisSend")}
+          description={t("chat:keepYourMessageWithoutSendingIt")}
           disabled={disabled}
           onSelect={() => respondOnce("cancel")}
         />

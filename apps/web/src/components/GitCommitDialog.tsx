@@ -13,7 +13,6 @@ import { getSubmitShortcutKeyShortcuts, SubmitShortcutKbd } from "~/components/u
 import { ScrollArea } from "~/components/ui/scroll-area";
 import {
   type GitCommitDialogAction,
-  type GitCopy,
   type GitDialogContext,
   resolveCommitDialogActions,
 } from "./GitActionsControl.logic";
@@ -26,8 +25,8 @@ import {
   GitDialogHeading,
   GitDialogShell,
 } from "./GitDialogChrome";
-import { useMessages } from "~/i18n/context";
 import { cn } from "~/lib/utils";
+import { useTranslation } from "~/i18n";
 
 export interface GitCommitDialogSubmission {
   action: GitCommitDialogAction["action"];
@@ -58,7 +57,8 @@ export function GitCommitDialog({
   onSubmit,
   onOpenFile,
 }: GitCommitDialogProps) {
-  const copy = useMessages().git;
+  const { t } = useTranslation();
+
   const [message, setMessage] = useState("");
   const [excludedFiles, setExcludedFiles] = useState<ReadonlySet<string>>(new Set());
   const [isEditingFiles, setIsEditingFiles] = useState(false);
@@ -82,8 +82,8 @@ export function GitCommitDialog({
   const hasFileSelection = allFiles.length === 0 || !noneSelected;
 
   const actions = useMemo(
-    () => resolveCommitDialogActions({ context, hasFileSelection, copy }),
-    [context, hasFileSelection, copy],
+    () => resolveCommitDialogActions({ context, hasFileSelection, translate: t }),
+    [context, hasFileSelection, t],
   );
 
   const submit = (action: GitCommitDialogAction) => {
@@ -116,21 +116,21 @@ export function GitCommitDialog({
   return (
     <GitDialogShell open={open} onOpenChange={onOpenChange} onSubmitShortcut={submitPrimary}>
       <GitDialogHeading
-        eyebrow={copy.actions.commit}
+        eyebrow={t("git:gitActionCommit")}
         eyebrowTrailing={
           context.isDefaultBranch ? (
-            <span className="text-warning">{copy.commitDialog.defaultBranchEyebrow}</span>
+            <span className="text-warning">{t("git:defaultBranch")}</span>
           ) : null
         }
-        subject={gitStatus?.branch ?? copy.commitDialog.detachedHead}
+        subject={gitStatus?.branch ?? t("common:detachedHEAD")}
       />
       <GitDialogBody>
         <textarea
           autoFocus
-          aria-label={copy.commitDialog.messageAriaLabel}
+          aria-label={t("git:commitMessage")}
           className={cn(GIT_DIALOG_FIELD_CLASS, "resize-none")}
           maxLength={20_000}
-          placeholder={copy.commitDialog.messageFieldPlaceholder}
+          placeholder={t("git:messageLeaveEmptyToGenerate")}
           rows={2}
           value={message}
           onChange={(event) => setMessage(event.target.value)}
@@ -149,12 +149,7 @@ export function GitCommitDialog({
               />
             ) : null}
             <span className="min-w-0 flex-1 truncate text-muted-foreground">
-              {summarizeSelection(
-                allFiles.length,
-                selectedFiles.length,
-                allSelected,
-                copy.commitDialog,
-              )}
+              {summarizeSelection(allFiles.length, selectedFiles.length, allSelected, t)}
             </span>
             <DiffStat
               className="shrink-0 font-mono text-ui leading-snug"
@@ -168,7 +163,7 @@ export function GitCommitDialog({
                 className="shrink-0"
                 onClick={() => setIsEditingFiles((prev) => !prev)}
               >
-                {isEditingFiles ? copy.actions.done : copy.actions.edit}
+                {isEditingFiles ? t("git:detail_done") : t("git:profile_edit")}
               </Button>
             ) : null}
           </div>
@@ -181,7 +176,6 @@ export function GitCommitDialog({
                     file={file}
                     excluded={excludedFiles.has(file.path)}
                     selectable={isEditingFiles}
-                    copy={copy.commitDialog}
                     onToggle={() => toggleFile(file.path)}
                     onOpen={() => onOpenFile(file.path)}
                   />
@@ -218,28 +212,28 @@ function summarizeSelection(
   total: number,
   selected: number,
   allSelected: boolean,
-  copy: GitCopy["commitDialog"],
+  t: ReturnType<typeof useTranslation>["t"],
 ): string {
-  if (total === 0) return copy.noLocalChanges;
-  if (allSelected) return copy.allFilesCount(total);
-  return copy.partialFilesCount(selected, total);
+  if (total === 0) return t("git:gitPanel_noChanges");
+  if (allSelected) return t("git:filesCount", { count: total });
+  return t("git:selectedFilesCount", { value0: selected, value1: total });
 }
 
 function ChangedFileRow({
   file,
   excluded,
   selectable,
-  copy,
   onToggle,
   onOpen,
 }: {
   file: ChangedFile;
   excluded: boolean;
   selectable: boolean;
-  copy: GitCopy["commitDialog"];
   onToggle: () => void;
   onOpen: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex w-full items-center gap-2 rounded-md px-2 py-1 font-mono text-ui leading-snug transition-colors hover:bg-[var(--color-background-button-secondary-hover)]">
       {selectable ? <Checkbox checked={!excluded} onCheckedChange={onToggle} /> : null}
@@ -259,7 +253,7 @@ function ChangedFileRow({
         </span>
         <span className="shrink-0">
           {excluded ? (
-            <span className="text-muted-foreground">{copy.excluded}</span>
+            <span className="text-muted-foreground">{t("git:excluded")}</span>
           ) : (
             <DiffStat
               insertions={file.insertions}

@@ -30,7 +30,6 @@ import {
 } from "~/lib/gitReactQuery";
 import { PlusIcon, RefreshCwIcon, ResetIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
-import { useMessages } from "~/i18n/context";
 import { useStore } from "~/store";
 import { createProjectSelector, createThreadWorkspaceMetadataSelector } from "~/storeSelectors";
 import { Alert } from "../ui/alert";
@@ -43,6 +42,7 @@ import { DockPaneHeader } from "./DockPaneHeader";
 import { FileDiffCard, FileDiffSurface } from "./FileDiffView";
 import { FileEntryIcon } from "./FileEntryIcon";
 import { PanelStateMessage } from "./PanelStateMessage";
+import { useTranslation } from "~/i18n";
 
 type GitPanelSection = "staged" | "unstaged";
 
@@ -197,7 +197,8 @@ export function GitPanel(props: {
   projectId: ProjectId | null;
   onClose?: () => void;
 }) {
-  const copy = useMessages().git.panel;
+  const { t } = useTranslation();
+
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
   const theme = resolvedTheme as "light" | "dark";
@@ -290,21 +291,21 @@ export function GitPanel(props: {
   const hasChanges = stagedFiles.length > 0 || unstagedFiles.length > 0;
 
   if (!cwd) {
-    return <PanelStateMessage>{copy.unavailable}</PanelStateMessage>;
+    return <PanelStateMessage>{t("git:gitPanel_unavailableForThread")}</PanelStateMessage>;
   }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <DockPaneHeader
-        title={copy.title}
+        title={t("git:gitPanel_title")}
         onClose={props.onClose}
-        closeLabel={copy.close}
+        closeLabel={t("git:closeSourceControl")}
         actions={
           <IconButton
             size="icon-xs"
             variant="ghost"
-            label={copy.refresh}
-            tooltip={copy.refresh}
+            label={t("git:gitPanel_refreshLabel")}
+            tooltip={t("git:gitPanel_refreshLabel")}
             className={DOCK_HEADER_ICON_BUTTON_CLASS}
             onClick={refresh}
           >
@@ -316,8 +317,7 @@ export function GitPanel(props: {
       <div className="flex max-h-[48%] min-h-0 shrink-0 flex-col gap-2 overflow-auto px-1.5 py-2">
         {truncated ? (
           <DiffTruncationWarning>
-            Synara stopped reading source-control changes at the diff size limit. Some files or
-            changes may be missing; bulk actions only affect the files shown.
+            {t("git:synaraStoppedReadingSourceControlChangesAtTheDiff")}
           </DiffTruncationWarning>
         ) : null}
         {error ? (
@@ -326,38 +326,40 @@ export function GitPanel(props: {
           </Alert>
         ) : null}
         {!error && isLoading && !hasChanges ? (
-          <p className="px-1.5 py-1 text-[11px] text-muted-foreground/70">{copy.loading}</p>
+          <p className="px-1.5 py-1 text-ui-sm text-muted-foreground/70">
+            {t("git:gitPanel_loading")}
+          </p>
         ) : null}
         {!error && !isLoading && !hasChanges ? (
-          <p className="px-1.5 py-2 text-center text-[12px] text-muted-foreground/70">
-            {copy.noChanges}
+          <p className="px-1.5 py-2 text-center text-ui text-muted-foreground/70">
+            {t("git:gitPanel_noChanges")}
           </p>
         ) : null}
         {hasChanges ? (
           <>
             <GitFileSection
-              title={copy.staged}
-              emptyLabel={copy.noStaged}
+              title={t("git:gitPanel_staged")}
+              emptyLabel={t("git:gitPanel_noStagedChanges")}
               files={stagedFiles}
               theme={theme}
               section="staged"
               selectedPath={selectedResolved?.section === "staged" ? selectedPath : null}
-              actionLabel={copy.unstageFile}
-              actionAllLabel={copy.unstageAll}
+              actionLabel={t("git:gitPanel_unstageFile")}
+              actionAllLabel={t("git:gitPanel_unstageAll")}
               actionIcon="unstage"
               actionDisabled={mutating}
               onSelect={selectStaged}
               onAction={unstage}
             />
             <GitFileSection
-              title={copy.changes}
-              emptyLabel={copy.noUnstaged}
+              title={t("git:panel_changes")}
+              emptyLabel={t("git:gitPanel_noUnstagedChanges")}
               files={unstagedFiles}
               theme={theme}
               section="unstaged"
               selectedPath={selectedResolved?.section === "unstaged" ? selectedPath : null}
-              actionLabel={copy.stageFile}
-              actionAllLabel={copy.stageAll}
+              actionLabel={t("git:gitPanel_stageFile")}
+              actionAllLabel={t("git:gitPanel_stageAll")}
               actionIcon="stage"
               actionDisabled={mutating}
               onSelect={selectUnstaged}
@@ -375,7 +377,9 @@ export function GitPanel(props: {
             theme={theme}
           />
         ) : (
-          <PanelStateMessage density="compact">{copy.selectFile}</PanelStateMessage>
+          <PanelStateMessage density="compact">
+            {t("git:gitPanel_selectFileDiff")}
+          </PanelStateMessage>
         )}
       </div>
     </div>

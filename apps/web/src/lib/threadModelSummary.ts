@@ -7,12 +7,12 @@
 //      the same wherever it is displayed.
 
 import type { ModelSelection, ProviderKind, ProviderModelDescriptor } from "@synara/contracts";
+import { t } from "~/i18n";
 
 import {
   getComposerTraitSelection,
   resolveComposerTraitStatusLabel,
   showsComposerFastModeBadge,
-  type ComposerTraitStatusLabels,
 } from "~/components/chat/composerTraits";
 import { formatProviderModelOptionName, type ProviderOptions } from "~/providerModelOptions";
 
@@ -38,8 +38,8 @@ export function formatThreadModelSummaryLabel(summary: ThreadModelSummary): stri
 
 export function resolveThreadModelSummary(
   modelSelection: ModelSelection | null | undefined,
-  statusLabels: ComposerTraitStatusLabels,
   runtimeModel?: ProviderModelDescriptor,
+  translate: typeof t = t,
 ): ThreadModelSummary | null {
   if (!modelSelection) {
     return null;
@@ -60,11 +60,12 @@ export function resolveThreadModelSummary(
     "",
     modelSelection.options as ProviderOptions | undefined,
     runtimeModel,
+    translate,
   );
   return {
     provider,
     modelLabel,
-    statusLabel: resolveComposerTraitStatusLabel(traits, statusLabels),
+    statusLabel: resolveComposerTraitStatusLabel(traits, translate),
     fastMode: showsComposerFastModeBadge(traits),
   };
 }

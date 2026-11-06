@@ -5,6 +5,20 @@
 import { ProjectId, ThreadId } from "@synara/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// This fixture invokes the hook directly without a mounted React context.
+// Keep translation resources real while adapting its hook to the harness.
+vi.mock("~/i18n", async (importOriginal) => {
+  const runtime = await importOriginal<typeof import("~/i18n")>();
+  return {
+    ...runtime,
+    useTranslation: () => ({
+      t: runtime.t,
+      locale: runtime.i18n.language,
+      formatLocale: runtime.getFormatLocale() ?? "en",
+    }),
+  };
+});
+
 const harness = vi.hoisted(() => ({
   clicked: "delete" as string,
   showContextMenu: vi.fn(),
@@ -185,9 +199,7 @@ describe("useKanbanCardContextMenu", () => {
     await vi.waitFor(() => expect(move).toHaveBeenCalledOnce());
 
     const menu = harness.showContextMenu.mock.calls[0]?.[0];
-    expect(menu).toContainEqual(
-      expect.objectContaining({ id: "move-to-inProgress", label: "Move to In Progress" }),
-    );
+    expect(menu).toContainEqual(expect.objectContaining({ id: "move-to-inProgress" }));
     expect(harness.sendAsGoal).not.toHaveBeenCalled();
   });
 
@@ -255,7 +267,7 @@ describe("useKanbanCardContextMenu", () => {
       expect.objectContaining({ type: "thread.turn.start" }),
     );
     expect(harness.toast).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "success", title: "Goal set" }),
+      expect.objectContaining({ type: "success", description: "Kanban thread" }),
     );
   });
 
@@ -278,7 +290,7 @@ describe("useKanbanCardContextMenu", () => {
       expect.objectContaining({ card: expect.objectContaining({ threadId: THREAD_ID }) }),
     );
     expect(harness.toast).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "success", title: "Goal set" }),
+      expect.objectContaining({ type: "success", description: "Kanban thread" }),
     );
   });
 

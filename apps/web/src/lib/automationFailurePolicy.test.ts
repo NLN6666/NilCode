@@ -33,21 +33,24 @@ describe("automation failure policy values", () => {
 
 describe("automationFailurePolicyOptions", () => {
   it("does not prepend when the current value is a preset or never", () => {
-    expect(automationFailurePolicyOptions("never").map((option) => option.value)).toEqual([
-      "1",
-      "3",
-      "5",
-      "never",
-    ]);
+    expect(
+      automationFailurePolicyOptions("never", (message) => message).map((option) => option.value),
+    ).toEqual(["1", "3", "5", "never"]);
   });
 
   it("prepends a non-preset stored threshold so it renders as itself", () => {
-    expect(automationFailurePolicyOptions("7")).toEqual([
-      { value: "7", label: "Stop after 7 failures" },
-      { value: "1", label: "Stop after 1 failure" },
-      { value: "3", label: "Stop after 3 failures" },
-      { value: "5", label: "Stop after 5 failures" },
-      { value: "never", label: "Keep running" },
+    const options = automationFailurePolicyOptions(
+      "7",
+      (message, values) => `${message}:${values?.count ?? ""}`,
+    );
+
+    expect(options.map((option) => option.value)).toEqual(["7", "1", "3", "5", "never"]);
+    expect(options.map((option) => option.label)).toEqual([
+      "automation:failureStopAfter:7",
+      "automation:failureStopAfter:1",
+      "automation:failureStopAfter:3",
+      "automation:failureStopAfter:5",
+      "automation:failureKeepRunning:",
     ]);
   });
 });

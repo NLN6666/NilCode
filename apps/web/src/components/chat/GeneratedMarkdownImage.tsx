@@ -26,8 +26,8 @@ import {
   useLocalImagePreview,
 } from "../LocalImagePreview";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
-import { useMessages } from "~/i18n/context";
 import { toastManager } from "../ui/toast";
+import { useTranslation } from "~/i18n";
 
 export interface GeneratedMarkdownImageProps {
   src: string;
@@ -68,7 +68,8 @@ function GeneratedMarkdownImageContent(
     onRetry: () => void;
   },
 ) {
-  const copy = useMessages().chat.image;
+  const { t } = useTranslation();
+
   const { src, alt, cwd, onImageExpand } = props;
   const queryClient = useQueryClient();
   const mounted = useRef(true);
@@ -89,6 +90,8 @@ function GeneratedMarkdownImageContent(
   const sourcePath = resourceUrl ? null : normalizeMarkdownImagePath(src);
   const [needsGrant, setNeedsGrant] = useState(false);
   const [previewGrant, setPreviewGrant] = useState<ProjectCreateLocalFilePreviewGrantResult>();
+  const [renewingGrant, setRenewingGrant] = useState(false);
+  const canRenewLoadedPreview = useRef(false);
   const grantOptions = projectLocalPreviewGrantQueryOptions({
     path: sourcePath,
     cwd,
@@ -131,15 +134,38 @@ function GeneratedMarkdownImageContent(
       resourceUrl,
       cacheKey: props.cacheKey,
       previewGrant: previewGrant?.grant,
-      // Relative worktree references and absolute captures use the same bounded per-file recovery.
+      onPreviewReady: () => {
+        canRenewLoadedPreview.current = true;
+      },
+      // A released offscreen preview can outlive its grant or the host's grant store.
+      // Renew once after actual success; a newly issued but unreadable grant needs Retry.
       onPreviewError: () => {
-        if (sourcePath !== null) setNeedsGrant(true);
+        if (sourcePath === null) return;
+        setNeedsGrant(true);
+        if (!previewGrant || !canRenewLoadedPreview.current) return;
+        canRenewLoadedPreview.current = false;
+        setRenewingGrant(true);
+        // Keep the frozen URL until fresh bytes are authorized. Clearing it first could
+        // restore cached grant data or issue another ungranted workspace request.
+        void queryClient
+          .fetchQuery({ ...grantOptions, retry: retryGrant })
+          .then((grant) => {
+            if (mounted.current && isLocalPreviewGrantUsable(grant)) setPreviewGrant(grant);
+          })
+          .catch(() => {
+            // The failed preview retains its error card and explicit Retry action.
+          })
+          .finally(() => {
+            if (mounted.current) setRenewingGrant(false);
+          });
       },
     });
   const resolvingGrant =
-    needsGrant &&
-    !previewGrant &&
-    (grantQuery.isFetching || (grantQuery.isSuccess && isLocalPreviewGrantUsable(grantQuery.data)));
+    renewingGrant ||
+    (needsGrant &&
+      !previewGrant &&
+      (grantQuery.isFetching ||
+        (grantQuery.isSuccess && isLocalPreviewGrantUsable(grantQuery.data))));
   const resolveGrantedUrl = async (download: boolean) => {
     if (resourceUrl || !needsGrant || sourcePath === null)
       return download ? downloadUrl : previewUrl;
@@ -153,11 +179,11 @@ function GeneratedMarkdownImageContent(
       grant: grant.grant,
     });
   };
-  const accessibleName = alt?.trim() || "Generated image";
+  const accessibleName = alt?.trim() || t("chat:generatedImage_generatedImage");
   const downloadImage = useLocalImageDownloadClick({
     downloadUrl,
     downloadName,
-    errorTitle: "Could not download generated image",
+    errorTitle: t("chat:generatedImage_couldNotDownload"),
     resolveDownloadUrl: () => resolveGrantedUrl(true),
   });
 
@@ -181,8 +207,8 @@ function GeneratedMarkdownImageContent(
         if (mounted.current) {
           toastManager.add({
             type: "error",
-            title: "Could not open generated image",
-            description: error instanceof Error ? error.message : "The file may be unavailable.",
+            title: t("chat:couldNotOpenGeneratedImage"),
+            description: error instanceof Error ? error.message : t("chat:theFileMayBeUnavailable"),
           });
         }
       });
@@ -204,7 +230,7 @@ function GeneratedMarkdownImageContent(
         downloadUrl={downloadUrl}
         downloadName={downloadName}
         className="local-image-error--prose"
-        downloadAriaLabel="Download generated image"
+        downloadAriaLabel={t("chat:generatedImage_downloadImage")}
         onDownloadClick={downloadImage}
         onRetry={props.onRetry}
       />
@@ -217,7 +243,7 @@ function GeneratedMarkdownImageContent(
         type="button"
         className="chat-generated-image__frame"
         onClick={expandImage}
-        aria-label={copy.expandGenerated}
+        aria-label={t("chat:generatedImage_expandImage")}
       >
         {status === "loading" || resolvingGrant ? (
           <span className="chat-generated-image__skeleton" aria-hidden="true">
@@ -228,7 +254,7 @@ function GeneratedMarkdownImageContent(
         <span className="chat-generated-image__overlay" aria-hidden="true">
           <span className="chat-generated-image__overlay-pill chat-generated-image__overlay-pill--expand">
             <Maximize2 className="size-3.5" />
-            <span>{copy.expand}</span>
+            <span>{t("chat:generatedImage_expand")}</span>
           </span>
         </span>
       </button>
@@ -238,11 +264,11 @@ function GeneratedMarkdownImageContent(
         onClick={downloadImage}
         onMouseDown={stopPropagation}
         className="chat-generated-image__overlay-pill chat-generated-image__overlay-pill--download"
-        aria-label={copy.downloadGenerated}
-        title={copy.download}
+        aria-label={t("chat:generatedImage_downloadImage")}
+        title={t("common:image_download")}
       >
         <DownloadIcon className="size-3.5" aria-hidden="true" />
-        <span>{copy.download}</span>
+        <span>{t("common:image_download")}</span>
       </a>
     </span>
   );

@@ -8,7 +8,6 @@
 // Exports: ComposerQueuedHeader
 
 import type { QueuedComposerTurn } from "../../composerDraftStore";
-import { useMessages } from "~/i18n/context";
 import type { QueuedComposerPause, QueuedComposerPauseReason } from "~/lib/queuedComposerPause";
 import { PauseIcon, SteerIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
@@ -27,12 +26,13 @@ import {
 } from "./composerStackedPanelStyles";
 import { COMPOSER_INLINE_ACTION_PILL_CLASS_NAME } from "./composerPickerStyles";
 import { QueuedComposerActions } from "./QueuedComposerActions";
+import { useTranslation } from "~/i18n";
 
-const PAUSE_DETAIL_BY_REASON: Record<QueuedComposerPauseReason, string> = {
-  stopped: "Paused after you stopped the turn",
-  error: "Paused after an error",
-  "usage-limit": "Paused: usage limit",
-};
+const PAUSE_DETAIL_KEY_BY_REASON = {
+  stopped: "chat:queuedComposer_pauseAfterStop",
+  error: "chat:queuedComposer_pauseAfterError",
+  "usage-limit": "chat:queuedComposer_pauseUsageLimit",
+} as const satisfies Record<QueuedComposerPauseReason, string>;
 
 const PAUSE_ACTION_CLASS_NAME = cn(COMPOSER_INLINE_ACTION_PILL_CLASS_NAME, "text-ui-sm");
 
@@ -40,11 +40,15 @@ function QueuedComposerPausedNotice({
   pause,
   onResume,
   onEdit,
+  resumeDisabled,
 }: {
+  resumeDisabled?: boolean | undefined;
   pause: QueuedComposerPause;
   onResume: () => void;
   onEdit: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <ComposerStackedPanelRow
       role="status"
@@ -62,17 +66,22 @@ function QueuedComposerPausedNotice({
           }
         />
         <span className="min-w-0 truncate text-ui-sm text-muted-foreground">
-          <span className="font-medium text-foreground">Queue paused</span>
+          <span className="font-medium text-foreground">{t("chat:queuePaused")}</span>
           <span aria-hidden> · </span>
-          {PAUSE_DETAIL_BY_REASON[pause.reason]}
+          {t(PAUSE_DETAIL_KEY_BY_REASON[pause.reason])}
         </span>
       </ComposerStackedPanelRowMain>
       <div className="flex shrink-0 items-center gap-1.5">
-        <button type="button" className={PAUSE_ACTION_CLASS_NAME} onClick={onResume}>
-          Resume
+        <button
+          type="button"
+          className={PAUSE_ACTION_CLASS_NAME}
+          onClick={onResume}
+          disabled={resumeDisabled}
+        >
+          {t("chat:detail_resume")}
         </button>
         <button type="button" className={PAUSE_ACTION_CLASS_NAME} onClick={onEdit}>
-          Edit
+          {t("git:profile_edit")}
         </button>
       </div>
     </ComposerStackedPanelRow>
@@ -121,6 +130,8 @@ interface ComposerQueuedHeaderProps {
   /** Set while a stop, failure, or usage limit holds the queue. */
   pause?: QueuedComposerPause | null;
   onResume?: () => void;
+  /** The computer owns this wait; queue Resume must not bypass its reset deadline. */
+  resumeDisabled?: boolean | undefined;
   /** Takes the next queued message back into the composer. */
   onEditPaused?: () => void;
   /** Workspace root used to resolve local file links/mentions inside the parsed preview. */
@@ -138,11 +149,12 @@ export const ComposerQueuedHeader = function ComposerQueuedHeader({
   pause,
   onResume,
   onEditPaused,
+  resumeDisabled,
   cwd,
   attachedToPrevious: attachedToPreviousProp,
   interruptsLiveTurn,
 }: ComposerQueuedHeaderProps) {
-  const copy = useMessages().composer.queued;
+  const { t } = useTranslation();
   const attachedToPrevious = attachedToPreviousProp ?? false;
   if (queuedTurns.length === 0) {
     return null;
@@ -151,7 +163,12 @@ export const ComposerQueuedHeader = function ComposerQueuedHeader({
   return (
     <ComposerStackedPanel className="flex flex-col">
       {pause && onResume && onEditPaused ? (
-        <QueuedComposerPausedNotice pause={pause} onResume={onResume} onEdit={onEditPaused} />
+        <QueuedComposerPausedNotice
+          pause={pause}
+          onResume={onResume}
+          onEdit={onEditPaused}
+          resumeDisabled={resumeDisabled}
+        />
       ) : null}
       {queuedTurns.map((queuedTurn, queuedTurnIndex) => (
         <ComposerStackedPanelRow
@@ -165,7 +182,10 @@ export const ComposerQueuedHeader = function ComposerQueuedHeader({
           <ComposerStackedPanelRowMain>
             <SteerIcon className={COMPOSER_STACKED_PANEL_ICON_CLASS_NAME} />
             <ChatMarkdown
-              text={compactQueuedComposerPreviewMarkdown(queuedTurn.previewText, copy)}
+              text={compactQueuedComposerPreviewMarkdown(queuedTurn.previewText, {
+                defaultTitle: t("chat:queuedComposer_previewDefault"),
+                codeBlock: t("chat:queuedComposer_previewCodeBlock"),
+              })}
               cwd={cwd}
               isStreaming={false}
               className={COMPOSER_STACKED_PANEL_PREVIEW_MARKDOWN_CLASS_NAME}
@@ -174,6 +194,7 @@ export const ComposerQueuedHeader = function ComposerQueuedHeader({
           <QueuedComposerActions
             queuedTurn={queuedTurn}
             onSteer={onSteer}
+            steerDisabled={resumeDisabled}
             onRemove={onRemove}
             onEdit={onEdit}
             interruptsLiveTurn={interruptsLiveTurn}

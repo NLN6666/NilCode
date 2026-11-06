@@ -7,7 +7,7 @@
 import { ThreadId } from "@synara/contracts";
 import { useEffect, useState, type CSSProperties } from "react";
 
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 import { DisclosureChevron } from "../ui/DisclosureChevron";
 import { DisclosureRegion } from "../ui/DisclosureRegion";
 import {
@@ -29,6 +29,11 @@ const PREVIEW_MESSAGE_LIMIT = 6;
 const PREVIEW_TEXT_LIMIT = 400;
 
 const EMPTY_MESSAGES: ReadonlyArray<ChatMessage> = [];
+const SUBAGENT_MESSAGE_ROLE_KEY = {
+  user: "chat:subagentDetail_role_user",
+  assistant: "chat:subagentDetail_role_assistant",
+  system: "chat:subagentDetail_role_system",
+} as const satisfies Record<ChatMessage["role"], string>;
 
 /**
  * One row per distinct subagent across the detail's entries. Later entries win so a
@@ -81,8 +86,8 @@ function SubagentDetailCard(props: {
   onOpenThread?: ((threadId: ThreadId) => void) | undefined;
   onOpenSubagentThread?: ((threadId: ThreadId) => void) | undefined;
 }) {
+  const { t } = useTranslation();
   const { subagent } = props;
-  const copy = useMessages().chat.activity.subagent;
   const [conversationOpen, setConversationOpen] = useState(false);
 
   const presentation = resolveSubagentPresentation({
@@ -98,14 +103,22 @@ function SubagentDetailCard(props: {
   // is only the fallback for hosts that have no dock of their own.
   const openThread = props.onOpenSubagentThread ?? props.onOpenThread;
   const metaRows = [
-    modelLabel ? { key: "model", label: copy.model, value: modelLabel } : null,
-    presentation.role ? { key: "role", label: copy.role, value: presentation.role } : null,
-    subagent.statusLabel
-      ? { key: "status", label: copy.status, value: subagent.statusLabel }
+    modelLabel ? { key: "model", label: t("chat:detail_model"), value: modelLabel } : null,
+    presentation.role
+      ? { key: "role", label: t("chat:subagentDetail_role"), value: presentation.role }
       : null,
-    subagent.effort ? { key: "effort", label: copy.effort, value: subagent.effort } : null,
+    subagent.statusLabel
+      ? { key: "status", label: t("chat:detail_status"), value: subagent.statusLabel }
+      : null,
+    subagent.effort
+      ? { key: "effort", label: t("chat:reasoningEffort"), value: subagent.effort }
+      : null,
     subagent.background === true
-      ? { key: "background", label: copy.background, value: copy.backgroundOn }
+      ? {
+          key: "background",
+          label: t("chat:background"),
+          value: t("chat:composerExtras_on"),
+        }
       : null,
   ].filter((row): row is { key: string; label: string; value: string } => row !== null);
 
@@ -159,7 +172,11 @@ function SubagentDetailCard(props: {
             onClick={() => setConversationOpen((open) => !open)}
           >
             <DisclosureChevron open={conversationOpen} className="size-3" />
-            <span>{conversationOpen ? copy.hideConversation : copy.showConversation}</span>
+            <span>
+              {conversationOpen
+                ? t("chat:subagentDetail_hideConversation")
+                : t("chat:subagentDetail_showConversation")}
+            </span>
           </button>
         ) : null}
         <button
@@ -168,18 +185,18 @@ function SubagentDetailCard(props: {
           className="inline-flex items-center rounded-md px-1.5 py-1 text-muted-foreground/70 transition-colors hover:bg-[var(--color-background-button-secondary-hover)] hover:text-foreground disabled:pointer-events-none disabled:opacity-45"
           style={props.footerTextStyle}
           disabled={!resolvedThreadId || !openThread}
-          title={resolvedThreadId ? undefined : copy.noThread}
+          title={resolvedThreadId ? undefined : t("chat:subagentDetail_noThread")}
           onClick={
             resolvedThreadId && openThread
               ? () => openThread(ThreadId.makeUnsafe(resolvedThreadId))
               : undefined
           }
         >
-          {copy.openFullConversation}
+          {t("chat:subagentDetail_openFullConversation")}
         </button>
         {resolvedThreadId ? null : (
           <span className="text-muted-foreground/48" style={props.footerTextStyle}>
-            {copy.noThread}
+            {t("chat:subagentDetail_noThread")}
           </span>
         )}
       </div>
@@ -206,8 +223,8 @@ function SubagentConversationPreview(props: {
   chatTypographyStyle: CSSProperties;
   footerTextStyle: CSSProperties;
 }) {
+  const { t } = useTranslation();
   const { open, threadId } = props;
-  const copy = useMessages().chat.activity.subagent;
   const messages = useStore(
     (state) => getThreadFromState(state, threadId)?.messages ?? EMPTY_MESSAGES,
   );
@@ -228,7 +245,7 @@ function SubagentConversationPreview(props: {
   if (previewMessages.length === 0) {
     return (
       <p className="py-2 text-muted-foreground/48" style={props.footerTextStyle}>
-        {copy.noMessages}
+        {t("chat:subagentDetail_noMessages")}
       </p>
     );
   }
@@ -237,13 +254,13 @@ function SubagentConversationPreview(props: {
     <div className="space-y-2 py-2">
       {hiddenCount > 0 ? (
         <p className="text-muted-foreground/48" style={props.footerTextStyle}>
-          {copy.earlierMessages(hiddenCount)}
+          {t("chat:subagentDetail_earlierMessages", { count: hiddenCount })}
         </p>
       ) : null}
       {previewMessages.map((message) => (
         <div key={message.id} className="min-w-0">
           <p className="text-muted-foreground/48" style={props.footerTextStyle}>
-            {copy.roles[message.role]}
+            {t(SUBAGENT_MESSAGE_ROLE_KEY[message.role])}
           </p>
           <p
             className="whitespace-pre-wrap break-words text-muted-foreground/70"

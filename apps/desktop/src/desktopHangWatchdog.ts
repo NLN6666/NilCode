@@ -3,7 +3,7 @@
 // Layer: Desktop process supervision
 
 import type { ChildProcess } from "node:child_process";
-import { fork as defaultFork } from "node:child_process";
+import { fork as defaultFork, type SpawnOptions } from "node:child_process";
 import path from "node:path";
 
 import { resolveWindowsSystemRoot } from "@synara/shared/platformEnvironment";
@@ -58,7 +58,7 @@ export type HangWatchdogDecision =
     };
 
 function isPositivePid(value: number | null | undefined): value is number {
-  return Number.isInteger(value) && value > 0;
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
 export function getRendererOsProcessId(webContents: { getOSProcessId(): number }): number {
@@ -127,6 +127,12 @@ type ForkedWatchdog = Pick<
   ChildProcess,
   "connected" | "disconnect" | "kill" | "once" | "on" | "send"
 >;
+type WatchdogForkOptions = NonNullable<Parameters<typeof defaultFork>[2]> &
+  Pick<SpawnOptions, "windowsHide">;
+type WatchdogIntervalTimer = ReturnType<typeof setInterval>;
+type WatchdogTimeoutTimer = ReturnType<typeof setTimeout>;
+type WatchdogIntervalScheduler = (callback: () => void, delay: number) => WatchdogIntervalTimer;
+type WatchdogTimeoutScheduler = (callback: () => void, delay: number) => WatchdogTimeoutTimer;
 
 export interface DesktopHangWatchdogControllerOptions {
   readonly enabled: boolean;
@@ -136,14 +142,14 @@ export interface DesktopHangWatchdogControllerOptions {
   readonly systemRoot?: string;
   readonly env?: NodeJS.ProcessEnv;
   readonly now?: () => number;
-  readonly setInterval?: typeof setInterval;
-  readonly clearInterval?: typeof clearInterval;
-  readonly setTimeout?: typeof setTimeout;
-  readonly clearTimeout?: typeof clearTimeout;
+  readonly setInterval?: WatchdogIntervalScheduler;
+  readonly clearInterval?: (timer: WatchdogIntervalTimer) => void;
+  readonly setTimeout?: WatchdogTimeoutScheduler;
+  readonly clearTimeout?: (timer: WatchdogTimeoutTimer) => void;
   readonly fork?: (
     modulePath: string,
     args: string[],
-    options: Parameters<typeof defaultFork>[2],
+    options: WatchdogForkOptions,
   ) => ForkedWatchdog;
   readonly log: (message: string) => void;
 }
@@ -157,15 +163,15 @@ const MAX_PENDING_RENDERER_STATES = 32;
 
 export class DesktopHangWatchdogController {
   private readonly now: () => number;
-  private readonly setIntervalFn: typeof setInterval;
-  private readonly clearIntervalFn: typeof clearInterval;
-  private readonly setTimeoutFn: typeof setTimeout;
-  private readonly clearTimeoutFn: typeof clearTimeout;
+  private readonly setIntervalFn: WatchdogIntervalScheduler;
+  private readonly clearIntervalFn: (timer: WatchdogIntervalTimer) => void;
+  private readonly setTimeoutFn: WatchdogTimeoutScheduler;
+  private readonly clearTimeoutFn: (timer: WatchdogTimeoutTimer) => void;
   private readonly forkFn: NonNullable<DesktopHangWatchdogControllerOptions["fork"]>;
   private child: ForkedWatchdog | null = null;
-  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private restartTimer: ReturnType<typeof setTimeout> | null = null;
-  private stopTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: WatchdogIntervalTimer | null = null;
+  private restartTimer: WatchdogTimeoutTimer | null = null;
+  private stopTimer: WatchdogTimeoutTimer | null = null;
   private sendInFlight = false;
   private stopping = false;
   private stopPending = false;
@@ -187,9 +193,9 @@ export class DesktopHangWatchdogController {
 
   start(): void {
     if (!this.options.enabled || this.stopping || this.child) return;
-    let child: ForkedWatchdog | null = null;
+    let spawnedChild: ForkedWatchdog | undefined;
     try {
-      child = this.forkFn(
+      const child = this.forkFn(
         this.options.watchdogEntryPath ?? path.join(__dirname, "desktopHangWatchdogProcess.js"),
         [],
         {
@@ -199,6 +205,7 @@ export class DesktopHangWatchdogController {
           windowsHide: true,
         },
       );
+      spawnedChild = child;
       this.child = child;
       child.once("error", (error) => {
         this.handleChildFailure(child, "failed: " + error.message);
@@ -249,8 +256,8 @@ export class DesktopHangWatchdogController {
       this.options.log(
         "hang watchdog start failed: " + (error instanceof Error ? error.message : String(error)),
       );
-      if (child && this.child === child) {
-        this.handleChildFailure(child, "start setup failed");
+      if (spawnedChild && this.child === spawnedChild) {
+        this.handleChildFailure(spawnedChild, "start setup failed");
       } else if (!this.stopping) {
         this.scheduleRestart();
       }

@@ -8,7 +8,6 @@
 
 import type { ThreadId } from "@synara/contracts";
 import { useEffect, useSyncExternalStore } from "react";
-import { useMessages } from "~/i18n/context";
 
 import type { DockPaneRuntimeMode } from "~/lib/dockPaneActivation";
 import { dockSidechatPaneScopeId } from "~/lib/chatPaneScope";
@@ -28,6 +27,7 @@ import type { SplitViewPanePanelState } from "~/splitViewStore";
 import { DeferredChatView, noopChatSurfaceAction } from "./ChatThreadSurfacePrimitives";
 import { PanelStateMessage } from "./PanelStateMessage";
 import { getRightDockPaneMeta } from "./rightDockPaneMeta";
+import { useTranslation } from "~/i18n";
 
 // Embedded dock chats (side chats) manage their own panels through the dock, so the
 // nested ChatView always renders with a closed, inert panel state.
@@ -49,16 +49,17 @@ export function SidechatDockPane({
   /** Whether the embedded thread has reached the shell projection yet. */
   threadExists: boolean;
 }) {
-  const paneLabels = useMessages().chat.panes.kinds;
+  const { t } = useTranslation();
+
   if (!pane.threadId) {
     return (
       <PanelStateMessage>
-        {getRightDockPaneMeta("sidechat", paneLabels).label} panel is coming soon.
+        {getRightDockPaneMeta("sidechat", t).label} {t("chat:panelIsComingSoon")}
       </PanelStateMessage>
     );
   }
   if (!threadExists) {
-    return <PanelStateMessage>Loading side chat...</PanelStateMessage>;
+    return <PanelStateMessage>{t("chat:loadingSideChat")}</PanelStateMessage>;
   }
   if (runtimeMode === "preview") {
     return null;

@@ -6,13 +6,9 @@ import type {
   ThreadId,
 } from "@synara/contracts";
 import { isTemporaryWorktreeBranch, resolveUniqueSynaraBranchName } from "@synara/shared/git";
-import { git as defaultGitCopy } from "~/i18n/locales/en/git";
+import { t as defaultTranslate } from "~/i18n";
 
-/**
- * The `git` catalog group. These resolvers default to English so their unit tests can keep
- * asserting plain strings; the running app always passes the active catalog.
- */
-export type GitCopy = typeof defaultGitCopy;
+export type GitActionTranslator = typeof defaultTranslate;
 
 export type GitActionIconName = "commit" | "push" | "pr";
 
@@ -20,16 +16,18 @@ export function buildGitActionFailureToast(input: {
   message: string;
   phase: GitActionProgressPhase | null;
   threadId: ThreadId | null;
+  translate?: GitActionTranslator;
 }) {
-  const titles: Record<GitActionProgressPhase, string> = {
-    branch: "Branch creation failed",
-    commit: "Commit failed",
-    push: "Push failed",
-    pr: "PR creation failed",
+  const translate = input.translate ?? defaultTranslate;
+  const titleKeys: Record<GitActionProgressPhase, string> = {
+    branch: "git:gitActionBranchFailure",
+    commit: "git:gitActionCommitFailure",
+    push: "git:pushFailed",
+    pr: "git:gitActionPrFailure",
   };
   return {
     type: "error" as const,
-    title: input.phase ? titles[input.phase] : "Git action failed",
+    title: input.phase ? translate(titleKeys[input.phase]) : translate("git:gitActionFailure"),
     description: input.message,
     timeout: 0,
     data: {
@@ -114,31 +112,37 @@ export function buildGitActionProgressStages(input: {
   pushTarget?: string;
   featureBranch?: boolean;
   shouldPushBeforePr?: boolean;
-  copy?: GitCopy;
+  translate?: GitActionTranslator;
 }): string[] {
-  const progress = (input.copy ?? defaultGitCopy).progress;
-  const branchStages = input.featureBranch ? [progress.preparingFeatureBranch] : [];
-  const pushStage = input.pushTarget ? progress.pushingTo(input.pushTarget) : progress.pushing;
+  const translate = input.translate ?? defaultTranslate;
+  const branchStages = input.featureBranch
+    ? [translate("git:gitActionPreparingFeatureBranch")]
+    : [];
+  const pushStage = input.pushTarget
+    ? translate("git:gitActionPushingTo", { value0: input.pushTarget })
+    : translate("git:gitActionPushing");
+  const creatingPrStage = translate("git:gitActionCreatingPr");
+  const committingStage = translate("git:gitActionCommitting");
   if (input.action === "push") {
     return [pushStage];
   }
   if (input.action === "create_pr") {
-    return input.shouldPushBeforePr ? [pushStage, progress.creatingPr] : [progress.creatingPr];
+    return input.shouldPushBeforePr ? [pushStage, creatingPrStage] : [creatingPrStage];
   }
   const shouldIncludeCommitStages =
     !input.forcePushOnly && (input.action === "commit" || input.hasWorkingTreeChanges);
   const commitStages = !shouldIncludeCommitStages
     ? []
     : input.hasCustomCommitMessage
-      ? [progress.committing]
-      : [progress.generatingCommitMessage, progress.committing];
+      ? [committingStage]
+      : [translate("git:gitActionGeneratingCommitMessage"), committingStage];
   if (input.action === "commit") {
     return [...branchStages, ...commitStages];
   }
   if (input.action === "commit_push") {
     return [...branchStages, ...commitStages, pushStage];
   }
-  return [...branchStages, ...commitStages, pushStage, progress.creatingPr];
+  return [...branchStages, ...commitStages, pushStage, creatingPrStage];
 }
 
 const withDescription = (title: string, description: string | undefined) =>
@@ -162,26 +166,29 @@ export function resolveCreatePrExecution(input: {
   isDefaultBranch: boolean;
   hasOriginRemote: boolean;
   defaultBranchName?: string | null | undefined;
-  copy?: GitCopy;
+  translate?: GitActionTranslator;
 }): CreatePrExecution {
   const { gitStatus, isBusy, isDefaultBranch, hasOriginRemote, defaultBranchName } = input;
-  const hints = (input.copy ?? defaultGitCopy).hints;
-  if (isBusy) return { kind: "unavailable", hint: hints.busy };
-  if (!gitStatus) return { kind: "unavailable", hint: hints.noStatus };
+  const translate = input.translate ?? defaultTranslate;
+  if (isBusy) return { kind: "unavailable", hint: translate("git:gitActionBusy") };
+  if (!gitStatus) return { kind: "unavailable", hint: translate("git:waitingForGit") };
   if (gitStatus.pr?.state === "open") return { kind: "open_pr" };
   if (gitStatus.branch === null) {
-    return { kind: "unavailable", hint: hints.detachedPr };
+    return {
+      kind: "unavailable",
+      hint: translate("git:gitActionCreateBranchBeforePr"),
+    };
   }
 
   const isAhead = gitStatus.aheadCount > 0;
   if (gitStatus.behindCount > 0) {
     return {
       kind: "unavailable",
-      hint: isAhead ? hints.diverged : hints.behindPullBeforePr,
+      hint: translate(isAhead ? "git:gitActionDiverged" : "git:gitActionBehindPullBeforePr"),
     };
   }
   if (!gitStatus.hasUpstream && !hasOriginRemote) {
-    return { kind: "unavailable", hint: hints.addOriginPr };
+    return { kind: "unavailable", hint: translate("git:gitActionAddOriginBeforePr") };
   }
 
   if (gitStatus.hasWorkingTreeChanges) {
@@ -197,7 +204,10 @@ export function resolveCreatePrExecution(input: {
     return { kind: "run_action", action: "create_pr" };
   }
 
-  return { kind: "unavailable", hint: hints.noBranchChangesForPr };
+  return {
+    kind: "unavailable",
+    hint: translate("git:noBranchChangesToIncludeInAPR"),
+  };
 }
 
 function extractTrackedBranchName(upstreamBranch: string | null | undefined): string | null {
@@ -284,16 +294,16 @@ export function resolveCreatePrDialogRuntimeStatus(input: {
 export function resolveCreatePrDialogExecution(
   context: GitDialogContext,
   includeLocalChanges: boolean,
-  copy: GitCopy = defaultGitCopy,
+  translate: GitActionTranslator = defaultTranslate,
 ): CreatePrExecution {
   const { gitStatus } = context;
   if (!gitStatus || includeLocalChanges || !gitStatus.hasWorkingTreeChanges) {
-    return resolveCreatePrExecution({ ...context, copy });
+    return resolveCreatePrExecution({ ...context, translate });
   }
   return resolveCreatePrExecution({
     ...context,
     gitStatus: { ...gitStatus, hasWorkingTreeChanges: false },
-    copy,
+    translate,
   });
 }
 
@@ -336,9 +346,9 @@ export type CreatePrBrowserPreparation =
 export function resolveCreatePrBrowserPreparation(
   context: GitDialogContext,
   includeLocalChanges: boolean,
-  copy: GitCopy = defaultGitCopy,
+  translate: GitActionTranslator = defaultTranslate,
 ): CreatePrBrowserPreparation {
-  const execution = resolveCreatePrDialogExecution(context, includeLocalChanges, copy);
+  const execution = resolveCreatePrDialogExecution(context, includeLocalChanges, translate);
   if (execution.kind !== "run_action") return execution;
   if (execution.action === "commit_push_pr") {
     return { kind: "run_action", action: "commit_push" };
@@ -352,7 +362,7 @@ export function resolveCreatePrBrowserPreparation(
 
 export function summarizeGitResult(
   result: GitRunStackedActionResult,
-  copy: GitCopy = defaultGitCopy,
+  translate: GitActionTranslator = defaultTranslate,
 ): {
   title: string;
   description?: string;
@@ -361,8 +371,8 @@ export function summarizeGitResult(
     const prNumber = result.pr.number ? ` #${result.pr.number}` : "";
     const title =
       result.pr.status === "created"
-        ? copy.result.createdPr(prNumber)
-        : copy.result.openedPr(prNumber);
+        ? translate("git:gitActionPrCreated", { value0: prNumber })
+        : translate("git:gitActionPrOpened", { value0: prNumber });
     return withDescription(title, truncateText(result.pr.title));
   }
 
@@ -370,20 +380,22 @@ export function summarizeGitResult(
     const shortSha = shortenSha(result.commit.commitSha);
     const branch = result.push.upstreamBranch ?? result.push.branch;
     const pushedCommitPart = shortSha ? ` ${shortSha}` : "";
-    const branchPart = branch ? copy.result.pushedToBranch(branch) : "";
+    const branchPart = branch ? translate("git:gitActionPushedToBranch", { value0: branch }) : "";
     return withDescription(
-      copy.result.pushed(pushedCommitPart, branchPart),
+      translate("git:gitActionPushed", { value0: pushedCommitPart, value1: branchPart }),
       truncateText(result.commit.subject),
     );
   }
 
   if (result.commit.status === "created") {
     const shortSha = shortenSha(result.commit.commitSha);
-    const title = shortSha ? copy.result.committed(shortSha) : copy.result.committedChanges;
+    const title = shortSha
+      ? translate("git:gitActionCommitted", { value0: shortSha })
+      : translate("git:gitActionCommittedChanges");
     return withDescription(title, truncateText(result.commit.subject));
   }
 
-  return { title: copy.result.done };
+  return { title: translate("git:detail_done") };
 }
 
 export function buildMenuItems(
@@ -392,7 +404,7 @@ export function buildMenuItems(
   hasOriginRemote = true,
   isDefaultBranch = false,
   defaultBranchName?: string | null,
-  copy: GitCopy = defaultGitCopy,
+  translate: GitActionTranslator = defaultTranslate,
 ): GitActionMenuItem[] {
   if (!gitStatus) return [];
 
@@ -421,13 +433,14 @@ export function buildMenuItems(
     isDefaultBranch,
     hasOriginRemote,
     defaultBranchName,
+    translate,
   });
   const canOpenPr = !isBusy && hasOpenPr;
 
   return [
     {
       id: "commit",
-      label: copy.actions.commit,
+      label: translate("git:gitActionCommit"),
       disabled: !canCommit,
       icon: "commit",
       kind: "open_dialog",
@@ -437,7 +450,7 @@ export function buildMenuItems(
       ? [
           {
             id: "commit_push" as const,
-            label: copy.actions.commitPush,
+            label: translate("git:commitAndPush"),
             disabled: !canCommitPush,
             icon: "push" as const,
             kind: "open_dialog" as const,
@@ -447,7 +460,7 @@ export function buildMenuItems(
       : []),
     {
       id: "push",
-      label: isDefaultBranch ? copy.actions.commitPush : copy.actions.push,
+      label: isDefaultBranch ? translate("git:commitAndPush") : translate("git:gitActionPush"),
       disabled: !(isDefaultBranch ? canCommitPush : canPush),
       icon: "push",
       kind: "open_dialog",
@@ -456,14 +469,14 @@ export function buildMenuItems(
     hasOpenPr
       ? {
           id: "pr",
-          label: copy.actions.createPr,
+          label: translate("git:createPR"),
           disabled: !canOpenPr,
           icon: "pr",
           kind: "open_pr",
         }
       : {
           id: "pr",
-          label: copy.actions.createPr,
+          label: translate("git:createPR"),
           disabled: prExecution.kind !== "run_action",
           icon: "pr",
           kind: "open_dialog",
@@ -484,13 +497,13 @@ export function resolveGitMenuActionDisabledReason(input: {
   hasOriginRemote: boolean;
   isDefaultBranch: boolean;
   defaultBranchName: string | null | undefined;
-  copy?: GitCopy;
+  translate?: GitActionTranslator;
 }): string | null {
   const { item, gitStatus, isBusy, hasOriginRemote, isDefaultBranch, defaultBranchName } = input;
-  const hints = (input.copy ?? defaultGitCopy).hints;
+  const translate = input.translate ?? defaultTranslate;
   if (!item.disabled) return null;
-  if (isBusy) return hints.busy;
-  if (!gitStatus) return hints.noStatus;
+  if (isBusy) return translate("git:gitActionBusy");
+  if (!gitStatus) return translate("git:waitingForGit");
 
   const hasBranch = gitStatus.branch !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
@@ -501,48 +514,48 @@ export function resolveGitMenuActionDisabledReason(input: {
 
   if (action === "commit") {
     if (!hasChanges) {
-      return hints.cleanWorktree;
+      return translate("git:gitActionCleanWorktree");
     }
-    return hints.commitUnavailable;
+    return translate("git:gitActionCommitUnavailable");
   }
 
   if (action === "push") {
     if (!hasBranch) {
-      return hints.detachedPush;
+      return translate("git:gitActionDetachedPush");
     }
     if (hasChanges) {
-      return hints.uncommittedPush;
+      return translate("git:gitActionUncommittedPush");
     }
     if (isBehind) {
-      return hints.behindPush;
+      return translate("git:gitActionBehindPush");
     }
     if (!gitStatus.hasUpstream && !hasOriginRemote) {
-      return hints.addOriginPush;
+      return translate("git:gitActionAddOriginBeforePush");
     }
     if (!isAhead) {
-      return hints.noCommitsPush;
+      return translate("git:gitActionNoCommitsToPush");
     }
-    return hints.pushUnavailable;
+    return translate("git:gitActionPushUnavailable");
   }
 
   if (action === "commit_push") {
     if (!hasBranch) {
-      return hints.detachedCommitPush;
+      return translate("git:gitActionDetachedCommitPush");
     }
     if (isBehind) {
-      return hints.behindCommitPush;
+      return translate("git:gitActionBehindCommitPush");
     }
     if (!gitStatus.hasUpstream && !hasOriginRemote) {
-      return hints.addOriginCommitPush;
+      return translate("git:gitActionAddOriginBeforeCommitPush");
     }
     if (!hasChanges && !isAhead) {
-      return hints.nothingToPush;
+      return translate("git:gitActionNothingToPush");
     }
-    return hints.commitPushUnavailable;
+    return translate("git:gitActionCommitPushUnavailable");
   }
 
   if (hasOpenPr) {
-    return hints.viewPrUnavailable;
+    return translate("git:gitActionViewPrUnavailable");
   }
   const prExecution = resolveCreatePrExecution({
     gitStatus,
@@ -550,12 +563,12 @@ export function resolveGitMenuActionDisabledReason(input: {
     isDefaultBranch,
     hasOriginRemote,
     defaultBranchName,
-    ...(input.copy ? { copy: input.copy } : {}),
+    translate,
   });
   if (prExecution.kind === "unavailable") {
     return prExecution.hint;
   }
-  return hints.createPrUnavailable;
+  return translate("git:createPRUnavailable");
 }
 
 export type GitCommitDialogActionId = "commit_new_branch" | "commit" | "commit_push" | "create_pr";
@@ -572,8 +585,6 @@ export interface GitCommitDialogAction {
   disabledReason: string | null;
 }
 
-const NO_FILE_SELECTION_HINT = "Select at least one file to commit.";
-
 /**
  * Action rows offered by the Commit dialog. Commit-family rows reuse the dropdown
  * menu's availability and wording (so "Commit & push" collapses to "Push" on a clean
@@ -584,17 +595,17 @@ export function resolveCommitDialogActions(input: {
   context: GitDialogContext;
   /** False when the user excluded every changed file in the dialog's file list. */
   hasFileSelection: boolean;
-  copy?: GitCopy;
+  translate?: GitActionTranslator;
 }): GitCommitDialogAction[] {
   const { gitStatus, isBusy, isDefaultBranch, hasOriginRemote, defaultBranchName } = input.context;
-  const copy = input.copy ?? defaultGitCopy;
+  const translate = input.translate ?? defaultTranslate;
   const menuItems = buildMenuItems(
     gitStatus,
     isBusy,
     hasOriginRemote,
     isDefaultBranch,
     defaultBranchName,
-    copy,
+    translate,
   );
   const commitItem = menuItems.find((item) => item.id === "commit") ?? null;
   const pushItem =
@@ -607,14 +618,14 @@ export function resolveCommitDialogActions(input: {
     hasOriginRemote,
     isDefaultBranch,
     defaultBranchName,
-    copy,
+    translate,
   };
 
   const resolveRowState = (item: GitActionMenuItem | null, gateOnSelection: boolean) => {
     if (!item) {
       return {
         disabled: true,
-        disabledReason: isBusy ? copy.hints.busy : copy.hints.noStatus,
+        disabledReason: isBusy ? translate("git:gitActionBusy") : translate("git:waitingForGit"),
       };
     }
     if (item.disabled) {
@@ -624,7 +635,10 @@ export function resolveCommitDialogActions(input: {
       };
     }
     if (gateOnSelection && !input.hasFileSelection) {
-      return { disabled: true, disabledReason: copy.hints.selectFilesToCommit };
+      return {
+        disabled: true,
+        disabledReason: translate("git:gitActionSelectFilesToCommit"),
+      };
     }
     return { disabled: false, disabledReason: null };
   };
@@ -635,7 +649,7 @@ export function resolveCommitDialogActions(input: {
     isDefaultBranch,
     hasOriginRemote,
     defaultBranchName,
-    copy,
+    translate,
   });
   // A pure push needs no working-tree selection; anything that commits does.
   const pushCommits = pushItem?.dialogAction !== "push";
@@ -643,7 +657,7 @@ export function resolveCommitDialogActions(input: {
   return [
     {
       id: "commit_new_branch",
-      label: copy.actions.commitOnNewBranch,
+      label: translate("git:gitActionCommitOnNewBranch"),
       icon: "branch",
       action: "commit",
       featureBranch: true,
@@ -651,7 +665,7 @@ export function resolveCommitDialogActions(input: {
     },
     {
       id: "commit",
-      label: copy.actions.commit,
+      label: translate("git:gitActionCommit"),
       icon: "commit",
       action: "commit",
       featureBranch: false,
@@ -659,7 +673,7 @@ export function resolveCommitDialogActions(input: {
     },
     {
       id: "commit_push",
-      label: pushItem?.label ?? copy.actions.commitAndPush,
+      label: pushItem?.label ?? translate("git:commitAndPush"),
       icon: "push",
       action: pushItem?.dialogAction === "push" ? "push" : "commit_push",
       featureBranch: false,
@@ -667,7 +681,7 @@ export function resolveCommitDialogActions(input: {
     },
     {
       id: "create_pr",
-      label: prExecution.kind === "open_pr" ? copy.actions.viewPr : copy.actions.createPr,
+      label: prExecution.kind === "open_pr" ? translate("git:viewPR") : translate("git:createPR"),
       icon: prExecution.kind === "open_pr" ? "view_pr" : "pr",
       action: "create_pr",
       featureBranch: false,
@@ -684,23 +698,23 @@ export function resolveQuickAction(
   hasOriginRemote = true,
   shouldOfferCreateBranch = false,
   _defaultBranchName?: string | null,
-  copy: GitCopy = defaultGitCopy,
+  translate: GitActionTranslator = defaultTranslate,
 ): GitQuickAction {
   if (isBusy) {
     return {
-      label: copy.actions.commit,
+      label: translate("git:gitActionCommit"),
       disabled: true,
       kind: "show_hint",
-      hint: copy.hints.busy,
+      hint: translate("git:gitActionBusy"),
     };
   }
 
   if (!gitStatus) {
     return {
-      label: copy.actions.commit,
+      label: translate("git:gitActionCommit"),
       disabled: true,
       kind: "show_hint",
-      hint: copy.hints.noStatus,
+      hint: translate("git:waitingForGit"),
     };
   }
 
@@ -714,22 +728,22 @@ export function resolveQuickAction(
   if (!hasBranch) {
     if (shouldOfferCreateBranch) {
       return {
-        label: copy.actions.createBranch,
+        label: translate("common:createBranch"),
         disabled: false,
         kind: "create_branch",
       };
     }
     return {
-      label: copy.actions.commit,
+      label: translate("git:gitActionCommit"),
       disabled: true,
       kind: "show_hint",
-      hint: copy.hints.createBranchFirst,
+      hint: translate("git:gitActionCreateBranchFirst"),
     };
   }
 
   if (!gitStatus.hasUpstream && shouldOfferCreateBranch) {
     return {
-      label: copy.actions.createBranch,
+      label: translate("common:createBranch"),
       disabled: false,
       kind: "create_branch",
     };
@@ -738,16 +752,16 @@ export function resolveQuickAction(
   if (gitStatus.hasUpstream) {
     if (isDiverged) {
       return {
-        label: copy.actions.syncBranch,
+        label: translate("git:gitActionSyncBranch"),
         disabled: true,
         kind: "show_hint",
-        hint: copy.hints.diverged,
+        hint: translate("git:gitActionDiverged"),
       };
     }
 
     if (isBehind) {
       return {
-        label: copy.actions.pull,
+        label: translate("git:pull"),
         disabled: false,
         kind: "run_pull",
       };
@@ -757,7 +771,7 @@ export function resolveQuickAction(
   if (hasChanges) {
     if (!gitStatus.hasUpstream && !hasOriginRemote) {
       return {
-        label: copy.actions.commit,
+        label: translate("git:gitActionCommit"),
         disabled: false,
         kind: "run_action",
         action: "commit",
@@ -765,14 +779,14 @@ export function resolveQuickAction(
     }
     if (hasOpenPr || isDefaultBranch) {
       return {
-        label: copy.actions.commitPush,
+        label: translate("git:commitAndPush"),
         disabled: false,
         kind: "run_action",
         action: "commit_push",
       };
     }
     return {
-      label: copy.actions.commitPushPr,
+      label: translate("git:gitActionCommitPushPr"),
       disabled: false,
       kind: "run_action",
       action: "commit_push_pr",
@@ -782,36 +796,36 @@ export function resolveQuickAction(
   if (!gitStatus.hasUpstream) {
     if (!hasOriginRemote) {
       if (hasOpenPr && !isAhead) {
-        return { label: copy.actions.viewPr, disabled: false, kind: "open_pr" };
+        return { label: translate("git:viewPR"), disabled: false, kind: "open_pr" };
       }
       return {
-        label: copy.actions.push,
+        label: translate("git:gitActionPush"),
         disabled: true,
         kind: "show_hint",
-        hint: copy.hints.addOriginPushOrPr,
+        hint: translate("git:gitActionAddOriginBeforePushOrPr"),
       };
     }
     if (!isAhead) {
       if (hasOpenPr) {
-        return { label: copy.actions.viewPr, disabled: false, kind: "open_pr" };
+        return { label: translate("git:viewPR"), disabled: false, kind: "open_pr" };
       }
       return {
-        label: copy.actions.push,
+        label: translate("git:gitActionPush"),
         disabled: true,
         kind: "show_hint",
-        hint: copy.hints.noCommitsPush,
+        hint: translate("git:gitActionNoCommitsToPush"),
       };
     }
     if (hasOpenPr || isDefaultBranch) {
       return {
-        label: isDefaultBranch ? copy.actions.commitPush : copy.actions.push,
+        label: isDefaultBranch ? translate("git:commitAndPush") : translate("git:gitActionPush"),
         disabled: false,
         kind: "run_action",
         action: isDefaultBranch ? "commit_push" : "push",
       };
     }
     return {
-      label: copy.actions.pushCreatePr,
+      label: translate("git:gitActionPushCreatePr"),
       disabled: false,
       kind: "run_action",
       action: "create_pr",
@@ -821,14 +835,14 @@ export function resolveQuickAction(
   if (isAhead) {
     if (hasOpenPr || isDefaultBranch) {
       return {
-        label: isDefaultBranch ? copy.actions.commitPush : copy.actions.push,
+        label: isDefaultBranch ? translate("git:commitAndPush") : translate("git:gitActionPush"),
         disabled: false,
         kind: "run_action",
         action: isDefaultBranch ? "commit_push" : "push",
       };
     }
     return {
-      label: copy.actions.pushCreatePr,
+      label: translate("git:gitActionPushCreatePr"),
       disabled: false,
       kind: "run_action",
       action: "create_pr",
@@ -836,14 +850,14 @@ export function resolveQuickAction(
   }
 
   if (hasOpenPr && gitStatus.hasUpstream) {
-    return { label: copy.actions.viewPr, disabled: false, kind: "open_pr" };
+    return { label: translate("git:viewPR"), disabled: false, kind: "open_pr" };
   }
 
   return {
-    label: copy.actions.commit,
+    label: translate("git:gitActionCommit"),
     disabled: true,
     kind: "show_hint",
-    hint: copy.hints.branchUpToDate,
+    hint: translate("git:gitActionBranchUpToDate"),
   };
 }
 
@@ -858,28 +872,28 @@ export function resolveCreatePrActionAvailability(input: {
   isDefaultBranch?: boolean;
   hasOriginRemote?: boolean;
   defaultBranchName?: string | null | undefined;
-  copy?: GitCopy;
+  translate?: GitActionTranslator;
 }): { canRun: boolean; hint: string | null } {
+  const translate = input.translate ?? defaultTranslate;
   const execution = resolveCreatePrExecution({
     gitStatus: input.gitStatus,
     isBusy: false,
     isDefaultBranch: input.isDefaultBranch ?? false,
     hasOriginRemote: input.hasOriginRemote ?? true,
     defaultBranchName: input.defaultBranchName,
-    ...(input.copy ? { copy: input.copy } : {}),
+    translate,
   });
   const canRun = execution.kind === "run_action" && execution.action === "create_pr";
-  const hints = (input.copy ?? defaultGitCopy).hints;
   const hint = (() => {
     if (canRun) return null;
     if (execution.kind === "unavailable") return execution.hint;
     if (execution.kind === "open_pr") {
-      return hints.prAlreadyOpen;
+      return translate("git:gitActionPrAlreadyOpen");
     }
     if (execution.kind === "run_action" && execution.action === "commit_push_pr") {
-      return hints.commitBeforePr;
+      return translate("git:gitActionCommitBeforePr");
     }
-    return hints.noBranchChangesForPr;
+    return translate("git:noBranchChangesToIncludeInAPR");
   })();
 
   return {
@@ -891,23 +905,23 @@ export function resolveCreatePrActionAvailability(input: {
 export function resolvePullActionAvailability(input: {
   gitStatus: GitStatusResult | null;
   isBusy: boolean;
-  copy?: GitCopy;
+  translate?: GitActionTranslator;
 }): { canRun: boolean; hint: string | null } {
   const { gitStatus, isBusy } = input;
-  const hints = (input.copy ?? defaultGitCopy).hints;
-  if (isBusy) return { canRun: false, hint: hints.busy };
-  if (!gitStatus) return { canRun: false, hint: hints.noStatus };
+  const translate = input.translate ?? defaultTranslate;
+  if (isBusy) return { canRun: false, hint: translate("git:gitActionBusy") };
+  if (!gitStatus) return { canRun: false, hint: translate("git:waitingForGit") };
   if (gitStatus.branch === null) {
-    return { canRun: false, hint: hints.detachedPull };
+    return { canRun: false, hint: translate("git:gitActionDetachedPull") };
   }
   if (!gitStatus.hasUpstream) {
-    return { canRun: false, hint: hints.noUpstreamPull };
+    return { canRun: false, hint: translate("git:gitActionNoUpstreamPull") };
   }
   if (gitStatus.aheadCount > 0 && gitStatus.behindCount > 0) {
-    return { canRun: false, hint: "Branch has diverged from upstream. Rebase/merge first." };
+    return { canRun: false, hint: translate("git:gitActionDiverged") };
   }
   if (gitStatus.behindCount <= 0) {
-    return { canRun: false, hint: hints.alreadyUpToDate };
+    return { canRun: false, hint: translate("git:gitActionAlreadyUpToDate") };
   }
   return { canRun: true, hint: null };
 }
@@ -934,9 +948,13 @@ export interface PromotedPullPresentation {
 export function resolvePromotedPullPresentation(input: {
   quickAction: GitQuickAction;
   isPullRunning: boolean;
+  translate?: GitActionTranslator;
 }): PromotedPullPresentation | null {
   if (!shouldPromotePullAction(input)) return null;
-  return { label: input.isPullRunning ? "Pulling..." : "Pull" };
+  const translate = input.translate ?? defaultTranslate;
+  return {
+    label: input.isPullRunning ? translate("git:gitActionPulling") : translate("git:pull"),
+  };
 }
 
 export function shouldOfferCreateBranchPrompt(input: {
@@ -968,38 +986,44 @@ export function resolveDefaultBranchActionDialogCopy(input: {
   action: DefaultBranchConfirmableAction;
   branchName: string;
   includesCommit: boolean;
-  copy?: GitCopy;
+  translate?: GitActionTranslator;
 }): DefaultBranchActionDialogCopy {
   const branchLabel = input.branchName;
-  const dialog = (input.copy ?? defaultGitCopy).defaultBranchDialog;
-  const suffix = dialog.onBranchSuffix(branchLabel);
+  const translate = input.translate ?? defaultTranslate;
+  const suffix = translate("git:defaultBranchActionOnBranch", { value0: branchLabel });
 
   if (input.action === "push" || input.action === "commit_push") {
     if (input.includesCommit) {
       return {
-        title: dialog.commitPushTitle,
-        description: dialog.commitPushDescription(suffix),
-        continueLabel: dialog.commitPushContinue(branchLabel),
+        title: translate("git:defaultBranchCommitPushTitle"),
+        description: translate("git:defaultBranchCommitPushDescription", { value0: suffix }),
+        continueLabel: translate("git:defaultBranchCommitPushContinue", {
+          value0: branchLabel,
+        }),
       };
     }
     return {
-      title: dialog.pushTitle,
-      description: dialog.pushDescription(suffix),
-      continueLabel: dialog.pushContinue(branchLabel),
+      title: translate("git:defaultBranchPushTitle"),
+      description: translate("git:defaultBranchPushDescription", { value0: suffix }),
+      continueLabel: translate("git:defaultBranchPushContinue", { value0: branchLabel }),
     };
   }
 
   if (input.includesCommit) {
     return {
-      title: dialog.featureBranchCommitPrTitle,
-      description: dialog.featureBranchCommitPrDescription(branchLabel),
-      continueLabel: dialog.createFeatureBranch,
+      title: translate("git:defaultBranchFeatureBranchCommitPrTitle"),
+      description: translate("git:defaultBranchFeatureBranchCommitPrDescription", {
+        value0: branchLabel,
+      }),
+      continueLabel: translate("git:createFeatureBranchContinue"),
     };
   }
   return {
-    title: dialog.featureBranchPrTitle,
-    description: dialog.featureBranchPrDescription(branchLabel),
-    continueLabel: dialog.createFeatureBranch,
+    title: translate("git:defaultBranchFeatureBranchPrTitle"),
+    description: translate("git:defaultBranchFeatureBranchPrDescription", {
+      value0: branchLabel,
+    }),
+    continueLabel: translate("git:createFeatureBranchContinue"),
   };
 }
 

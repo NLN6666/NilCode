@@ -228,16 +228,18 @@ async function defaultRunPowerShell(input: {
   readonly executablePath: string;
   readonly targetKind: HangTargetKind;
 }): Promise<{ readonly ok: boolean; readonly stderr: string }> {
+  const temp = process.env.TEMP;
+  const tmp = process.env.TMP;
   const invocation = buildPowerShellDumpInvocation({
     ...input,
-    temp: process.env.TEMP,
-    tmp: process.env.TMP,
+    ...(temp === undefined ? {} : { temp }),
+    ...(tmp === undefined ? {} : { tmp }),
   });
   return await new Promise((resolve) => {
     let stderr = Buffer.alloc(0);
     let settled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
-    const settle = (ok: boolean, message = stderr.toString("utf8")): void => {
+    const settle = (ok: boolean, message: unknown = stderr.toString("utf8")): void => {
       if (settled) return;
       settled = true;
       if (timeout) clearTimeout(timeout);
@@ -324,12 +326,15 @@ export function pruneHangDiagnostics(diagnosticsDir: string, retain = 3): void {
   }
   for (const entry of entries) {
     const match = HANG_FILE_PATTERN.exec(entry);
-    const filePath = match ? validRegularOwnedFile(rootReference, diagnosticsDir, entry) : null;
-    if (!match || !filePath) continue;
-    const group = groups.get(match[1]) ?? { files: [], newestMtime: 0 };
+    const incidentId = match?.[1];
+    const filePath = incidentId
+      ? validRegularOwnedFile(rootReference, diagnosticsDir, entry)
+      : null;
+    if (!incidentId || !filePath) continue;
+    const group = groups.get(incidentId) ?? { files: [], newestMtime: 0 };
     group.files.push(filePath);
     group.newestMtime = Math.max(group.newestMtime, fs.statSync(filePath).mtimeMs);
-    groups.set(match[1], group);
+    groups.set(incidentId, group);
   }
   for (const entry of entries) {
     if (!HANG_TEMP_FILE_PATTERN.test(entry)) continue;

@@ -19,9 +19,13 @@ import { cn } from "~/lib/utils";
 import {
   ISSUE_STATE_PRESENTATION_ICONS,
   PR_STATE_PRESENTATION_ICONS,
+  ISSUE_STATE_LABEL_KEYS,
+  ISSUE_STATE_SHORT_LABEL_KEYS,
   resolveIssueStatePresentation,
+  PR_STATE_LABEL_KEYS,
   resolvePrStatePresentation,
 } from "./pullRequestStatePresentation";
+import { t, useTranslation } from "~/i18n";
 
 const SIZE_CLASS_NAME = {
   sm: "size-4",
@@ -35,12 +39,13 @@ export function pullRequestStateLabel(
   state: PullRequestState,
   isDraft: boolean,
   mergeability: GitPullRequestMergeability | undefined,
+  translate: typeof t = t,
 ): string {
-  if (isDraft && state === "open") return "Draft";
-  if (state === "open" && mergeability === "conflicting") return "Has conflicts";
-  if (state === "open") return "Open";
-  if (state === "merged") return "Merged";
-  return "Closed";
+  if (isDraft && state === "open") return translate("git:column_draft");
+  if (state === "open" && mergeability === "conflicting") return translate("git:hasConflicts");
+  if (state === "open") return translate("onboarding:notification_open");
+  if (state === "merged") return translate("git:merged");
+  return translate("chat:closed");
 }
 
 // Draft always shows as draft (a draft isn't heading for a merge); an open non-draft PR
@@ -59,15 +64,16 @@ export function PullRequestStateGlyph({
   size?: GlyphSize;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const size = sizeProp ?? "sm";
   const presentation = resolvePrStatePresentation({ state, isDraft, mergeability });
   const Icon = PR_STATE_PRESENTATION_ICONS[presentation.iconKind];
   return (
     <span
       className={cn("flex shrink-0 items-center justify-center", SIZE_CLASS_NAME[size], className)}
-      title={pullRequestStateLabel(state, isDraft, mergeability)}
+      title={pullRequestStateLabel(state, isDraft, mergeability, t)}
       role="img"
-      aria-label={presentation.label}
+      aria-label={t(PR_STATE_LABEL_KEYS[presentation.label])}
     >
       <Icon className={cn("size-full", presentation.colorClass)} aria-hidden="true" />
     </span>
@@ -85,15 +91,16 @@ export function IssueStateGlyph({
   size?: GlyphSize;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const size = sizeProp ?? "sm";
   const presentation = resolveIssueStatePresentation({ state, stateReason });
   const Icon = ISSUE_STATE_PRESENTATION_ICONS[presentation.iconKind];
   return (
     <span
       className={cn("flex shrink-0 items-center justify-center", SIZE_CLASS_NAME[size], className)}
-      title={presentation.shortLabel}
+      title={t(ISSUE_STATE_SHORT_LABEL_KEYS[presentation.shortLabel])}
       role="img"
-      aria-label={presentation.label}
+      aria-label={t(ISSUE_STATE_LABEL_KEYS[presentation.label])}
     >
       <Icon className={cn("size-full", presentation.colorClass)} aria-hidden="true" />
     </span>

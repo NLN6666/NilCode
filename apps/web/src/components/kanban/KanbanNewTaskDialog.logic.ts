@@ -14,21 +14,24 @@ export function appendKanbanTaskTranscript(current: string, transcript: string):
   return `${current.trimEnd()} ${trimmed}`;
 }
 
-export function buildKanbanTaskPreview(input: {
-  readonly trimmedPrompt: string;
-  readonly firstImageName?: string | null | undefined;
-  readonly assistantSelectionCount: number;
-}): string {
+export function buildKanbanTaskPreview(
+  input: {
+    readonly trimmedPrompt: string;
+    readonly firstImageName?: string | null | undefined;
+    readonly assistantSelectionCount: number;
+  },
+  translate: (key: string, values?: Record<string, unknown>) => string,
+): string {
   if (input.trimmedPrompt.length > 0) {
     return input.trimmedPrompt;
   }
   if (input.firstImageName) {
-    return `Image: ${input.firstImageName}`;
+    return translate("common:kanban_imagePreview", { value0: input.firstImageName });
   }
   if (input.assistantSelectionCount > 0) {
-    return "Referenced assistant selection";
+    return translate("common:referencedAssistantSelection");
   }
-  return "New task";
+  return translate("common:kanban_newTask");
 }
 
 export function truncateKanbanTaskPreview(preview: string, maxLength = 80): string {

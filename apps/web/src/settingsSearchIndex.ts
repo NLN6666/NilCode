@@ -4,16 +4,18 @@
 // Layer: Route/UI support
 // Exports: entry type, the index, and the ranking helper
 
-import type { Messages } from "./i18n/locales/en";
 import { rankProviderDiscoveryItems } from "~/lib/providerDiscovery";
+import { i18n, t } from "~/i18n";
 import {
   isSettingsSectionAvailable,
-  settingRowAnchorId,
   SETTINGS_NAV_ITEMS,
   type SettingsSectionId,
 } from "./settingsNavigation";
 
-/** One searchable settings result. `target: null` marks panel-only or conditional rows. */
+/**
+ * One searchable settings result. `title` is a stable catalog key; `target` is an explicit DOM anchor,
+ * independent of the translated heading; `target: null` marks panel-only or conditional rows.
+ */
 export interface SettingsSearchEntry {
   id: string;
   section: SettingsSectionId;
@@ -22,7 +24,7 @@ export interface SettingsSearchEntry {
    * language. Anchors never come from here — a translated title slugs to nothing, since
    * `settingRowAnchorId` keeps only `[a-z0-9]`.
    */
-  title: (m: Messages) => string;
+  title: string;
   /** Match text: the English description plus synonyms in every supported language. */
   keywords: string;
   target?: string | null;
@@ -32,8 +34,7 @@ export interface SettingsSearchEntry {
 
 /** DOM id a result deep-links to, derived from its stable locale-independent id. */
 export function settingsSearchEntryTarget(entry: SettingsSearchEntry): string | null {
-  if (entry.target !== undefined) return entry.target;
-  return settingRowAnchorId(entry.id);
+  return entry.target ?? null;
 }
 
 // Mirrors row titles/descriptions rendered in settings panels. Panels stay mounted but render
@@ -42,306 +43,323 @@ export function settingsSearchEntryTarget(entry: SettingsSearchEntry): string | 
 export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   // ── General ────────────────────────────────────────────────────────────────
   {
+    id: "general:share-product-analytics",
+    section: "general",
+    title: "settings:shareProductAnalytics",
+    keywords: "Privacy consent anonymous statistics collection tracking performance Cloudflare",
+  },
+  {
+    target: "setting-language",
     id: "general:language",
     section: "general",
-    title: (m) => m.settings.general.coreDefaults.language.title,
-    keywords:
-      "Choose the display language for the Synara interface. locale i18n english chinese 语言 中文 简体中文",
+    title: "common:general_languageAria",
+    keywords: "settings:chooseTheLanguageUsedByTheInterfaceSystemEnglish",
   },
   {
+    target: "setting-default-provider",
     id: "general:default-provider",
     section: "general",
-    title: (m) => m.settings.general.coreDefaults.defaultProvider.title,
-    keywords: "Choose the provider used for new chats. agent codex claude 默认提供商 新对话",
+    title: "settings:changed_defaultProvider",
+    keywords: "settings:chooseTheProviderUsedForNewChatsAgentCodex",
   },
   {
+    target: "setting-new-threads",
     id: "general:new-threads",
     section: "general",
-    title: (m) => m.settings.general.coreDefaults.newThreads.title,
-    keywords:
-      "Pick the default workspace mode for newly created draft threads. local worktree environment 新建会话 本地 工作树",
+    title: "settings:general_newThreads",
+    keywords: "settings:pickTheDefaultWorkspaceModeForNewlyCreatedDraft2",
   },
   {
+    target: "setting-delete-worktree-on-archive",
     id: "general:delete-worktree-on-archive",
     section: "general",
-    title: (m) => m.settings.searchTitles.archiveWorktree,
-    keywords:
-      "After Archive's Undo period, remove a clean worktree only when its task has stopped and no other task uses it. Keep its branch for recovery. worktree archive cleanup disk space remove delete",
+    title: "settings:deleteWorktreeOnArchive",
+    keywords: "settings:afterArchiveSUndoPeriodRemoveACleanWorktree2",
   },
   {
+    target: "setting-sidebar-layout",
     id: "general:sidebar-layout",
     section: "general",
-    title: (m) => m.settings.searchTitles.sidebarLayout,
-    keywords: "sidebar layout classic rail panel navigation side bar 侧边栏 布局",
+    title: "settings:sidebarLayout",
+    keywords: "classic rail panel sidebar layout navigation 侧边栏 布局 经典 导航栏",
   },
   {
+    target: "setting-move-sent-messages-to-top",
     id: "general:move-sent-messages-to-top",
     section: "general",
-    title: (m) => m.settings.searchTitles.anchorSentMessagesToTop,
-    keywords:
-      "Move each sent message to the top of the conversation. Turn off to keep it at the bottom and follow replies as they stream. chat enter send scroll anchor",
+    title: "settings:moveSentMessagesToTop",
+    keywords: "settings:moveEachSentMessageToTheTopOfThe2",
   },
   {
+    target: "setting-thread-tabs",
     id: "general:thread-tabs",
     section: "general",
-    title: (m) => m.settings.searchTitles.threadTabs,
-    keywords:
-      "Show open threads as tabs in the chat header. Turn off to show only the current thread's title. horizontal tabs strip header chat title",
+    title: "settings:threadTabs",
+    keywords: "settings:showOpenThreadsAsTabsInTheChatHeader3",
   },
   {
+    target: "setting-welcome-tour",
     id: "general:welcome-tour",
     section: "general",
-    title: (m) => m.settings.general.coreDefaults.welcomeTour.title,
-    keywords:
-      "Replay the first-run setup: feature tour, provider selection, appearance, and first project. onboarding welcome wizard getting started setup 欢迎导览 首次使用 引导",
+    title: "settings:welcomeTour",
+    keywords: "settings:replayTheFirstRunSetupFeatureTourProviderSelection2",
   },
   {
+    target: "setting-project-order",
     id: "general:project-order",
     section: "general",
-    title: (m) => m.settings.general.sidebarOrganization.projectOrder.title,
-    keywords:
-      "Controls how projects are arranged in the main sidebar. sort updated created manual 项目排序 侧边栏",
+    title: "settings:general_projectOrder",
+    keywords: "settings:controlsHowProjectsAreArrangedInTheMainSidebar2",
   },
   {
+    target: "setting-thread-order",
     id: "general:thread-order",
     section: "general",
-    title: (m) => m.settings.general.sidebarOrganization.threadOrder.title,
-    keywords:
-      "Controls how threads are arranged inside each project in the main sidebar. sort updated created 会话排序 侧边栏",
+    title: "settings:general_threadOrder",
+    keywords: "settings:controlsHowThreadsAreArrangedInsideEachProjectIn2",
   },
   {
+    target: "setting-working-and-unread-on-top",
     id: "general:thread-attention-first",
     section: "general",
-    title: (m) => m.settings.searchTitles.threadAttentionFirst,
-    keywords:
-      "With Recently active order, move working and unread threads above the rest. sort unread jump reorder pin top hold",
+    title: "workspace:workingAndUnreadOnTop",
+    keywords: "settings:withRecentlyActiveOrderMoveWorkingAndUnreadThreads",
   },
   {
+    target: "setting-chats",
     id: "general:chats-section",
     section: "general",
-    title: (m) => m.settings.general.sidebarSections.chats.title,
-    keywords:
-      "Show the standalone Chats list in the sidebar footer chats not tied to a project. sidebar section 对话 侧边栏板块",
+    title: "workspace:general_chats",
+    keywords: "settings:showTheStandaloneChatsListInTheSidebarFooter2",
   },
   {
+    target: "setting-hubs",
     id: "general:groups-section",
     section: "general",
-    title: (m) => m.settings.general.sidebarSections.groups.title,
-    keywords: "Show the Hubs tab in the sidebar switcher. sidebar section content outbox groups",
+    title: "common:hubs",
+    keywords: "settings:showTheHubsTabInTheSidebarSwitcherSidebar",
   },
   {
+    target: "setting-automation-runs",
     id: "general:automation-run-threads",
     section: "general",
-    title: (m) => m.settings.general.sidebarSections.automationRuns.title,
-    keywords:
-      "Show the thread each standalone automation run creates in the sidebar. hide automation run threads clutter scheduled",
+    title: "settings:automationRuns",
+    keywords: "settings:showTheThreadEachStandaloneAutomationRunCreatesIn",
   },
   {
+    target: "setting-open-by-default",
     id: "general:environment-default-open",
     section: "general",
-    title: (m) => m.settings.general.environmentPanel.defaultOpen.title,
-    keywords:
-      "Open the chat Environment panel automatically on normal threads. default closed open environment panel preference 环境面板 默认展开",
+    title: "settings:openByDefault",
+    keywords: "settings:openTheChatEnvironmentPanelAutomaticallyOnNormalThreads",
   },
   {
+    target: "setting-subagents",
     id: "general:environment-subagents",
     section: "general",
-    title: (m) => m.settings.searchTitles.subagents,
-    keywords:
-      "Show a compact summary of the chat's subagents in the Environment panel and open the full list in the right dock. agents roster lineage running done stop background",
+    title: "chat:subagents",
+    keywords: "settings:showACompactSummaryOfTheChatSSubagents2",
   },
   {
+    target: "setting-usage",
     id: "general:environment-usage",
     section: "general",
-    title: (m) => m.settings.general.environmentPanel.usage.title,
-    keywords: "Show the provider usage row in the chat Environment panel. 用量 环境面板",
+    title: "chat:general_usage",
+    keywords: "settings:showTheProviderUsageRowInTheChatEnvironment",
   },
   {
+    target: "setting-repository",
     id: "general:environment-repository",
     section: "general",
-    title: (m) => m.settings.general.environmentPanel.repository.title,
-    keywords:
-      "Show the GitHub repository link in the chat Environment panel. git changes worktree 仓库 环境面板",
+    title: "git:general_repository",
+    keywords: "settings:showTheGitHubRepositoryLinkInTheChatEnvironment",
   },
   {
+    target: "setting-pull-request",
     id: "general:environment-pull-request",
     section: "general",
-    title: (m) => m.settings.general.environmentPanel.pullRequest.title,
-    keywords:
-      "Show the open pull request CI checks and review comments in the chat Environment panel. pr fix github 拉取请求 环境面板",
+    title: "git:general_environmentPullRequest",
+    keywords: "settings:showTheOpenPullRequestCIChecksAndReview",
   },
   {
+    target: "setting-editor",
     id: "general:environment-editor",
     section: "general",
-    title: (m) => m.settings.general.environmentPanel.editor.title,
-    keywords:
-      "Show the Editor section in-app editor view and Open in editor picker in the chat Environment panel. 编辑器 环境面板",
+    title: "chat:general_editor",
+    keywords: "settings:showTheEditorSectionInAppEditorViewAnd",
   },
   {
+    target: "setting-recap",
     id: "general:environment-recap",
     section: "general",
-    title: (m) => m.settings.general.environmentPanel.recap.title,
-    keywords: "Show the auto-generated chat recap in the Environment panel. 摘要 环境面板",
+    title: "chat:recap_label",
+    keywords: "settings:showTheAutoGeneratedChatRecapInTheEnvironment",
   },
   {
+    target: "setting-pinned-messages",
     id: "general:environment-pinned",
     section: "general",
-    title: (m) => m.settings.general.environmentPanel.pinned.title,
-    keywords: "Show the pinned-messages checklist in the Environment panel. 置顶消息 环境面板",
+    title: "settings:general_pinnedMessages",
+    keywords: "settings:showThePinnedMessagesChecklistInTheEnvironmentPanel",
   },
   {
+    target: "setting-project-instructions",
     id: "general:environment-instructions",
     section: "general",
-    title: (m) => m.settings.general.environmentPanel.instructions.title,
-    keywords: "Show project-level instructions in the Environment panel. 项目指令 环境面板",
+    title: "workspace:general_projectInstructions",
+    keywords: "settings:showProjectLevelInstructionsInTheEnvironmentPanel",
   },
   {
+    target: "setting-notepad",
     id: "general:environment-notepad",
     section: "general",
-    title: (m) => m.settings.general.environmentPanel.notepad.title,
-    keywords: "Show the per-thread notepad in the Environment panel. 记事本 环境面板",
+    title: "chat:general_notepad",
+    keywords: "settings:showThePerThreadNotepadInTheEnvironmentPanel",
   },
 
   // ── Appearance ───────────────────────────────────────────────────────────────
   {
+    target: "setting-ascii-background",
     id: "appearance:ascii-background",
     section: "appearance",
-    title: (m) => m.settings.searchTitles.asciiBackground,
-    keywords: "animated empty chat landing background field waves ripples reduced motion disable",
+    title: "settings:asciiBackground",
+    keywords: "settings:asciiBackgroundSearch",
   },
   {
+    target: "setting-theme",
     id: "appearance:theme",
     section: "appearance",
-    title: (m) => m.settings.appearance.theme.title,
-    keywords: "Choose how Synara looks across the app. dark light system color 主题 深色 浅色 外观",
+    title: "onboarding:changed_theme",
+    keywords: "settings:chooseHowSynaraLooksAcrossTheAppDarkLight",
   },
   {
     id: "appearance:app-icon",
     section: "appearance",
-    title: (m) => m.settings.appearance.appIcon.title,
-    keywords: "Choose the icon Synara uses in the dock or taskbar desktop application logo.",
+    title: "settings:appIcon",
+    keywords: "settings:chooseTheIconSynaraUsesInTheDockOr2",
+    target: null,
   },
   {
     id: "appearance:custom-title-bar",
     section: "appearance",
-    title: (m) => m.settings.appearance.customTitleBar.title,
-    keywords:
-      "frameless window system title bar Windows Linux caption controls minimize maximize close chrome",
+    title: "settings:useCustomTitleBar",
+    keywords: "settings:framelessWindowSystemTitleBarWindowsLinuxCaptionControls",
     target: null,
   },
   {
+    target: "setting-use-system-ui-font",
     id: "appearance:system-ui-font",
     section: "appearance",
-    title: (m) => m.settings.appearance.systemUiFont.title,
-    keywords: "Use the operating system interface font throughout Synara. 系统界面字体 字体",
+    title: "settings:useSystemUIFont",
+    keywords: "settings:useTheOperatingSystemInterfaceFontThroughoutSynara",
   },
   {
+    target: "setting-ui-density",
     id: "appearance:ui-density",
     section: "appearance",
-    title: (m) => m.settings.appearance.uiDensity.title,
-    keywords:
-      "Control spacing in the sidebar, composer, chat gutters, and settings rows without changing font size. compact comfortable 界面密度 紧凑 宽松 间距",
+    title: "settings:changed_uiDensity",
+    keywords: "settings:controlSpacingInTheSidebarComposerChatGuttersAnd2",
   },
   {
+    target: "setting-chat-width",
     id: "appearance:chat-width",
     section: "appearance",
-    title: (m) => m.settings.appearance.chatWidth.title,
-    keywords:
-      "Control how wide the chat column grows so tables and wide content get more room. standard wide full",
+    title: "settings:chatWidth",
+    keywords: "settings:controlHowWideTheChatColumnGrowsSoTables",
   },
   {
+    target: "setting-base-font-size",
     id: "appearance:base-font-size",
     section: "appearance",
-    title: (m) => m.settings.appearance.baseFontSize.title,
-    keywords:
-      "Adjust the app text base in pixels. Chat and UI typography scale proportionally. font 基础字号 字体大小",
+    title: "settings:changed_baseFontSize",
+    keywords: "settings:adjustTheAppTextBaseInPixelsChatAnd",
   },
   {
+    target: "setting-terminal-font-size",
     id: "appearance:terminal-font-size",
     section: "appearance",
-    title: (m) => m.settings.appearance.terminalFontSize.title,
-    keywords: "Adjust terminal text independently from the app and chat font size. 终端字号",
+    title: "settings:changed_terminalFontSize",
+    keywords: "settings:adjustTerminalTextIndependentlyFromTheAppAndChat",
   },
   {
+    target: "setting-terminal-font",
     id: "appearance:terminal-font",
     section: "appearance",
-    title: (m) => m.settings.appearance.terminalFont.title,
-    keywords:
-      "Type any monospace font installed on this device e.g. Fira Code. system monospace family 终端字体 等宽字体",
+    title: "settings:changed_terminalFont",
+    keywords: "settings:typeAnyMonospaceFontInstalledOnThisDeviceE",
   },
   {
     id: "appearance:font-smoothing",
     section: "appearance",
-    title: (m) => m.settings.searchTitles.fontSmoothing,
-    keywords: "Use macOS-style antialiasing for lighter, crisper text rendering.",
+    title: "settings:changed_fontSmoothing",
+    keywords: "settings:useMacOSStyleAntialiasingForLighterCrisperTextRendering",
     target: null,
   },
   {
+    target: "setting-time-format",
     id: "appearance:time-format",
     section: "appearance",
-    title: (m) => m.settings.appearance.timeFormat.title,
-    keywords:
-      "System default follows your browser or OS clock preference. timestamp 12-hour 24-hour locale 时间格式 12 小时制 24 小时制",
+    title: "settings:changed_timeFormat",
+    keywords: "settings:systemDefaultFollowsYourBrowserOrOSClockPreference2",
   },
 
   // ── Notifications ─────────────────────────────────────────────────────────────
   {
+    target: "setting-activity-toasts",
     id: "notifications:activity-toasts",
     section: "notifications",
-    title: (m) => m.settings.notifications.toasts.title,
-    keywords:
-      "Show an in-app toast when a chat or managed terminal agent finishes or needs input. alerts 应用内提示 活动提醒",
+    title: "settings:changed_activityToasts",
+    keywords: "settings:showAnInAppToastWhenAChatOr2",
   },
   {
+    target: "setting-desktop-notifications",
     id: "notifications:desktop-notifications",
     section: "notifications",
-    title: (m) => m.settings.notifications.desktop.title,
-    keywords:
-      "Show an OS notification when a chat or managed terminal agent finishes or needs input while the app is in the background. alerts toast 桌面通知 系统通知",
+    title: "settings:changed_desktopNotifications",
+    keywords: "settings:showAnOSNotificationWhenAChatOrManaged2",
   },
   {
+    target: "setting-wait-for-subagents",
     id: "notifications:wait-for-subagents",
     section: "notifications",
-    title: (m) => m.settings.searchTitles.waitForSubagents,
-    keywords:
-      "Alert once the agent and all of its background subagents have finished. Turn this off to be alerted each time the agent or one of its subagents stops. alerts notification",
+    title: "settings:waitForSubagents",
+    keywords: "settings:alertOnceTheAgentAndAllOfItsBackground2",
   },
 
   // ── AppSnap ───────────────────────────────────────────────────────────────────
   {
+    target: "setting-enable-appsnap",
     id: "appsnap:enable",
     section: "appsnap",
-    title: (m) => m.settings.appSnap.capture.enable.title,
-    keywords:
-      "Capture the frontmost macOS app window with a configurable two-key shortcut and add it to a recent task. appshot screenshot snap window capture hotkey 截图 窗口捕获",
+    title: "settings:enableAppSnap",
+    keywords: "settings:captureTheFrontmostMacOSAppWindowWithAConfigurable",
   },
   {
+    target: "setting-shortcut",
     id: "appsnap:shortcut",
     section: "appsnap",
-    title: (m) => m.settings.appSnap.capture.shortcut.title,
-    keywords:
-      "Press the left and right Option keys at the same time. hotkey chord alt keys 快捷键 组合键",
+    title: "settings:shortcut",
+    keywords: "settings:pressTheLeftAndRightOptionKeysAtThe",
   },
   {
+    target: "setting-destination",
     id: "appsnap:destination",
     section: "appsnap",
-    title: (m) => m.settings.appSnap.capture.destination.title,
-    keywords:
-      "Snaps join the task you interacted with in the last minute, otherwise a fresh task opens. automatic target composer 目标位置 自动",
+    title: "git:destination",
+    keywords: "settings:snapsJoinTheTaskYouInteractedWithInThe",
   },
   {
+    target: "setting-capture-sound",
     id: "appsnap:capture-sound",
     section: "appsnap",
-    title: (m) => m.settings.appSnap.capture.sound.title,
-    keywords:
-      "Play a short shutter cue when a window is captured. sound effect audio mute 截图提示音 快门音",
+    title: "settings:captureSound",
+    keywords: "settings:playAShortShutterCueWhenAWindowIs2",
   },
   {
     id: "appsnap:permissions",
     section: "appsnap",
-    title: (m) => m.settings.appSnap.permissions.status.title,
-    keywords:
-      "Input Monitoring and Screen Recording permissions for AppSnap in macOS System Settings. privacy security recheck grant",
+    title: "settings:permissionStatus",
+    keywords: "settings:inputMonitoringAndScreenRecordingPermissionsForAppSnapIn",
     // Renders only in the macOS desktop app, so no stable anchor on other platforms.
     target: null,
   },
@@ -350,143 +368,154 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   {
     id: "computer:status",
     section: "computer",
-    title: (m) => m.settings.searchTitles.computerStatus,
-    keywords:
-      "Whether agents can see and control this computer's desktop right now. desktop backend beta availability health kwin hyprland nested wayland linux mac macos screen recording accessibility computer use control status set up install plugin repair",
+    title: "settings:computerStatus",
+    keywords: "settings:whetherAgentsCanSeeAndControlThisComputerS",
     // The status row is conditional and its title is dynamic (Ready /
     // Reconnecting / Unavailable), so link to the section rather than an
     // anchored row.
     target: null,
   },
   {
+    target: "setting-preview",
     id: "computer:open-automatically",
     section: "computer",
-    title: (m) => m.settings.searchTitles.computerPreview,
-    keywords:
-      "Show the in-chat Computer preview the first time an agent acts on the desktop, and choose its size. open automatically compact large. auto open computer use",
+    title: "workspace:settings_gitToastPreview",
+    keywords: "settings:showTheInChatComputerPreviewTheFirstTime",
+    applies: () => true,
   },
   {
+    target: "setting-computer-control",
     id: "computer:how-agents-use-the-desktop",
     section: "computer",
-    title: (m) => m.settings.searchTitles.computerControl,
-    keywords:
-      "Let the agent use the desktop in any chat. Approval gates and Stop still apply. enable toggle permission desktop agent computer use control",
+    title: "settings:computerControl",
+    keywords: "settings:letTheAgentUseTheDesktopInAnyChat2",
   },
   {
+    target: "setting-cursor-colors",
     id: "computer:cursor-colors",
     section: "computer",
-    title: (m) => m.settings.searchTitles.computerCursorColors,
-    keywords:
-      "The agent pointer's colors: stock monochrome by default, or custom fill and rim. agent cursor arrow pointer color hex custom",
+    title: "settings:cursorColors",
+    keywords: "settings:theAgentPointerSColorsStockMonochromeByDefault",
+  },
+  {
+    id: "computer:always-allowed",
+    section: "computer",
+    title: "settings:alwaysAllowed",
+    keywords: "settings:durablePerAppAlwaysAllowGrantsFromComputerApprovals",
+    target: null,
   },
 
   // ── Behavior ──────────────────────────────────────────────────────────────────
   {
+    target: "setting-side-chat-expiry",
     id: "behavior:sidechat-expiry",
     section: "behavior",
-    title: (m) => m.settings.searchTitles.sidechatExpiry,
-    keywords:
-      "Expire a side chat after it sits idle for this long. sidechat inactivity timeout 1 hour 24 hours never disable",
+    title: "settings:sideChatExpiry",
+    keywords: "settings:expireASideChatAfterItSitsIdleFor",
   },
   {
+    target: "setting-follow-up-behavior",
     id: "behavior:follow-up-behavior",
     section: "behavior",
-    title: (m) => m.settings.behavior.followUpBehavior.title,
-    keywords:
-      "Choose whether messages sent during an active turn wait in the queue or steer the current run. Ctrl Cmd Enter opposite send 追问 排队 引导",
+    title: "settings:followUpBehavior",
+    keywords: "settings:chooseWhetherMessagesSentDuringAnActiveTurnWait",
   },
   {
+    target: "setting-enter-while-dictating",
     id: "behavior:enter-while-dictating",
     section: "behavior",
-    title: (m) => m.settings.searchTitles.voiceEnterBehavior,
-    keywords:
-      "Choose what Enter does while a voice note is recording: stop and transcribe into the composer, or stop and send the message. voice dictation microphone transcribe",
+    title: "settings:enterWhileDictating",
+    keywords: "settings:chooseWhatEnterDoesWhileAVoiceNoteIs2",
   },
   {
+    target: "setting-assistant-output",
     id: "behavior:assistant-output",
     section: "behavior",
-    title: (m) => m.settings.behavior.assistantOutput.title,
-    keywords: "Show token-by-token output while a response is in progress. streaming 助手输出 流式",
+    title: "settings:changed_assistantOutput",
+    keywords: "settings:showTokenByTokenOutputWhileAResponseIs2",
   },
   {
+    target: "setting-fold-finished-turns",
     id: "behavior:fold-finished-turns",
     section: "behavior",
-    title: (m) => m.settings.searchTitles.foldFinishedTurns,
-    keywords:
-      "Hide a finished turn's tool calls and intermediate messages behind a single Worked for line. A turn stays open while it runs or while its background subagents are still working. collapse steps transcript",
+    title: "settings:foldFinishedTurns",
+    keywords: "settings:hideAFinishedTurnSToolCallsAndIntermediate",
   },
   {
+    target: "setting-effort-slider",
     id: "behavior:effort-slider",
     section: "behavior",
-    title: (m) => m.settings.behavior.effortSlider.title,
-    keywords:
-      "Show reasoning effort as a slider in the composer model menu once a chat has started. fast mode reasoning thinking level picker 推理档位 滑块 快速模式",
+    title: "settings:effortSlider",
+    keywords: "settings:showReasoningEffortAsASliderInTheComposer",
   },
   {
+    target: "setting-automatically-open-simulator",
     id: "behavior:auto-open-simulator",
     section: "behavior",
-    title: (m) => m.settings.behavior.autoOpenDevicePane.title,
-    keywords:
-      "Disable automatic iOS Simulator device pane opening. Use Simulator.app without the mirrored panel reopening. background launch",
+    title: "settings:automaticallyOpenSimulator",
+    keywords: "settings:disableAutomaticIOSSimulatorDevicePaneOpeningUseSimulator",
   },
   {
+    target: "setting-open-pull-requests-and-issues",
     id: "behavior:github-link-destination",
     section: "behavior",
-    title: (m) => m.settings.searchTitles.githubLinkOpenTarget,
-    keywords:
-      "Choose where GitHub links in chats open. built-in review view in-app browser external browser destination pr issue",
+    title: "settings:openPullRequestsAndIssues",
+    keywords: "settings:chooseWhereGitHubLinksInChatsOpenBuiltIn",
   },
   {
+    target: "setting-pull-request-diff-colors",
     id: "behavior:pull-request-diff-colors",
     section: "behavior",
-    title: (m) => m.settings.behavior.pullRequestDiffColors.title,
-    keywords:
-      "Show additions in green and deletions in red in pull request summaries. pr diff stats green red 拉取请求 差异 配色",
+    title: "settings:pullRequestDiffColors",
+    keywords: "settings:showAdditionsInGreenAndDeletionsInRedIn2",
   },
   {
+    target: "setting-include-fork-upstreams",
     id: "behavior:include-fork-upstreams",
     section: "behavior",
-    title: (m) => m.settings.searchTitles.githubIncludeUpstreams,
-    keywords:
-      "Also list pull requests and issues from each project's other GitHub remotes, such as the repository a fork was made from. code review inbox github upstream remote fork",
+    title: "settings:includeForkUpstreams",
+    keywords: "settings:alsoListPullRequestsAndIssuesFromEachProject2",
   },
   {
+    target: "setting-diff-layout",
     id: "behavior:diff-layout",
     section: "behavior",
-    title: (m) => m.settings.searchTitles.diffLayout,
-    keywords: "Default stacked split review panel side by side unified layout per thread",
+    title: "settings:diffLayout",
+    keywords: "settings:defaultStackedSplitReviewPanelSideBySideUnified",
   },
   {
+    target: "setting-diff-line-wrapping",
     id: "behavior:diff-line-wrapping",
     section: "behavior",
-    title: (m) => m.settings.behavior.diffLineWrapping.title,
-    keywords: "Set the default wrap state when the diff panel opens. word wrap 差异自动换行",
+    title: "settings:changed_diffLineWrapping",
+    keywords: "settings:setTheDefaultWrapStateWhenTheDiffPanel",
   },
   {
+    target: "setting-delete-confirmation",
     id: "behavior:delete-confirmation",
     section: "behavior",
-    title: (m) => m.settings.behavior.deleteConfirmation.title,
-    keywords: "Ask before deleting a thread and its chat history. safety confirm 删除确认",
+    title: "settings:changed_deleteConfirmation",
+    keywords: "settings:askBeforeDeletingAThreadAndItsChatHistory2",
   },
   {
+    target: "setting-archive-confirmation",
     id: "behavior:archive-confirmation",
     section: "behavior",
-    title: (m) => m.settings.behavior.archiveConfirmation.title,
-    keywords: "Ask before archiving a thread. safety confirm 归档确认",
+    title: "settings:changed_archiveConfirmation",
+    keywords: "settings:askBeforeArchivingAThreadSafetyConfirm",
   },
   {
+    target: "setting-terminal-close-confirmation",
     id: "behavior:terminal-close-confirmation",
     section: "behavior",
-    title: (m) => m.settings.behavior.terminalCloseConfirmation.title,
-    keywords:
-      "Ask before closing a terminal tab and clearing its history. safety confirm 终端关闭确认",
+    title: "settings:changed_terminalCloseConfirmation",
+    keywords: "settings:askBeforeClosingATerminalTabAndClearingIts2",
   },
   {
     id: "behavior:keep-computer-awake",
     section: "behavior",
-    title: (m) => m.settings.searchTitles.keepComputerAwake,
-    keywords:
-      "caffeinate sleep macOS prevent sleep keep awake agent working system on off idle active",
+    title: "common:keepComputerAwake",
+    keywords: "settings:caffeinateSleepMacOSPreventSleepKeepAwakeAgentWorking",
     // Row only renders on macOS with caffeinate available.
     target: null,
   },
@@ -495,9 +524,8 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   {
     id: "shortcuts:keyboard-shortcuts",
     section: "shortcuts",
-    title: (m) => m.settings.searchTitles.keyboardShortcuts,
-    keywords:
-      "Every keyboard shortcut available in Synara: change, add, remove, or reset them. keybindings hotkeys key combo cmd ctrl customize rebind unassigned reset defaults",
+    title: "common:advanced_keybindings",
+    keywords: "settings:everyKeyboardShortcutAvailableInSynaraChangeAddRemove",
     target: null,
   },
 
@@ -505,8 +533,8 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   {
     id: "worktrees:managed-worktrees",
     section: "worktrees",
-    title: (m) => m.settings.searchTitles.managedWorktrees,
-    keywords: "Review and clean up the worktrees created by Synara. git branch remove",
+    title: "onboarding:managedWorktrees",
+    keywords: "settings:reviewAndCleanUpTheWorktreesCreatedBySynara",
     target: null,
   },
 
@@ -514,104 +542,91 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   {
     id: "archived:archived-threads",
     section: "archived",
-    title: (m) => m.settings.searchTitles.archivedThreads,
-    keywords: "View and restore archived threads. unarchive history",
+    title: "settings:archivedThreads",
+    keywords: "settings:viewAndRestoreArchivedThreadsUnarchiveHistory",
     target: null,
   },
 
   // ── Models ────────────────────────────────────────────────────────────────────
   {
+    target: "setting-source-control-writing-style",
     id: "models:source-control-writing-style",
     section: "models",
-    title: (m) => m.settings.searchTitles.sourceControlWritingStyle,
-    keywords:
-      "Repository conventions Conventional Commits custom instructions commit messages PR titles descriptions",
+    title: "settings:sourceControlWritingStyle",
+    keywords: "settings:repositoryConventionsConventionalCommitsCustomInstructionsCommitMessagesPR",
   },
   {
+    target: "setting-git-writing-model",
     id: "models:git-writing-model",
     section: "models",
-    title: (m) => m.settings.models.generationDefaults.gitWritingModel.title,
-    keywords:
-      "Used for generated commit messages, PR titles, and branch names. Git 文案模型 提交信息 分支名",
+    title: "settings:changed_gitWritingModel",
+    keywords: "settings:usedForGeneratedCommitMessagesPRTitlesAndBranch",
   },
   {
+    target: "setting-saved-model-slugs",
     id: "models:saved-model-slugs",
     section: "models",
-    title: (m) => m.settings.models.custom.saved.title,
-    keywords: "Add custom model slugs for supported providers. custom model 自定义模型 模型标识",
-  },
-  {
-    id: "models:cloud-catalog",
-    section: "models",
-    title: (m) => m.settings.models.catalog.cloud.title,
-    keywords:
-      "Synara reads the public models.dev catalog so newly released models show up without waiting for an update. refresh 云端模型目录 刷新",
-  },
-  {
-    id: "models:default-models",
-    section: "models",
-    title: (m) => m.settings.models.defaults.picker.title,
-    keywords:
-      "Pick the model each provider starts a new chat on. default model new chat 默认模型 新会话",
-  },
-  {
-    id: "models:visible-models",
-    section: "models",
-    title: (m) => m.settings.models.visible.picker.title,
-    keywords:
-      "Turn off the models you never reach for. hide visibility picker 可见模型 隐藏 选择器",
+    title: "settings:models_savedModelSlugs",
+    keywords: "settings:addCustomModelSlugsForSupportedProvidersCustomModel",
   },
 
   // ── Providers ─────────────────────────────────────────────────────────────────
   {
+    target: "setting-resume-after-usage-limits",
+    id: "providers:usage-limit-recovery",
+    section: "providers",
+    title: "settings:resumeAfterUsageLimits",
+    keywords: "settings:resumeAfterUsageLimitsDescription",
+  },
+  {
+    target: "setting-keep-synara-responsive",
     id: "providers:cpu-priority",
     section: "providers",
-    title: (m) => m.settings.searchTitles.lowerProviderProcessPriority,
-    keywords:
-      "Lower agent CPU scheduling priority performance load nice responsiveness restart sessions",
+    title: "settings:keepSynaraResponsive",
+    keywords: "settings:lowerAgentCPUSchedulingPriorityPerformanceLoadNiceResponsiveness",
   },
   {
+    target: "setting-automatic-cli-update-checks",
     id: "providers:automatic-cli-update-checks",
     section: "providers",
-    title: (m) => m.settings.providers.updates.autoChecks.title,
-    keywords:
-      "Check Codex Claude and other provider CLIs for newer versions in the background. updates upgrade disable nags 自动检查更新",
+    title: "settings:providerUpdates_automaticCliUpdateChecks",
+    keywords: "settings:checkCodexClaudeAndOtherProviderCLIsForNewer2",
   },
   {
+    target: "setting-enabled-providers",
     id: "providers:enabled-providers",
     section: "providers",
-    title: (m) => m.settings.providers.activity.enabledTitle,
-    keywords:
-      "Allow background checks and new turns. Enabling a provider does not install it or sign it in. enable disable activity",
+    title: "settings:enabledProviders",
+    keywords: "settings:allowBackgroundChecksAndNewTurnsEnablingAProvider",
   },
   {
-    id: "providers:visible-providers",
+    target: "setting-available-clis",
+    id: "providers:available-clis",
     section: "providers",
-    title: (m) => m.settings.providers.picker.visible.title,
-    keywords:
-      "Show or hide installed providers in the picker and drag them into your preferred order. visible providers visibility order",
+    title: "settings:availableCLIs",
+    keywords: "settings:showOrHideInstalledProvidersInThePickerAnd",
   },
   {
+    target: "setting-provider-updates",
     id: "providers:provider-updates",
     section: "providers",
-    title: (m) => m.settings.providers.updates.providerUpdates.title,
-    keywords:
-      "Update installed provider tools that Synara can safely update. upgrade cli 提供商更新",
+    title: "settings:providerUpdates_providerUpdates",
+    keywords: "settings:updateInstalledProviderToolsThatSynaraCanSafelyUpdate",
   },
   {
+    target: "setting-installed-clis",
     id: "providers:installed-clis",
     section: "providers",
-    title: (m) => m.settings.providers.tools.installed.title,
-    keywords:
-      "Review provider versions and update tools. binary overrides path install 已安装的 CLI 可执行文件路径",
+    title: "settings:providers_installedClis",
+    keywords: "settings:reviewProviderVersionsAndUpdateToolsBinaryOverridesPath",
   },
 
   // ── Skills ────────────────────────────────────────────────────────────────────
   {
     id: "skills:skills",
     section: "skills",
-    title: (m) => m.settings.skills.sectionTitle,
-    keywords: "Every skill found across providers, with toggles to control availability. agent",
+    title: "common:plugin_skillsSection",
+    keywords: "settings:everySkillFoundAcrossProvidersWithTogglesToControl",
     target: null,
   },
 
@@ -619,91 +634,121 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   {
     id: "usage:usage",
     section: "usage",
-    title: (m) => m.settings.searchTitles.usageAndBilling,
-    keywords: "Remaining quota and credits for each signed-in provider. limits credits",
+    title: "settings:usageAndBilling",
+    keywords: "settings:remainingQuotaAndCreditsForEachSignedInProvider",
     target: null,
   },
 
   {
     id: "usage:sidebar-rings",
     section: "usage",
-    title: (m) => m.settings.searchTitles.sidebarUsage,
-    keywords:
-      "Choose up to two provider accounts for usage rings at the bottom of the sidebar rail. multiple Claude accounts quota",
+    title: "settings:sidebarUsageRings",
+    keywords: "settings:chooseUpToTwoProviderAccountsForUsageRings",
     target: null,
   },
 
   // ── Advanced ──────────────────────────────────────────────────────────────────
   {
+    target: "setting-keybindings",
     id: "advanced:keybindings",
     section: "advanced",
-    title: (m) => m.settings.advanced.developerTools.keybindings.title,
-    keywords:
-      "Open the persisted keybindings.json file to edit advanced bindings directly. shortcuts 按键绑定 快捷键",
+    title: "common:advanced_keybindings",
+    keywords: "settings:openThePersistedKeybindingsJsonFileToEditAdvanced2",
   },
   {
+    target: "setting-recovery-tools",
     id: "advanced:recovery-tools",
     section: "advanced",
-    title: (m) => m.settings.advanced.developerTools.recovery.title,
-    keywords:
-      "Rebuild local project indexes without clearing existing chats when the local state gets out of sync. 恢复工具 修复状态 重建索引",
-  },
-  {
-    id: "mcpServers:codex",
-    section: "mcpServers",
-    title: (m) => m.settings.searchTitles.codexMcpServers,
-    keywords:
-      "Enable disable the MCP servers Codex uses. config.toml CODEX_HOME mcp_servers stdio http toggle",
-    target: null,
-  },
-  {
-    id: "mcpServers:claude",
-    section: "mcpServers",
-    title: (m) => m.settings.searchTitles.claudeMcpServers,
-    keywords:
-      "Enable disable the MCP servers Claude uses. claude.json mcpServers disabled stdio http toggle",
-    target: null,
+    title: "settings:advanced_recoveryTools",
+    keywords: "settings:advanced_recoveryToolsDescription",
   },
   {
     id: "connectors:catalog",
     section: "connectors",
-    title: (m) => m.settingsNav.sections.connectors.label,
-    keywords:
-      "Connect Supabase Cloudflare Linear Notion Sentry Stripe Neon Atlassian PostHog remote MCP server sign in OAuth custom URL apps tools",
+    title: "settings:connectors",
+    keywords: "settings:connectorsSearch",
     target: null,
     applies: () => isSettingsSectionAvailable("connectors"),
   },
   {
+    target: "setting-external-mcp-integrations",
     id: "integrations:external-mcp",
     section: "integrations",
-    title: (m) => m.settings.searchTitles.externalMcpIntegrations,
+    title: "settings:externalMCPIntegrations",
+    keywords: "settings:pairCodexClaudeAndOtherLocalMCPClientsWith",
+  },
+  // ── Connections ───────────────────────────────────────────────────────
+  {
+    id: "connections:this-computer",
+    section: "connections",
+    title: "Control this computer",
     keywords:
-      "Pair Codex Claude and other local MCP clients with scoped project access. revoke credential task create wait read worktree approval 外部 MCP 集成 配对 撤销",
-    // The panel swaps between a create form and a setup flow, so no row is always mounted.
+      "Devices that can control this Mac or computer. allow connections add iphone ipad qr code pairing approve revoke access trusted devices",
     target: null,
   },
   {
+    id: "connections:keep-awake",
+    section: "connections",
+    title: "Keep this computer awake",
+    keywords:
+      "Keep the Mac awake while plugged in and remote access is on. prevent sleep power battery",
+    target: null,
+  },
+  {
+    id: "connections:other-computers",
+    section: "connections",
+    title: "Control other devices",
+    keywords:
+      "Computers you can control from this one. host server laptop connect open remote relay back to this computer disconnect forget pairing code share workspace discoverable",
+    target: null,
+  },
+  {
+    id: "connections:ssh",
+    section: "connections",
+    title: "SSH",
+    keywords:
+      "Link a headless machine with a short code, or forward the SSH port. device code link approve vps cli browserless",
+    target: null,
+  },
+  {
+    id: "connections:advanced",
+    section: "connections",
+    title: "Account devices and sessions",
+    keywords:
+      "Advanced: devices signed in to your account, active sessions, and unlinking this machine. revoke sign out lost stolen last used end session unlink",
+    target: null,
+  },
+  {
+    target: "setting-version",
     id: "advanced:version",
     section: "advanced",
-    title: (m) => m.settings.advanced.about.version.title,
-    keywords: "Current application version. about 版本 关于",
+    title: "settings:advanced_version",
+    keywords: "settings:currentApplicationVersionAbout",
   },
   {
+    target: "setting-what-s-new-since-0-9-2",
     id: "advanced:feature-tour",
     section: "advanced",
-    title: (m) => m.settings.advanced.about.featureTour.title,
-    keywords:
-      "Replay feature tour redesigned workspace provider accounts Code review slider updates",
+    title: "settings:whatSNewSince092",
+    keywords: "settings:replayFeatureTourRedesignedWorkspaceProviderAccountsCodeReview",
   },
   {
+    target: "setting-release-history",
     id: "advanced:release-history",
     section: "advanced",
-    title: (m) => m.settings.advanced.about.releaseHistory.title,
-    keywords:
-      "A running log of every update, newest first. changelog what's new about release notes 更新历史 发行说明",
+    title: "common:advanced_releaseHistory",
+    keywords: "settings:aRunningLogOfEveryUpdateNewestFirstChangelog",
   },
 ] as const;
 
+const SETTINGS_SECTION_LABEL_BY_ID = new Map<SettingsSectionId, string>(
+  SETTINGS_NAV_ITEMS.map((item) => [item.id, item.label]),
+);
+
+export function settingsSectionLabel(section: SettingsSectionId): string {
+  const label = SETTINGS_SECTION_LABEL_BY_ID.get(section);
+  return label === undefined ? section : t(label);
+}
 /**
  * Fuzzy-rank settings rows for the sidebar search. Title carries the strongest intent;
  * the description/synonym keywords and the owning section label match more loosely so a
@@ -712,8 +757,6 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
 export function rankSettingsSearchEntries(
   query: string,
   limit: number,
-  /** Active catalog: both row titles and section labels are ranked in the user's language. */
-  m: Messages,
 ): readonly SettingsSearchEntry[] {
   const trimmed = query.trim();
   if (trimmed.length === 0) {
@@ -721,9 +764,25 @@ export function rankSettingsSearchEntries(
   }
   const available = SETTINGS_SEARCH_ENTRIES.filter((entry) => entry.applies?.() ?? true);
   const ranked = rankProviderDiscoveryItems(available, trimmed, (entry) => [
-    { value: entry.title(m) },
-    { value: entry.keywords, weight: 200 },
-    { value: m.settingsNav.sections[entry.section].label, weight: 400 },
+    { value: i18n.t(entry.title, { lng: "en" }) },
+    { value: i18n.t(entry.title, { lng: i18n.language, defaultValue: entry.title }) },
+    { value: i18n.t(entry.keywords, { lng: "en" }), weight: 200 },
+    {
+      value: i18n.t(entry.keywords, { lng: i18n.language, defaultValue: entry.keywords }),
+      weight: 200,
+    },
+    {
+      value: i18n.t(SETTINGS_SECTION_LABEL_BY_ID.get(entry.section) ?? entry.section, {
+        lng: "en",
+      }),
+      weight: 400,
+    },
+    {
+      value: i18n.t(SETTINGS_SECTION_LABEL_BY_ID.get(entry.section) ?? entry.section, {
+        lng: i18n.language,
+      }),
+      weight: 400,
+    },
   ]);
   return ranked.slice(0, limit);
 }

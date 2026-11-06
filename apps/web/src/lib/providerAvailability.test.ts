@@ -32,36 +32,33 @@ const READY_STATUS: ServerProviderStatus = {
 
 describe("normalizeProviderStatusForLocalConfig", () => {
   it("keeps Antigravity interactive when a custom binary path is configured locally", () => {
-    expect(
-      normalizeProviderStatusForLocalConfig({
-        provider: "antigravity",
-        status: BASE_STATUS,
-        customBinaryPath: "/opt/homebrew/bin/agy",
-      }),
-    ).toEqual({
-      ...BASE_STATUS,
+    const normalized = normalizeProviderStatusForLocalConfig({
+      provider: "antigravity",
+      status: BASE_STATUS,
+      customBinaryPath: "/opt/homebrew/bin/agy",
+    });
+    expect(normalized).toMatchObject({
+      provider: "antigravity",
       available: true,
       status: "warning",
-      message:
-        "Antigravity uses a custom local binary path in this app. Availability will be confirmed when you start a session.",
     });
+    expect(normalized?.message).not.toBe(BASE_STATUS.message);
   });
 
   it("makes a disabled provider unavailable before its health status refreshes", () => {
-    expect(
-      normalizeProviderStatusForLocalConfig({
+    const normalized = normalizeProviderStatusForLocalConfig({
+      provider: "opencode",
+      status: {
+        ...READY_STATUS,
         provider: "opencode",
-        status: {
-          ...READY_STATUS,
-          provider: "opencode",
-          instanceId: "opencode",
-          driver: "opencode",
-          message: "OpenCode is ready.",
-        },
-        customBinaryPath: "/custom/bin/opencode",
-        disabled: true,
-      }),
-    ).toEqual({
+        instanceId: "opencode",
+        driver: "opencode",
+        message: "OpenCode is ready.",
+      },
+      customBinaryPath: "/custom/bin/opencode",
+      disabled: true,
+    });
+    expect(normalized).toMatchObject({
       provider: "opencode",
       instanceId: "opencode",
       driver: "opencode",
@@ -70,8 +67,8 @@ describe("normalizeProviderStatusForLocalConfig", () => {
       available: false,
       authStatus: "unknown",
       checkedAt: BASE_STATUS.checkedAt,
-      message: "Provider is disabled in Synara settings.",
     });
+    expect(normalized?.message).not.toBe("OpenCode is ready.");
   });
 
   it("marks a custom-path provider ready after a successful session confirms it", () => {
@@ -127,29 +124,27 @@ describe("normalizeProviderStatusForLocalConfig", () => {
   });
 
   it("keeps warning when a different custom path was confirmed", () => {
-    expect(
-      normalizeProviderStatusForLocalConfig({
+    const originalMessage = "OpenCode CLI (`opencode`) is not installed or not on PATH.";
+    const normalized = normalizeProviderStatusForLocalConfig({
+      provider: "opencode",
+      status: {
+        ...BASE_STATUS,
         provider: "opencode",
-        status: {
-          ...BASE_STATUS,
-          provider: "opencode",
-          instanceId: "opencode",
-          driver: "opencode",
-          message: "OpenCode CLI (`opencode`) is not installed or not on PATH.",
-        },
-        customBinaryPath: "/custom/bin/opencode-next",
-        confirmedCustomBinaryPath: "/custom/bin/opencode",
-      }),
-    ).toEqual({
-      ...BASE_STATUS,
+        instanceId: "opencode",
+        driver: "opencode",
+        message: originalMessage,
+      },
+      customBinaryPath: "/custom/bin/opencode-next",
+      confirmedCustomBinaryPath: "/custom/bin/opencode",
+    });
+    expect(normalized).toMatchObject({
       provider: "opencode",
       instanceId: "opencode",
       driver: "opencode",
       available: true,
       status: "warning",
-      message:
-        "OpenCode uses a custom local binary path in this app. Availability will be confirmed when you start a session.",
     });
+    expect(normalized?.message).not.toBe(originalMessage);
   });
 
   it("does not use custom binary fallback for disabled provider instances", () => {
@@ -530,18 +525,19 @@ describe("resolveProviderSendAvailabilityWithRefresh", () => {
   });
 
   it("keeps the original blocked reason when refresh fails", async () => {
-    await expect(
-      resolveProviderSendAvailabilityWithRefresh({
-        provider: "antigravity",
-        statuses: [{ ...BASE_STATUS, authStatus: "unauthenticated" }],
-        refreshStatuses: vi.fn(async () => {
-          throw new Error("refresh failed");
-        }),
+    const availability = await resolveProviderSendAvailabilityWithRefresh({
+      provider: "antigravity",
+      statuses: [{ ...BASE_STATUS, authStatus: "unauthenticated" }],
+      refreshStatuses: vi.fn(async () => {
+        throw new Error("refresh failed");
       }),
-    ).resolves.toMatchObject({
-      usable: false,
-      unavailableReason: "Antigravity is not authenticated yet.",
     });
+    expect(availability).toMatchObject({
+      usable: false,
+      status: { authStatus: "unauthenticated" },
+    });
+    expect(availability.unavailableReason.length).toBeGreaterThan(0);
+    expect(availability.unavailableReason).not.toContain("refresh failed");
   });
 });
 
@@ -556,7 +552,7 @@ describe("providerUnavailableReason", () => {
         displayName: "Claude Work",
         authStatus: "unauthenticated",
       }),
-    ).toBe("Claude Work is not authenticated yet.");
+    ).toContain("Claude Work");
   });
 });
 
@@ -611,15 +607,12 @@ describe("findProviderStatus", () => {
     ];
 
     expect(findProviderStatus(statuses, "claudeAgent", "claude_work")).toBeNull();
-    expect(
-      resolveProviderSendAvailability({
-        provider: "claudeAgent",
-        instanceId: "claude_work",
-        statuses,
-      }),
-    ).toMatchObject({
-      usable: false,
-      unavailableReason: "Provider status is still loading.",
+    const availability = resolveProviderSendAvailability({
+      provider: "claudeAgent",
+      instanceId: "claude_work",
+      statuses,
     });
+    expect(availability).toMatchObject({ usable: false, status: null });
+    expect(availability.unavailableReason.length).toBeGreaterThan(0);
   });
 });

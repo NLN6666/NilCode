@@ -149,11 +149,12 @@ describe("releaseOrphanedWorktreeAfterArchive", () => {
       reclaimTemporaryBranch: false,
       archiveCleanup: { threadId: ARCHIVED_ID, archiveSequence: ARCHIVE_SEQUENCE },
     });
-    expect(harness.toast).toHaveBeenCalledWith({
-      type: "success",
-      title: "Worktree removed",
-      description: "feature-a was deleted. Its branch remains available for recovery.",
-    });
+    expect(harness.toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "success",
+        description: expect.stringContaining("feature-a"),
+      }),
+    );
   });
 
   it("reports a refused removal as kept instead of throwing", async () => {
@@ -169,12 +170,12 @@ describe("releaseOrphanedWorktreeAfterArchive", () => {
       }),
     ).resolves.toBe("kept");
 
-    expect(harness.toast).toHaveBeenCalledWith({
-      type: "info",
-      title: "Worktree kept",
-      description:
-        "feature-a could not be removed safely. Check its task, Git status, or connection.",
-    });
+    expect(harness.toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "info",
+        description: expect.stringContaining("feature-a"),
+      }),
+    );
     consoleInfo.mockRestore();
   });
 });

@@ -40,15 +40,14 @@ import { ProviderIcon } from "../ProviderIcon";
 import {
   ComposerMenuPanel,
   COMPOSER_MENU_PANEL_GLYPH_CLASS_NAME,
+  COMPOSER_MENU_PANEL_GROUP_LABEL_CLASS_NAME,
   type ComposerMenuPanelGroup,
 } from "./ComposerMenuPanel";
 import { ConnectorIcon } from "../ConnectorIcon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { useMessages } from "~/i18n/context";
-import type { Messages } from "~/i18n/locales/en";
+import { useTranslation } from "~/i18n";
 
-/** The command-menu slice of the active catalog, threaded into the pure helpers below. */
-type CommandMenuCopy = Messages["composer"]["commandMenu"];
+type ChatTranslator = ReturnType<typeof useTranslation>["t"];
 
 function humanizeProviderCommandName(command: string): string {
   return command
@@ -60,35 +59,35 @@ function humanizeProviderCommandName(command: string): string {
 
 function commandMenuTitle(
   item: Extract<ComposerCommandItem, { type: "slash-command" | "provider-native-command" }>,
-  copy: CommandMenuCopy["commands"],
+  translate: ChatTranslator,
 ): string {
   switch (item.command) {
     case "clear":
-      return copy.clear;
+      return translate("chat:clear");
     case "compact":
-      return copy.compact;
+      return translate("chat:compactContext");
     case "model":
-      return copy.model;
+      return translate("chat:detail_model");
     case "fast":
-      return copy.fast;
+      return translate("chat:fastMode");
     case "plan":
-      return copy.plan;
+      return translate("chat:planMode");
     case "debug":
-      return copy.debug;
+      return translate("chat:debugMode");
     case "default":
-      return copy.default;
+      return translate("chat:defaultMode");
     case "review":
-      return copy.review;
+      return translate("chat:codeReview");
     case "fork":
-      return copy.fork;
+      return translate("workspace:fork");
     case "side":
-      return copy.side;
+      return translate("chat:sidechat");
     case "status":
-      return copy.status;
+      return translate("chat:detail_status");
     case "subagents":
-      return copy.subagents;
+      return translate("chat:subagents");
     case "feedback":
-      return copy.feedback;
+      return translate("workspace:feedbackSynara");
     default:
       return humanizeProviderCommandName(item.command);
   }
@@ -96,18 +95,20 @@ function commandMenuTitle(
 
 function commandMenuTrailingMeta(
   item: ComposerCommandItem,
-  copy: CommandMenuCopy["meta"],
+  translate: ChatTranslator,
 ): string | null {
   if (item.type === "agent") {
-    return item.group === "model" ? copy.switchModel : copy.delegateTask;
+    return item.group === "model"
+      ? translate("chat:detail_model")
+      : translate("common:task_delegate");
   }
 
   if (item.type === "plugin") {
-    return copy.plugin;
+    return translate("common:plugin_pluginsTab");
   }
 
   if (item.type === "connector") {
-    return "Connector";
+    return translate("settings:connectors");
   }
 
   if (item.type === "thread") {
@@ -115,11 +116,19 @@ function commandMenuTrailingMeta(
   }
 
   if (item.type === "github-reference") {
-    return `${item.reference.kind === "pull" ? copy.pullRequest : copy.issue} · ${item.state}`;
+    const referenceKind =
+      item.reference.kind === "pull" ? translate("chat:pullRequest") : translate("settings:issue");
+    const state =
+      item.state === "open"
+        ? translate("git:opened")
+        : item.state === "closed"
+          ? translate("chat:closed")
+          : translate("git:merged");
+    return `${referenceKind} · ${state}`;
   }
 
   if (item.type === "local-root") {
-    return copy.local;
+    return translate("computer:worktreeMode_local");
   }
 
   if (item.type === "skill") {
@@ -127,12 +136,14 @@ function commandMenuTrailingMeta(
   }
 
   if (item.type === "mcp-tool") {
-    if (item.unavailable) return copy.unavailable;
-    return item.toolName === null ? copy.mcpServer : copy.mcpTool;
+    if (item.unavailable) return translate("chat:providerModelPicker_unavailable");
+    return item.toolName === null
+      ? translate("chat:commandMenu_mcpServer")
+      : translate("chat:commandMenu_mcpTool");
   }
 
   if (item.type === "model") {
-    return copy.model;
+    return translate("chat:detail_model");
   }
 
   if (item.type === "slash-command" || item.type === "provider-native-command") {
@@ -329,7 +340,7 @@ export function groupCommandItems(
   items: ComposerCommandItem[],
   triggerKind: ComposerTriggerKind | null,
   groupSlashCommandSections: boolean,
-  labels: CommandMenuCopy["groups"],
+  translate: ChatTranslator,
 ): ComposerCommandGroupModel[] {
   if (triggerKind === "mention") {
     const connectorItems = items.filter((item) => item.type === "connector");
@@ -355,28 +366,52 @@ export function groupCommandItems(
 
     const groups: ComposerCommandGroupModel[] = [];
     if (connectorItems.length > 0) {
-      groups.push({ id: "connectors", label: "Connectors", items: connectorItems });
+      groups.push({
+        id: "connectors",
+        label: translate("settings:connectors"),
+        items: connectorItems,
+      });
     }
     if (pluginItems.length > 0) {
-      groups.push({ id: "plugins", label: labels.plugins, items: pluginItems });
+      groups.push({
+        id: "plugins",
+        label: translate("common:plugin_pluginsTab"),
+        items: pluginItems,
+      });
     }
     if (threadItems.length > 0) {
-      groups.push({ id: "chats", label: labels.chats, items: threadItems });
+      groups.push({ id: "chats", label: translate("workspace:general_chats"), items: threadItems });
     }
     if (agentItems.length > 0) {
-      groups.push({ id: "subagents", label: labels.subagents, items: agentItems });
+      groups.push({
+        id: "subagents",
+        label: translate("chat:subagents"),
+        items: agentItems,
+      });
     }
     if (builtInAgentItems.length > 0) {
-      groups.push({ id: "built-in-agents", label: labels.builtInAgents, items: builtInAgentItems });
+      groups.push({
+        id: "built-in-agents",
+        label: translate("chat:builtIn"),
+        items: builtInAgentItems,
+      });
     }
     if (modelAliasItems.length > 0) {
-      groups.push({ id: "model-aliases", label: labels.models, items: modelAliasItems });
+      groups.push({
+        id: "model-aliases",
+        label: translate("workspace:nav_models"),
+        items: modelAliasItems,
+      });
     }
     if (modeItems.length > 0) {
-      groups.push({ id: "modes", label: labels.modes, items: modeItems });
+      groups.push({ id: "modes", label: translate("chat:mode_label"), items: modeItems });
     }
     if (localItems.length > 0) {
-      groups.push({ id: "local", label: labels.local, items: localItems });
+      groups.push({
+        id: "local",
+        label: translate("computer:worktreeMode_local"),
+        items: localItems,
+      });
     }
     if (otherItems.length > 0) {
       groups.push({ id: "other", label: null, items: otherItems });
@@ -385,7 +420,7 @@ export function groupCommandItems(
   }
 
   if (triggerKind === "github-reference") {
-    return [{ id: "github", label: labels.github, items }];
+    return [{ id: "github", label: translate("chat:commandMenu_githubReferences"), items }];
   }
 
   if (triggerKind !== "slash-command" || !groupSlashCommandSections) {
@@ -404,13 +439,21 @@ export function groupCommandItems(
 
   const groups: ComposerCommandGroupModel[] = [];
   if (builtInItems.length > 0) {
-    groups.push({ id: "built-in", label: labels.builtIn, items: builtInItems });
+    groups.push({ id: "built-in", label: translate("chat:builtIn"), items: builtInItems });
   }
   if (providerItems.length > 0) {
-    groups.push({ id: "provider", label: labels.provider, items: providerItems });
+    groups.push({
+      id: "provider",
+      label: translate("workspace:models_customModelProvider"),
+      items: providerItems,
+    });
   }
   if (skillItems.length > 0) {
-    groups.push({ id: "skills", label: labels.skills, items: skillItems });
+    groups.push({
+      id: "skills",
+      label: translate("common:plugin_skillsSection"),
+      items: skillItems,
+    });
   }
   if (otherItems.length > 0) {
     groups.push({ id: "other", label: null, items: otherItems });
@@ -448,13 +491,12 @@ export function ComposerCommandMenu(props: {
   onHighlightedItemChange: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
 }) {
-  const composerCopy = useMessages().composer;
-  const commandMenuCopy = composerCopy.commandMenu;
+  const { t } = useTranslation();
   const groups = groupCommandItems(
     props.items,
     props.triggerKind,
     props.groupSlashCommandSections ?? true,
-    commandMenuCopy.groups,
+    t,
   );
   const panelGroups: ComposerMenuPanelGroup[] = groups.map((group) => ({
     id: group.id,
@@ -464,17 +506,17 @@ export function ComposerCommandMenu(props: {
       icon: commandMenuItemGlyph(item, props.resolvedTheme),
       title:
         item.type === "slash-command" || item.type === "provider-native-command"
-          ? commandMenuTitle(item, commandMenuCopy.commands)
+          ? commandMenuTitle(item, t)
           : item.label,
       secondary: commandMenuSecondaryText(item),
       trailing:
         item.type === "provider-native-command" && item.notice ? (
           <span className="inline-flex items-center gap-1.5">
-            {commandMenuTrailingMeta(item, commandMenuCopy.meta)}
+            {commandMenuTrailingMeta(item, t)}
             <CommandNoticeBadge notice={item.notice.detail} />
           </span>
         ) : (
-          commandMenuTrailingMeta(item, commandMenuCopy.meta)
+          commandMenuTrailingMeta(item, t)
         ),
       disabled: item.type === "mcp-tool" && item.unavailable === true,
     })),
@@ -493,11 +535,16 @@ export function ComposerCommandMenu(props: {
       footer={
         props.triggerKind === "mention" ? (
           <div className="pt-0.5 pb-2">
-            <p className="px-2 py-0 font-medium text-muted-foreground text-xs">
-              {commandMenuCopy.files}
+            <p
+              className={cn(
+                COMPOSER_MENU_PANEL_GROUP_LABEL_CLASS_NAME,
+                "px-2 py-0 font-medium text-muted-foreground text-ui leading-snug",
+              )}
+            >
+              {t("workspace:toolCallDetails_filesSection")}
             </p>
-            <p className="px-2 pt-0.5 text-[11px] text-muted-foreground/55">
-              {commandMenuCopy.filesHint}
+            <p className="px-2 pt-0.5 text-ui-sm text-muted-foreground/55">
+              {t("workspace:typeToSearchForFiles")}
             </p>
           </div>
         ) : null
@@ -514,24 +561,16 @@ export function ComposerCommandMenu(props: {
           >
             {props.isLoading
               ? props.triggerKind === "mention"
-                ? commandMenuCopy.loading.mentions
+                ? t("chat:searchingMentions")
                 : props.triggerKind === "skill"
-                  ? commandMenuCopy.loading.skills
-                  : props.triggerKind === "mcp-tool"
-                    ? commandMenuCopy.loading.mcp
-                    : props.triggerKind === "github-reference"
-                      ? commandMenuCopy.loading.github
-                      : commandMenuCopy.loading.commands
+                  ? t("chat:loadingSkills")
+                  : t("chat:loadingCommands")
               : (props.emptyStateText ??
                 (props.triggerKind === "mention"
-                  ? commandMenuCopy.empty.mention
+                  ? t("chat:noMatchingPluginChatOrFile")
                   : props.triggerKind === "skill"
-                    ? commandMenuCopy.empty.skill
-                    : props.triggerKind === "mcp-tool"
-                      ? commandMenuCopy.empty.mcp
-                      : props.triggerKind === "github-reference"
-                        ? commandMenuCopy.empty.github
-                        : commandMenuCopy.empty.command))}
+                    ? t("chat:noMatchingSkill")
+                    : t("chat:noMatchingCommand")))}
           </p>
         ) : null
       }

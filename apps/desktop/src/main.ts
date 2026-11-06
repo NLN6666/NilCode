@@ -1,5 +1,17 @@
 import "./httpRuntime";
+import { attachDesktopUpdateControl, DESKTOP_UPDATE_IPC_ENV } from "./desktopUpdateControl";
+import { registerRemoteResourceBroker, REMOTE_RESOURCE_SCHEME } from "./remoteResourceBroker";
 import { showDiagnosticStartupDialog } from "./startupDiagnosticDialog";
+import {
+  initializeDesktopI18n,
+  setDesktopLanguagePreference,
+  t,
+  translateNativeMenuRoles,
+} from "./i18n";
+import {
+  applyDesktopLanguagePreference,
+  readDesktopLanguagePreference,
+} from "./desktopPreferences";
 import { BackendIssueDetector } from "./backendIssueDetector";
 import { attachAppSubframeNavigationGuard } from "./subframeNavigationGuard";
 import { CuaDriverHost, sweepOrphanedCuaDrivers } from "./cuaDriverHost";
@@ -7,6 +19,8 @@ import { createLinuxCuaDriverHost } from "./linuxCuaDriverHost";
 import { LinuxEscapeKillSwitchMonitor, linuxEscapeSession } from "./linuxEscapeKillSwitchMonitor";
 import { ComputerFrameTap } from "./computerFrameTap";
 import { ComputerShield } from "./computerShield";
+import { ProductAnalytics } from "./productAnalytics";
+import { attachProductAnalyticsIpc } from "./productAnalyticsIpc";
 import { createDesktopNotificationRetainer } from "./notificationRetention";
 import { registerComputerDesktopLifecycle } from "./computerDesktopLifecycle";
 import { COMPUTER_PERMISSION_KINDS } from "@synara/shared/computerGrants";
@@ -29,6 +43,7 @@ import * as OriginalFS from "original-fs";
 
 import {
   app,
+  autoUpdater as nativeAutoUpdater,
   BrowserWindow,
   clipboard,
   crashReporter,
@@ -41,6 +56,7 @@ import {
   nativeTheme,
   protocol,
   powerMonitor,
+  powerSaveBlocker,
   screen,
   safeStorage,
   session,
@@ -81,6 +97,7 @@ import {
   canOverrideDesktopSmokeUserData,
   resolveSynaraDesktopRuntimeFlavor,
   synaraDesktopIdentity,
+  synaraSourceDesktopIdentity,
 } from "@synara/shared/desktopIdentity";
 import { NetService } from "@synara/shared/Net";
 import { applyShellEnvironmentHydrationMarker } from "@synara/shared/shell";
@@ -229,6 +246,7 @@ import {
 } from "./rendererCrashRecovery";
 import {
   type DownloadProgressSample,
+  canCheckForDesktopUpdates,
   getAutoUpdateDisabledReason,
   getDownloadStallTimeoutMessage,
   hasDownloadProgressAdvanced,
@@ -289,6 +307,7 @@ import {
 } from "./updateArtifactIdentity";
 import { buildGitHubReleasesPageUrl, resolveGitHubUpdateSource } from "./githubUpdateFeed";
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch";
+import { MacUpdateInstallHandoff } from "./macUpdateInstallHandoff";
 import { BROWSER_SESSION_PARTITION, DesktopBrowserManager } from "./browserManager";
 import { BrowserSessionRestore } from "./browserAutomation/browserSessionRestore";
 import { createCookieSessionBackend } from "./browserAutomation/electronCookieSession";
@@ -332,6 +351,12 @@ import {
   readAgentCursorPreference,
   writeAgentCursorPreference,
 } from "./agentCursorPreference";
+import {
+  createKeepAwakeController,
+  type KeepAwakeController,
+  readKeepAwakePreference,
+  writeKeepAwakePreference,
+} from "./keepAwake";
 import {
   readDesktopWindowState,
   resolveVisibleWindowBounds,
@@ -410,21 +435,40 @@ const desktopFlavor = resolveSynaraDesktopRuntimeFlavor({
   requestedFlavor: process.env.SYNARA_DESKTOP_FLAVOR,
   allowDevelopmentOverride: isSourceDesktopBuild,
 });
-const desktopIdentity = synaraDesktopIdentity(desktopFlavor);
-// Beta never honors SYNARA_HOME: a globally exported stable home would make
-// beta open (and migrate) stable's database.
+const desktopIdentity = isSourceDesktopBuild
+  ? synaraSourceDesktopIdentity(synaraDesktopIdentity(desktopFlavor))
+  : synaraDesktopIdentity(desktopFlavor);
+// Beta and Remote ignore SYNARA_HOME so a globally exported Stable home
+// cannot make a parallel app open (and migrate) Stable's database.
 const BASE_DIR =
-  (desktopFlavor === "beta"
-    ? process.env.SYNARA_BETA_HOME?.trim()
-    : process.env.SYNARA_HOME?.trim()) ||
+  (desktopFlavor === "remote"
+    ? process.env.SYNARA_REMOTE_HOME?.trim()
+    : desktopFlavor === "beta"
+      ? process.env.SYNARA_BETA_HOME?.trim()
+      : process.env.SYNARA_HOME?.trim()) ||
   Path.join(OS.homedir(), desktopIdentity.defaultHomeDirectoryName);
 const STATE_DIR = Path.join(BASE_DIR, "userdata");
 const DESKTOP_WINDOW_STATE_PATH = Path.join(STATE_DIR, "desktop-window-state.json");
 const DESKTOP_APP_ICON_PATH = Path.join(STATE_DIR, "desktop-app-icon");
 const DESKTOP_CUSTOM_TITLE_BAR_PATH = Path.join(STATE_DIR, "desktop-custom-title-bar.json");
+function translateAutoUpdateDisabledReason(reason: string): string {
+  const keys: Readonly<Record<string, string>> = {
+    "Automatic updates are not available because no update feed is configured.":
+      "desktop:automaticUpdatesAreNotAvailableBecauseNoUpdateFeed",
+    "Automatic updates are only available in packaged production builds.":
+      "desktop:automaticUpdatesAreOnlyAvailableInPackagedProductionBuilds",
+    "Automatic updates are disabled by the SYNARA_DISABLE_AUTO_UPDATE setting.":
+      "desktop:automaticUpdatesAreDisabledByTheSYNARADISABLEAUTO",
+    "Automatic updates on Linux require running the AppImage build.":
+      "desktop:automaticUpdatesOnLinuxRequireRunningTheAppImageBuild",
+  };
+  return keys[reason] ? t(keys[reason]) : reason;
+}
+
 // Written by the renderer-mirrored agent cursor colors; read at each driver
 // session open so a persisted custom cursor survives app restarts.
 const AGENT_CURSOR_PREFERENCE_PATH = Path.join(STATE_DIR, "agent-cursor-colors.json");
+const KEEP_AWAKE_PREFERENCE_PATH = Path.join(STATE_DIR, "keep-awake.json");
 const DESKTOP_SCHEME = desktopIdentity.scheme;
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
 const APP_DISPLAY_NAME = desktopIdentity.displayName;
@@ -439,6 +483,7 @@ const LOG_FILE_MAX_FILES = 10;
 const HANG_DIAGNOSTICS_DIR = Path.join(LOG_DIR, "hang-diagnostics");
 const APP_RUN_ID = Crypto.randomBytes(6).toString("hex");
 const APP_RUN_STARTED_AT_MS = Date.now();
+const PRODUCT_ANALYTICS_STARTUP_AT = performance.now();
 const DESKTOP_BACKEND_SHUTDOWN_TOKEN = Crypto.randomBytes(32).toString("hex");
 const DESKTOP_BROWSER_HOST_CAPABILITY = Crypto.randomBytes(32).toString("base64url");
 const DESKTOP_BROWSER_HOST_CAPABILITY_FD = 3;
@@ -447,15 +492,39 @@ const DESKTOP_BROWSER_HOST_CAPABILITY_FD = 3;
 // for the same lock even when they use the same Electron executable.
 const userDataPath = resolveUserDataPath();
 app.setPath("userData", userDataPath);
+// Match the renderer storage profile, including isolated source-build profiles.
+const DESKTOP_LANGUAGE_PREFERENCE_PATH = Path.join(userDataPath, "desktop-language.json");
+initializeDesktopI18n(
+  readDesktopLanguagePreference(DESKTOP_LANGUAGE_PREFERENCE_PATH),
+  () =>
+    app.isReady()
+      ? app.getPreferredSystemLanguages()
+      : [new Intl.DateTimeFormat().resolvedOptions().locale],
+  desktopFlavor,
+);
 
-// Beta-only diagnostics: constructed solely when the baked build flavor is
-// "beta", so production binaries never run a collection path. The payload
-// schema is an allowlist; error text may still contain fragments of user data,
-// and Electron crash dumps are raw process memory.
+// Remote shares usage and diagnostics by default; Settings turns both off.
+// Stable stays opt-in for product events and never runs diagnostics.
+const productAnalytics = new ProductAnalytics({
+  homeDir: BASE_DIR,
+  channel: desktopFlavor === "beta" ? "beta" : desktopFlavor === "remote" ? "remote" : "stable",
+  appVersion: app.getVersion(),
+  platform: process.platform,
+  defaultEnabled: desktopFlavor === "remote",
+});
+
+// Diagnostics are constructed only for the Beta and Remote build flavors, so
+// production binaries never run a collection path. The payload schema is an
+// allowlist; error text may still contain fragments of user data. Remote follows
+// the sharing switch and never uploads raw crash dumps (process memory).
 const betaDiagnostics =
-  desktopFlavor === "beta"
+  desktopFlavor === "beta" || desktopFlavor === "remote"
     ? new BetaDiagnostics({
         homeDir: BASE_DIR,
+        flavor: desktopFlavor,
+        ...(desktopFlavor === "remote"
+          ? { isEnabled: () => productAnalytics.getState().enabled }
+          : {}),
         appVersion: app.getVersion(),
         platform: process.platform,
         arch: process.arch,
@@ -482,8 +551,11 @@ const betaDiagnostics =
         },
       })
     : null;
-
-if (betaDiagnostics) {
+productAnalytics.onChange((enabled) => {
+  if (enabled) betaDiagnostics?.resumeSharing();
+  else betaDiagnostics?.discardQueue();
+});
+if (betaDiagnostics && desktopFlavor === "beta") {
   crashReporter.start({
     productName: APP_DISPLAY_NAME,
     companyName: "Synara",
@@ -549,7 +621,7 @@ const POSIX_BACKEND_TERMINATE_DELAY_MS = 15_000;
 const POSIX_BACKEND_FORCE_KILL_DELAY_MS = 18_000;
 const POSIX_BACKEND_SHUTDOWN_TIMEOUT_MS = 20_000;
 const BACKEND_MAX_OLD_SPACE_ENV_KEYS = ["SYNARA_BACKEND_MAX_OLD_SPACE_MB"] as const;
-const DESKTOP_UPDATE_ALLOW_PRERELEASE = desktopFlavor === "beta";
+const DESKTOP_UPDATE_ALLOW_PRERELEASE = desktopFlavor === "beta" || desktopFlavor === "remote";
 const BROWSER_PERF_SAMPLE_INTERVAL_MS = 5_000;
 const DESKTOP_MENU_ZOOM_FACTOR_STEP = 1.1;
 // User keybindings mirrored onto View menu items. Every window reports the same
@@ -1118,6 +1190,16 @@ let downloadedUpdateArtifact: {
 let downloadedUpdateIdentityTask: Promise<void> | null = null;
 let activeUpdateInstallHandoff: UpdateInstallHandoffExpectation | null = null;
 const pendingUpdateCacheClearQueue = new PendingUpdateCacheClearQueue();
+const macUpdateInstallHandoff =
+  process.platform === "darwin"
+    ? new MacUpdateInstallHandoff(nativeAutoUpdater, (error) =>
+        autoUpdater.emit("error", error instanceof Error ? error : new Error(String(error))),
+      )
+    : null;
+
+function getUpdaterInstallBlockedReason(): string | null {
+  return macUpdateInstallHandoff?.blockedReason ?? null;
+}
 
 function resolveUpdaterErrorContext(): DesktopUpdateErrorContext {
   if (isUpdaterInstallPreparing || isUpdaterQuitAndInstallInFlight) return "install";
@@ -1129,6 +1211,7 @@ function resolveUpdaterErrorContext(): DesktopUpdateErrorContext {
 function clearUpdaterInstallInFlightAfterError(input?: {
   readonly preservePendingPreparation?: boolean;
 }): boolean {
+  macUpdateInstallHandoff?.cancel();
   const preparationCancelled = updateInstallPreparation.cancel();
   if (preparationCancelled && input?.preservePendingPreparation) {
     return true;
@@ -1281,6 +1364,16 @@ function armInstallWatchdog(): void {
 
 protocol.registerSchemesAsPrivileged([
   {
+    scheme: REMOTE_RESOURCE_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+  {
     scheme: DESKTOP_SCHEME,
     privileges: {
       standard: true,
@@ -1432,10 +1525,10 @@ async function rejectUnverifiableDesktopMigrationBundle(error: unknown): Promise
   writeDesktopLogHeader(`migration bundle source check failed message=${message}`);
   await dialog.showMessageBox({
     type: "error",
-    title: "Synara could not verify its server build",
-    message: "The migration source could not be checked safely.",
-    detail: `${message}\n\nRebuild with bun run build:desktop before starting Synara. The database was not opened.`,
-    buttons: ["Quit"],
+    title: t("desktop:synaraCouldNotVerifyItsServerBuild"),
+    message: t("desktop:theMigrationSourceCouldNotBeCheckedSafely"),
+    detail: t("desktop:rebuildWithBunRunBuildDesktopBeforeStartingSynara", { value0: message }),
+    buttons: [t("desktop:quit3")],
     defaultId: 0,
     noLink: true,
   });
@@ -1451,12 +1544,13 @@ async function rejectDesktopMigrationBundleMismatch(
   );
   await dialog.showMessageBox({
     type: "error",
-    title: "Synara's server build is stale",
-    message: "The built migration code does not match this checkout.",
-    detail:
-      `Expected ${mismatch.expectedDigest}, but the desktop bundle contains ` +
-      `${mismatch.actualDigest}.\n\nRebuild with bun run build:desktop before starting Synara. The database was not opened.`,
-    buttons: ["Quit"],
+    title: t("desktop:synaraSServerBuildIsStale"),
+    message: t("desktop:theBuiltMigrationCodeDoesNotMatchThisCheckout"),
+    detail: t("desktop:expectedButTheDesktopBundleContainsRebuildWithBun", {
+      value0: mismatch.expectedDigest,
+      value1: mismatch.actualDigest,
+    }),
+    buttons: [t("desktop:quit3")],
     defaultId: 0,
     noLink: true,
   });
@@ -1490,7 +1584,10 @@ function isDesktopMigrationRecoveryPending(): boolean {
 /** Joins user-facing options as "a, b or c". */
 function formatRecoveryOptionList(options: ReadonlyArray<string>): string {
   if (options.length <= 1) return options[0] ?? "";
-  return `${options.slice(0, -1).join(", ")} or ${options[options.length - 1]}`;
+  return t("desktop:or", {
+    value0: options.slice(0, -1).join(", "),
+    value1: options[options.length - 1],
+  });
 }
 
 async function handleDesktopMigrationRecovery(): Promise<DesktopMigrationRecoveryOutcome> {
@@ -1517,33 +1614,39 @@ async function handleDesktopMigrationRecovery(): Promise<DesktopMigrationRecover
       }> = [
         restoreFailed
           ? {
-              label: "Try restore again",
-              detail: "retry the verified backup restore",
+              label: t("desktop:tryRestoreAgain"),
+              detail: t("desktop:retryTheVerifiedBackupRestore"),
               decision: "restore",
             }
           : {
-              label: "Restore backup and restart",
-              detail: "restore the verified pre-migration backup and restart",
+              label: t("desktop:restoreBackupAndRestart"),
+              detail: t("desktop:restoreTheVerifiedPreMigrationBackupAndRestart"),
               decision: "restore",
             },
       ];
       if (canInstallUpdate) {
         choices.push({
-          label: "Update Synara and restart",
-          detail: "install the newest Synara release, which may already contain the fix",
+          label: t("desktop:updateSynaraAndRestart"),
+          detail: t("desktop:installTheNewestSynaraReleaseWhichMayAlreadyContain"),
           decision: "install-update",
         });
       }
       if (releaseUrl !== null) {
         choices.push({
-          label: "Download latest release",
-          detail: `${canInstallUpdate ? "download that release" : "download the latest Synara release"} in a browser`,
+          label: t("desktop:downloadLatestRelease"),
+          detail: t("desktop:inABrowser", {
+            value0: t(
+              canInstallUpdate
+                ? "desktop:downloadThatRelease"
+                : "desktop:downloadTheLatestSynaraRelease",
+            ),
+          }),
           decision: "open-release-page",
         });
       }
       choices.push({
-        label: "Quit",
-        detail: "quit without opening the database",
+        label: t("desktop:quit3"),
+        detail: t("desktop:quitWithoutOpeningTheDatabase"),
         decision: "quit",
       });
 
@@ -1552,17 +1655,20 @@ async function handleDesktopMigrationRecovery(): Promise<DesktopMigrationRecover
         type: previousFailure === null ? "warning" : "error",
         title:
           previousFailure === null
-            ? "Synara needs to recover its database"
+            ? t("desktop:synaraNeedsToRecoverItsDatabase")
             : restoreFailed
-              ? "Migration recovery failed"
-              : "Synara could not update itself",
+              ? t("desktop:migrationRecoveryFailed")
+              : t("desktop:synaraCouldNotUpdateItself"),
         message:
           previousFailure === null
-            ? "Synara stopped a database migration before it could finish safely."
+            ? t("desktop:synaraStoppedADatabaseMigrationBeforeItCouldFinish")
             : restoreFailed
-              ? "The saved database backup could not be restored."
-              : "The newest Synara release could not be installed.",
-        detail: `${previousFailure === null ? "" : `${previousFailure.message}\n\n`}You can ${options}. No provider or chat process will start until recovery succeeds.`,
+              ? t("desktop:theSavedDatabaseBackupCouldNotBeRestored")
+              : t("desktop:theNewestSynaraReleaseCouldNotBeInstalled"),
+        detail: t("desktop:youCanNoProviderOrChatProcessWillStart", {
+          value0: previousFailure === null ? "" : `${previousFailure.message}\n\n`,
+          value1: options,
+        }),
         buttons: choices.map((choice) => choice.label),
         defaultId: 0,
         cancelId: choices.length - 1,
@@ -1736,7 +1842,14 @@ function handleFatalStartupError(stage: string, error: unknown): void {
   console.error(`[desktop] fatal startup error (${stage})`, error);
   if (!isQuitting) {
     isQuitting = true;
-    dialog.showErrorBox("Synara failed to start", `Stage: ${stage}\n${message}${detail}`);
+    dialog.showErrorBox(
+      t("desktop:synaraFailedToStart"),
+      t("desktop:stage", {
+        value0: stage,
+        value1: message,
+        value2: detail,
+      }),
+    );
   }
   requestGracefulAppQuit(`fatal startup (${stage})`);
 }
@@ -1898,10 +2011,10 @@ function handleCheckForUpdatesMenuClick(): void {
     console.info("[desktop-updater] Manual update check requested, but updates are disabled.");
     void dialog.showMessageBox({
       type: "info",
-      title: "Updates unavailable",
-      message: "Automatic updates are not available right now.",
-      detail: disabledReason,
-      buttons: ["OK"],
+      title: t("desktop:updatesUnavailable"),
+      message: t("desktop:automaticUpdatesAreNotAvailableRightNow"),
+      detail: translateAutoUpdateDisabledReason(disabledReason),
+      buttons: [t("desktop:common_ok")],
     });
     return;
   }
@@ -1918,31 +2031,33 @@ async function checkForUpdatesFromMenu(): Promise<void> {
   if (updateState.status === "up-to-date") {
     void dialog.showMessageBox({
       type: "info",
-      title: "You're up to date!",
-      message: `Synara ${updateState.currentVersion} is currently the newest version available.`,
-      buttons: ["OK"],
+      title: t("desktop:youReUpToDate"),
+      message: t("desktop:synaraIsCurrentlyTheNewestVersionAvailable", {
+        value0: updateState.currentVersion,
+      }),
+      buttons: [t("desktop:common_ok")],
     });
   } else if (updateState.status === "downloading" || updateState.status === "available") {
     void dialog.showMessageBox({
       type: "info",
-      title: "Update found",
-      message: "Synara is preparing the update in the background.",
-      buttons: ["OK"],
+      title: t("desktop:updateFound"),
+      message: t("desktop:synaraIsPreparingTheUpdateInTheBackground"),
+      buttons: [t("desktop:common_ok")],
     });
   } else if (updateState.status === "downloaded") {
     void dialog.showMessageBox({
       type: "info",
-      title: "Update ready",
-      message: "Click Update in the sidebar when you’re ready to restart and install it.",
-      buttons: ["OK"],
+      title: t("desktop:desktopUpdate_updateReady"),
+      message: t("desktop:clickUpdateInTheSidebarWhenYouReReady"),
+      buttons: [t("desktop:common_ok")],
     });
   } else if (updateState.status === "error") {
     void dialog.showMessageBox({
       type: "warning",
-      title: "Update check failed",
-      message: "Could not check for updates.",
-      detail: updateState.message ?? "An unknown error occurred. Please try again later.",
-      buttons: ["OK"],
+      title: t("desktop:updateCheckFailed"),
+      message: t("desktop:couldNotCheckForUpdates"),
+      detail: updateState.message ?? t("desktop:anUnknownErrorOccurredPleaseTryAgainLater"),
+      buttons: [t("desktop:common_ok")],
     });
   }
 }
@@ -1965,13 +2080,13 @@ function configureApplicationMenu(): void {
         { role: "zoomOut" },
       ]
     : [
-        { label: "Reset Zoom", click: () => resetWindowZoomFromMenu() },
+        { label: t("desktop:resetZoom"), click: () => resetWindowZoomFromMenu() },
         {
-          label: "Zoom In",
+          label: t("desktop:zoomIn"),
           click: () => adjustWindowZoomFromMenu(DESKTOP_MENU_ZOOM_FACTOR_STEP),
         },
         {
-          label: "Zoom Out",
+          label: t("desktop:zoomOut"),
           click: () => adjustWindowZoomFromMenu(1 / DESKTOP_MENU_ZOOM_FACTOR_STEP),
         },
       ];
@@ -1982,12 +2097,12 @@ function configureApplicationMenu(): void {
       submenu: [
         { role: "about" },
         {
-          label: "Check for Updates...",
+          label: t("desktop:checkForUpdates"),
           click: () => handleCheckForUpdatesMenuClick(),
         },
         { type: "separator" },
         {
-          label: "Settings...",
+          label: t("desktop:settings"),
           accelerator: "CmdOrCtrl+,",
           click: () => dispatchMenuAction("open-settings"),
         },
@@ -2005,13 +2120,13 @@ function configureApplicationMenu(): void {
 
   template.push(
     {
-      label: "File",
+      label: t("desktop:file"),
       submenu: [
         ...(process.platform === "darwin"
           ? []
           : [
               {
-                label: "Settings...",
+                label: t("desktop:settings"),
                 ...acceleratorProps("CmdOrCtrl+,"),
                 click: () => dispatchMenuAction("open-settings"),
               },
@@ -2022,21 +2137,21 @@ function configureApplicationMenu(): void {
     },
     { role: "editMenu" },
     {
-      label: "View",
+      label: t("desktop:diff_view"),
       submenu: [
         {
-          label: "New Terminal Tab",
+          label: t("desktop:newTerminalTab"),
           ...acceleratorProps(desktopMenuAccelerators["terminal.new"]),
           click: () => dispatchMenuAction("new-terminal-tab"),
         },
         { type: "separator" },
         {
-          label: "Toggle Sidebar",
+          label: t("desktop:toggleSidebar"),
           ...acceleratorProps(desktopMenuAccelerators["sidebar.toggle"]),
           click: () => dispatchMenuAction("toggle-sidebar"),
         },
         {
-          label: "Toggle Browser",
+          label: t("desktop:toggleBrowser"),
           ...acceleratorProps(desktopMenuAccelerators["browser.toggle"]),
           click: () => dispatchMenuAction("toggle-browser"),
         },
@@ -2055,20 +2170,22 @@ function configureApplicationMenu(): void {
       role: "help",
       submenu: [
         {
-          label: "Keyboard Shortcuts",
+          label: t("desktop:nav_shortcuts"),
           ...(keyboardShortcutsAccelerator ? { accelerator: keyboardShortcutsAccelerator } : {}),
           click: () => dispatchMenuAction("show-shortcuts"),
         },
         { type: "separator" },
         {
-          label: "Check for Updates...",
+          label: t("desktop:checkForUpdates"),
           click: () => handleCheckForUpdatesMenuClick(),
         },
       ],
     },
   );
 
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  const applicationMenu = Menu.buildFromTemplate(template);
+  translateNativeMenuRoles(applicationMenu, APP_DISPLAY_NAME);
+  Menu.setApplicationMenu(applicationMenu);
 }
 
 function resolveResourcePath(fileName: string): string | null {
@@ -2248,7 +2365,10 @@ function initializeDesktopAppSnap(): void {
       const window = focusApp ? ensureMainWindowForAppSnap() : mainWindow;
       if (!sendAppSnapEvent(window, (webContents) => sendAppSnapError(webContents, error))) {
         showDesktopNotification({
-          title: error.code === "pending-capture-overflow" ? "AppSnap discarded" : "AppSnap failed",
+          title:
+            error.code === "pending-capture-overflow"
+              ? t("desktop:appSnapDiscarded")
+              : t("desktop:appSnapFailed"),
           body: error.message,
         });
       }
@@ -2921,11 +3041,10 @@ function restartAfterStartupBundleSwap(error: BundleChangedDuringStartupError): 
   void dialog
     .showMessageBox({
       type: "warning",
-      title: "Synara needs to restart",
-      message: "Synara changed while it was opening.",
-      detail:
-        "The current process cannot safely read the replaced application bundle. Restart Synara to finish opening with one consistent version.",
-      buttons: ["Restart Synara"],
+      title: t("desktop:synaraNeedsToRestart"),
+      message: t("desktop:synaraChangedWhileItWasOpening"),
+      detail: t("desktop:theCurrentProcessCannotSafelyReadTheReplacedApplication"),
+      buttons: [t("desktop:restartSynara")],
       defaultId: 0,
     })
     .catch(() => undefined)
@@ -2977,11 +3096,10 @@ function startBundleSwapWatcher(): void {
     void dialog
       .showMessageBox({
         type: "warning",
-        title: "Synara was replaced on disk",
-        message: "The installed Synara app changed while it was running.",
-        detail:
-          "The interface keeps running from a safeguarded copy, but parts of the app loaded later can still read the replaced file. Restart now to pick up the new version safely.",
-        buttons: ["Restart Now", "Later"],
+        title: t("desktop:synaraWasReplacedOnDisk"),
+        message: t("desktop:theInstalledSynaraAppChangedWhileItWasRunning"),
+        detail: t("desktop:theInterfaceKeepsRunningFromASafeguardedCopyBut"),
+        buttons: [t("desktop:restartNow"), t("desktop:later")],
         defaultId: 0,
         cancelId: 1,
       })
@@ -3025,7 +3143,10 @@ function scheduleUpdatePoll(): void {
 
 function isExplicitUpdateCheckReason(reason: string): boolean {
   return (
-    reason === "menu" || reason === "renderer" || reason === UPDATE_CHECK_REASON_MIGRATION_RECOVERY
+    reason === "menu" ||
+    reason === "renderer" ||
+    reason === "remote" ||
+    reason === UPDATE_CHECK_REASON_MIGRATION_RECOVERY
   );
 }
 
@@ -3039,6 +3160,18 @@ function emitUpdateState(): void {
 function setUpdateState(patch: Partial<DesktopUpdateState>): void {
   const previous = updateState;
   updateState = { ...updateState, ...patch };
+  const blockedReason = getUpdaterInstallBlockedReason();
+  if (
+    blockedReason !== null &&
+    (updateState.status === "downloaded" || updateState.status === "error")
+  ) {
+    updateState = {
+      ...updateState,
+      message: blockedReason,
+      errorContext: "install",
+      canRetry: false,
+    };
+  }
   emitUpdateState();
   betaDiagnostics?.trackUpdateStateChange(previous, updateState);
 }
@@ -3160,7 +3293,9 @@ function processInstallMarkerOnStartup(): void {
   }
 
   automaticUpdateActivitySuppressed = true;
-  const message = `Synara restarted, but update ${marker.toVersion} was not installed. Try again.`;
+  const message = t("desktop:synaraRestartedButUpdateWasNotInstalledTryAgain", {
+    value0: marker.toVersion,
+  });
   setUpdateState(
     reduceDesktopUpdateStateOnInstallRestartFailure(
       updateState,
@@ -3373,7 +3508,14 @@ function beginActiveUpdateCheck(): () => void {
 }
 
 async function checkForUpdates(reason: string): Promise<void> {
-  if (isQuitting || isUpdaterInstallPreparing || !updaterConfigured || updateCheckInFlight) return;
+  if (
+    isQuitting ||
+    isUpdaterInstallPreparing ||
+    !updaterConfigured ||
+    updateCheckInFlight ||
+    updateDownloadInFlight
+  )
+    return;
   if (automaticUpdateActivitySuppressed) {
     if (!isExplicitUpdateCheckReason(reason)) {
       console.info(
@@ -3387,11 +3529,7 @@ async function checkForUpdates(reason: string): Promise<void> {
     );
     scheduleUpdatePoll();
   }
-  if (
-    updateState.status === "checking" ||
-    updateState.status === "downloading" ||
-    updateState.status === "downloaded"
-  ) {
+  if (!canCheckForDesktopUpdates(updateState)) {
     console.info(
       `[desktop-updater] Skipping update check (${reason}) while status=${updateState.status}.`,
     );
@@ -3432,7 +3570,13 @@ async function downloadAvailableUpdate(): Promise<{
     await checkForUpdates("renderer");
     return { accepted: true, completed: false };
   }
-  if (!updaterConfigured || updateDownloadInFlight || updateState.status !== "available") {
+  if (
+    isQuitting ||
+    isUpdaterInstallPreparing ||
+    !updaterConfigured ||
+    updateDownloadInFlight ||
+    updateState.status !== "available"
+  ) {
     return { accepted: false, completed: false };
   }
   if (!isAcceptableUpdateVersion(updateState.availableVersion)) {
@@ -3481,6 +3625,9 @@ async function downloadAvailableUpdate(): Promise<{
     const identityTask = downloadedUpdateIdentityTask;
     if (identityTask) {
       await identityTask;
+    }
+    if (downloadedUpdateArtifact === null) {
+      throw new Error("The update download did not produce a verified update. Try again.");
     }
     return {
       accepted: true,
@@ -3592,7 +3739,9 @@ async function installLatestUpdateForMigrationRecovery(): Promise<string | null>
   }
 
   if (updateState.status === "up-to-date") {
-    return `Synara ${app.getVersion()} is already the newest release, so updating cannot repair this database.`;
+    return t("desktop:synaraIsAlreadyTheNewestReleaseSoUpdatingCannot", {
+      version: app.getVersion(),
+    });
   }
   if (updateState.status !== "downloaded") {
     return updateState.message ?? "The update could not be downloaded.";
@@ -3647,7 +3796,7 @@ async function runDownloadedUpdateInstall(
   if (!artifact || !(await verifyUpdateArtifactIdentity(artifact))) {
     downloadedUpdateArtifact = null;
     await clearPendingUpdateCache("downloaded artifact identity is missing or changed");
-    const message = "The downloaded update could not be reverified. Download it again.";
+    const message = t("desktop:theDownloadedUpdateCouldNotBeReverifiedDownloadIt");
     setUpdateState(reduceDesktopUpdateStateOnDownloadFailure(updateState, message));
     console.error(`[desktop-updater] Refusing install handoff: ${message}`);
     return { accepted: false, completed: false };
@@ -3698,7 +3847,11 @@ async function runDownloadedUpdateInstall(
     }
     activeUpdateInstallHandoff = handoffExpectation;
     isUpdaterQuitAndInstallInFlight = true;
-    autoUpdater.quitAndInstall();
+    if (macUpdateInstallHandoff !== null) {
+      macUpdateInstallHandoff.start();
+    } else {
+      autoUpdater.quitAndInstall();
+    }
     updateInstallPreparation.requireActive(preparationAttempt);
     armInstallWatchdog();
     return { accepted: true, completed: false };
@@ -3724,7 +3877,19 @@ async function installDownloadedUpdate(): Promise<{
   accepted: boolean;
   completed: boolean;
 }> {
-  if (isQuitting || !updaterConfigured || updateState.status !== "downloaded") {
+  const blockedReason = getUpdaterInstallBlockedReason();
+  if (blockedReason !== null) {
+    setUpdateState({ message: blockedReason, errorContext: "install", canRetry: false });
+    return { accepted: false, completed: false };
+  }
+  // A recheck can replace electron-updater's selected payload before its transfer starts.
+  if (
+    isQuitting ||
+    !updaterConfigured ||
+    updateCheckInFlight ||
+    updateDownloadInFlight ||
+    updateState.status !== "downloaded"
+  ) {
     return { accepted: false, completed: false };
   }
   const preparationAttempt = updateInstallPreparation.begin();
@@ -3749,6 +3914,18 @@ async function installDownloadedUpdate(): Promise<{
 }
 
 async function recordDownloadedUpdateIdentity(info: UpdateDownloadedEvent): Promise<void> {
+  const cancellationToken = updateDownloadCancellationToken;
+  const ownsDownload = () =>
+    !isQuitting &&
+    !isUpdaterInstallPreparing &&
+    updateDownloadInFlight &&
+    cancellationToken !== null &&
+    !cancellationToken.cancelled &&
+    updateDownloadCancellationToken === cancellationToken &&
+    updateState.status === "downloading" &&
+    updateState.availableVersion === info.version;
+  // Ignore late events without touching the newer transfer's watchdog, artifact, or cache.
+  if (!ownsDownload()) return;
   clearUpdateDownloadStallTimer();
   if (!isAcceptableUpdateVersion(info.version)) {
     downloadedUpdateArtifact = null;
@@ -3764,6 +3941,7 @@ async function recordDownloadedUpdateIdentity(info: UpdateDownloadedEvent): Prom
 
   try {
     const identity = await fingerprintUpdateArtifact(info.downloadedFile);
+    if (!ownsDownload()) return;
     if (!isAcceptableUpdateVersion(info.version)) {
       downloadedUpdateArtifact = null;
       clearPendingUpdateCacheWhenSafe(
@@ -3778,9 +3956,12 @@ async function recordDownloadedUpdateIdentity(info: UpdateDownloadedEvent): Prom
       `[desktop-updater] Update downloaded and fingerprinted: ${info.version} (${identity.size} bytes, sha512=${identity.sha512.slice(0, 16)}…).`,
     );
   } catch (error) {
+    if (!ownsDownload()) return;
     downloadedUpdateArtifact = null;
     clearPendingUpdateCacheWhenSafe("downloaded artifact fingerprint failed");
-    const message = `The downloaded update could not be verified: ${formatErrorMessage(error)}`;
+    const message = t("desktop:theDownloadedUpdateCouldNotBeVerified", {
+      value0: formatErrorMessage(error),
+    });
     setUpdateState(reduceDesktopUpdateStateOnDownloadFailure(updateState, message));
     console.error(`[desktop-updater] ${message}`);
   }
@@ -3853,13 +4034,17 @@ function configureAutoUpdater(): void {
     console.info("[desktop-updater] Looking for updates...");
   });
   autoUpdater.on("update-available", (info) => {
+    if (isQuitting || isUpdaterInstallPreparing || updateDownloadInFlight) return;
     clearUpdateCheckTimeoutTimer();
-    downloadedUpdateArtifact = null;
     if (!isAcceptableUpdateVersion(info.version)) {
-      void clearPendingUpdateCache(
-        `available update rejected: ${describeRejectedUpdateVersion(info.version)}`,
-      );
-      setUpdateState(reduceDesktopUpdateStateOnNoUpdate(updateState, new Date().toISOString()));
+      const nextState = reduceDesktopUpdateStateOnNoUpdate(updateState, new Date().toISOString());
+      if (nextState.downloadedVersion === null) {
+        downloadedUpdateArtifact = null;
+        void clearPendingUpdateCache(
+          `available update rejected: ${describeRejectedUpdateVersion(info.version)}`,
+        );
+      }
+      setUpdateState(nextState);
       lastLoggedDownloadMilestone = -1;
       console.info(
         `[desktop-updater] Ignoring available update: ${describeRejectedUpdateVersion(info.version)}.`,
@@ -3873,15 +4058,24 @@ function configureAutoUpdater(): void {
         new Date().toISOString(),
       ),
     );
+    if (updateState.downloadedVersion !== null) {
+      console.info("[desktop-updater] Keeping newer or already downloaded pending update.");
+      return;
+    }
+    downloadedUpdateArtifact = null;
     lastLoggedDownloadMilestone = -1;
     console.info(`[desktop-updater] Update available: ${info.version}`);
     prepareAvailableUpdateInBackground(`available ${info.version}`);
   });
   autoUpdater.on("update-not-available", () => {
+    if (isQuitting || isUpdaterInstallPreparing || updateDownloadInFlight) return;
     clearUpdateCheckTimeoutTimer();
-    downloadedUpdateArtifact = null;
-    void clearPendingUpdateCache("no newer update available");
-    setUpdateState(reduceDesktopUpdateStateOnNoUpdate(updateState, new Date().toISOString()));
+    const nextState = reduceDesktopUpdateStateOnNoUpdate(updateState, new Date().toISOString());
+    if (nextState.downloadedVersion === null) {
+      downloadedUpdateArtifact = null;
+      void clearPendingUpdateCache("no newer update available");
+    }
+    setUpdateState(nextState);
     lastLoggedDownloadMilestone = -1;
     console.info("[desktop-updater] No updates available.");
   });
@@ -3928,6 +4122,12 @@ function configureAutoUpdater(): void {
     }
   });
   autoUpdater.on("download-progress", (progress) => {
+    if (
+      !updateDownloadInFlight ||
+      updateDownloadCancellationToken?.cancelled ||
+      updateState.status !== "downloading"
+    )
+      return;
     const percent = Math.floor(progress.percent);
     updateDownloadStallTimerOnProgress(progress);
     if (
@@ -3943,6 +4143,7 @@ function configureAutoUpdater(): void {
     }
   });
   autoUpdater.on("update-downloaded", (info) => {
+    if (!updateDownloadInFlight || updateState.availableVersion !== info.version) return;
     const task = recordDownloadedUpdateIdentity(info);
     downloadedUpdateIdentityTask = task;
     const clearTask = () => {
@@ -4161,10 +4362,18 @@ async function startCuaHost(): Promise<void> {
   }
 }
 
+declare const __SYNARA_STABLE_ACCOUNT_URL__: string;
+
 function backendEnv(): NodeJS.ProcessEnv {
   const servedStaticRoot = resolveServedStaticRoot();
   const migrationSourceDigest = embeddedDesktopMigrationRuntimeSourceDigest();
   const migrationDivergenceConsent = migrationConsentHandoff.take();
+  const stableAccountUrl =
+    app.isPackaged && !isSourceDesktopBuild && desktopFlavor === "production"
+      ? __SYNARA_STABLE_ACCOUNT_URL__
+      : "";
+  const accountUrl =
+    process.env.SYNARA_ACCOUNT_URL?.trim() || stableAccountUrl || desktopIdentity.defaultAccountUrl;
   const env: NodeJS.ProcessEnv = {
     ...resolveBrowserHostPipeBackendEnv(
       process.env,
@@ -4191,6 +4400,22 @@ function backendEnv(): NodeJS.ProcessEnv {
     SYNARA_HOME: BASE_DIR,
     SYNARA_AUTH_TOKEN: backendAuthToken,
     SYNARA_DESKTOP_SHUTDOWN_TOKEN: DESKTOP_BACKEND_SHUTDOWN_TOKEN,
+    // Packaged launches supply their account authority without shell setup.
+    ...(accountUrl ? { SYNARA_ACCOUNT_URL: accountUrl } : {}),
+    ...(stableAccountUrl && process.env.SYNARA_REMOTE_CONNECTIONS === undefined
+      ? { SYNARA_REMOTE_CONNECTIONS: "1" }
+      : {}),
+    ...(app.isPackaged
+      ? {
+          SYNARA_CLOUDFLARED_PATH: Path.join(
+            process.resourcesPath,
+            "cloudflared",
+            process.platform === "win32" ? "cloudflared.exe" : "cloudflared",
+          ),
+        }
+      : process.env.SYNARA_CLOUDFLARED_PATH
+        ? { SYNARA_CLOUDFLARED_PATH: process.env.SYNARA_CLOUDFLARED_PATH }
+        : {}),
   };
   // The backend runs the same login-shell probe at startup and does not begin listening
   // until it returns, so an unmarked child serializes a second ~1s hydration behind ours.
@@ -4258,8 +4483,8 @@ function backendFailureDialogDetail(reason: string): string {
   const cause = summary.length > 0 ? summary : reason;
   return [
     cause,
-    "Synara paused automatic restarts so a failing backend can't keep respawning in the background.",
-    `Log file:\n${Path.join(LOG_DIR, BACKEND_LOG_FILE_NAME)}`,
+    t("desktop:synaraPausedAutomaticRestartsSoAFailingBackendCan"),
+    t("desktop:logFile", { value0: Path.join(LOG_DIR, BACKEND_LOG_FILE_NAME) }),
   ].join("\n\n");
 }
 
@@ -4287,10 +4512,12 @@ function presentBackendStartupGiveUp(reason: string): void {
     for (;;) {
       const result = await dialog.showMessageBox({
         type: "error",
-        title: "Synara's backend didn't start",
-        message: `Synara's backend failed to start ${BACKEND_MAX_CONSECUTIVE_START_FAILURES} times in a row.`,
+        title: t("desktop:synaraSBackendDidnTStart"),
+        message: t("desktop:synaraSBackendFailedToStartTimesInA", {
+          value0: BACKEND_MAX_CONSECUTIVE_START_FAILURES,
+        }),
         detail,
-        buttons: ["Try again", "Open logs", "Quit"],
+        buttons: [t("desktop:profile_tryAgain"), t("desktop:openLogs"), t("desktop:quit3")],
         defaultId: 0,
         cancelId: 2,
         noLink: true,
@@ -4324,26 +4551,25 @@ function schemaTooNewRestoreDetail(
   restoreCandidate: ReturnType<typeof resolveDesktopMigrationRestoreCandidate>,
 ): string {
   if (restoreCandidate) {
-    return (
-      `Synara verified the exact pre-migration backup at:\n${restoreCandidate.backupPath}\n\n` +
-      `Its tracker ends at migration ${restoreCandidate.backupMigrationId}; its shared lineage is compatible ` +
-      "with this build, and it passed SQLite integrity checking."
-    );
+    return t("desktop:synaraVerifiedTheExactPreMigrationBackupAtIts", {
+      value0: restoreCandidate.backupPath,
+      value1: restoreCandidate.backupMigrationId,
+    });
   }
 
   if (block.recovery.kind === "restore-available") {
-    return "The recorded backup does not match this desktop database exactly, so Synara will not restore it.";
+    return t("desktop:theRecordedBackupDoesNotMatchThisDesktopDatabase");
   }
 
   switch (block.recovery.reason) {
     case "missing-provenance":
-      return "No completed migration backup record exists for this database, so Synara cannot choose a backup safely.";
+      return t("desktop:noCompletedMigrationBackupRecordExistsForThisDatabase");
     case "invalid-provenance":
-      return "The completed migration backup record does not describe this exact database state.";
+      return t("desktop:theCompletedMigrationBackupRecordDoesNotDescribeThis");
     case "invalid-backup":
-      return "The exact recorded backup is missing, unreadable, or failed SQLite integrity checking.";
+      return t("desktop:theExactRecordedBackupIsMissingUnreadableOrFailed");
     case "incompatible-backup":
-      return "The exact recorded backup has a schema or migration lineage this Synara build cannot open safely.";
+      return t("desktop:theExactRecordedBackupHasASchemaOrMigration");
   }
 }
 
@@ -4371,19 +4597,21 @@ async function handleDesktopSchemaTooNewRecovery(
 
       if (restoreCandidate) {
         choices.push({
-          label: restoreFailed ? "Try restore again" : "Restore backup and restart",
+          label: restoreFailed
+            ? t("desktop:tryRestoreAgain")
+            : t("desktop:restoreBackupAndRestart"),
           decision: "restore",
         });
       }
       if (canInstallUpdate) {
-        choices.push({ label: "Update Synara and restart", decision: "install-update" });
+        choices.push({ label: t("desktop:updateSynaraAndRestart"), decision: "install-update" });
       }
       if (releaseUrl !== null) {
-        choices.push({ label: "Download latest release", decision: "open-release-page" });
+        choices.push({ label: t("desktop:downloadLatestRelease"), decision: "open-release-page" });
       }
       choices.push(
-        { label: "Open logs", decision: "open-logs" },
-        { label: "Quit", decision: "quit" },
+        { label: t("desktop:openLogs"), decision: "open-logs" },
+        { label: t("desktop:quit3"), decision: "quit" },
       );
 
       const result = await showDiagnosticStartupDialog(
@@ -4391,20 +4619,23 @@ async function handleDesktopSchemaTooNewRecovery(
           type: previousFailure === null ? "warning" : "error",
           title:
             previousFailure === null
-              ? "This database is newer than Synara"
+              ? t("desktop:thisDatabaseIsNewerThanSynara")
               : restoreFailed
-                ? "Database restore failed"
-                : "Synara could not update itself",
+                ? t("desktop:databaseRestoreFailed")
+                : t("desktop:synaraCouldNotUpdateItself"),
           message:
             previousFailure === null
-              ? `Database migration ${block.databaseMigrationId} is newer than this build supports (${block.latestSupportedMigrationId}).`
+              ? t("desktop:databaseMigrationIsNewerThanThisBuildSupports", {
+                  value0: block.databaseMigrationId,
+                  value1: block.latestSupportedMigrationId,
+                })
               : restoreFailed
-                ? "The verified database backup could not be restored."
-                : "The newest Synara release could not be installed.",
-          detail:
-            `${previousFailure === null ? "" : `${previousFailure.message}\n\n`}` +
-            `${schemaTooNewRestoreDetail(block, restoreCandidate)}\n\n` +
-            "The backend and provider processes will remain stopped until you update, restore, or quit.",
+                ? t("desktop:theVerifiedDatabaseBackupCouldNotBeRestored")
+                : t("desktop:theNewestSynaraReleaseCouldNotBeInstalled"),
+          detail: t("desktop:theBackendAndProviderProcessesWillRemainStoppedUntil", {
+            value0: previousFailure === null ? "" : `${previousFailure.message}\n\n`,
+            value1: schemaTooNewRestoreDetail(block, restoreCandidate),
+          }),
           buttons: choices.map((choice) => choice.label),
           defaultId: 0,
           cancelId: choices.length - 1,
@@ -4478,16 +4709,26 @@ function handleBackendStartupBlock(block: BackendStartupBlock): void {
             type: "error",
             title:
               previousFailure === null
-                ? "Synara could not verify migration recovery"
-                : "Synara could not update itself",
+                ? t("desktop:synaraCouldNotVerifyMigrationRecovery")
+                : t("desktop:synaraCouldNotUpdateItself"),
             message:
               previousFailure === null
-                ? "The backend stopped for database safety, but its recovery details were invalid."
-                : "The newest Synara release could not be installed.",
-            detail:
-              `${previousFailure === null ? "" : `${previousFailure.message}\n\n`}` +
-              "Synara will keep the backend and provider processes stopped. The recovery record is not trusted, so restoring from it is disabled; choose one of the safe actions below.",
-            buttons: choices.map((choice) => choice.label),
+                ? t("desktop:theBackendStoppedForDatabaseSafetyButItsRecovery")
+                : t("desktop:theNewestSynaraReleaseCouldNotBeInstalled"),
+            detail: t("desktop:synaraWillKeepTheBackendAndProviderProcessesStopped", {
+              value0: previousFailure === null ? "" : `${previousFailure.message}\n\n`,
+            }),
+            buttons: choices.map((choice) =>
+              t(
+                {
+                  restore: "desktop:restoreBackupAndRestart",
+                  "install-update": "desktop:updateSynaraAndRestart",
+                  "open-release-page": "desktop:downloadLatestRelease",
+                  "open-logs": "desktop:openLogs",
+                  quit: "desktop:quit3",
+                }[choice.decision],
+              ),
+            ),
             defaultId: 0,
             cancelId: choices.length - 1,
             noLink: true,
@@ -4515,15 +4756,18 @@ function handleBackendStartupBlock(block: BackendStartupBlock): void {
       const challenge = block.challenge;
       const result = await showBlockDialog({
         type: "warning",
-        title: "Synara found a different database migration history",
-        message: `Migration ${challenge.firstDivergedId} does not match this build.`,
-        detail:
-          `The database records "${challenge.recordedName}", while this build expects ` +
-          `"${challenge.expectedName}". Continuing will first save an exact backup in:\n` +
-          `${challenge.backupDirectory}\n\nSynara will then rewrite tracker rows from migration ` +
-          `${challenge.firstDivergedId} and replay through ${challenge.targetVersion}. ` +
-          "Older builds may no longer be able to open the upgraded database. No provider or chat process will start until you choose.",
-        buttons: ["Back up and continue", "Quit"],
+        title: t("desktop:synaraFoundADifferentDatabaseMigrationHistory"),
+        message: t("desktop:migrationDoesNotMatchThisBuild", {
+          value0: challenge.firstDivergedId,
+        }),
+        detail: t("desktop:theDatabaseRecordsWhileThisBuildExpectsContinuingWill", {
+          value0: challenge.recordedName,
+          value1: challenge.expectedName,
+          value2: challenge.backupDirectory,
+          value3: challenge.firstDivergedId,
+          value4: challenge.targetVersion,
+        }),
+        buttons: [t("desktop:backUpAndContinue"), t("desktop:quit3")],
         defaultId: 0,
         cancelId: 1,
         noLink: true,
@@ -4541,12 +4785,12 @@ function handleBackendStartupBlock(block: BackendStartupBlock): void {
     if (block.kind === "migration-runtime-identity-mismatch") {
       await showBlockDialog({
         type: "error",
-        title: "Synara's server build does not match",
-        message: "The desktop and server migration code came from different builds.",
+        title: t("desktop:synaraSServerBuildDoesNotMatch"),
+        message: t("desktop:theDesktopAndServerMigrationCodeCameFromDifferent"),
         detail: app.isPackaged
-          ? "Update or reinstall Synara before starting it again. The database was not opened."
-          : "Rebuild with bun run build:desktop before starting Synara again. The database was not opened.",
-        buttons: ["Quit"],
+          ? t("desktop:updateOrReinstallSynaraBeforeStartingItAgainThe")
+          : t("desktop:rebuildWithBunRunBuildDesktopBeforeStartingSynara2"),
+        buttons: [t("desktop:quit3")],
         defaultId: 0,
         noLink: true,
       });
@@ -4557,11 +4801,10 @@ function handleBackendStartupBlock(block: BackendStartupBlock): void {
     if (block.kind === "migration-recovery-required") {
       const result = await showBlockDialog({
         type: "warning",
-        title: "Synara needs to recover its database",
-        message: "A database migration did not finish safely.",
-        detail:
-          "Restart Synara to open the verified backup recovery flow. Provider and chat processes will remain stopped until recovery completes.",
-        buttons: ["Restart and recover", "Quit"],
+        title: t("desktop:synaraNeedsToRecoverItsDatabase"),
+        message: t("desktop:aDatabaseMigrationDidNotFinishSafely"),
+        detail: t("desktop:restartSynaraToOpenTheVerifiedBackupRecoveryFlow"),
+        buttons: [t("desktop:restartAndRecover"), t("desktop:quit3")],
         defaultId: 0,
         cancelId: 1,
         noLink: true,
@@ -4577,24 +4820,26 @@ function handleBackendStartupBlock(block: BackendStartupBlock): void {
 
     const processDetail =
       block.ownerPid === null
-        ? "Synara could not verify the database lock. The lock may be left over from an interrupted startup, or another server may still be using it."
-        : `Another Synara server (process ${block.ownerPid}) is already using this database.`;
+        ? t("desktop:synaraCouldNotVerifyTheDatabaseLockTheLock")
+        : t("desktop:anotherSynaraServerProcessIsAlreadyUsingThisDatabase", {
+            value0: block.ownerPid,
+          });
     for (;;) {
       const result = await showBlockDialog({
         type: "warning",
         title:
           block.ownerPid === null
-            ? "Synara could not verify database ownership"
-            : "Synara is already running elsewhere",
+            ? t("desktop:synaraCouldNotVerifyDatabaseOwnership")
+            : t("desktop:synaraIsAlreadyRunningElsewhere"),
         message:
           block.ownerPid === null
-            ? "Synara could not safely open your local data."
-            : "Your local Synara data is in use by another process.",
-        detail:
-          `${processDetail}\n\nClose any other Synara app or development server using this data, then try again. ` +
-          "If this keeps happening, open the logs to see the underlying lock error. Your data has not been changed.\n\n" +
-          `Log file:\n${Path.join(LOG_DIR, BACKEND_LOG_FILE_NAME)}`,
-        buttons: ["Try again", "Open logs", "Quit"],
+            ? t("desktop:synaraCouldNotSafelyOpenYourLocalData")
+            : t("desktop:yourLocalSynaraDataIsInUseByAnother"),
+        detail: t("desktop:closeAnyOtherSynaraAppOrDevelopmentServerUsing", {
+          value0: processDetail,
+          value1: Path.join(LOG_DIR, BACKEND_LOG_FILE_NAME),
+        }),
+        buttons: [t("desktop:profile_tryAgain"), t("desktop:openLogs"), t("desktop:quit3")],
         defaultId: 0,
         cancelId: 2,
         noLink: true,
@@ -4641,7 +4886,9 @@ async function restartBackendAfterCrash(
   // when the renderer window survived the crash.
   backendInitialWindowOpenInFlight = null;
   try {
-    await reserveBackendEndpoint("backend restart");
+    // Existing renderer transports pin this endpoint. Keep it across restarts
+    // so they reconnect without reloading the window or losing drafts.
+    if (backendPort === 0) await reserveBackendEndpoint("backend restart");
   } catch (error) {
     scheduleBackendRestart(
       `failed to reserve restart port after ${reason}: ${formatErrorMessage(error)}`,
@@ -4707,15 +4954,20 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
     // Run the child in Node mode so this backend process does not become a GUI app instance.
     env: {
       ...backendEnv(),
+      // A file read stuck behind a macOS privacy prompt holds a libuv worker. More
+      // workers keep DNS and crypto, and so remote authorization, moving meanwhile.
+      UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE || "16",
       ELECTRON_RUN_AS_NODE: "1",
       SYNARA_SERVER_ENTRY: backendEntry,
       SYNARA_DESKTOP_PARENT_STDIN: "1",
+      [DESKTOP_UPDATE_IPC_ENV]:
+        app.isPackaged && desktopFlavor === "remote" && process.platform === "darwin" ? "1" : "0",
     },
     // Keep output piped in every environment so startup blockers and readiness
     // are observable even when packaged log setup is unavailable. The fourth
     // pipe carries the browser-host capability and must never be inherited.
     // Leave stdin open: EOF lets the backend clean up if this main process dies.
-    stdio: ["pipe", "pipe", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe", "pipe", "ipc"],
   });
   const capabilityPipe = child.stdio[DESKTOP_BROWSER_HOST_CAPABILITY_FD];
   if (capabilityPipe && "end" in capabilityPipe) {
@@ -4736,6 +4988,19 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
   backendListeningDetector = listeningDetector;
   backendProcess = child;
   desktopHangWatchdog?.updateBackendPid(child.pid ?? null);
+  attachDesktopUpdateControl(child, {
+    isCurrentChild: () => backendProcess === child && !isQuitting,
+    supported: () =>
+      app.isPackaged &&
+      desktopFlavor === "remote" &&
+      process.platform === "darwin" &&
+      updaterConfigured,
+    getState: () => updateState,
+    getInstallBlockedReason: getUpdaterInstallBlockedReason,
+    check: () => checkForUpdates("remote"),
+    download: downloadAvailableUpdate,
+    install: installDownloadedUpdate,
+  });
   cuaDriverHost?.resume();
   const backendBaseUrl = backendHttpUrl;
   let backendSessionClosed = false;
@@ -4986,6 +5251,7 @@ async function shutdownDesktopRuntime(reason: string): Promise<void> {
         trackBetaDiagnostics("app.exit", { kind: "lifecycle" });
         await betaDiagnostics.dispose().catch(() => undefined);
       }
+      productAnalytics.dispose();
       desktopShutdownComplete = true;
       writeDesktopLogHeader(`${reason} shutdown complete`);
       // Release the persistent log descriptors. close() is idempotent and a
@@ -5042,7 +5308,10 @@ async function confirmRunningChatsThenQuit(reason: string): Promise<void> {
 
   const window = mainWindow;
   if (!isMainRendererAvailable()) {
-    nativeQuitConfirmationPromise ??= showDesktopConfirmDialog(`Quit ${APP_DISPLAY_NAME}?`, null)
+    nativeQuitConfirmationPromise ??= showDesktopConfirmDialog(
+      t("desktop:quit4", { value0: APP_DISPLAY_NAME }),
+      null,
+    )
       .catch((error) => {
         console.warn("[desktop] Failed to confirm app quit", error);
         return false;
@@ -5141,10 +5410,12 @@ function requestGracefulAppQuit(reason: string): void {
 function registerIpcHandlers(): void {
   const storageSnapshotPath = resolveSynaraStorageSnapshotPath(app.getPath("userData"));
 
+  attachProductAnalyticsIpc(productAnalytics, () => mainWindow?.webContents ?? null);
+
   ipcMain.removeAllListeners(IPC.betaDiagnostics.enabled);
   ipcMain.on(IPC.betaDiagnostics.enabled, (event: IpcMainEvent) => {
     event.returnValue = Boolean(
-      betaDiagnostics &&
+      betaDiagnostics?.isCollecting() &&
       event.sender === mainWindow?.webContents &&
       event.senderFrame === event.sender.mainFrame,
     );
@@ -5244,6 +5515,26 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.removeHandler(IPC.setTheme);
+  ipcMain.removeAllListeners(IPC.getSystemLanguages);
+  ipcMain.on(IPC.getSystemLanguages, (event: IpcMainEvent) => {
+    event.returnValue =
+      event.sender === mainWindow?.webContents && event.senderFrame === event.sender.mainFrame
+        ? app.getPreferredSystemLanguages()
+        : [];
+  });
+  ipcMain.removeHandler(IPC.setLanguagePreference);
+  ipcMain.handle(IPC.setLanguagePreference, (event, rawPreference: unknown) => {
+    applyDesktopLanguagePreference(rawPreference, {
+      flavor: desktopFlavor,
+      isTrustedSender:
+        event.sender === mainWindow?.webContents && event.senderFrame === event.sender.mainFrame,
+      preferencePath: DESKTOP_LANGUAGE_PREFERENCE_PATH,
+      onPreference: (language) => {
+        setDesktopLanguagePreference(language);
+        if (app.isReady()) configureApplicationMenu();
+      },
+    });
+  });
   ipcMain.handle(IPC.setTheme, async (_event, rawTheme: unknown) => {
     const theme = getSafeTheme(rawTheme);
     if (!theme) {
@@ -5444,6 +5735,23 @@ function registerIpcHandlers(): void {
     return getDesktopCustomTitleBarState();
   });
 
+  ipcMain.removeHandler(IPC.keepAwake.getState);
+  ipcMain.handle(IPC.keepAwake.getState, async () => getKeepAwakeController().getState());
+
+  ipcMain.removeHandler(IPC.keepAwake.setEnabled);
+  ipcMain.handle(IPC.keepAwake.setEnabled, async (_event, rawEnabled: unknown) =>
+    typeof rawEnabled === "boolean"
+      ? getKeepAwakeController().setEnabled(rawEnabled)
+      : getKeepAwakeController().getState(),
+  );
+
+  ipcMain.removeHandler(IPC.keepAwake.setRemoteAccessAllowed);
+  ipcMain.handle(IPC.keepAwake.setRemoteAccessAllowed, async (_event, rawAllowed: unknown) =>
+    typeof rawAllowed === "boolean"
+      ? getKeepAwakeController().setRemoteAccessAllowed(rawAllowed)
+      : getKeepAwakeController().getState(),
+  );
+
   ipcMain.removeHandler(IPC.customTitleBarRelaunch);
   ipcMain.handle(IPC.customTitleBarRelaunch, async () => {
     app.relaunch();
@@ -5559,14 +5867,7 @@ function registerIpcHandlers(): void {
     platform: process.platform,
     homeDir: OS.homedir(),
     betaHomeDir: resolveBetaHomeDir(),
-    flavor:
-      desktopFlavor === "beta"
-        ? "beta"
-        : desktopFlavor === "canary"
-          ? "canary"
-          : desktopFlavor === "cua"
-            ? "cua"
-            : "production",
+    flavor: desktopFlavor === "development" ? "production" : desktopFlavor,
     feedUrlOverride: process.env.SYNARA_BETA_FEED_URL,
     installDirOverride: process.env.SYNARA_BETA_INSTALL_DIR,
     expectedTeamId: ownAppTeamId(),
@@ -5603,7 +5904,9 @@ function registerIpcHandlers(): void {
         return {
           ok: false,
           error: "internal" as const,
-          message: `Synara is open, but Synara Beta could not be moved to the Trash: ${formatErrorMessage(error)}`,
+          message: t("desktop:synaraIsOpenButSynaraBetaCouldNotBe", {
+            value0: formatErrorMessage(error),
+          }),
         };
       }
     }
@@ -5807,6 +6110,20 @@ function getTitleBarOptions(): BrowserWindowConstructorOptions {
   return frameOptions;
 }
 
+let keepAwakeController: KeepAwakeController | undefined;
+
+/** Created on first use after `app` is ready, which `powerMonitor` requires. */
+function getKeepAwakeController(): KeepAwakeController {
+  keepAwakeController ??= createKeepAwakeController({
+    monitor: powerMonitor,
+    blocker: powerSaveBlocker,
+    load: () => readKeepAwakePreference(KEEP_AWAKE_PREFERENCE_PATH),
+    save: (preference) => writeKeepAwakePreference(KEEP_AWAKE_PREFERENCE_PATH, preference),
+    onError: (error) => safeConsoleError("[desktop] keep-awake preference write failed", error),
+  });
+  return keepAwakeController;
+}
+
 function getDesktopCustomTitleBarState() {
   return resolveDesktopCustomTitleBarState({
     platform: process.platform,
@@ -5891,14 +6208,14 @@ function createWindow(): BrowserWindow {
         });
       }
       if (params.dictionarySuggestions.length === 0) {
-        menuTemplate.push({ label: "No suggestions", enabled: false });
+        menuTemplate.push({ label: t("desktop:noSuggestions"), enabled: false });
       }
       menuTemplate.push({ type: "separator" });
     }
 
     if (params.mediaType === "image") {
       menuTemplate.push({
-        label: "Copy Image",
+        label: t("desktop:copyImage"),
         click: () => window.webContents.copyImageAt(params.x, params.y),
       });
       menuTemplate.push({ type: "separator" });
@@ -5911,7 +6228,9 @@ function createWindow(): BrowserWindow {
       { role: "selectAll", enabled: params.editFlags.canSelectAll },
     );
 
-    Menu.buildFromTemplate(menuTemplate).popup({ window });
+    const menu = Menu.buildFromTemplate(menuTemplate);
+    translateNativeMenuRoles(menu, APP_DISPLAY_NAME);
+    menu.popup({ window });
   });
 
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -5953,7 +6272,7 @@ function createWindow(): BrowserWindow {
   if (process.platform === "darwin") {
     guardDesktopWindowClose(
       window,
-      `Close the ${APP_DISPLAY_NAME} window?`,
+      () => t("desktop:closeTheWindow", { app: APP_DISPLAY_NAME }),
       () =>
         !isQuitting &&
         !desktopShutdownComplete &&
@@ -6124,24 +6443,24 @@ function presentRendererCrashRecovery(
 
   const message =
     response.cause === "reload-budget-exhausted"
-      ? `Synara's window crashed ${response.crashes} times in a row.`
-      : "Synara's window stopped unexpectedly.";
+      ? t("desktop:synaraSWindowCrashedTimesInARow", { value0: response.crashes })
+      : t("desktop:synaraSWindowStoppedUnexpectedly");
   const detail = [
-    `The window's renderer process exited (${reason}).`,
+    t("desktop:theWindowSRendererProcessExited", { reason }),
     response.cause === "reload-budget-exhausted"
-      ? "Synara paused automatic reloads so a repeating crash can't keep reloading in the background."
-      : "This exit reason repeats on reload, so Synara did not retry automatically.",
-    `Log file:\n${Path.join(LOG_DIR, DESKTOP_LOG_FILE_NAME)}`,
+      ? t("desktop:synaraPausedAutomaticReloadsSoARepeatingCrashCan")
+      : t("desktop:thisExitReasonRepeatsOnReloadSoSynaraDid"),
+    t("desktop:logFile", { value0: Path.join(LOG_DIR, DESKTOP_LOG_FILE_NAME) }),
   ].join("\n\n");
 
   const task = (async () => {
     for (;;) {
       const result = await dialog.showMessageBox({
         type: "error",
-        title: "Synara's window stopped",
+        title: t("desktop:synaraSWindowStopped"),
         message,
         detail,
-        buttons: ["Reload", "Open logs", "Quit"],
+        buttons: [t("desktop:panel_reload"), t("desktop:openLogs"), t("desktop:quit3")],
         defaultId: 0,
         cancelId: 2,
         noLink: true,
@@ -6321,6 +6640,21 @@ async function bootstrap(): Promise<void> {
   }
 
   registerIpcHandlers();
+  // Apply the saved keep-awake preference at launch, before any window reports.
+  getKeepAwakeController();
+  app.once("will-quit", () => {
+    keepAwakeController?.dispose();
+    keepAwakeController = undefined;
+  });
+  const disposeRemoteResources = registerRemoteResourceBroker({
+    trustedRenderer: () =>
+      mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null,
+    trustedOrigin: () =>
+      isDevelopment ? process.env.VITE_DEV_SERVER_URL! : desktopIdentity.entryUrl,
+    backendWsUrl: () =>
+      normalizeDesktopWsUrl(backendWsUrl) ?? resolveDesktopWsUrlFromEnv(process.env),
+  });
+  app.once("will-quit", disposeRemoteResources);
   writeDesktopLogHeader("bootstrap ipc handlers registered");
   try {
     await ensureBrowserHostPipeServer();
@@ -6421,6 +6755,16 @@ if (hasSingleInstanceLock) {
     .whenReady()
     .then(() => {
       writeDesktopLogHeader("app ready");
+      productAnalytics.start();
+      productAnalytics.track({ event: "app.open", outcome: "succeeded" });
+      productAnalytics.track({
+        event: "performance.startup",
+        outcome: "succeeded",
+        durationMs: Math.min(
+          86_400_000,
+          Math.round(performance.now() - PRODUCT_ANALYTICS_STARTUP_AT),
+        ),
+      });
       if (betaDiagnostics) {
         betaDiagnostics.start();
         const previousLaunchVersion = parseLastLaunchVersion(readLaunchVersionRecordContents());

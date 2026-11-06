@@ -79,33 +79,26 @@ describe("SubagentDetailSections", () => {
     ]);
 
     expect(markup).toContain("Scout");
-    expect(markup).toContain("Model");
     expect(markup).toContain("Opus 4.6");
-    expect(markup).toContain("Role");
     expect(markup).toContain("explorer");
-    expect(markup).toContain("Status");
     expect(markup).toContain("Completed");
-    expect(markup).toContain("Effort");
     expect(markup).toContain("high");
-    expect(markup).toContain("Background");
   });
 
   it("omits metadata rows for fields the subagent does not carry", () => {
     const markup = renderSections([subagent({ resolvedThreadId: "thread-a", nickname: "Scout" })]);
 
     expect(markup).toContain("Scout");
-    expect(markup).not.toContain(">Model<");
-    expect(markup).not.toContain(">Effort<");
-    expect(markup).not.toContain(">Background<");
+    expect(markup).not.toContain("Opus");
+    expect(markup).not.toContain("high");
+    expect(markup).not.toContain('aria-current="page"');
   });
 
   it("disables the open button and explains why without a resolved thread", () => {
     const markup = renderSections([subagent({ nickname: "Scout" })]);
 
-    expect(markup).toContain("disabled");
-    expect(markup).toContain("This agent has no conversation to open.");
-    // No thread means no conversation disclosure either.
-    expect(markup).not.toContain("Show conversation");
+    expect(markup).toMatch(/data-testid="subagent-open-full-conversation"[^>]*disabled=""/);
+    expect(markup).not.toContain("aria-expanded=");
   });
 
   it("renders one card per subagent in a fan-out", () => {

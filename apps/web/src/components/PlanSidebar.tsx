@@ -10,9 +10,9 @@ import type { ActiveTaskListState } from "../session-logic";
 import type { LatestProposedPlanState } from "../session-logic";
 import { formatTimestamp } from "../timestampFormat";
 import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "../proposedPlan";
-import { useMessages } from "~/i18n/context";
 import { ProposedPlanActions } from "./chat/ProposedPlanActions";
 import { DockPaneHeader } from "./chat/DockPaneHeader";
+import { useTranslation } from "~/i18n";
 
 function stepStatusIcon(status: string): React.ReactNode {
   if (status === "completed") {
@@ -53,7 +53,7 @@ const PlanSidebar = function PlanSidebar({
   timestampFormat,
   onClose,
 }: PlanSidebarProps) {
-  const m = useMessages();
+  const { t, formatLocale } = useTranslation();
   const [proposedPlanExpanded, setProposedPlanExpanded] = useState(false);
   const planMarkdown = activeProposedPlan?.planMarkdown ?? null;
   const displayedPlanMarkdown = planMarkdown ? stripDisplayedPlanMarkdown(planMarkdown) : null;
@@ -65,10 +65,10 @@ const PlanSidebar = function PlanSidebar({
       <DockPaneHeader
         title={
           <span className="flex min-w-0 items-center gap-2">
-            <span>{m.sidebar.planSidebar.title}</span>
+            <span>{t("workspace:plan_badge")}</span>
             {activeTaskList ? (
               <span className="truncate text-ui-sm font-normal text-muted-foreground/60">
-                {formatTimestamp(activeTaskList.createdAt, timestampFormat)}
+                {formatTimestamp(activeTaskList.createdAt, timestampFormat, formatLocale)}
               </span>
             ) : null}
           </span>
@@ -85,7 +85,7 @@ const PlanSidebar = function PlanSidebar({
           ) : null
         }
         onClose={onClose}
-        closeLabel={m.sidebar.planSidebar.close}
+        closeLabel={t("chat:closePlanSidebar")}
       />
 
       {/* Content */}
@@ -101,8 +101,8 @@ const PlanSidebar = function PlanSidebar({
           {/* Tasks */}
           {activeTaskList && activeTaskList.tasks.length > 0 ? (
             <div className="space-y-1">
-              <p className="mb-2 text-[10px] font-semibold text-muted-foreground/40">
-                {m.sidebar.planSidebar.steps}
+              <p className="mb-2 text-ui-xs font-semibold text-muted-foreground/40">
+                {t("workspace:plan_steps")}
               </p>
               {activeTaskList.tasks.map((task) => (
                 <div
@@ -147,7 +147,7 @@ const PlanSidebar = function PlanSidebar({
                   className="size-3 text-muted-foreground/40"
                 />
                 <span className="text-ui-xs font-semibold text-muted-foreground/40 group-hover:text-muted-foreground/60">
-                  {planTitle ?? "Full Plan"}
+                  {planTitle ?? t("workspace:fullPlan")}
                 </span>
               </button>
               <DisclosureRegion open={proposedPlanExpanded}>
@@ -166,11 +166,11 @@ const PlanSidebar = function PlanSidebar({
           {/* Empty state */}
           {!activeTaskList && !planMarkdown ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <p className="text-[13px] text-muted-foreground/40">
-                {m.sidebar.planSidebar.emptyTitle}
+              <p className="text-ui-lg text-muted-foreground/40">
+                {t("workspace:noActivePlanYet")}
               </p>
-              <p className="mt-1 text-[11px] text-muted-foreground/30">
-                {m.sidebar.planSidebar.emptyDescription}
+              <p className="mt-1 text-ui-sm text-muted-foreground/30">
+                {t("workspace:plansWillAppearHereWhenGenerated")}
               </p>
             </div>
           ) : null}

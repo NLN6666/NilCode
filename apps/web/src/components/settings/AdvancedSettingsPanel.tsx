@@ -14,7 +14,6 @@ import { DisclosureChevron } from "~/components/ui/DisclosureChevron";
 import { DisclosureRegion } from "~/components/ui/DisclosureRegion";
 import { Button } from "~/components/ui/button";
 import { toastManager } from "~/components/ui/toast";
-import { useMessages } from "../../i18n/context";
 import { ensureNativeApi, readNativeApi } from "~/nativeApi";
 import { serverAuthSessionQueryOptions, serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { cn } from "~/lib/utils";
@@ -24,13 +23,14 @@ import { createAllThreadsMessagelessSelector, createThreadShellsSelector } from 
 import { useSettingsRestoreSignal } from "./SettingControls";
 import { NetworkSettingsSection } from "./NetworkSettingsSection";
 import { SettingsRow, SettingsSection } from "./SettingsPanelPrimitives";
+import { useTranslation } from "~/i18n";
 
 export function AdvancedSettingsPanel(props: {
   active: boolean;
   onOpenReleaseHistory: () => void;
   resetEpoch: number;
 }) {
-  const m = useMessages();
+  const { t } = useTranslation();
   const configQuery = useQuery(serverConfigQueryOptions());
   const authSessionQuery = useQuery(serverAuthSessionQueryOptions());
   const syncServerReadModel = useStore((store) => store.syncServerReadModel);
@@ -64,7 +64,7 @@ export function AdvancedSettingsPanel(props: {
     setIsOpeningKeybindings(true);
     const editor = resolveAndPersistPreferredEditor(availableEditors ?? []);
     if (!editor) {
-      setOpenKeybindingsError(m.settings.advanced.developerTools.noEditors);
+      setOpenKeybindingsError(t("settings:common_noAvailableEditors"));
       setIsOpeningKeybindings(false);
       return;
     }
@@ -72,18 +72,18 @@ export function AdvancedSettingsPanel(props: {
       .shell.openInEditor(keybindingsConfigPath, editor)
       .catch((error) => {
         setOpenKeybindingsError(
-          error instanceof Error ? error.message : m.settings.advanced.developerTools.openFailed,
+          error instanceof Error ? error.message : t("settings:unableToOpenKeybindingsFile"),
         );
       })
       .finally(() => {
         setIsOpeningKeybindings(false);
       });
-  }, [availableEditors, keybindingsConfigPath, m]);
+  }, [availableEditors, keybindingsConfigPath, t]);
 
   const repairLocalState = useCallback(async () => {
     if (isRepairingLocalState) return;
     const api = readNativeApi() ?? ensureNativeApi();
-    const confirmed = await api.dialogs.confirm(m.settings.advanced.developerTools.repairConfirm);
+    const confirmed = await api.dialogs.confirm(t("settings:advanced_repairConfirm"));
     if (!confirmed) return;
 
     setIsRepairingLocalState(true);
@@ -93,59 +93,55 @@ export function AdvancedSettingsPanel(props: {
         syncServerReadModel(snapshot);
         toastManager.add({
           type: "success",
-          title: m.settings.advanced.developerTools.repairedTitle,
-          description: m.settings.advanced.developerTools.repairedDescription,
+          title: t("settings:localStateRepaired"),
+          description: t("settings:projectIndexesWereRebuiltWithoutClearingExistingChats"),
         });
       })
       .catch((error: unknown) => {
         toastManager.add({
           type: "error",
-          title: m.settings.advanced.developerTools.repairFailedTitle,
+          title: t("settings:advanced_repairFailed"),
           description:
-            error instanceof Error
-              ? error.message
-              : m.settings.advanced.developerTools.repairFailedDescription,
+            error instanceof Error ? error.message : t("settings:unableToRepairLocalState"),
         });
       })
       .finally(() => {
         setIsRepairingLocalState(false);
       });
-  }, [isRepairingLocalState, m, syncServerReadModel]);
+  }, [isRepairingLocalState, syncServerReadModel, t]);
 
   const logoutCurrentSession = useCallback(async () => {
     if (isLoggingOut) return;
     const api = readNativeApi() ?? ensureNativeApi();
     setIsLoggingOut(true);
     const result = await logoutCurrentBrowserSession({
-      confirm: () => api.dialogs.confirm(m.settings.advanced.session.signOutConfirm),
+      confirm: () => api.dialogs.confirm(t("settings:signOutThisBrowserItsSessionAndEveryLive")),
       logout: () => api.server.logoutAuthSession(),
       navigate: (path) => window.location.assign(path),
       onError: (error) =>
         toastManager.add({
           type: "error",
-          title: m.settings.advanced.session.signOutFailedTitle,
+          title: t("settings:signOutFailed"),
           description:
-            error instanceof Error
-              ? error.message
-              : m.settings.advanced.session.signOutFailedDescription,
+            error instanceof Error ? error.message : t("settings:unableToRevokeThisSession"),
         }),
     });
     if (result !== "redirecting") setIsLoggingOut(false);
-  }, [isLoggingOut, m]);
+  }, [isLoggingOut, t]);
 
   if (!props.active) return null;
 
   return (
     <div className="space-y-6">
       {authSessionQuery.data?.authenticated ? (
-        <SettingsSection title={m.settings.advanced.session.title}>
+        <SettingsSection title="settings:session">
           <SettingsRow
-            title={m.settings.advanced.session.thisBrowser.title}
-            anchorKey="advanced:this-browser"
-            description={m.settings.advanced.session.thisBrowser.description}
-            status={m.settings.advanced.session.authenticatedAs(
-              authSessionQuery.data.role ?? "client",
-            )}
+            id="setting-this-browser"
+            title="settings:thisBrowser"
+            description="settings:revokeThisBrowserSessionAndCloseEveryLiveSynara"
+            status={t("settings:advanced_authenticatedAs", {
+              value0: authSessionQuery.data.role ?? "client",
+            })}
             control={
               <Button
                 size="xs"
@@ -153,9 +149,7 @@ export function AdvancedSettingsPanel(props: {
                 disabled={isLoggingOut}
                 onClick={() => void logoutCurrentSession()}
               >
-                {isLoggingOut
-                  ? m.settings.advanced.session.signingOut
-                  : m.settings.advanced.session.signOut}
+                {isLoggingOut ? t("settings:signingOut") : t("settings:signOut")}
               </Button>
             }
           />
@@ -164,22 +158,20 @@ export function AdvancedSettingsPanel(props: {
 
       <NetworkSettingsSection />
 
-      <SettingsSection title={m.settings.advanced.developerTools.title}>
+      <SettingsSection title="settings:advanced_developerTools">
         <SettingsRow
-          title={m.settings.advanced.developerTools.keybindings.title}
-          anchorKey="advanced:keybindings"
-          description={m.settings.advanced.developerTools.keybindings.description}
+          id="setting-keybindings"
+          title="common:advanced_keybindings"
+          description="settings:openThePersistedKeybindingsJsonFileToEditAdvanced"
           status={
             <>
-              <span className="block break-all font-mono text-[11px] text-foreground">
-                {keybindingsConfigPath ?? m.settings.advanced.developerTools.resolvingPath}
+              <span className="block break-all font-mono text-ui-sm text-foreground">
+                {keybindingsConfigPath ?? t("settings:advanced_resolvingKeybindingsPath")}
               </span>
               {openKeybindingsError ? (
                 <span className="mt-1 block text-destructive">{openKeybindingsError}</span>
               ) : (
-                <span className="mt-1 block">
-                  {m.settings.advanced.developerTools.opensInEditor}
-                </span>
+                <span className="mt-1 block">{t("settings:advanced_opensInEditor")}</span>
               )}
             </>
           }
@@ -191,20 +183,20 @@ export function AdvancedSettingsPanel(props: {
               onClick={openKeybindingsFile}
             >
               {isOpeningKeybindings
-                ? m.settings.advanced.developerTools.opening
-                : m.settings.advanced.developerTools.openFile}
+                ? t("settings:advanced_opening")
+                : t("settings:advanced_openFile")}
             </Button>
           }
         />
 
         <SettingsRow
-          title={m.settings.advanced.developerTools.recovery.title}
-          anchorKey="advanced:recovery-tools"
-          description={m.settings.advanced.developerTools.recovery.description}
+          id="setting-recovery-tools"
+          title="settings:advanced_recoveryTools"
+          description="settings:advanced_recoveryToolsDescription"
           status={
             shouldOfferRecoveryTools
-              ? m.settings.advanced.developerTools.recoveryVisible
-              : m.settings.advanced.developerTools.recoveryHidden
+              ? t("settings:advanced_recoveryStatusVisible")
+              : t("settings:advanced_recoveryStatusHidden")
           }
           control={
             <Button
@@ -214,8 +206,8 @@ export function AdvancedSettingsPanel(props: {
               onClick={() => void repairLocalState()}
             >
               {isRepairingLocalState
-                ? m.settings.advanced.developerTools.repairing
-                : m.settings.advanced.developerTools.repairState}
+                ? t("settings:advanced_repairing")
+                : t("settings:advanced_repairState")}
             </Button>
           }
         >
@@ -227,8 +219,8 @@ export function AdvancedSettingsPanel(props: {
                 aria-expanded={showRecoveryTools}
                 onClick={() => setShowRecoveryTools((current) => !current)}
               >
-                <span className="text-xs font-medium text-muted-foreground">
-                  {m.settings.advanced.developerTools.whatThisDoes}
+                <span className="text-ui leading-snug font-medium text-muted-foreground">
+                  {t("settings:advanced_whatThisDoes")}
                 </span>
                 <DisclosureChevron
                   open={showRecoveryTools}
@@ -242,40 +234,45 @@ export function AdvancedSettingsPanel(props: {
                   SETTINGS_INSET_LIST_CLASS_NAME,
                 )}
               >
-                <div>{m.settings.advanced.developerTools.whatThisDoesBody}</div>
+                <div>{t("settings:advanced_recoveryDetail")}</div>
               </DisclosureRegion>
             </div>
           ) : null}
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection title={m.settings.advanced.about.title}>
+      <SettingsSection title="settings:advanced_about">
         <SettingsRow
-          title={m.settings.advanced.about.version.title}
-          anchorKey="advanced:version"
-          description={m.settings.advanced.about.version.description}
-          control={<code className="text-xs font-medium text-muted-foreground">{APP_VERSION}</code>}
+          id="setting-version"
+          title="settings:advanced_version"
+          description="settings:advanced_versionDescription"
+          control={
+            <code className="text-ui leading-snug font-medium text-muted-foreground">
+              {APP_VERSION}
+            </code>
+          }
         />
         <SettingsRow
-          title={m.settings.advanced.about.featureTour.title}
-          description={m.settings.advanced.about.featureTour.description}
+          id="setting-what-s-new-since-0-9-2"
+          title="settings:whatSNewSince092"
+          description="settings:exploreTheRedesignedWorkspaceProviderAccountsAndCodeReview"
           control={
             <Button
               size="sm"
               variant="outline"
               onClick={() => useFeatureTourStore.getState().open()}
             >
-              {m.settings.advanced.about.featureTour.replay}
+              {t("settings:replayFeatureTour")}
             </Button>
           }
         />
         <SettingsRow
-          title={m.settings.advanced.about.releaseHistory.title}
-          anchorKey="advanced:release-history"
-          description={m.settings.advanced.about.releaseHistory.description}
+          id="setting-release-history"
+          title="common:advanced_releaseHistory"
+          description="settings:advanced_releaseHistoryDescription"
           control={
             <Button size="sm" variant="outline" onClick={props.onOpenReleaseHistory}>
-              {m.settings.advanced.about.viewReleaseHistory}
+              {t("settings:advanced_viewReleaseHistory")}
             </Button>
           }
         />

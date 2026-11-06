@@ -1,9 +1,9 @@
+import { useTranslation } from "~/i18n";
 // FILE: ComposerVoiceButton.tsx
 // Purpose: Renders the composer mic control for recording and transcribing a voice note.
 // Layer: Chat composer presentation
 // Depends on: shared button styling and caller-owned voice recording state callbacks.
 
-import { useMessages } from "~/i18n/context";
 import { Loader2Icon, MicIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
@@ -19,16 +19,17 @@ export const ComposerVoiceButton = function ComposerVoiceButton(props: {
   durationLabel: string;
   onClick: () => void;
 }) {
-  const copy = useMessages().composer.voice;
+  const { t } = useTranslation();
+
   const isBusy = props.isTranscribing || props.isStarting === true;
   const circle = props.appearance === "circle";
   const label = props.isTranscribing
-    ? copy.transcribing
+    ? t("chat:composer_transcribingVoice")
     : props.isStarting
-      ? copy.startingMicrophone
+      ? t("chat:startingMicrophone")
       : props.isRecording
-        ? copy.stop(props.durationLabel)
-        : copy.record;
+        ? t("chat:stopVoiceNote", { value0: props.durationLabel })
+        : t("chat:recordVoiceNote");
 
   return (
     <Button

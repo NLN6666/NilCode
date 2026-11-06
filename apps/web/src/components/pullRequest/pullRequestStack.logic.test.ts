@@ -1,5 +1,6 @@
 import type { PullRequestStack, PullRequestStackEntry } from "@synara/contracts";
 import { describe, expect, it } from "vitest";
+import { t } from "~/i18n";
 
 import {
   assessPullRequestStack,
@@ -40,36 +41,41 @@ function stack(overrides: Partial<PullRequestStack> = {}): PullRequestStack {
 describe("pullRequestStackTargetEntries", () => {
   it("includes only unmerged entries through the selected pull request", () => {
     const source = stack({ entries: [entry(1, { state: "merged" }), entry(2), entry(3)] });
-    expect(pullRequestStackTargetEntries(source).map((member) => member.number)).toEqual([102]);
+    expect(
+      pullRequestStackTargetEntries(source).map(({ number, url }) => ({ number, url })),
+    ).toEqual([{ number: 102, url: "https://github.com/acme/app/pull/102" }]);
   });
 });
 
 describe("assessPullRequestStack", () => {
   it("reports a ready atomic merge and its effective target count", () => {
-    expect(assessPullRequestStack(stack())).toMatchObject({
-      label: "Ready to merge",
+    expect(assessPullRequestStack(stack(), t)).toMatchObject({
+      tone: "ready",
       mergeTargetCount: 2,
       canAttemptMerge: true,
     });
   });
 
   it("blocks a stack when any affected pull request is a draft", () => {
-    expect(
-      assessPullRequestStack(stack({ entries: [entry(1, { isDraft: true }), entry(2), entry(3)] })),
-    ).toMatchObject({
-      label: "Stack needs attention",
+    const assessment = assessPullRequestStack(
+      stack({ entries: [entry(1, { isDraft: true }), entry(2), entry(3)] }),
+      t,
+    );
+    expect(assessment).toMatchObject({
+      tone: "blocked",
       canAttemptMerge: false,
-      blocker: "#101 is still a draft.",
     });
+    expect(assessment.blocker).toContain("101");
   });
 
   it("keeps uncertain GitHub state attemptable so the async merge API stays authoritative", () => {
     expect(
       assessPullRequestStack(
         stack({ entries: [entry(1), entry(2, { mergeStateStatus: "UNKNOWN" }), entry(3)] }),
+        t,
       ),
     ).toMatchObject({
-      label: "Merge status pending",
+      tone: "pending",
       canAttemptMerge: true,
     });
   });
@@ -78,7 +84,11 @@ describe("assessPullRequestStack", () => {
 describe("pullRequestMergeBlocker", () => {
   it("blocks merge when stack metadata could not be verified", () => {
     expect(
-      pullRequestMergeBlocker({ stackMetadataIncomplete: true, mergeability: "mergeable" }, null),
-    ).toBe("Stack details are temporarily unavailable. Refresh before merging.");
+      pullRequestMergeBlocker(
+        { stackMetadataIncomplete: true, mergeability: "mergeable" },
+        null,
+        t,
+      ),
+    ).not.toBeNull();
   });
 });

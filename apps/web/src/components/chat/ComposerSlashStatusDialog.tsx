@@ -18,35 +18,48 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { ContextWindowMeter } from "./ContextWindowMeter";
-import { useMessages } from "~/i18n/context";
-import type { Messages } from "~/i18n/locales/en";
+import { useTranslation } from "~/i18n";
 
 function formatRateLimitMessage(
   rateLimitStatus: RateLimitStatus,
-  copy: Messages["composer"]["status"],
+  translate: ReturnType<typeof useTranslation>["t"],
+  formatLocale: string,
 ): string {
-  const resetSuffix = rateLimitStatus.resetsAt
-    ? copy.rateLimitResetsAt(new Date(rateLimitStatus.resetsAt).toLocaleTimeString())
-    : "";
+  const resetAt = rateLimitStatus.resetsAt
+    ? new Date(rateLimitStatus.resetsAt).toLocaleTimeString(formatLocale)
+    : null;
   if (rateLimitStatus.status === "rejected") {
-    return `${copy.rateLimitReached}${resetSuffix}`;
+    return resetAt
+      ? translate("chat:rateLimitReachedReset", { resetAt })
+      : translate("chat:rateLimitReachedNoReset");
   }
-  const utilization =
+  const usage =
     typeof rateLimitStatus.utilization === "number"
-      ? `${Math.round(rateLimitStatus.utilization * 100)}%`
+      ? new Intl.NumberFormat(formatLocale, { style: "percent", maximumFractionDigits: 0 }).format(
+          rateLimitStatus.utilization,
+        )
       : null;
-  return `${copy.rateLimitApproaching(utilization)}${resetSuffix}`;
+  if (usage !== null) {
+    return resetAt
+      ? translate("chat:rateLimitApproachingUsageReset", { usage, resetAt })
+      : translate("chat:rateLimitApproachingUsage", { usage });
+  }
+  return resetAt
+    ? translate("chat:rateLimitApproachingReset", { resetAt })
+    : translate("chat:rateLimitApproaching");
 }
 
 function formatEnvironmentLabel(
   envMode: DraftThreadEnvMode,
   envState: ResolvedThreadWorkspaceState,
-  copy: Messages["composer"]["status"],
+  translate: ReturnType<typeof useTranslation>["t"],
 ): string {
   if (envMode === "local") {
-    return copy.envLocal;
+    return translate("computer:worktreeMode_local");
   }
-  return envState === "worktree-pending" ? copy.envWorktreePending : copy.envWorktree;
+  return envState === "worktree-pending"
+    ? translate("chat:newWorktreePending")
+    : translate("common:worktreeMode_worktree");
 }
 
 export function ComposerSlashStatusDialog(props: {
@@ -65,7 +78,7 @@ export function ComposerSlashStatusDialog(props: {
   activeContextWindowLabel?: string | null;
   pendingContextWindowLabel?: string | null;
 }) {
-  const copy = useMessages().composer.status;
+  const { t, formatLocale } = useTranslation();
   const {
     open,
     onOpenChange,
@@ -87,58 +100,73 @@ export function ComposerSlashStatusDialog(props: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>{copy.title}</DialogTitle>
-          <DialogDescription>{copy.description}</DialogDescription>
+          <DialogTitle>{t("chat:sessionStatus_title")}</DialogTitle>
+          <DialogDescription>
+            {t("chat:runtimeControlsAndLocalThreadStateForTheActive")}
+          </DialogDescription>
         </DialogHeader>
         <DialogPanel className="space-y-4">
           <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/20 p-4 text-ui-lg leading-snug sm:grid-cols-2">
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">{copy.model}</p>
+              <p className="text-ui leading-snug text-muted-foreground">{t("chat:detail_model")}</p>
               <p className="font-medium text-foreground">{selectedModel}</p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">{copy.fastMode}</p>
-              <p className="font-medium text-foreground">{fastModeEnabled ? copy.on : copy.off}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">{copy.reasoning}</p>
+              <p className="text-ui leading-snug text-muted-foreground">{t("chat:fastMode")}</p>
               <p className="font-medium text-foreground">
-                {selectedPromptEffort ?? copy.defaultEffort}
+                {fastModeEnabled
+                  ? t("automation:modelEffort_thinkingOn")
+                  : t("automation:traitsPicker_off")}
               </p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">{copy.mode}</p>
+              <p className="text-ui leading-snug text-muted-foreground">
+                {t("chat:sessionStatus_reasoning")}
+              </p>
+              <p className="font-medium text-foreground">
+                {selectedPromptEffort ?? t("settings:reasoningModes_default")}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-ui leading-snug text-muted-foreground">{t("chat:mode_label")}</p>
               <p className="font-medium text-foreground">
                 {interactionMode === "plan"
-                  ? copy.planMode
+                  ? t("workspace:plan_badge")
                   : interactionMode === "debug"
-                    ? copy.debugMode
-                    : copy.defaultMode}
+                    ? t("chat:debug")
+                    : t("settings:reasoningModes_default")}
               </p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">{copy.environment}</p>
+              <p className="text-ui leading-snug text-muted-foreground">
+                {t("chat:general_environmentPanel")}
+              </p>
               <p className="font-medium text-foreground">
-                {formatEnvironmentLabel(envMode, envState, copy)}
+                {formatEnvironmentLabel(envMode, envState, t)}
               </p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">{copy.branch}</p>
-              <p className="font-medium text-foreground">{branch ?? copy.unknown}</p>
+              <p className="text-ui leading-snug text-muted-foreground">
+                {t("common:sessionStatus_branch")}
+              </p>
+              <p className="font-medium text-foreground">{branch ?? t("common:common_unknown")}</p>
             </div>
           </div>
 
           <div className="space-y-3 rounded-lg border border-border/60 bg-card p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs text-muted-foreground">{copy.contextWindow}</p>
-                <p className="text-sm text-muted-foreground">{copy.contextWindowHint}</p>
+                <p className="text-ui leading-snug text-muted-foreground">
+                  {t("chat:contextWindow")}
+                </p>
+                <p className="text-ui leading-snug text-muted-foreground">
+                  {t("chat:latestUsageReportedByTheActiveThread")}
+                </p>
                 {pendingContextWindowLabel ? (
-                  <p className="text-sm text-muted-foreground">
-                    {copy.sessionWindows(
-                      activeContextWindowLabel ?? copy.unknown,
-                      pendingContextWindowLabel,
-                    )}
+                  <p className="text-ui leading-snug text-muted-foreground">
+                    {t("chat:sessionStatus_currentSessionLabel")}{" "}
+                    {activeContextWindowLabel ?? t("common:common_unknown")}
+                    {t("chat:nextTurn")} {pendingContextWindowLabel}.
                   </p>
                 ) : null}
               </div>
@@ -155,19 +183,19 @@ export function ComposerSlashStatusDialog(props: {
               {contextWindow ? (
                 <>
                   <div>
-                    <p className="text-muted-foreground">{copy.used}</p>
+                    <p className="text-muted-foreground">{t("chat:sessionStatus_used")}</p>
                     <p className="font-medium text-foreground">
                       {formatContextWindowTokens(contextWindow.usedTokens)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">{copy.remaining}</p>
+                    <p className="text-muted-foreground">{t("chat:sessionStatus_remaining")}</p>
                     <p className="font-medium text-foreground">
                       {formatContextWindowTokens(contextWindow.remainingTokens)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-muted-foreground">{copy.window}</p>
+                    <p className="text-muted-foreground">{t("common:sessionStatus_window")}</p>
                     <p className="font-medium text-foreground">
                       {formatContextWindowTokens(contextWindow.maxTokens)}
                     </p>
@@ -175,34 +203,37 @@ export function ComposerSlashStatusDialog(props: {
                 </>
               ) : (
                 <div>
-                  <p className="text-muted-foreground">{copy.noContextUsage}</p>
+                  <p className="text-muted-foreground">{t("chat:contextUsage")}</p>
+                  <p className="font-medium text-foreground">{t("chat:notReportedYet")}</p>
                 </div>
               )}
               <div>
-                <p className="text-muted-foreground">{copy.cost}</p>
+                <p className="text-muted-foreground">{t("chat:sessionStatus_cost")}</p>
                 <p className="font-medium text-foreground">
                   {cumulativeCostUsd !== null
                     ? formatCostUsd(cumulativeCostUsd)
-                    : copy.costUnavailable}
+                    : t("chat:notAvailable")}
                 </p>
               </div>
             </div>
           </div>
 
           <div className="space-y-2 rounded-lg border border-border/60 bg-card p-4">
-            <p className="text-xs text-muted-foreground">{copy.rateLimits}</p>
+            <p className="text-ui leading-snug text-muted-foreground">{t("chat:rateLimits")}</p>
             {rateLimitStatus ? (
-              <p className="text-sm text-foreground">
-                {formatRateLimitMessage(rateLimitStatus, copy)}
+              <p className="text-ui leading-snug text-foreground">
+                {formatRateLimitMessage(rateLimitStatus, t, formatLocale)}
               </p>
             ) : (
-              <p className="text-sm text-muted-foreground">{copy.noRateLimitWarning}</p>
+              <p className="text-ui leading-snug text-muted-foreground">
+                {t("chat:noActiveRateLimitWarningForThisThread")}
+              </p>
             )}
           </div>
         </DialogPanel>
         <DialogFooter variant="bare">
           <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
-            {copy.close}
+            {t("common:app_close")}
           </Button>
         </DialogFooter>
       </DialogPopup>

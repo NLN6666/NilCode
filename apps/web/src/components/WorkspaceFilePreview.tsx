@@ -34,6 +34,7 @@ import {
 import { basenameOfPath } from "~/file-icons";
 import { useWorkspaceFileEditorBuffer } from "~/hooks/useWorkspaceFileEditor";
 import { useTheme } from "~/hooks/useTheme";
+import { useTranslation } from "~/i18n";
 import { useProjectFileChangeSubscription } from "~/hooks/useProjectFileChangeSubscription";
 import {
   getSelectionSnippetWithin,
@@ -79,7 +80,6 @@ import { useCodeSelectionAction } from "./chat/useCodeSelectionAction";
 import { LocalImagePreview } from "./LocalImagePreview";
 import { PdfFilePreview } from "./PdfFilePreview";
 import { Skeleton } from "./ui/skeleton";
-import { useMessages } from "~/i18n/context";
 import { CodeEditorPane } from "./codeEditor/CodeEditorPane";
 import { useCodeEditorSaveKeyDownHandler } from "./codeEditor/editorSaveShortcut";
 
@@ -310,6 +310,8 @@ function EditableFileContents(props: EditableFileContentsProps) {
 // The lightweight preview edits the same native session as the other surfaces.
 // It deliberately does not initialize a second text model or language service.
 function NumberedPlainEditableFileContents(props: EditableFileContentsProps) {
+  const { t } = useTranslation();
+
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
   const saveKeyDown = useCodeEditorSaveKeyDownHandler(props.onSave);
@@ -340,7 +342,7 @@ function NumberedPlainEditableFileContents(props: EditableFileContentsProps) {
       <textarea
         ref={editorRef}
         className="editor-file-editor"
-        aria-label={`Edit ${props.path}`}
+        aria-label={t("workspace:edit", { value0: props.path })}
         aria-busy={props.saving}
         aria-invalid={props.invalid || undefined}
         value={props.contents}
@@ -412,12 +414,12 @@ const FILE_PREVIEW_SKELETON_LINES = [
 ];
 
 function FilePreviewLoadingState() {
-  const copy = useMessages().editor.filePreview;
+  const { t } = useTranslation();
   return (
     <div
       className="min-h-0 flex-1 space-y-2.5 overflow-hidden px-3 py-3"
       role="status"
-      aria-label={copy.loading}
+      aria-label={t("workspace:filePreview_loadingFile")}
     >
       {FILE_PREVIEW_SKELETON_LINES.map((line) => (
         <div key={`${line.indent}-${line.width}`} className="flex h-3 items-center gap-2">
@@ -428,7 +430,7 @@ function FilePreviewLoadingState() {
           />
         </div>
       ))}
-      <span className="sr-only">{copy.loading}</span>
+      <span className="sr-only">{t("workspace:filePreview_loadingFile")}</span>
     </div>
   );
 }
@@ -465,8 +467,7 @@ export interface WorkspaceFilePreviewProps {
 }
 
 export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
-  const previewCopy = useMessages().editor.filePreview;
-  const lineCommentCopy = useMessages().chat.lineComment;
+  const { t } = useTranslation();
   const liveRevalidationEnabled = props.liveRevalidationEnabled ?? true;
   const { resolvedTheme } = useTheme();
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
@@ -696,7 +697,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     !props.editable || showMarkdownPreview || fileQuery.data === undefined
       ? null
       : !fileIsWorkspaceRelative
-        ? "Only files inside the project can be edited."
+        ? t("workspace:fileReadOnlyOutsideProject")
         : editor.readOnlyReason;
   const handleEditBufferChange = editor.handleChange;
   const handleEditBufferSave = editor.save;
@@ -906,7 +907,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
   if (!props.workspaceRoot && !fileIsLocalAbsolute && !fileIsScratchBinaryPreview) {
     return (
       <PanelStateMessage density="compact" fill="flex">
-        <p>{previewCopy.noWorkspaceAttached}</p>
+        <p>{t("workspace:filePreview_noWorkspace")}</p>
       </PanelStateMessage>
     );
   }
@@ -915,7 +916,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     return (
       props.emptyState ?? (
         <PanelStateMessage density="compact" fill="flex">
-          <p>{previewCopy.selectFromExplorer}</p>
+          <p>{t("workspace:filePreview_selectFileFromExplorer")}</p>
         </PanelStateMessage>
       )
     );
@@ -927,7 +928,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
           <p className="text-left text-ui-sm text-destructive/85">
             {localPreviewGrantQuery.error instanceof Error
               ? localPreviewGrantQuery.error.message
-              : previewCopy.previewGrantFailed}
+              : t("workspace:filePreview_couldNotCreatePreview")}
           </p>
         </PanelStateMessage>
       );
@@ -986,14 +987,15 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
         saveState={
           activeEditBuffer
             ? activeEditBuffer.error
-              ? "Save failed"
+              ? t("workspace:saveFailed")
               : activeEditBuffer.saving
-                ? "Saving..."
+                ? t("common:saving2")
                 : editBufferDirty
-                  ? "Unsaved changes"
-                  : "Saved"
+                  ? t("workspace:unsavedChanges")
+                  : t("workspace:saved")
             : undefined
         }
+        saving={activeEditBuffer?.saving ?? false}
         onSave={activeEditBuffer ? editor.save : undefined}
         readOnlyReason={readOnlyReason}
         reloading={fileIsImage || fileIsPdf ? binaryPreviewReloading : fileQuery.isFetching}
@@ -1010,7 +1012,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
             className="shrink-0 rounded-md px-2 py-1 font-medium text-foreground/80 hover:bg-foreground/8"
             onClick={handleEditBufferReload}
           >
-            {previewCopy.reloadFromDisk}
+            {t("workspace:reloadFromDisk")}
           </button>
         </div>
       ) : editBufferExternallyChanged ? (
@@ -1018,13 +1020,15 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
           role="alert"
           className="flex shrink-0 items-center gap-3 border-b border-amber-500/25 bg-amber-500/5 px-3 py-2 text-ui-sm text-foreground/80"
         >
-          <span className="min-w-0 flex-1">{previewCopy.externalChangePreserved}</span>
+          <span className="min-w-0 flex-1">
+            {t("workspace:thisFileChangedOnDiskYourUnsavedEditsAre")}
+          </span>
           <button
             type="button"
             className="shrink-0 rounded-md px-2 py-1 font-medium text-foreground/80 hover:bg-foreground/8"
             onClick={handleEditBufferReload}
           >
-            {previewCopy.reloadFromDisk}
+            {t("workspace:reloadFromDisk")}
           </button>
         </div>
       ) : showFileReadErrorIndicator ? (
@@ -1038,17 +1042,16 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
         >
           {fileReadCapacityError
             ? fileQuery.isFetching
-              ? previewCopy.refreshing
-              : previewCopy.refreshDelayed
+              ? t("workspace:refreshingFile")
+              : t("workspace:fileRefreshDelayed")
             : fileReadError instanceof Error
               ? fileReadError.message
-              : previewCopy.refreshFailed}
+              : t("workspace:couldNotRefreshFile")}
         </div>
       ) : null}
       {changeGutterEnabled && workingTreeDiffQuery.data?.truncated === true ? (
         <DiffTruncationWarning className="rounded-none border-x-0 border-t-0">
-          Only part of this file&apos;s working-tree diff is available. Change markers may be
-          incomplete.
+          {t("workspace:onlyPartOfThisFileSWorkingTreeDiff")}
         </DiffTruncationWarning>
       ) : null}
       {locatingOutOfRootFile ? (
@@ -1075,8 +1078,10 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
         <FilePreviewLoadingState />
       ) : !hasFileContents && fileReadError ? (
         <PanelStateMessage density="compact" fill="flex" className="items-start justify-start p-3">
-          <p className="text-left text-[11px] text-destructive/85">
-            {fileReadError instanceof Error ? fileReadError.message : previewCopy.readFailed}
+          <p className="text-left text-ui-sm text-destructive/85">
+            {fileReadError instanceof Error
+              ? fileReadError.message
+              : t("workspace:filePreview_couldNotReadFile")}
           </p>
         </PanelStateMessage>
       ) : !hasFileContents ? (
@@ -1136,7 +1141,9 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
                 <FilePreviewChangeGutter ranges={changeRanges} subtle={changeGutterSubtle} />
               ) : null}
               {!showMarkdownPreview && lineCount > 0 ? (
-                <span className="sr-only">{lineCount} lines</span>
+                <span className="sr-only">
+                  {lineCount} {t("workspace:lines")}
+                </span>
               ) : null}
               {previewSelectionAction.pendingAction ? (
                 <TranscriptSelectionAction
@@ -1155,8 +1162,10 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
                     left: hoveredCommentLine.left,
                     height: hoveredCommentLine.height,
                   }}
-                  aria-label={`Comment on line ${hoveredCommentLine.lineNumber}`}
-                  title="Comment"
+                  aria-label={t("workspace:commentOnLine", {
+                    value0: hoveredCommentLine.lineNumber,
+                  })}
+                  title={t("workspace:filePreview_comment")}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={(event) => {
                     event.preventDefault();
@@ -1177,10 +1186,9 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
                     aria-hidden="true"
                   />
                   <FileLineCommentBox
-                    lineLabel={lineCommentCopy.range(
-                      activeCommentLine.lineNumber,
-                      activeCommentLine.lineNumber,
-                    )}
+                    lineLabel={t("workspace:selectionLine", {
+                      location: activeCommentLine.lineNumber,
+                    })}
                     top={activeCommentLine.top + activeCommentLine.height}
                     left={activeCommentLine.left}
                     width={Math.max(

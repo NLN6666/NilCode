@@ -23,7 +23,7 @@ import {
   type ShortcutSheetSection,
 } from "../shortcutsSheet";
 import type { ProjectScript } from "../types";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 export default function ShortcutsDialog(props: {
   open: boolean;
@@ -56,7 +56,8 @@ function ShortcutsDialogContent(props: {
   platform: string;
   context: ShortcutSheetContext;
 }) {
-  const copy = useMessages().dialogs.shortcuts;
+  const { t } = useTranslation();
+
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -83,14 +84,16 @@ function ShortcutsDialogContent(props: {
   return (
     <>
       <DialogHeader className="pb-2">
-        <DialogTitle className="text-base">{copy.title}</DialogTitle>
-        <DialogDescription className="text-xs">{copy.description}</DialogDescription>
+        <DialogTitle className="text-base">{t("common:advanced_keybindings")}</DialogTitle>
+        <DialogDescription className="text-ui leading-snug">
+          {t("common:reflectsTheBindingsActiveInYourCurrentContext")}
+        </DialogDescription>
         <div className="pt-2">
           <Input
             ref={inputRef}
             type="search"
             size="sm"
-            placeholder={copy.searchPlaceholder}
+            placeholder={t("common:shortcuts_searchPlaceholder")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -102,7 +105,7 @@ function ShortcutsDialogContent(props: {
             }}
             className="rounded-md"
             nativeInput
-            aria-label={copy.searchLabel}
+            aria-label={t("common:searchShortcuts")}
           />
         </div>
       </DialogHeader>
@@ -115,8 +118,9 @@ function ShortcutsDialogContent(props: {
             ))}
           </div>
         ) : (
-          <div className="px-6 py-10 text-center text-sm text-muted-foreground">
-            {copy.noMatches(query)}
+          <div className="px-6 py-10 text-center text-ui leading-snug text-muted-foreground">
+            {t("common:noShortcutsMatch")}
+            {query}&rdquo;.
           </div>
         )}
       </DialogPanel>

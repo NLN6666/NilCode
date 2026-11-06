@@ -1,3 +1,4 @@
+import { executionStorage } from "./lib/hosts/executionStorage";
 /**
  * Single Zustand store for terminal UI state keyed by threadId.
  *
@@ -963,7 +964,7 @@ const terminalPersistStorage = createDeferredPersistStorage<
   TerminalStateStoreState,
   Pick<TerminalStateStoreState, "terminalStateByThreadId">
 >({
-  getStorage: () => localStorage,
+  getStorage: () => executionStorage,
   partialize: (state) => ({
     terminalStateByThreadId: sanitizePersistedTerminalStateByThreadId(
       state.terminalStateByThreadId,

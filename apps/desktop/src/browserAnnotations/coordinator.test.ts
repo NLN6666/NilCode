@@ -199,18 +199,18 @@ describe("BrowserAnnotationCoordinator", () => {
 
   // The guest resolves its own popover copy, so the locale must survive the hop to the
   // start command — otherwise the in-page annotate dialog silently stays English.
-  it("forwards the requested locale to the guest start command", () => {
+  it("forwards the canonical Spanish locale to the guest start command", () => {
     const harness = createHarness();
     harness.ready("document-a");
     harness.coordinator.start({
       threadId: THREAD_ID,
       tabId: TAB_ID,
       theme: LIGHT_ANNOTATION_THEME,
-      locale: "zh-CN",
+      locale: "es",
     });
     expect(harness.sent.at(-1)?.payload).toMatchObject({
       kind: "start",
-      locale: "zh-CN",
+      locale: "es",
     });
   });
 

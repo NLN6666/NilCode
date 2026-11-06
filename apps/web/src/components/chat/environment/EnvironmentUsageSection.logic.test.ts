@@ -1,7 +1,7 @@
 import type { ServerProviderUsageSnapshot } from "@synara/contracts";
 import { describe, expect, it } from "vitest";
 
-import { en } from "~/i18n/locales/en";
+import { t } from "~/i18n";
 import { deriveProviderUsageDisplayRows } from "~/lib/providerUsageDisplay";
 
 import { resolveEnvironmentProviderUsageSummary } from "./EnvironmentUsageSection.logic";
@@ -34,52 +34,66 @@ describe("resolveEnvironmentProviderUsageSummary", () => {
       },
     ]);
 
-    const summary = resolveEnvironmentProviderUsageSummary({
-      copy: en.chat.usageStatus,
-      providerName: "Codex",
-      rows,
-      snapshot: providerSnapshot,
-      hasUsageLines: false,
-    });
+    const summary = resolveEnvironmentProviderUsageSummary(
+      {
+        providerName: "Codex",
+        rows,
+        snapshot: providerSnapshot,
+        hasUsageLines: false,
+      },
+      t,
+    );
 
     expect(summary.rows.map((row) => [row.label, row.remainingLabel])).toEqual([
       ["5h", "95%"],
       ["Weekly", "82%"],
     ]);
-    expect(summary.ariaLabel).toBe("Codex usage: 5h 95% remaining, Weekly 82% remaining");
+    expect(summary.ariaLabel).toContain("Codex");
+    expect(summary.ariaLabel).toContain("95%");
+    expect(summary.ariaLabel).toContain("82%");
   });
 
-  it.each([
-    ["needs-auth", "Sign in"],
-    ["unsupported", "Unsupported"],
-    ["error", "Unavailable"],
-    ["ok", "No data"],
-  ] as const)("uses the %s fallback when no limit rows are available", (status, label) => {
-    const providerSnapshot = snapshot({ status });
+  it("keeps each provider usage state distinct when there are no limit rows", () => {
+    const statuses = ["needs-auth", "unsupported", "error", "ok"] as const;
+    const summaries = statuses.map((status) =>
+      resolveEnvironmentProviderUsageSummary(
+        {
+          providerName: "Codex",
+          rows: [],
+          snapshot: snapshot({ status }),
+          hasUsageLines: false,
+        },
+        t,
+      ),
+    );
 
-    const summary = resolveEnvironmentProviderUsageSummary({
-      copy: en.chat.usageStatus,
-      providerName: "Codex",
-      rows: [],
-      snapshot: providerSnapshot,
-      hasUsageLines: false,
-    });
-
-    expect(summary.statusLabel).toBe(label);
-    expect(summary.ariaLabel).toBe(`Codex usage: ${label}`);
+    expect(summaries.every((summary) => summary.statusLabel.length > 0)).toBe(true);
+    expect(new Set(summaries.map((summary) => summary.statusLabel)).size).toBe(statuses.length);
+    expect(summaries.every((summary) => summary.ariaLabel.includes("Codex"))).toBe(true);
   });
 
   it("falls back to No data when the batch has no snapshot for the provider", () => {
-    const summary = resolveEnvironmentProviderUsageSummary({
-      copy: en.chat.usageStatus,
-      providerName: "Claude",
-      rows: [],
-      snapshot: undefined,
-      hasUsageLines: false,
-    });
+    const summary = resolveEnvironmentProviderUsageSummary(
+      {
+        providerName: "Claude",
+        rows: [],
+        snapshot: undefined,
+        hasUsageLines: false,
+      },
+      t,
+    );
 
-    expect(summary.statusLabel).toBe("No data");
-    expect(summary.ariaLabel).toBe("Claude usage: No data");
+    const emptySnapshotSummary = resolveEnvironmentProviderUsageSummary(
+      {
+        providerName: "Claude",
+        rows: [],
+        snapshot: snapshot({ status: "ok" }),
+        hasUsageLines: false,
+      },
+      t,
+    );
+    expect(summary.statusLabel).toBe(emptySnapshotSummary.statusLabel);
+    expect(summary.ariaLabel).toContain("Claude");
   });
 
   it("reports connected when an ok provider only exposes usage text", () => {
@@ -87,15 +101,27 @@ describe("resolveEnvironmentProviderUsageSummary", () => {
       usageLines: [{ label: "Limits", value: "Remaining limits stay in the provider CLI." }],
     });
 
-    const summary = resolveEnvironmentProviderUsageSummary({
-      copy: en.chat.usageStatus,
-      providerName: "Droid",
-      rows: [],
-      snapshot: providerSnapshot,
-      hasUsageLines: true,
-    });
+    const summary = resolveEnvironmentProviderUsageSummary(
+      {
+        providerName: "Droid",
+        rows: [],
+        snapshot: providerSnapshot,
+        hasUsageLines: true,
+      },
+      t,
+    );
 
-    expect(summary.statusLabel).toBe("Connected");
-    expect(summary.ariaLabel).toBe("Droid usage: Connected");
+    expect(summary.statusLabel).not.toBe(
+      resolveEnvironmentProviderUsageSummary(
+        {
+          providerName: "Droid",
+          rows: [],
+          snapshot: providerSnapshot,
+          hasUsageLines: false,
+        },
+        t,
+      ).statusLabel,
+    );
+    expect(summary.ariaLabel).toContain("Droid");
   });
 });

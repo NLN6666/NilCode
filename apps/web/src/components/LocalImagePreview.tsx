@@ -7,21 +7,32 @@
 //        markdown variant (`GeneratedMarkdownImage`) composes the same hook and
 //        error card with its own inline frame/overlay rendering.
 
-import { type ImgHTMLAttributes, type MouseEvent, useState } from "react";
+import { type ComponentProps, type MouseEvent, useLayoutEffect, useRef, useState } from "react";
+
+import { useExecutionImageSource } from "~/hooks/useExecutionImageSource";
 
 import { downloadUrlAsBlob } from "~/lib/browserDownload";
 import { DownloadIcon, Loader2Icon, TriangleAlertIcon } from "~/lib/icons";
 import { buildLocalImageUrl, localImageFileName } from "~/lib/localImageUrls";
 import { cn } from "~/lib/utils";
 import { toastManager } from "./ui/toast";
-import { useMessages } from "~/i18n/context";
 import { Button } from "./ui/button";
+import { useTranslation } from "~/i18n";
 
 export type LocalImagePreviewStatus = "loading" | "ready" | "error";
 
 type LocalImagePreviewImgProps = Pick<
-  ImgHTMLAttributes<HTMLImageElement>,
-  "src" | "loading" | "decoding" | "draggable" | "onLoad" | "onError"
+  ComponentProps<"img">,
+  | "ref"
+  | "src"
+  | "width"
+  | "height"
+  | "style"
+  | "loading"
+  | "decoding"
+  | "draggable"
+  | "onLoad"
+  | "onError"
 >;
 
 export interface LocalImagePreviewState {
@@ -66,6 +77,25 @@ export function useLocalImagePreview(input: {
       grant: previewGrant,
     });
   const fileName = localImageFileName(src);
+  const {
+    ref: imageRef,
+    src: imageSrc,
+    error: imageError,
+    intrinsicProps,
+    onLoad: onImageLoad,
+    onError: onImageError,
+  } = useExecutionImageSource(previewUrl, true, JSON.stringify([src, cwd, input.resourceUrl]));
+  const errorNotifiedFor = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (imageError) {
+      if (errorNotifiedFor.current !== previewUrl) {
+        errorNotifiedFor.current = previewUrl;
+        input.onPreviewError?.();
+      }
+    } else {
+      errorNotifiedFor.current = null;
+    }
+  }, [imageError, input.onPreviewError, previewUrl]);
   // A generation distinguishes separate visits to the same URL. This keeps an
   // A -> B -> A transition from reviving A's old error branch (which contains
   // no <img> and therefore cannot retry), and rejects stale image events.
@@ -91,15 +121,19 @@ export function useLocalImagePreview(input: {
   };
 
   const imgProps: LocalImagePreviewImgProps = {
-    src: previewUrl,
+    ref: imageRef,
+    src: imageSrc,
+    ...intrinsicProps,
     loading: "lazy",
     decoding: "async",
     draggable: false,
-    onLoad: () => {
+    onLoad: (event) => {
+      if (!onImageLoad(event)) return;
       settleLoad("ready");
       input.onPreviewReady?.();
     },
-    onError: () => {
+    onError: (event) => {
+      if (!onImageError(event)) return;
       settleLoad("error");
       input.onPreviewError?.();
     },
@@ -110,7 +144,7 @@ export function useLocalImagePreview(input: {
     downloadUrl,
     fileName,
     downloadName: fileName || "",
-    status: load.status,
+    status: imageError ? "error" : load.status,
     imgProps,
   };
 }
@@ -123,6 +157,8 @@ export function useLocalImageDownloadClick(input: {
   errorTitle?: string | undefined;
   resolveDownloadUrl?: (() => Promise<string>) | undefined;
 }) {
+  const { t } = useTranslation();
+
   return (event: MouseEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -134,9 +170,9 @@ export function useLocalImageDownloadClick(input: {
       .catch((error: unknown) => {
         toastManager.add({
           type: "error",
-          title: input.errorTitle ?? "Could not download image",
+          title: input.errorTitle ?? t("common:image_couldNotDownload"),
           description:
-            error instanceof Error ? error.message : "The file may have moved or be unavailable.",
+            error instanceof Error ? error.message : t("common:theFileMayHaveMovedOrBeUnavailable"),
         });
       });
   };
@@ -152,17 +188,17 @@ export function LocalImageErrorCard(props: {
   onDownloadClick?: ((event: MouseEvent<HTMLElement>) => void) | undefined;
   onRetry?: (() => void) | undefined;
 }) {
-  const copy = useMessages().editor.image;
+  const { t } = useTranslation();
   const downloadAction = (
     <a
       href={props.downloadUrl}
       download={props.downloadName}
       onClick={props.onDownloadClick}
       className="local-image-error__action"
-      aria-label={props.downloadAriaLabel ?? copy.downloadImage}
+      aria-label={props.downloadAriaLabel ?? t("common:image_downloadImage")}
     >
       <DownloadIcon className="size-3.5" aria-hidden="true" />
-      <span>{copy.download}</span>
+      <span>{t("common:image_download")}</span>
     </a>
   );
   return (
@@ -171,22 +207,24 @@ export function LocalImageErrorCard(props: {
         <TriangleAlertIcon className="size-4" />
       </span>
       <span className="local-image-error__body">
-        <span className="local-image-error__title">{copy.openFailed}</span>
-        <span className="local-image-error__subtitle">{copy.openFailedHint}</span>
+        <span className="local-image-error__title">{t("common:couldnTOpenThisImage")}</span>
+        <span className="local-image-error__subtitle">
+          {t("common:theFileMayHaveMovedOrBeUnavailable")}
+        </span>
       </span>
       {props.onRetry ? (
         <span className="inline-flex shrink-0 flex-col items-stretch gap-1">
           <Button
             variant="outline"
             size="chip"
-            aria-label={copy.retryImage}
+            aria-label={t("common:image_retryPreview")}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
               props.onRetry?.();
             }}
           >
-            {copy.retry}
+            {t("common:common_retry")}
           </Button>
           {downloadAction}
         </span>
@@ -208,7 +246,7 @@ export function LocalImagePreview(props: {
   onPreviewReady?: (() => void) | undefined;
   onPreviewError?: (() => void) | undefined;
 }) {
-  const previewCopy = useMessages().editor.image;
+  const { t } = useTranslation();
   const { downloadUrl, downloadName, status, imgProps } = useLocalImagePreview({
     src: props.src,
     cwd: props.cwd,
@@ -247,8 +285,8 @@ export function LocalImagePreview(props: {
         download={downloadName}
         onClick={handleDownloadClick}
         className="local-image-preview__download"
-        aria-label={previewCopy.downloadImage}
-        title={previewCopy.download}
+        aria-label={t("common:image_downloadImage")}
+        title={t("common:image_download")}
       >
         <DownloadIcon className="size-3.5" aria-hidden="true" />
       </a>

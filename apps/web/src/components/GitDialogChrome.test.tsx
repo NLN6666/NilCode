@@ -31,12 +31,11 @@ const context: GitDialogContext = {
 
 afterEach(() => vi.unstubAllGlobals());
 
-function expectPrimaryShortcut(html: string, label: string, hint: string, shortcut: string) {
+function expectPrimaryShortcut(html: string, hint: string, shortcut: string) {
   const buttons = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
-  const primary = buttons.find((button) => button.includes(`>${label}</span>`));
-  expect(primary).toBeDefined();
-  expect(primary).toContain(`aria-label="${hint}"`);
+  const primary = buttons.find((button) => /\baria-keyshortcuts="/u.test(button));
   expect(primary).toContain(`aria-keyshortcuts="${shortcut}"`);
+  expect(primary).toContain(`aria-label="${hint}"`);
   expect(html.match(/aria-keyshortcuts=/g)).toHaveLength(1);
 }
 
@@ -57,7 +56,7 @@ describe.each([
       />,
     );
 
-    expectPrimaryShortcut(html, "Commit", hint, shortcut);
+    expectPrimaryShortcut(html, hint, shortcut);
   });
 
   it("exposes the create PR shortcut only on the primary button", () => {
@@ -72,6 +71,6 @@ describe.each([
       />,
     );
 
-    expectPrimaryShortcut(html, "Create PR", hint, shortcut);
+    expectPrimaryShortcut(html, hint, shortcut);
   });
 });

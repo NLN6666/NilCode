@@ -6,13 +6,9 @@ import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 
 import { BrowserTabStrip } from "./BrowserTabStrip";
-import { en } from "~/i18n/locales/en";
 
 const labels = {
   agentControlLabel: null,
-  untitledLabel: en.browser.untitledTab,
-  closeTabLabel: en.browser.actions.closeTab,
-  newTabLabel: en.browser.actions.newTab,
 };
 
 const tabs: BrowserTabState[] = ["Active page", "Background page"].map((title, index) => ({

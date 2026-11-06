@@ -23,6 +23,7 @@ import {
   type PullRequestListGroupKey,
 } from "./pullRequestList.logic";
 import { PullRequestRow } from "./PullRequestRow";
+import { useTranslation } from "~/i18n";
 
 /** Rows a section shows first, and how many each "Show more" adds. */
 const SECTION_PAGE_SIZE = 10;
@@ -33,6 +34,14 @@ const SECTION_PAGE_SIZE = 10;
 // paging row pad by the same amount to stay on that vertical.
 const LIST_BLEED_CLASS_NAME = "-mx-3";
 const LIST_INSET_CLASS_NAME = "px-3";
+const GROUP_LABEL_TRANSLATION_KEYS: Record<PullRequestListGroupKey, string> = {
+  pinned: "common:app_pinned",
+  authored: "git:authoredByMe",
+  reviewRequested: "git:reviewRequested",
+  involved: "git:involvingMe",
+  others: "git:everything",
+  all: "workspace:all",
+};
 
 export const PullRequestList = function PullRequestList({
   groups,
@@ -56,6 +65,7 @@ export const PullRequestList = function PullRequestList({
   onSelect: (entry: GitHubInboxItem) => void;
   onTogglePinned: (entry: GitHubInboxItem) => void;
 }) {
+  const { t } = useTranslation();
   const showProjectTitle = showProjectTitleProp ?? false;
   // Extra pages each section has revealed. Not persisted: a fresh visit starts at the first page.
   const [extraPages, setExtraPages] = useState<Partial<Record<PullRequestListGroupKey, number>>>(
@@ -96,6 +106,7 @@ export const PullRequestList = function PullRequestList({
   return (
     <div ref={containerRef} className={`flex flex-col gap-3 ${LIST_BLEED_CLASS_NAME}`}>
       {groups.map((group) => {
+        const groupLabel = t(GROUP_LABEL_TRANSLATION_KEYS[group.key]);
         const paging = resolveSidebarThreadListPaging({
           totalCount: group.entries.length,
           baseLimit: SECTION_PAGE_SIZE,
@@ -117,13 +128,13 @@ export const PullRequestList = function PullRequestList({
           </>
         );
         return (
-          <section key={group.key} aria-label={group.label} data-inbox-section={group.key}>
+          <section key={group.key} aria-label={groupLabel} data-inbox-section={group.key}>
             {group.key === "pinned" || group.key === "all" ? (
               <>
                 {group.key === "pinned" || groups.length > 1 ? (
                   <SidebarSectionLabel
                     as="h2"
-                    label={group.label}
+                    label={groupLabel}
                     className={LIST_INSET_CLASS_NAME}
                   />
                 ) : null}
@@ -131,7 +142,7 @@ export const PullRequestList = function PullRequestList({
               </>
             ) : (
               <SidebarCollapsibleSection
-                label={group.label}
+                label={groupLabel}
                 open={isSectionOpen(group.key)}
                 onToggle={() => onToggleSection(group.key)}
                 headerClassName={LIST_INSET_CLASS_NAME}

@@ -207,7 +207,7 @@ describe("ComputerPreviewPopover", () => {
   it("renders a live session open with the desktop chrome", () => {
     const markup = render({ session: session("live"), state: threadState() });
     expect(markup).toContain("scale-100 opacity-100");
-    expect(markup).toContain('aria-label="Computer preview"');
+    expect(markup).toContain('role="region"');
     expect(markup).toContain("960 / 600");
     // Compact is the default footprint: small and glanceable.
     expect(markup).toContain("width:288px");
@@ -232,26 +232,22 @@ describe("ComputerPreviewPopover", () => {
   });
 
   it.each([
-    [
-      { kind: "error", message: "The preview connection failed." },
-      "The preview connection failed.",
-    ],
-    [{ kind: "unsupported" }, "This browser cannot decode desktop frames."],
-  ] as const)(
-    "shows a first-frame %s without waiting for a decoded image",
-    (streamStatus, message) => {
-      const markup = render({
-        session: session("live"),
-        state: threadState(),
-        frame: false,
-        streamStatus,
-      });
-      expect(markup).toContain("scale-100 opacity-100");
-      expect(markup).toContain(message);
-      expect(markup).toContain('role="status"');
-      expect(markup).toContain("<canvas");
-    },
-  );
+    { kind: "error", message: "The preview connection failed." },
+    { kind: "unsupported" },
+  ] as const)("shows a first-frame %s without waiting for a decoded image", (streamStatus) => {
+    const markup = render({
+      session: session("live"),
+      state: threadState(),
+      frame: false,
+      streamStatus,
+    });
+    expect(markup).toContain("scale-100 opacity-100");
+    expect(markup).toContain('role="status"');
+    expect(markup).toContain("<canvas");
+    if ("message" in streamStatus) {
+      expect(markup).toContain(streamStatus.message);
+    }
+  });
 
   it("does not reopen a dismissed preview because its first frame failed", () => {
     const markup = render({
@@ -268,8 +264,8 @@ describe("ComputerPreviewPopover", () => {
     // without a target, so the card must present the calm waiting label
     // instead of drawing anything.
     const markup = render({ session: session("live"), state: threadState(), frame: false });
-    expect(markup).toContain("Waiting for the window the agent is using…");
-    expect(markup).not.toContain("Waiting for the desktop");
+    expect(markup).toContain("<canvas");
+    expect(markup).not.toContain("<img");
   });
 
   it("holds the quiet tap's last frame without the waiting label", () => {
@@ -279,7 +275,7 @@ describe("ComputerPreviewPopover", () => {
     const markup = render({ session: session("live"), state: threadState(), tapQuiet: true });
     expect(markup).toContain("scale-100 opacity-100");
     expect(markup).toContain("960 / 600");
-    expect(markup).not.toContain("Waiting for the window");
+    expect(markup).not.toContain('role="status"');
   });
 
   it("stays closed for hidden and ended sessions", () => {

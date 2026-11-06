@@ -42,13 +42,13 @@ import {
   getAvailableComposerSlashCommands,
   getProviderNativeSlashCommandSearchTerms,
   shouldHideProviderNativeCommandFromComposerMenu,
+  type ComposerSlashCommand,
 } from "../composerSlashCommands";
 import { launchConfigurationCommand } from "@synara/shared/launchConfig";
 import { threadMentionPathForThreadId } from "@synara/shared/threadMentions";
-import { useMessages } from "~/i18n/context";
-import type { Messages } from "~/i18n/locales/en";
 import { mcpConnectorMentionPath } from "@synara/shared/mcpConnectors";
 import { isGroupContainerKind } from "@synara/shared/projectContainers";
+import { t, useTranslation } from "~/i18n";
 
 import type { ComposerCommandItem } from "../components/chat/ComposerCommandMenu";
 import type { ProviderModelOption } from "../providerModelOptions";
@@ -251,14 +251,21 @@ function threadSuggestionTitle(title: string): string {
 
 function threadSuggestionContainerName(
   project: ComposerThreadMentionProjectSource | undefined,
+  translate?: typeof t,
 ): string {
-  if (!project) return "Unknown project";
-  if (project.kind === "chat") return "Chats";
+  // Serialized mention names retain their original source names across language changes.
+  // Only the suggestion description supplies a translator for localized display.
+  if (!project) return translate?.("workspace:list_unknownProject") ?? "Unknown project";
+  if (project.kind === "chat") return translate?.("workspace:general_chats") ?? "Chats";
   // Group containers (legacy "studio" included) use their own title in mentions.
   if (isGroupContainerKind(project.kind)) {
-    return project.name.trim() || "Hubs";
+    return project.name.trim() || (translate?.("common:hubs") ?? "Hubs");
   }
-  return project.name.trim() || project.folderName.trim() || "Untitled project";
+  return (
+    project.name.trim() ||
+    project.folderName.trim() ||
+    (translate?.("workspace:searchPalette_untitledProject") ?? "Untitled project")
+  );
 }
 
 function threadSuggestionRecency(thread: ComposerThreadMentionSource): string {
@@ -398,12 +405,15 @@ export function resolveThreadMentionForThreadId(input: {
   };
 }
 
-export function buildThreadMentionComposerItems(input: {
-  readonly threads: readonly ComposerThreadMentionSource[];
-  readonly projects: readonly ComposerThreadMentionProjectSource[];
-  readonly currentThreadId: string | null;
-  readonly query: string;
-}): ComposerCommandItem[] {
+export function buildThreadMentionComposerItems(
+  input: {
+    readonly threads: readonly ComposerThreadMentionSource[];
+    readonly projects: readonly ComposerThreadMentionProjectSource[];
+    readonly currentThreadId: string | null;
+    readonly query: string;
+  },
+  translate: typeof t = t,
+): ComposerCommandItem[] {
   const candidates = buildThreadMentionCandidates(input);
   const query = normalizeProviderDiscoveryText(input.query);
   const ranked = (
@@ -414,14 +424,17 @@ export function buildThreadMentionComposerItems(input: {
         )
   ).slice(0, THREAD_MENTION_SUGGESTION_LIMIT);
 
-  return ranked.map(({ thread, title, projectName, mentionName }) => ({
+  return ranked.map(({ thread, title, mentionName }) => ({
     id: `thread:${thread.id}`,
     type: "thread" as const,
     threadId: thread.id,
     provider: thread.provider,
     mention: { name: mentionName, path: threadMentionPathForThreadId(thread.id) },
-    label: title,
-    description: projectName,
+    label: thread.title.trim() ? title : translate("workspace:searchPalette_untitledThread"),
+    description: threadSuggestionContainerName(
+      input.projects.find((project) => project.id === thread.projectId),
+      translate,
+    ),
   }));
 }
 
@@ -505,15 +518,13 @@ export interface ComposerCommandMenuInput {
 
 /**
  * Assembles the menu rows for the active trigger. Kept as a pure function taking
- * the copy catalog explicitly: every rule here (which sources contribute, how
- * they rank, what order the groups appear in) is decided by the inputs alone, so
- * it is testable without mounting React just to reach the i18n context.
+ * a translator explicitly: every rule here (which sources contribute, how they
+ * rank, what order the groups appear in) is testable without mounting React.
  */
 export function buildComposerCommandMenuItems(
-  input: ComposerCommandMenuInput & { composerCopy: Messages["composer"] },
+  input: ComposerCommandMenuInput,
+  translate: typeof t = t,
 ): ComposerCommandItem[] {
-  const composerCopy = input.composerCopy;
-  const slashCommandDescriptions = composerCopy.slashCommands;
   const {
     composerTrigger,
     provider,
@@ -594,7 +605,8 @@ export function buildComposerCommandMenuItems(
       mention: { name: connector.name, path: mcpConnectorMentionPath(connector.serverName) },
       label: connector.name,
       // Host only: some servers keep an API key in the URL path.
-      description: new URL(connector.url).host,
+      description:
+        connector.transport === "stdio" ? connector.command : new URL(connector.url).host,
     }));
     const pluginItems = rankProviderDiscoveryItems(
       providerPlugins.filter(({ plugin }) => isInstalledProviderPlugin(plugin)),
@@ -615,7 +627,7 @@ export function buildComposerCommandMenuItems(
               id: "local-root",
               type: "local-root" as const,
               label: `@${LOCAL_FOLDER_MENTION_NAME}`,
-              description: "Browse folders on this computer",
+              description: translate("common:browseFoldersOnThisComputer"),
             },
           ]
         : [];
@@ -628,25 +640,28 @@ export function buildComposerCommandMenuItems(
       description: entry.parentPath ?? "",
     }));
     const threadItems = threadMentionSources
-      ? buildThreadMentionComposerItems({
-          ...threadMentionSources,
-          query: composerTrigger.query,
-        })
+      ? buildThreadMentionComposerItems(
+          {
+            ...threadMentionSources,
+            query: composerTrigger.query,
+          },
+          translate,
+        )
       : [];
     const colorPreviewItems = buildColorPreviewMentionComposerItems({
       query: composerTrigger.query,
-      description: composerCopy.commandMenu.colorPreview.description,
-      keywords: composerCopy.commandMenu.colorPreview.keywords,
+      description: translate("chat:commandMenu_previewDescription"),
+      keywords: translate("chat:commandMenu_previewKeywords"),
     });
     const launchItems = buildLaunchMentionComposerItems({
       query: composerTrigger.query,
-      description: composerCopy.commandMenu.launch.description,
-      keywords: composerCopy.commandMenu.launch.keywords,
+      description: translate("chat:commandMenu_launchDescription"),
+      keywords: translate("chat:commandMenu_launchKeywords"),
       configurations: launchConfigurations,
       // The command line is what distinguishes two similarly named services, and
       // it is already what the project actions row shows for the same entry.
       targetDescription: (configuration) =>
-        launchConfigurationCommand(configuration) ?? composerCopy.commandMenu.launch.target,
+        launchConfigurationCommand(configuration) ?? translate("chat:commandMenu_launchFallback"),
     });
     // Keep mention suggestions ordered by primary intent. Delegation targets sit
     // right after plugins/chats — ahead of file paths, which the trailing "Files"
@@ -681,6 +696,26 @@ export function buildComposerCommandMenuItems(
       ? availableCommands.filter((command) => surfaceAppSlashCommands.has(command))
       : availableCommands;
     const visibleAppCommandSet = new Set(visibleAppCommands);
+    const slashCommandDescriptions = {
+      clear: translate("common:startAFreshThreadAndClearTheCurrentConversation"),
+      compact: translate("common:compactTheCurrentThreadContextToFreeSpace"),
+      model: translate("common:switchResponseModelForThisThread"),
+      plan: translate("common:switchThisThreadIntoPlanMode"),
+      debug: translate("common:switchThisThreadIntoEvidenceFirstDebugMode"),
+      default: translate("common:switchThisThreadBackToNormalChatMode"),
+      review: translate("common:startACodeReviewForCurrentChanges"),
+      fork: translate("common:forkThisThreadIntoLocalOrANewWorktree"),
+      side: translate("common:openAGuardedSideFromThisThreadOptionallyOn"),
+      status: translate("common:showContextUsageAndRateLimitStatus"),
+      subagents: translate("common:insertAPromptThatAsksTheAssistantToDelegate"),
+      "computer-use": translate("common:useSynaraComputerForThisRequestOnly"),
+      fast: translate("common:turnFastModeOnOrOffForThisThread"),
+      export: translate("common:downloadThisThreadAsAZIPArchiveThreadJson"),
+      goal: translate("common:setEditPauseResumeOrClearThisThreadS"),
+      rename: translate("common:regenerateThisThreadTitleOrSetAnExactTitle"),
+      feedback: translate("common:sendFeedbackToTheSynaraTeam"),
+      automation: translate("common:createAScheduledAutomationFromThisPrompt"),
+    } satisfies Record<ComposerSlashCommand, string>;
     const builtInItems = filterComposerSlashCommands(
       composerTrigger.query,
       visibleAppCommands,
@@ -718,12 +753,16 @@ export function buildComposerCommandMenuItems(
       provider,
       command: command.name,
       label: `/${command.name}`,
-      description: command.description ?? `Run ${provider} native command`,
-      notice: getClaudeArtifactCommandNotice({
-        provider,
-        command: command.name,
-        artifacts: providerArtifacts,
-      }),
+      description:
+        command.description ?? translate("common:runNativeCommand", { value0: provider }),
+      notice: getClaudeArtifactCommandNotice(
+        {
+          provider,
+          command: command.name,
+          artifacts: providerArtifacts,
+        },
+        translate,
+      ),
     }));
     // `/` is the universal picker surface; provider dispatch can adapt the
     // visible slash token to backend-specific skill syntax when needed.
@@ -798,10 +837,10 @@ export function buildComposerCommandMenuItems(
   }));
 }
 
-/** Binds the active copy catalog to {@link buildComposerCommandMenuItems}. */
+/** Binds the active translator to the pure command-menu builder. */
 export function useComposerCommandMenuItems(
   input: ComposerCommandMenuInput,
 ): ComposerCommandItem[] {
-  const composerCopy = useMessages().composer;
-  return buildComposerCommandMenuItems({ ...input, composerCopy });
+  const { t: translate } = useTranslation();
+  return buildComposerCommandMenuItems(input, translate);
 }

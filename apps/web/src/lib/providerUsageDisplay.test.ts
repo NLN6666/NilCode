@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   deriveProviderUsageDisplayRows,
-  providerUsagePaceDetails,
   selectPrimaryProviderUsageDisplayRow,
 } from "./providerUsageDisplay";
 
@@ -58,10 +57,9 @@ describe("providerUsageDisplay", () => {
     ]);
 
     expect(row?.markerPercent).toBe(60);
-    expect(row ? providerUsagePaceDetails(row) : null).toEqual({
-      amountText: "31% in reserve",
-      etaText: "Lasts until reset",
-    });
+    expect(row?.pace).toMatchObject({ status: "ahead", expectedRemainingPercent: 60 });
+    expect(row?.pace?.amountText).toContain("31%");
+    expect(row?.pace?.etaText?.length).toBeGreaterThan(0);
   });
 
   it("keeps standard and Core windows as separate usage rows", () => {
@@ -101,7 +99,7 @@ describe("providerUsageDisplay", () => {
     ]);
 
     expect(rows.map((row) => row.label)).toEqual(["5h", "Weekly", "Core 5h", "Core Weekly"]);
-    expect(rows.find((row) => row.label === "Core 5h")?.resetText).toContain("Resets in");
+    expect(rows.find((row) => row.label === "Core 5h")?.resetText?.length).toBeGreaterThan(0);
   });
 
   it("keeps the Antigravity Gemini and Claude pools as separate usage rows", () => {

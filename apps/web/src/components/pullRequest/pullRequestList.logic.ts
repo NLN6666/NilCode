@@ -33,18 +33,8 @@ export type PullRequestListGroupKey =
 
 export interface PullRequestListGroup<T = GitHubInboxItem> {
   key: PullRequestListGroupKey;
-  label: string;
   entries: T[];
 }
-
-const GROUP_LABELS: Record<PullRequestListGroupKey, string> = {
-  pinned: "Pinned",
-  authored: "Authored by me",
-  reviewRequested: "Needs my review",
-  involved: "Involving me",
-  others: "Everything else",
-  all: "All",
-};
 
 const GROUP_ORDER: readonly PullRequestListGroupKey[] = [
   "pinned",
@@ -209,12 +199,10 @@ export function groupPullRequestEntriesPinnedThenAll<T extends { isPinned?: bool
   const groups: PullRequestListGroup<T>[] = [
     {
       key: "pinned",
-      label: GROUP_LABELS.pinned,
       entries: entries.filter((entry) => entry.isPinned === true),
     },
     {
       key: "all",
-      label: GROUP_LABELS.all,
       entries: entries.filter((entry) => entry.isPinned !== true),
     },
   ];
@@ -258,7 +246,6 @@ export function groupPullRequestEntriesByInvolvement<T extends InboxRelationSour
 
   return GROUP_ORDER.filter((key) => buckets[key].length > 0).map((key) => ({
     key,
-    label: GROUP_LABELS[key],
     entries: buckets[key],
   }));
 }

@@ -505,8 +505,8 @@ export function browserAnnotationTheme(
 }
 
 /**
- * Which annotation failure occurred. This module stays locale-free, so the caller maps the key
- * through the active catalog (`browser.annotation.errors`) instead of receiving English here.
+ * Which annotation failure occurred. This module stays locale-free; the caller maps this key
+ * through the active shared translation namespace.
  */
 export type BrowserAnnotationErrorKey =
   | "notVisible"
@@ -516,6 +516,27 @@ export type BrowserAnnotationErrorKey =
   | "cancelFailed"
   | "syncFailed"
   | "startFailed";
+
+export type BrowserAnnotationMessageKey =
+  | BrowserAnnotationErrorKey
+  | "draftFull"
+  | "freezeFailed"
+  | "elementReadFailed";
+
+export const BROWSER_ANNOTATION_ERROR_MESSAGE_KEYS: Readonly<
+  Record<BrowserAnnotationMessageKey, string>
+> = {
+  notVisible: "computer:browserAnnotation_notVisible",
+  stillLoading: "computer:browserAnnotation_stillLoading",
+  tabUnavailable: "computer:browserAnnotation_tabUnavailable",
+  alreadyActive: "computer:browserAnnotation_alreadyActive",
+  cancelFailed: "computer:browserAnnotation_cancelFailed",
+  syncFailed: "computer:browserAnnotation_syncFailed",
+  startFailed: "computer:browserAnnotation_startFailed",
+  draftFull: "computer:browserAnnotation_draftFull",
+  freezeFailed: "computer:browserAnnotation_freezeFailed",
+  elementReadFailed: "computer:browserAnnotation_elementReadFailed",
+};
 
 export function browserAnnotationActionErrorKey(
   error: unknown,
@@ -660,7 +681,7 @@ export function resolveBrowserChromeStatus(input: {
   activeTabStatus: string;
   hasActiveTab: boolean;
   workspaceReady: boolean;
-  /** Wording for the two non-error states; pass `m.browser.status`. */
+  /** Wording for the two non-error states, resolved by the active renderer locale. */
   copy: BrowserChromeStatusCopy;
 }): BrowserChromeStatus | null {
   if (input.localError) {

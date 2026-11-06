@@ -15,6 +15,7 @@ import {
 import { deriveAssociatedWorktreeMetadata } from "@synara/shared/threadWorkspace";
 import type { QueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
+import { useTranslation } from "~/i18n";
 import { promoteThreadCreate } from "~/lib/threadCreatePromotion";
 import { newCommandId, randomUUID } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
@@ -126,6 +127,8 @@ export function useChatAutomationCreation({
   automationDraftWarnings,
   acknowledgedAutomationWarnings,
 }: ChatAutomationCreationInput) {
+  const { formatLocale, t } = useTranslation();
+
   const createAutomationFromForm = useCallback(
     async (input: {
       readonly form: AutomationFormState;
@@ -141,7 +144,7 @@ export function useChatAutomationCreation({
       if (automationDraftSubmittingRef.current) {
         return false;
       }
-      if (!isFormSubmittable(input.form)) {
+      if (!isFormSubmittable(input.form, formatLocale, t)) {
         return false;
       }
       if (hasBlockingAutomationDraftWarnings(input.warnings, input.acknowledgedWarningIds)) {
@@ -175,13 +178,13 @@ export function useChatAutomationCreation({
                   id: EventId.makeUnsafe(randomUUID()),
                   tone: "info",
                   kind: "automation.created",
-                  summary: `Created automation: ${definition.name} - ${formatCadence(definition.schedule)}`,
+                  summary: `Created automation: ${definition.name} - ${formatCadence(definition.schedule, formatLocale, t)}`,
                   payload: {
                     source: "chat-composer",
                     automationId: definition.id,
                     automationName: definition.name,
                     mode: definition.mode,
-                    cadenceLabel: formatCadence(definition.schedule),
+                    cadenceLabel: formatCadence(definition.schedule, formatLocale, t),
                     schedule: automationScheduleActivityPayload(definition.schedule),
                   },
                   turnId: null,
@@ -205,7 +208,7 @@ export function useChatAutomationCreation({
         toastManager.add({
           type: "success",
           title: "Automation created",
-          description: `${definition.name} - ${formatCadence(definition.schedule)}`,
+          description: `${definition.name} - ${formatCadence(definition.schedule, formatLocale, t)}`,
         });
         return true;
       })()
@@ -228,12 +231,14 @@ export function useChatAutomationCreation({
       activeThread,
       automationDraftSubmittingRef,
       clearComposerInput,
+      formatLocale,
       isServerThread,
       providerOptionsForDispatch,
       queryClient,
       resetAutomationDraftState,
       setIsAutomationDraftSubmitting,
       threadId,
+      t,
     ],
   );
 
@@ -371,7 +376,7 @@ export function useChatAutomationCreation({
       return;
     }
     if (
-      !isFormSubmittable(automationDraftForm) ||
+      !isFormSubmittable(automationDraftForm, formatLocale, t) ||
       hasBlockingAutomationDraftWarnings(automationDraftWarnings, acknowledgedAutomationWarnings)
     ) {
       return;
@@ -391,7 +396,9 @@ export function useChatAutomationCreation({
     automationDraftForm,
     automationDraftWarnings,
     createAutomationFromForm,
+    formatLocale,
     prepareAutomationFormForCreate,
+    t,
   ]);
   return { createAutomationFromForm, prepareAutomationFormForCreate, submitAutomationDraft };
 }

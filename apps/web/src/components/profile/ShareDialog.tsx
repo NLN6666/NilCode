@@ -7,10 +7,14 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { SiReddit, SiX } from "react-icons/si";
 import { FaLinkedinIn } from "react-icons/fa6";
-import type { ProfileStats, ProfileTokenStats } from "@synara/contracts";
+import type { AccountProfile } from "@synara/contracts";
 import { Dialog, DialogPopup, DialogTitle } from "~/components/ui/dialog";
-import { CopyIcon, DownloadIcon } from "~/lib/icons";
+import { CopyIcon, DownloadIcon, LinkIcon } from "~/lib/icons";
+import { profileShareUrl, publicProfileDisplayUrl } from "~/lib/accountLogic";
+import { copyTextToClipboard } from "~/hooks/useCopyToClipboard";
+import { localDayKey } from "~/lib/accountUsageAdapter";
 import { cn } from "~/lib/utils";
+import type { ShareCardStats } from "./profileSelectors";
 import { SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH, ShareCard } from "./ShareCard";
 import {
   copyImageToClipboard,
@@ -19,36 +23,40 @@ import {
   renderNodeToPngBlob,
   type ShareTarget,
   shareIntentUrl,
+  shareLinkUrl,
 } from "./shareCardExport";
-import { useMessages } from "~/i18n/context";
-import { dialogs as defaultDialogCopy } from "~/i18n/locales/en/dialogs";
+import { useTranslation, t } from "~/i18n";
 
 const PREVIEW_WIDTH = 480;
 const CARD_EXPORT_SIZE = { width: SHARE_CARD_WIDTH, height: SHARE_CARD_HEIGHT } as const;
 type CopyResult = "copied" | "render-failed" | "clipboard-unavailable";
 
 interface ShareDialogProps {
-  readonly stats: ProfileStats;
-  readonly tokenStats: ProfileTokenStats | null;
+  /** The selected scope's card numbers (device or account) — see profileSelectors. */
+  readonly cardStats: ShareCardStats;
+  readonly initials: string;
   readonly displayName: string;
   readonly handle: string;
   readonly avatarColor: string;
   readonly avatarImage: string | null;
+  /** The account profile, when signed in with one — a PUBLIC profile makes shares link to its page. */
+  readonly accountProfile: Pick<AccountProfile, "handle" | "public"> | null;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }
 
 export function ShareDialog({
-  stats,
-  tokenStats,
+  cardStats,
+  initials,
   displayName,
   handle,
   avatarColor,
   avatarImage,
+  accountProfile,
   open,
   onOpenChange,
 }: ShareDialogProps) {
-  const copy = useMessages().dialogs.share;
+  const { t } = useTranslation();
   const cardRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState<ShareTarget | "copy" | "save" | null>(null);
@@ -115,7 +123,12 @@ export function ShareDialog({
     setStatus(null);
     return copyCardToClipboard()
       .then((copyResult) => {
-        openExternalUrl(shareIntentUrl(target));
+        openExternalUrl(
+          shareIntentUrl(target, shareLinkUrl(profileShareUrl(accountProfile)), {
+            tweetText: t("common:share_tweetText"),
+            redditTitle: t("common:share_mySynaraDevStats"),
+          }),
+        );
         setStatus(shareStatusMessage(copyResult));
       })
       .finally(() => {
@@ -133,10 +146,10 @@ export function ShareDialog({
     return renderNodeToPngBlob(node, CARD_EXPORT_SIZE)
       .then((blob) => {
         if (blob) {
-          downloadBlob(blob, `synara-stats-${stats.timezone.today}.png`);
-          setStatus(defaultDialogCopy.share.savedPng);
+          downloadBlob(blob, `synara-stats-${localDayKey()}.png`);
+          setStatus(t("common:share_savedPngToDownloads"));
         } else {
-          setStatus(defaultDialogCopy.share.renderFailed);
+          setStatus(t("common:couldNotRenderTheImage"));
         }
       })
       .finally(() => {
@@ -144,13 +157,25 @@ export function ShareDialog({
       });
   };
 
+  const handleCopyProfileLink = (url: string) => {
+    setStatus(null);
+    return copyTextToClipboard(url)
+      .then(() => {
+        setStatus(t("common:profile_linkCopied"));
+      })
+      .catch(() => {
+        setStatus(t("common:profile_linkCopyFailed"));
+      });
+  };
+
   const previewScale = previewWidth / SHARE_CARD_WIDTH;
   const actionsDisabled = busy !== null;
+  const publicUrl = profileShareUrl(accountProfile);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup className="sm:max-w-[560px]">
-        <DialogTitle className="text-center text-xl">{copy.title}</DialogTitle>
+        <DialogTitle className="text-center text-xl">{t("common:shareYourActivity")}</DialogTitle>
         <div className="mt-5 flex flex-col items-center gap-7 px-2 pb-3">
           <div
             ref={previewRef}
@@ -166,8 +191,8 @@ export function ShareDialog({
             >
               <ShareCard
                 ref={cardRef}
-                stats={stats}
-                tokenStats={tokenStats}
+                cardStats={cardStats}
+                initials={initials}
                 displayName={displayName}
                 handle={handle}
                 avatarColor={avatarColor}
@@ -178,8 +203,8 @@ export function ShareDialog({
 
           <div className="flex flex-wrap items-start justify-center gap-x-6 gap-y-4">
             <ShareButton
-              label={copy.copy}
-              ariaLabel={copy.copyStatCard}
+              label={t("workspace:share_copy")}
+              ariaLabel={t("common:share_copyStatCard")}
               busy={busy === "copy"}
               disabled={actionsDisabled}
               onClick={() => void handleCopy()}
@@ -187,7 +212,7 @@ export function ShareDialog({
               <CopyIcon className="size-5" />
             </ShareButton>
             <ShareButton
-              label="X"
+              label={t("chat:x")}
               busy={busy === "x"}
               disabled={actionsDisabled}
               onClick={() => void handleShare("x")}
@@ -195,7 +220,7 @@ export function ShareDialog({
               <SiX className="size-5" />
             </ShareButton>
             <ShareButton
-              label="LinkedIn"
+              label={t("common:linkedIn")}
               busy={busy === "linkedin"}
               disabled={actionsDisabled}
               onClick={() => void handleShare("linkedin")}
@@ -203,7 +228,7 @@ export function ShareDialog({
               <FaLinkedinIn className="size-5" />
             </ShareButton>
             <ShareButton
-              label="Reddit"
+              label={t("common:reddit")}
               busy={busy === "reddit"}
               disabled={actionsDisabled}
               onClick={() => void handleShare("reddit")}
@@ -211,8 +236,8 @@ export function ShareDialog({
               <SiReddit className="size-5" />
             </ShareButton>
             <ShareButton
-              label={copy.save}
-              ariaLabel={copy.saveStatCard}
+              label={t("computer:form_save")}
+              ariaLabel={t("common:share_saveStatCard")}
               busy={busy === "save"}
               disabled={actionsDisabled}
               onClick={() => void handleSave()}
@@ -221,7 +246,23 @@ export function ShareDialog({
             </ShareButton>
           </div>
 
-          <p className="min-h-4 text-center text-ui leading-snug text-muted-foreground">
+          {accountProfile &&
+            (publicUrl ? (
+              <button
+                type="button"
+                onClick={() => void handleCopyProfileLink(publicUrl)}
+                className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-ui-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <LinkIcon className="size-3.5" />
+                {publicProfileDisplayUrl(accountProfile.handle)}
+              </button>
+            ) : (
+              <p className="text-center text-ui-xs leading-snug text-muted-foreground">
+                Your profile is private. Make it public in Edit profile to share a link to it.
+              </p>
+            ))}
+
+          <p className="min-h-4 text-center text-ui-xs leading-snug text-muted-foreground">
             {status ?? ""}
           </p>
         </div>
@@ -233,22 +274,22 @@ export function ShareDialog({
 function copyStatusMessage(result: CopyResult): string {
   switch (result) {
     case "copied":
-      return defaultDialogCopy.share.copiedToClipboard;
+      return t("common:copiedImageToClipboard");
     case "render-failed":
-      return defaultDialogCopy.share.renderFailed;
+      return t("common:couldNotRenderTheImage");
     case "clipboard-unavailable":
-      return defaultDialogCopy.share.copyUnavailable;
+      return t("common:imageCopyUnavailableUseSaveInstead");
   }
 }
 
 function shareStatusMessage(result: CopyResult): string {
   switch (result) {
     case "copied":
-      return defaultDialogCopy.share.copiedForPost;
+      return t("common:imageCopiedToClipboardPasteItIntoYourPost");
     case "render-failed":
-      return defaultDialogCopy.share.composerOpened;
+      return t("common:composerOpenedUseSaveToAttachTheImage");
     case "clipboard-unavailable":
-      return defaultDialogCopy.share.composerOpenedNoCopy;
+      return t("common:composerOpenedImageCopyUnavailableUseSaveToAttach");
   }
 }
 
@@ -262,13 +303,15 @@ interface ShareButtonProps {
 }
 
 function ShareButton({ label, ariaLabel, busy, disabled, onClick, children }: ShareButtonProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex flex-col items-center gap-2">
       <button
         type="button"
         onClick={onClick}
         disabled={disabled}
-        aria-label={ariaLabel ?? `Share to ${label}`}
+        aria-label={ariaLabel ?? t("common:shareTo", { value0: label })}
         className={cn(
           "flex size-14 items-center justify-center rounded-full bg-foreground text-background transition-opacity",
           disabled ? (busy ? "opacity-70" : "opacity-35") : "hover:opacity-90",

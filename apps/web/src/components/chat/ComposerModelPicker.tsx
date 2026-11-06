@@ -90,7 +90,7 @@ import {
   resolveVisibleProviderOptions,
 } from "./ProviderModelPicker";
 import { resolveRuntimeModelDescriptor } from "./runtimeModelCapabilities";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 export type ComposerModelSelectionOptions = {
   /** Provider options to commit together with the model (starred presets, row effort). */
@@ -183,8 +183,9 @@ function groupRowElements(
 }
 
 export function ComposerModelPicker(props: ComposerModelPickerProps) {
+  const { t } = useTranslation();
+
   const { onOpenChange, open, lockedProvider, threadId } = props;
-  const modelPickerCopy = useMessages().composer.modelPicker;
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const isMenuOpen = open ?? uncontrolledOpen;
   const activeProvider = lockedProvider ?? props.provider;
@@ -298,6 +299,7 @@ export function ComposerModelPicker(props: ComposerModelPickerProps) {
         model,
         runtimeModels: runtimeModelsFor(provider, instanceId),
       }),
+      t,
     );
 
   const modelLabel = resolveProviderModelLabel({
@@ -323,6 +325,7 @@ export function ComposerModelPicker(props: ComposerModelPickerProps) {
     props.prompt,
     props.modelOptions,
     props.runtimeModel,
+    t,
   );
 
   const visibleProviderOptions = resolveVisibleProviderOptions({
@@ -556,7 +559,7 @@ export function ComposerModelPicker(props: ComposerModelPickerProps) {
         accountName={activeProviderTab?.dotted ? activeProviderTab.name : null}
         accountAccentColor={activeProviderTab?.accentColor}
         modelLabel={composerModelDisplayName(activeProvider, modelLabel)}
-        statusLabel={resolveComposerTraitStatusLabel(currentTraitSelection, modelPickerCopy)}
+        statusLabel={resolveComposerTraitStatusLabel(currentTraitSelection, t)}
         contextWindowLabel={activeProvider === "claudeAgent" ? props.contextWindowLabel : null}
         showsFastBadge={showsComposerFastModeBadge(currentTraitSelection)}
         fastModeNotice={activeProvider === "claudeAgent" ? props.fastModeNotice : null}
@@ -598,8 +601,8 @@ export function ComposerModelPicker(props: ComposerModelPickerProps) {
               ref={searchInputRef}
               size="sm"
               type="search"
-              aria-label="Search models"
-              placeholder={tab === STARRED_TAB ? "Search starred…" : "Search models…"}
+              aria-label={t("chat:searchModels")}
+              placeholder={tab === STARRED_TAB ? t("chat:searchStarred") : t("chat:searchModels2")}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDownCapture={(event) => {
@@ -638,13 +641,13 @@ export function ComposerModelPicker(props: ComposerModelPickerProps) {
                   />
                 ) : null}
                 <span className="text-ui font-medium text-foreground">
-                  {openProviderTab?.label ?? "This account"} needs setup
+                  {openProviderTab?.label ?? t("chat:thisAccount")} {t("chat:needsSetup")}
                 </span>
                 <span className="text-ui-sm leading-snug text-muted-foreground">
                   {setupMessage}
                 </span>
                 <Button type="button" size="xs" variant="outline" onClick={openProviderSettings}>
-                  Open provider setup
+                  {t("chat:openProviderSetup")}
                 </Button>
               </div>
             ) : discoveryError ? (
@@ -653,7 +656,10 @@ export function ComposerModelPicker(props: ComposerModelPickerProps) {
               </div>
             ) : null}
             {setupMessage !== null ? null : isTabLoading ? (
-              <div className="space-y-2 px-2 py-2" aria-label="Loading models">
+              <div
+                className="space-y-2 px-2 py-2"
+                aria-label={t("chat:providerModelPicker_loadingModels")}
+              >
                 {Array.from({ length: 5 }, (_, index) => (
                   <Skeleton
                     key={index}
@@ -690,10 +696,10 @@ export function ComposerModelPicker(props: ComposerModelPickerProps) {
             ) : (
               <div className="px-2 py-3 text-muted-foreground text-ui leading-relaxed">
                 {normalizedQuery.length > 0
-                  ? "No matches"
+                  ? t("workspace:providerModelPicker_noMatches")
                   : tab === STARRED_TAB
-                    ? "Star a model to pin it here together with its effort and speed, then pick it in one click."
-                    : "No models found"}
+                    ? t("chat:starAModelToPinItHereTogetherWith")
+                    : t("chat:noModelsFound")}
               </div>
             )}
           </div>

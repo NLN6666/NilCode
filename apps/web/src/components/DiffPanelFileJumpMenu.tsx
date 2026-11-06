@@ -15,7 +15,6 @@ import { PickerPanelShell } from "./chat/PickerPanelShell";
 import { FileEntryIcon } from "./chat/FileEntryIcon";
 import { DiffStat } from "./chat/DiffStatLabel";
 import { IconButton } from "./ui/icon-button";
-import { useMessages } from "../i18n/context";
 import { TOOLBAR_ICON_BUTTON_TONE_CLASS_NAME } from "./ui/button-group";
 import { Menu, MenuItem, MenuTrigger } from "./ui/menu";
 import {
@@ -23,6 +22,7 @@ import {
   splitRepoRelativePath,
   summarizeFileDiffStats,
 } from "../lib/diffRendering";
+import { useTranslation } from "~/i18n";
 
 const DIFF_FILE_JUMP_ICON_SLOT_CLASS_NAME =
   "flex size-4 shrink-0 items-center justify-center text-muted-foreground/60";
@@ -79,7 +79,7 @@ export function DiffPanelFileJumpMenu(props: {
   resolvedTheme: "light" | "dark";
   onSelectFile: (filePath: string) => void;
 }) {
-  const copy = useMessages().diff;
+  const { t } = useTranslation();
   const [fileSearchQuery, setFileSearchQuery] = useState("");
 
   const filteredFiles = filterRenderableFilesForSearch(props.renderableFiles, fileSearchQuery);
@@ -98,8 +98,8 @@ export function DiffPanelFileJumpMenu(props: {
             variant="ghost"
             size="icon-xs"
             className={TOOLBAR_ICON_BUTTON_TONE_CLASS_NAME}
-            label={copy.actions.jumpToFile}
-            title={copy.actions.jumpToFile}
+            label={t("common:diff_jumpToFile")}
+            title={t("common:diff_jumpToFile")}
           >
             <SearchIcon className="size-3.5" />
           </IconButton>
@@ -112,7 +112,7 @@ export function DiffPanelFileJumpMenu(props: {
         className="w-[min(24rem,calc(100vw-2rem))] min-w-[18rem]"
       >
         <PickerPanelShell
-          searchPlaceholder={copy.actions.jumpToFile}
+          searchPlaceholder={t("common:diff_jumpToFile")}
           query={fileSearchQuery}
           onQueryChange={setFileSearchQuery}
           stopSearchKeyPropagation
@@ -122,9 +122,13 @@ export function DiffPanelFileJumpMenu(props: {
           listMaxHeightClassName="max-h-64"
         >
           {props.renderableFiles.length === 0 ? (
-            <p className="px-2.5 py-3 text-[11px] text-muted-foreground">{copy.empty.noFiles}</p>
+            <p className="px-2.5 py-3 text-ui-sm text-muted-foreground">
+              {t("common:editor_noFilesInDiff")}
+            </p>
           ) : filteredFiles.length === 0 ? (
-            <p className="px-2.5 py-3 text-[11px] text-muted-foreground">{copy.empty.noMatches}</p>
+            <p className="px-2.5 py-3 text-ui-sm text-muted-foreground">
+              {t("common:workspaceExplorer_noMatchingFiles")}
+            </p>
           ) : (
             filteredFiles.map((fileDiff) => {
               const filePath = resolveFileDiffPath(fileDiff);

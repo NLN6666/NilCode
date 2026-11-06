@@ -1,12 +1,8 @@
 import type { PullRequestDetail, PullRequestStack, PullRequestStackEntry } from "@synara/contracts";
+import { t as defaultTranslate } from "~/i18n";
 
 export type PullRequestStackAssessment = {
-  readonly label:
-    | "Ready to merge"
-    | "Stack needs attention"
-    | "Merge status pending"
-    | "Mergeable with failing checks"
-    | "Stack merged";
+  readonly label: string;
   readonly tone: "ready" | "blocked" | "pending" | "warning" | "complete";
   readonly mergeTargetCount: number;
   readonly canAttemptMerge: boolean;
@@ -22,11 +18,14 @@ export function pullRequestStackTargetEntries(
   );
 }
 
-export function assessPullRequestStack(stack: PullRequestStack): PullRequestStackAssessment {
+export function assessPullRequestStack(
+  stack: PullRequestStack,
+  translate: typeof defaultTranslate,
+): PullRequestStackAssessment {
   const targets = pullRequestStackTargetEntries(stack);
   if (targets.length === 0) {
     return {
-      label: "Stack merged",
+      label: translate("git:stackMerged"),
       tone: "complete",
       mergeTargetCount: 0,
       canAttemptMerge: false,
@@ -37,22 +36,22 @@ export function assessPullRequestStack(stack: PullRequestStack): PullRequestStac
   const closed = targets.find((entry) => entry.state === "closed");
   if (closed) {
     return {
-      label: "Stack needs attention",
+      label: translate("git:pullRequestStackNeedsAttention"),
       tone: "blocked",
       mergeTargetCount: targets.length,
       canAttemptMerge: false,
-      blocker: `#${closed.number} is closed without being merged.`,
+      blocker: translate("git:pullRequestStackClosedWithoutMerge", { value0: closed.number }),
     };
   }
 
   const draft = targets.find((entry) => entry.isDraft);
   if (draft) {
     return {
-      label: "Stack needs attention",
+      label: translate("git:pullRequestStackNeedsAttention"),
       tone: "blocked",
       mergeTargetCount: targets.length,
       canAttemptMerge: false,
-      blocker: `#${draft.number} is still a draft.`,
+      blocker: translate("git:pullRequestStackEntryStillDraft", { value0: draft.number }),
     };
   }
 
@@ -63,17 +62,17 @@ export function assessPullRequestStack(stack: PullRequestStack): PullRequestStac
   );
   if (conflicting) {
     return {
-      label: "Stack needs attention",
+      label: translate("git:pullRequestStackNeedsAttention"),
       tone: "blocked",
       mergeTargetCount: targets.length,
       canAttemptMerge: false,
-      blocker: `#${conflicting.number} is not ready to merge.`,
+      blocker: translate("git:pullRequestStackEntryNotReady", { value0: conflicting.number }),
     };
   }
 
   if (targets.some((entry) => entry.mergeStateStatus === "UNSTABLE")) {
     return {
-      label: "Mergeable with failing checks",
+      label: translate("git:pullRequestStackMergeableWithFailingChecks"),
       tone: "warning",
       mergeTargetCount: targets.length,
       canAttemptMerge: true,
@@ -89,7 +88,7 @@ export function assessPullRequestStack(stack: PullRequestStack): PullRequestStac
   );
   if (pending) {
     return {
-      label: "Merge status pending",
+      label: translate("git:pullRequestStackMergeStatusPending"),
       tone: "pending",
       mergeTargetCount: targets.length,
       canAttemptMerge: true,
@@ -98,7 +97,7 @@ export function assessPullRequestStack(stack: PullRequestStack): PullRequestStac
   }
 
   return {
-    label: "Ready to merge",
+    label: translate("git:pullRequestStackReadyToMerge"),
     tone: "ready",
     mergeTargetCount: targets.length,
     canAttemptMerge: true,
@@ -109,12 +108,13 @@ export function assessPullRequestStack(stack: PullRequestStack): PullRequestStac
 export function pullRequestMergeBlocker(
   detail: Pick<PullRequestDetail, "mergeability" | "stackMetadataIncomplete">,
   stackAssessment: PullRequestStackAssessment | null,
+  translate: typeof defaultTranslate,
 ): string | null {
   if (detail.stackMetadataIncomplete === true) {
-    return "Stack details are temporarily unavailable. Refresh before merging.";
+    return translate("git:stackDetailsCouldNotBeLoadedRefreshBeforeMerging");
   }
   if (stackAssessment?.canAttemptMerge === false) {
-    return stackAssessment.blocker ?? "This stack is not ready to merge.";
+    return stackAssessment.blocker ?? translate("git:pullRequestStackNotReady");
   }
-  return detail.mergeability === "conflicting" ? "Resolve merge conflicts before merging" : null;
+  return detail.mergeability === "conflicting" ? translate("git:prMergeBlocker_conflicts") : null;
 }

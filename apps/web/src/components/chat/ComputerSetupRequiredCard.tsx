@@ -18,7 +18,7 @@ import type {
 import { computerStaleGrantAdvice, listComputerPermissions } from "@synara/shared/computerGrants";
 
 import { ComputerActionCard } from "./ComputerActionCard";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 export function ComputerSetupRequiredCard({
   missing,
@@ -68,8 +68,8 @@ export function ComputerSetupRequiredCard({
   readonly onSetUp?: () => void;
   readonly onRecheck?: () => void;
 }) {
-  const messages = useMessages();
-  const copy = messages.chat.computerControl;
+  const { t } = useTranslation();
+
   const ready =
     !statusError &&
     (status
@@ -88,27 +88,23 @@ export function ComputerSetupRequiredCard({
   const currentSignature = status ? livePermission?.buildSignature : buildSignature;
   const currentBundleId = status ? livePermission?.bundleId : bundleId;
   const availabilityView = status
-    ? resolveComputerAvailabilityView(
-        status.availability,
-        status.health,
-        false,
-        messages.settings.computer.availability,
-      )
+    ? resolveComputerAvailabilityView(status.availability, status.health, false)
     : undefined;
   const title = statusError
-    ? copy.statusUnavailable
+    ? t("computer:computerStatusIsUnavailable")
     : ready
-      ? copy.ready
+      ? t("computer:computerControlIsReady")
       : missingLabels
-        ? copy.needs(missingLabels)
-        : (availabilityView?.title ?? copy.needsSetup);
+        ? t("computer:computerControlNeeds", { value0: missingLabels })
+        : (availabilityView?.title ?? t("computer:computerControlNeedsSetup"));
   const description = statusError
     ? statusError
     : ready
-      ? copy.readyDescription
+      ? t("computer:sendAMessageAndTheAgentWillPickUp")
       : missingLabels
-        ? copy.permissionDescription
-        : (availabilityView?.description ?? copy.setupDescription);
+        ? t("computer:chooseSetUpToRequestMissingPermissionsOrOpen")
+        : (availabilityView?.description ??
+          t("computer:chooseSetUpToCheckPermissionsAndPrepareComputer"));
   const canSetUp =
     !ready &&
     !statusError &&
@@ -129,9 +125,13 @@ export function ComputerSetupRequiredCard({
       metaFontSizePx={metaFontSizePx}
       action={
         onSetUp && canSetUp
-          ? { label: isPending ? copy.settingUp : copy.setup, disabled: isPending, onClick: onSetUp }
+          ? {
+              label: isPending ? t("computer:settingUp") : t("computer:setUp"),
+              disabled: isPending,
+              onClick: onSetUp,
+            }
           : statusError && onRecheck
-            ? { label: copy.recheck, onClick: onRecheck }
+            ? { label: t("computer:recheck"), onClick: onRecheck }
             : undefined
       }
     >
@@ -145,7 +145,7 @@ export function ComputerSetupRequiredCard({
 export function ConnectedComputerSetupRequiredCard(
   props: Parameters<typeof ComputerSetupRequiredCard>[0],
 ) {
-  const copy = useMessages().chat.computerControl;
+  const { t } = useTranslation();
   const statusQuery = useQuery({
     ...computerStatusQueryOptions(),
     refetchInterval: COMPUTER_STATUS_VISIBLE_REFETCH_INTERVAL_MS,
@@ -171,7 +171,7 @@ export function ConnectedComputerSetupRequiredCard(
               statusError:
                 statusQuery.error instanceof Error && statusQuery.error.message
                   ? statusQuery.error.message
-                  : copy.checkFailed,
+                  : t("computer:computerStatusCheckFailed"),
             }
           : {})}
         isPending={setup.isPending}

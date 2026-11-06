@@ -8,7 +8,7 @@ import { CheckIcon, ChevronLeftIcon, ChevronRightIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { ComposerChoiceRow } from "./ComposerChoiceRow";
 import { COMPOSER_INPUT_SURFACE_CLASS_NAME } from "./composerPickerStyles";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 const NAV_BUTTON_CLASS_NAME =
   "flex size-5 items-center justify-center rounded-md text-[var(--color-text-foreground-tertiary)] transition-colors duration-150 hover:bg-[var(--color-background-button-secondary-hover)] hover:text-[var(--color-text-foreground)] disabled:pointer-events-none disabled:opacity-30";
@@ -40,7 +40,8 @@ export function UserInputQuestionForm({
   keyboardShortcuts?: "global" | "local";
   children?: ReactNode;
 }) {
-  const copy = useMessages().composer.pendingInput;
+  const { t } = useTranslation();
+
   const progress = derivePendingUserInputProgress(questions, answers, questionIndex);
   const activeQuestion = progress.activeQuestion;
   const selectedOptionLabelSet = new Set(progress.selectedOptionLabels);
@@ -142,19 +143,19 @@ export function UserInputQuestionForm({
               disabled={!canGoBack || isResponding}
               onClick={onPrevious}
               className={NAV_BUTTON_CLASS_NAME}
-              aria-label={copy.previousQuestion}
+              aria-label={t("chat:composerPendingUserInputPanel_previousQuestion")}
             >
               <ChevronLeftIcon className="size-3.5" />
             </button>
             <span className="px-0.5 text-ui-sm tabular-nums">
-              {copy.progress(progress.questionIndex + 1, questionCount)}
+              {progress.questionIndex + 1} {t("onboarding:of")} {questionCount}
             </span>
             <button
               type="button"
               disabled={!canGoForward || isResponding}
               onClick={() => onAdvance()}
               className={NAV_BUTTON_CLASS_NAME}
-              aria-label={copy.nextQuestion}
+              aria-label={t("chat:composerPendingUserInputPanel_nextQuestion")}
             >
               <ChevronRightIcon className="size-3.5" />
             </button>
@@ -162,7 +163,9 @@ export function UserInputQuestionForm({
         ) : null}
       </div>
       {activeQuestion.multiSelect ? (
-        <p className="mt-1 text-ui-sm text-muted-foreground/55">{copy.selectMultiple}</p>
+        <p className="mt-1 text-ui-sm text-muted-foreground/55">
+          {t("chat:composerPendingUserInputPanel_selectOneOrMore")}
+        </p>
       ) : null}
       {activeQuestion.options.length > 0 ? (
         <div className="mt-2.5 space-y-0.5">
@@ -199,7 +202,7 @@ export function UserInputQuestionForm({
               isResponding && "cursor-not-allowed opacity-50",
             )}
           >
-            {copy.cancel}
+            {t("common:form_cancel")}
           </button>
         </div>
       ) : null}

@@ -1,3 +1,6 @@
+import { readWorkspaceFrame } from "../lib/hosts/workspaceFrame";
+import { subscribeWorkspaceKeybindings } from "../lib/hosts/workspaceKeybindings";
+import { onControllerStateChange } from "../lib/hosts/connectionClients";
 import { EditorDirtyRouteGuard } from "../components/EditorDirtyRouteGuard";
 import {
   ORCHESTRATION_STREAM_OVERFLOW_CODE,
@@ -47,7 +50,11 @@ import { ProjectImportAnnouncementDialog } from "../projectImport/ProjectImportA
 import { useProjectImportDialogStore } from "../projectImport/projectImportDialogStore";
 import { FeatureTourDialog } from "../components/FeatureTourDialog";
 import { SafariAccessOnboarding } from "../components/SafariAccessOnboarding";
+import { NewThreadDefaultsSyncCoordinator } from "../components/NewThreadDefaultsSyncCoordinator";
+import { settingsChangedBeyondNewThreadDefaults } from "@synara/shared/serverSettings";
 import { QueuedComposerDrainCoordinator } from "../components/QueuedComposerDrainCoordinator";
+import { GlobalAccountDialogs } from "../components/account/GlobalAccountDialogs";
+import { HostDiscoverabilityPrompt } from "../components/hosts/HostDiscoverabilityPrompt";
 import { FeedbackDialog } from "../components/FeedbackDialog";
 import { SETTINGS_TARGETS } from "../settingsNavigation";
 import ShortcutsDialog from "../components/ShortcutsDialog";
@@ -57,14 +64,13 @@ import { WhatsNewPopoutCard } from "../whatsNew/WhatsNewPopoutCard";
 import { shouldRenderTerminalWorkspace } from "../components/ChatView.logic";
 import { Button, dialogActionButtonClassName } from "../components/ui/button";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "../components/ui/toast";
-import { AppI18nProvider } from "../i18n/AppI18nProvider";
-import { useMessages } from "../i18n/context";
 import { useGitProgressToastPreview } from "../components/useGitProgressToastPreview";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { useFeatureFlags } from "../featureFlags";
 import { useFocusedChatContext } from "../focusedChatContext";
 import { useFeedbackDialogStore } from "../feedbackDialogStore";
 import type { FeedbackThreadContext } from "../feedback";
+import { invalidateAccountStatus } from "../lib/accountReactQuery";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
   invalidateProviderUsageQueries,
@@ -114,6 +120,7 @@ import { dockTerminalThreadId } from "../lib/dockTerminalScope";
 import { projectServiceTerminalThreadId } from "../lib/projectServiceTerminalScope";
 import { TaskCompletionNotifications } from "../notifications/taskCompletion";
 import { useWorkspacePathsStore } from "../workspacePathsStore";
+import { t, useTranslation } from "~/i18n";
 import {
   isThreadDetailRetained,
   resolveThreadDetailSubscriptionLeaseIds,
@@ -172,6 +179,7 @@ import {
 import { useDiffRouteSearch } from "../hooks/useDiffRouteSearch";
 import { useComputerEventBridge } from "../hooks/useComputerEventBridge";
 import { useDeviceEventBridge } from "../hooks/useDeviceEventBridge";
+import { useProductAnalyticsAccount } from "../hooks/useProductAnalyticsAccount";
 import {
   PROVIDER_AUTH_REFRESH_MIN_INTERVAL_MS,
   useProviderAuthRefreshOnFocus,
@@ -300,6 +308,8 @@ export const Route = createRootRouteWithContext<{
 });
 
 function RootRouteView() {
+  const { t } = useTranslation();
+
   useAppTypography();
   useAppDensity();
   useChatWidth();
@@ -344,86 +354,87 @@ function RootRouteView() {
 
   if (compatibilityIssue) {
     return (
-      <AppI18nProvider>
+      <>
         <TransportCompatibilityView issue={compatibilityIssue} />
         {desktopChrome}
-      </AppI18nProvider>
+      </>
     );
   }
 
   if (!readNativeApi()) {
     return (
-      <AppI18nProvider>
-        <ConnectingScreen />
+      <>
+        <div className="flex h-screen flex-col bg-background text-foreground">
+          <div className="flex flex-1 items-center justify-center">
+            <p className="text-ui leading-snug text-muted-foreground">
+              {t("common:connectingTo")} {APP_DISPLAY_NAME} {t("common:server2")}
+            </p>
+          </div>
+        </div>
         {desktopChrome}
-      </AppI18nProvider>
+      </>
     );
   }
 
   return (
     <>
-      <AppI18nProvider>
-        <ToastProvider position="top-center">
-          <AnchoredToastProvider>
-            <GitProgressToastPreviewDev />
-            <EventRouter />
-            <EditorDirtyRouteGuard />
-            <ProviderStatusRefreshCoordinator />
-            <ProviderModelDiscoveryWarmer />
-            <GlobalShortcutsDialog />
-            <BrowserVaultDialog />
-            <GlobalFeedbackDialog />
-            <GlobalWhatsNewSurface />
-            <TaskCompletionNotifications />
-            <QueuedComposerDrainCoordinator />
-            {/* Beta welcome must resolve the first-run gate even while Safari is queued. */}
-            <BetaWelcomeDialog />
-            <SafariAccessOnboarding startup>
-              <AppSnapWelcomeDialog>
-                <FeatureTourDialog />
-              </AppSnapWelcomeDialog>
-            </SafariAccessOnboarding>
-            <GlobalOnboardingDialog />
-            <ProjectImportAnnouncementDialog />
-            <GlobalProjectImportDialog />
-            <AppSnapCoordinator />
-            <DesktopProjectBootstrap />
-            <Outlet />
-          </AnchoredToastProvider>
-        </ToastProvider>
-        {desktopChrome}
-      </AppI18nProvider>
+      <ToastProvider position="top-center">
+        <AnchoredToastProvider>
+          <GitProgressToastPreviewDev />
+          <EventRouter />
+          <EditorDirtyRouteGuard />
+          <ProviderStatusRefreshCoordinator />
+          <ProviderModelDiscoveryWarmer />
+          <GlobalShortcutsDialog />
+          <BrowserVaultDialog />
+          <GlobalFeedbackDialog />
+          <GlobalAccountDialogs />
+          {/* Mounted globally because the host it asks about registers itself
+              at sign-in, wherever the user happens to be in the app. */}
+          {!readWorkspaceFrame() && <HostDiscoverabilityPrompt />}
+          {!readWorkspaceFrame() && <GlobalWhatsNewSurface />}
+          <TaskCompletionNotifications />
+          <QueuedComposerDrainCoordinator />
+          <NewThreadDefaultsSyncCoordinator />
+          {!readWorkspaceFrame() && (
+            <>
+              {/* Beta welcome resolves the first-run gate while Safari is queued. */}
+              <BetaWelcomeDialog />
+              <SafariAccessOnboarding startup>
+                <AppSnapWelcomeDialog>
+                  <FeatureTourDialog />
+                </AppSnapWelcomeDialog>
+              </SafariAccessOnboarding>
+              <GlobalOnboardingDialog />
+              <ProjectImportAnnouncementDialog />
+            </>
+          )}
+          <GlobalProjectImportDialog />
+          <AppSnapCoordinator />
+          <DesktopProjectBootstrap />
+          <Outlet />
+        </AnchoredToastProvider>
+      </ToastProvider>
+      {desktopChrome}
     </>
   );
 }
 
-// Rendered before the native API exists, so it lives inside AppI18nProvider (which only needs
-// the persisted settings store) rather than reading the English fallback catalog.
-function ConnectingScreen() {
-  const copy = useMessages().app.root;
-  return (
-    <div className="flex h-screen flex-col bg-background text-foreground">
-      <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-muted-foreground">{copy.connecting(APP_DISPLAY_NAME)}</p>
-      </div>
-    </div>
-  );
-}
-
 function TransportCompatibilityView({ issue }: { issue: WsCompatibilityError }) {
-  const compatCopy = useMessages().app.root;
+  const { t } = useTranslation();
+
   const title =
     issue.action === "update-client"
-      ? compatCopy.updateClient
+      ? t("common:thisSynaraClientNeedsAnUpdate")
       : issue.action === "update-server"
-        ? compatCopy.updateServer
-        : compatCopy.reconnect;
+        ? t("common:theSynaraServerNeedsAnUpdate")
+        : t("common:synaraNeedsToReconnectWithAMatchingBuild");
   const guidance =
     issue.action === "update-client"
-      ? compatCopy.updateClientGuidance
+      ? t("common:compatibility_updateClientGuidance")
       : issue.action === "update-server"
-        ? compatCopy.updateServerGuidance
-        : compatCopy.reconnectGuidance;
+        ? t("common:compatibility_updateServerGuidance")
+        : t("common:compatibility_reconnectGuidance");
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
@@ -434,10 +445,10 @@ function TransportCompatibilityView({ issue }: { issue: WsCompatibilityError }) 
       <section className="relative w-full max-w-xl rounded-2xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-8">
         <p className="text-ui-sm font-semibold text-muted-foreground">{APP_DISPLAY_NAME}</p>
         <h1 className="mt-3 text-2xl font-semibold sm:text-3xl">{title}</h1>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{issue.message}</p>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{guidance}</p>
-        <p className="mt-4 text-xs text-muted-foreground/80">
-          {compatCopy.buildLine(APP_VERSION, issue.serverBuild)}
+        <p className="mt-2 text-ui leading-relaxed text-muted-foreground">{issue.message}</p>
+        <p className="mt-2 text-ui leading-relaxed text-muted-foreground">{guidance}</p>
+        <p className="mt-4 text-ui leading-snug text-muted-foreground/80">
+          {t("common:client")} {APP_VERSION} {t("common:server")} {issue.serverBuild}
         </p>
         <div className="mt-5">
           <Button
@@ -445,7 +456,7 @@ function TransportCompatibilityView({ issue }: { issue: WsCompatibilityError }) 
             className={dialogActionButtonClassName}
             onClick={() => window.location.reload()}
           >
-            {compatCopy.reloadApp}
+            {t("common:common_reloadApp")}
           </Button>
         </div>
       </section>
@@ -579,11 +590,11 @@ async function runProviderUpdateAll(params: {
     trackedToast?.toastId ??
     toastManager.add({
       type: "loading",
-      title: "Updating providers...",
+      title: t("common:common_updatingProviders"),
       description:
         providers.length === 1
-          ? `Updating ${providerStatusDisplayName(providers[0]!)}.`
-          : `Updating ${providers.length} providers.`,
+          ? t("common:updating", { value0: providerStatusDisplayName(providers[0]!) })
+          : t("common:updatingProviders", { value0: providers.length }),
       timeout: 0,
     });
   activeToastRef.current = { kind: "update", key: activeNotificationKey, toastId };
@@ -597,11 +608,11 @@ async function runProviderUpdateAll(params: {
 
   toastManager.update(toastId, {
     type: "loading",
-    title: "Updating providers...",
+    title: t("common:common_updatingProviders"),
     description:
       providers.length === 1
-        ? `Updating ${providerStatusDisplayName(providers[0]!)}.`
-        : `Updating ${providers.length} providers.`,
+        ? t("common:updating", { value0: providerStatusDisplayName(providers[0]!) })
+        : t("common:updatingProviders", { value0: providers.length }),
     actionProps: undefined,
     data: { onClose: dismissProgressToast },
     timeout: 0,
@@ -695,11 +706,13 @@ async function runProviderUpdateAll(params: {
       type: "error",
       title:
         failures.length === providers.length
-          ? "Provider updates failed"
-          : "Some provider updates failed",
+          ? t("common:common_providerUpdatesFailed")
+          : t("common:common_someProviderUpdatesFailed"),
       description:
         manualCommands.length > 0
-          ? `${failureLines}\n\nCopy the command${manualCommands.length === 1 ? "" : "s"} below to update manually in a terminal.`
+          ? t("common:copyTheCommandsBelowToUpdateManuallyInA", {
+              failures: failureLines,
+            })
           : failureLines,
       data: {
         onClose: dismissProgressToast,
@@ -715,9 +728,9 @@ async function runProviderUpdateAll(params: {
     type: "success",
     title:
       providers.length === 1
-        ? `${providerStatusDisplayName(providers[0]!)} updated`
-        : `${providers.length} providers updated`,
-    description: "New sessions will use the refreshed provider tools.",
+        ? t("common:updated2", { value0: providerStatusDisplayName(providers[0]!) })
+        : t("common:providersUpdated", { value0: providers.length }),
+    description: t("common:common_refreshedProviderTools"),
     data: { onClose: dismissProgressToast },
     timeout: 6000,
   });
@@ -728,6 +741,8 @@ function ProviderUpdateNotifications({
 }: {
   readonly liveVersionCheckCompleted: boolean;
 }) {
+  const { t } = useTranslation();
+
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { settings } = useAppSettings();
@@ -791,12 +806,15 @@ function ProviderUpdateNotifications({
     const providerName = providerStatusDisplayName(firstProvider);
     const title =
       outdatedProviders.length === 1
-        ? `${providerName} update available`
-        : `${outdatedProviders.length} provider updates available`;
+        ? t("common:updateAvailable", { value0: providerName })
+        : t("common:providerUpdatesAvailable", { value0: outdatedProviders.length });
     const description =
       outdatedProviders.length === 1
-        ? `${providerName} has a newer version available.`
-        : `${providerName} and ${additionalCount} more provider${additionalCount === 1 ? "" : "s"} have newer versions available.`;
+        ? t("common:hasANewerVersionAvailable", { value0: providerName })
+        : t("common:updatesAvailableForAndMoreProviders", {
+            provider: providerName,
+            count: additionalCount,
+          });
 
     let toastId!: ProviderUpdateToastId;
     const closeTrackedPrompt = () => {
@@ -811,7 +829,7 @@ function ProviderUpdateNotifications({
       description,
       timeout: 0,
       actionProps: {
-        children: "Review updates",
+        children: t("common:providerReviewUpdates"),
         onClick: () => {
           if (activeToastRef.current?.toastId === toastId) {
             toastManager.close(toastId);
@@ -826,7 +844,7 @@ function ProviderUpdateNotifications({
       data: {
         onClose: closeTrackedPrompt,
         secondaryActionProps: {
-          children: "Update all",
+          children: t("common:providerUpdateAll"),
           onClick: () => {
             void updateAll(oneClickProviders);
           },
@@ -834,7 +852,15 @@ function ProviderUpdateNotifications({
       },
     });
     activeToastRef.current = { kind: "prompt", key: notificationKey, toastId };
-  }, [isUpdatingAll, navigate, notificationKey, oneClickProviders, outdatedProviders, updateAll]);
+  }, [
+    isUpdatingAll,
+    navigate,
+    notificationKey,
+    oneClickProviders,
+    outdatedProviders,
+    updateAll,
+    t,
+  ]);
 
   return null;
 }
@@ -1009,16 +1035,7 @@ function GlobalWhatsNewSurface() {
 }
 
 function RootRouteErrorView({ error, reset }: ErrorComponentProps) {
-  // The router swaps this in for RootComponent, so it never inherits that tree's provider.
-  return (
-    <AppI18nProvider>
-      <RootRouteErrorContent error={error} reset={reset} />
-    </AppI18nProvider>
-  );
-}
-
-function RootRouteErrorContent({ error, reset }: ErrorComponentProps) {
-  const errorCopy = useMessages().app.root;
+  const { t } = useTranslation();
   const message = errorMessage(error);
   const details = errorDetails(error);
 
@@ -1030,13 +1047,15 @@ function RootRouteErrorContent({ error, reset }: ErrorComponentProps) {
       </div>
 
       <section className="relative w-full max-w-xl rounded-2xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-8">
-        <p className="text-[11px] font-semibold text-muted-foreground">{APP_DISPLAY_NAME}</p>
-        <h1 className="mt-3 text-2xl font-semibold sm:text-3xl">{errorCopy.somethingWentWrong}</h1>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{message}</p>
+        <p className="text-ui-sm font-semibold text-muted-foreground">{APP_DISPLAY_NAME}</p>
+        <h1 className="mt-3 text-2xl font-semibold sm:text-3xl">
+          {t("common:somethingWentWrong")}
+        </h1>
+        <p className="mt-2 text-ui leading-relaxed text-muted-foreground">{message}</p>
 
         <div className="mt-5 flex flex-wrap gap-2">
           <Button size="sm" className={dialogActionButtonClassName} onClick={() => reset()}>
-            {errorCopy.tryAgain}
+            {t("chat:profile_tryAgain")}
           </Button>
           <Button
             size="sm"
@@ -1044,14 +1063,14 @@ function RootRouteErrorContent({ error, reset }: ErrorComponentProps) {
             className={dialogActionButtonClassName}
             onClick={() => window.location.reload()}
           >
-            {errorCopy.reloadApp}
+            {t("common:common_reloadApp")}
           </Button>
         </div>
 
         <details className="group mt-5 overflow-hidden rounded-lg border border-border/70 bg-background/55">
-          <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-muted-foreground">
-            <span className="group-open:hidden">{errorCopy.showErrorDetails}</span>
-            <span className="hidden group-open:inline">{errorCopy.hideErrorDetails}</span>
+          <summary className="cursor-pointer list-none px-3 py-2 text-ui leading-snug font-medium text-muted-foreground">
+            <span className="group-open:hidden">{t("common:common_showErrorDetails")}</span>
+            <span className="hidden group-open:inline">{t("common:common_hideErrorDetails")}</span>
           </summary>
           <pre className="max-h-56 overflow-auto border-t border-border/70 bg-background/80 px-3 py-2 text-xs text-foreground/85">
             {details}
@@ -1071,7 +1090,7 @@ function errorMessage(error: unknown): string {
     return error;
   }
 
-  return "An unexpected router error occurred.";
+  return t("common:common_unexpectedRouterError");
 }
 
 function errorDetails(error: unknown): string {
@@ -1265,8 +1284,11 @@ function releaseOrphanedThreadDetail(input: {
 }
 
 function EventRouter() {
+  const { t } = useTranslation();
+
   useDeviceEventBridge();
   useComputerEventBridge();
+  useProductAnalyticsAccount();
   const syncServerShellSnapshot = useStore((store) => store.syncServerShellSnapshot);
   const syncServerThreadDetailHotPath = useStore((store) => store.syncServerThreadDetailHotPath);
   const applyShellEvent = useStore((store) => store.applyShellEvent);
@@ -1710,8 +1732,8 @@ function EventRouter() {
           toastManager.add({
             id: `stream-overflow:retry-failed:${threadId}`,
             type: "error",
-            title: "Unable to resume thread updates",
-            description: "Try again when the server responds.",
+            title: t("common:unableToResumeThreadUpdates"),
+            description: t("common:tryAgainWhenTheServerResponds"),
             data: { threadId },
           });
         }
@@ -2538,9 +2560,8 @@ function EventRouter() {
       toastManager.add({
         id: toastId,
         type: "error",
-        title: "Workspace updates paused",
-        description:
-          "The update stream could not keep up after repeated retries. Retry to resume workspace updates.",
+        title: t("common:workspaceUpdatesPaused"),
+        description: t("common:theUpdateStreamCouldNotKeepUpAfterRepeated"),
         timeout: 0,
         actionProps: {
           children: "Retry updates",
@@ -2557,8 +2578,8 @@ function EventRouter() {
               toastManager.add({
                 id: "stream-overflow:shell:retry-failed",
                 type: "error",
-                title: "Unable to resume workspace updates",
-                description: "Try again when the server responds.",
+                title: t("common:unableToResumeWorkspaceUpdates"),
+                description: t("common:tryAgainWhenTheServerResponds"),
               });
             });
           },
@@ -2582,12 +2603,14 @@ function EventRouter() {
       if (failure.code === ORCHESTRATION_STREAM_OVERFLOW_CODE) {
         const toastId = threadOverflowToastId(threadId);
         const threadTitle = getThreadFromState(useStore.getState(), threadId)?.title;
-        const threadLabel = threadTitle ? `“${threadTitle}”` : "this thread";
+        const threadLabel = threadTitle
+          ? t("common:symbol4", { value0: threadTitle })
+          : t("common:thisThread");
         toastManager.add({
           id: toastId,
           type: "error",
-          title: "Thread updates paused",
-          description: `The update stream for ${threadLabel} could not keep up after repeated retries. Retry to resume updates.`,
+          title: t("common:threadUpdatesPaused"),
+          description: t("common:theUpdateStreamForCouldNotKeepUpAfter", { value0: threadLabel }),
           timeout: 0,
           data: { threadId },
           actionProps: {
@@ -2634,7 +2657,9 @@ function EventRouter() {
         if (event.cliKind || currentCliKind !== null) {
           terminalStore.setTerminalMetadata(terminalThreadId, event.terminalId, {
             cliKind: event.cliKind,
-            label: event.cliKind ? defaultTerminalTitleForCliKind(event.cliKind) : "Terminal",
+            label: event.cliKind
+              ? defaultTerminalTitleForCliKind(event.cliKind)
+              : t("workspace:viewportPane_terminal"),
           });
         }
       }
@@ -2731,6 +2756,10 @@ function EventRouter() {
     // onServerConfigUpdated replays the latest cached value synchronously
     // during subscribe. Skip the toast for that replay so effect re-runs
     // don't produce duplicate toasts.
+    const unsubWorkspaceKeybindings = subscribeWorkspaceKeybindings(
+      queryClient,
+      serverQueryKeys.config(),
+    );
     let subscribed = false;
     const unsubServerConfigUpdated = onServerConfigUpdated((payload) => {
       void queryClient.invalidateQueries({ queryKey: serverQueryKeys.config() });
@@ -2742,7 +2771,7 @@ function EventRouter() {
 
       toastManager.add({
         type: "warning",
-        title: "Invalid keybindings configuration",
+        title: t("common:common_invalidKeybindingsConfig"),
         description: issue.message,
         actionProps: {
           children: "Open keybindings.json",
@@ -2759,9 +2788,11 @@ function EventRouter() {
               .catch((error) => {
                 toastManager.add({
                   type: "error",
-                  title: "Unable to open keybindings file",
+                  title: t("common:advanced_unableToOpenKeybindings"),
                   description:
-                    error instanceof Error ? error.message : "Unknown error opening file.",
+                    error instanceof Error
+                      ? error.message
+                      : t("common:common_unknownErrorOpeningFile"),
                 });
               });
           },
@@ -2801,6 +2832,9 @@ function EventRouter() {
         });
       }
     });
+    const unsubControllerState = onControllerStateChange((state) => {
+      if (state === "open") void invalidateAccountStatus(queryClient).catch(() => undefined);
+    });
     const unsubWsTransportState = addWsTransportStateListener(
       (state) => {
         if (state !== "open") return;
@@ -2822,9 +2856,16 @@ function EventRouter() {
         // Another window toggled it; the local patch path already invalidates its own.
         void queryClient.invalidateQueries({ queryKey: providerDiscoveryQueryKeys.all });
       }
-      void queryClient.invalidateQueries({
-        queryKey: serverSettingsQueryOptions().queryKey,
-      });
+      // A composer pick only moves the shared new-chat defaults, which the push
+      // already carries whole; refetching on each one would only add load.
+      if (
+        previousSettings === undefined ||
+        settingsChangedBeyondNewThreadDefaults(previousSettings, payload.settings)
+      ) {
+        void queryClient.invalidateQueries({
+          queryKey: serverSettingsQueryOptions().queryKey,
+        });
+      }
     });
     subscribed = true;
     void ensureScopedSubscriptions();
@@ -2967,8 +3008,10 @@ function EventRouter() {
       unsubDaemonEvent();
       unsubWelcome();
       unsubServerConfigUpdated();
+      unsubWorkspaceKeybindings?.();
       unsubProviderStatusesUpdated();
       unsubWsTransportState();
+      unsubControllerState();
       unsubTransportOpenCount();
       unsubServerSettingsUpdated();
     };

@@ -125,18 +125,23 @@ function parseRelevantYaml(content: string): Record<string, unknown> | undefined
     if (!line.trim() || line.trimStart().startsWith("#")) continue;
     const topLevel = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*?)\s*$/u.exec(line);
     if (topLevel) {
-      const hasNestedMapping = topLevel[2] === "" || topLevel[2]?.startsWith("#");
-      const relevantGroup =
-        topLevel[1] === "memory" || topLevel[1] === "hindsight" || topLevel[1] === "modelRoles";
-      group = hasNestedMapping && relevantGroup ? topLevel[1] : undefined;
+      const key = topLevel[1];
+      const rawValue = topLevel[2];
+      if (key === undefined || rawValue === undefined) return undefined;
+      const hasNestedMapping = rawValue === "" || rawValue.startsWith("#");
+      const relevantGroup = key === "memory" || key === "hindsight" || key === "modelRoles";
+      group = hasNestedMapping && relevantGroup ? key : undefined;
       if (group) result[group] ??= {};
       continue;
     }
     const nested = /^\s{2,}([A-Za-z][A-Za-z0-9_-]*):\s*(.*?)\s*$/u.exec(line);
     if (nested && group) {
-      const value = parseYamlScalar(nested[2]);
+      const key = nested[1];
+      const rawValue = nested[2];
+      if (key === undefined || rawValue === undefined) return undefined;
+      const value = parseYamlScalar(rawValue);
       if (value === undefined) return undefined;
-      result[group]![nested[1]] = value;
+      result[group]![key] = value;
       continue;
     }
     // Ignore scalar top-level settings and sequences outside the narrow groups
@@ -281,7 +286,7 @@ export async function inspectOmpControlPlane(
   const plan = buildOmpControlPlanePlan({
     overlayPath: paths.overlayPath,
     globalConfigText,
-    env: input.env,
+    ...(input.env !== undefined ? { env: input.env } : {}),
   });
   const runtime = getOmpRuntimeStatus();
   return runtime ? { ...plan, policy: { ...plan.policy, runtime } } : plan;

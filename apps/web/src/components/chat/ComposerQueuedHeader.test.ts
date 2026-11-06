@@ -5,10 +5,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import { en } from "~/i18n/locales/en";
 import { compactQueuedComposerPreviewMarkdown } from "./ComposerQueuedHeader";
 
-const FALLBACKS = en.composer.queued;
+const FALLBACKS = { defaultTitle: "Queued follow-up", codeBlock: "Code block" };
 
 describe("compactQueuedComposerPreviewMarkdown", () => {
   it("keeps inline markdown while dropping block-only heading/list syntax", () => {

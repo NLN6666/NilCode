@@ -157,10 +157,10 @@ describe("deleteActiveThreadFromClient", () => {
     expect(harness.toast).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "error",
-        title: "Thread deleted, but worktree removal failed",
-        description: "Could not remove /repo-worktree. busy",
+        description: expect.stringContaining("/repo-worktree"),
       }),
     );
+    expect(harness.toast.mock.calls[0]?.[0].description).toContain("busy");
   });
 
   it("excludes every planned batch deletion and skips worktree prompting when requested", async () => {

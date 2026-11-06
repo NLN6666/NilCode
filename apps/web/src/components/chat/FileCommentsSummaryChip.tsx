@@ -3,7 +3,7 @@
 // Layer: Chat attachment presentation
 
 import { MessageCircleIcon } from "~/lib/icons";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 import { AttachmentSummaryChip } from "./AttachmentSummaryChip";
 
 // Minimal shape shared by composer drafts (FileCommentDraft) and parsed bubble
@@ -29,14 +29,20 @@ interface FileCommentsSummaryChipProps {
 // "src/a.ts 第 12 行" readable without locale-specific punctuation.
 function fileCommentHeading(
   comment: FileCommentChipEntry,
-  formatRange: (startLine: number, endLine: number) => string,
+  translate: ReturnType<typeof useTranslation>["t"],
 ): string {
-  return `${comment.path} ${formatRange(comment.startLine, comment.endLine)}`;
+  const range =
+    comment.startLine === comment.endLine
+      ? translate("chat:fileLineComment_line", { value0: comment.startLine })
+      : translate("chat:fileLineComment_lines", {
+          value0: comment.startLine,
+          value1: comment.endLine,
+        });
+  return `${comment.path} ${range}`;
 }
 
 export function FileCommentsSummaryChip(props: FileCommentsSummaryChipProps) {
-  const copy = useMessages().composer.attachments;
-  const lineCommentCopy = useMessages().chat.lineComment;
+  const { t } = useTranslation();
   if (props.comments.length === 0) {
     return null;
   }
@@ -44,8 +50,11 @@ export function FileCommentsSummaryChip(props: FileCommentsSummaryChipProps) {
   return (
     <AttachmentSummaryChip
       icon={MessageCircleIcon}
-      label={copy.commentCount(props.comments.length)}
-      removeLabel={copy.removeComments}
+      label={t("chat:symbol7", {
+        value0: props.comments.length,
+        value1: t("common:countUnitComment", { count: props.comments.length }),
+      })}
+      removeLabel={t("chat:fileComments_remove")}
       onRemove={props.onRemove}
       tooltip={props.comments.map((comment, index) => (
         <div
@@ -53,7 +62,7 @@ export function FileCommentsSummaryChip(props: FileCommentsSummaryChipProps) {
           className="space-y-0.5"
         >
           <p className="text-[0.6875rem] font-medium text-muted-foreground">
-            {fileCommentHeading(comment, lineCommentCopy.range)}
+            {fileCommentHeading(comment, t)}
           </p>
           <p className="text-ui leading-relaxed">{comment.text}</p>
         </div>

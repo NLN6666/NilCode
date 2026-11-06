@@ -15,6 +15,7 @@ import {
   TurnId,
 } from "./baseSchemas";
 import { ClaudeCacheObservation } from "./claudeCache";
+import { ProviderUsageLimit } from "./usageLimit";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance";
 
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
@@ -407,6 +408,7 @@ const TurnStartedPayload = Schema.Struct({
 export type TurnStartedPayload = typeof TurnStartedPayload.Type;
 
 const TurnCompletedPayload = Schema.Struct({
+  usageLimit: Schema.optional(ProviderUsageLimit),
   state: RuntimeTurnState,
   // Present only for an explicitly requested native compaction operation.
   contextCompacted: Schema.optional(Schema.Boolean),

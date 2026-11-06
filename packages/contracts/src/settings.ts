@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 import { AdvisorModelSelection, AdvisorServerSettings } from "./advisor";
-import { IsoDateTime, TrimmedString } from "./baseSchemas";
+import { IsoDateTime, NonNegativeInt, TrimmedString } from "./baseSchemas";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL } from "./model";
-import { ModelSelection, ProviderKind, ThreadEnvironmentMode } from "./orchestration";
+import { ModelSelection, ProviderKind, RuntimeMode, ThreadEnvironmentMode } from "./orchestration";
 import { ProviderInstanceConfigMap, ProviderInstanceId } from "./providerInstance";
 
 const StringSetting = TrimmedString.check(Schema.isMaxLength(4096));
@@ -180,7 +180,26 @@ export const KeepAwakeMode = Schema.Literals(["always", "agent", "off"]);
 export type KeepAwakeMode = typeof KeepAwakeMode.Type;
 export const DEFAULT_KEEP_AWAKE_MODE: KeepAwakeMode = "off";
 
+// What a new chat's composer starts from on every client of this server. Clients
+// write it when the user changes a new chat's model, effort, speed or access mode,
+// and follow other clients' changes live through settings updates.
+export const NewThreadDefaults = Schema.Struct({
+  // The last selection used on each provider instance, so switching provider
+  // restores that provider's own model and options.
+  modelSelectionByProvider: Schema.Record(ProviderInstanceId, ModelSelection).pipe(
+    Schema.withDecodingDefault(() => ({})),
+  ),
+  // The provider instance a new chat starts on; null until one is chosen.
+  activeProvider: Schema.NullOr(ProviderInstanceId).pipe(Schema.withDecodingDefault(() => null)),
+  // Null until chosen; new chats then start in DEFAULT_RUNTIME_MODE.
+  runtimeMode: Schema.NullOr(RuntimeMode).pipe(Schema.withDecodingDefault(() => null)),
+});
+export type NewThreadDefaults = typeof NewThreadDefaults.Type;
+
 export const ServerSettings = Schema.Struct({
+  autoResumeAfterUsageLimits: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  // Server-owned epoch: disabling invalidates pending waits across a rapid re-enable/restart.
+  usageLimitRecoveryEpoch: NonNegativeInt.pipe(Schema.withDecodingDefault(() => 0)),
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   keepAwakeMode: KeepAwakeMode.pipe(Schema.withDecodingDefault(() => DEFAULT_KEEP_AWAKE_MODE)),
@@ -219,6 +238,7 @@ export const ServerSettings = Schema.Struct({
   skills: SkillsServerSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   network: NetworkServerSettings.pipe(Schema.withDecodingDefault(() => ({}))),
   advisor: AdvisorServerSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+  newThreadDefaults: NewThreadDefaults.pipe(Schema.withDecodingDefault(() => ({}))),
   // When the first-run welcome tour was completed or skipped. Server-backed so a
   // browser-storage reset does not replay setup on an already configured install.
   onboardingCompletedAt: Schema.optionalKey(Schema.NullOr(IsoDateTime)),
@@ -250,6 +270,7 @@ const ProviderSettingsBasePatch = {
 };
 
 export const ServerSettingsPatch = Schema.Struct({
+  autoResumeAfterUsageLimits: Schema.optionalKey(Schema.Boolean),
   enableAssistantStreaming: Schema.optionalKey(Schema.Boolean),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   keepAwakeMode: Schema.optionalKey(KeepAwakeMode),
@@ -353,6 +374,16 @@ export const ServerSettingsPatch = Schema.Struct({
       // matched pair, and a partial patch could pair a Codex provider with a
       // Claude model.
       modelSelection: Schema.optionalKey(AdvisorModelSelection),
+    }),
+  ),
+  newThreadDefaults: Schema.optionalKey(
+    Schema.Struct({
+      // Each named provider instance's selection is replaced whole; the others are kept.
+      modelSelectionByProvider: Schema.optionalKey(
+        Schema.Record(ProviderInstanceId, ModelSelection),
+      ),
+      activeProvider: Schema.optionalKey(Schema.NullOr(ProviderInstanceId)),
+      runtimeMode: Schema.optionalKey(Schema.NullOr(RuntimeMode)),
     }),
   ),
   onboardingCompletedAt: Schema.optionalKey(Schema.NullOr(IsoDateTime)),

@@ -8,6 +8,7 @@
 // right, as values under test than as conditionals scattered through JSX.
 
 import type { DaemonSnapshot, DaemonState } from "@synara/contracts";
+import { t } from "~/i18n";
 
 export type DaemonTone = "pending" | "healthy" | "neutral" | "danger";
 
@@ -35,34 +36,27 @@ export function isDaemonAlive(snapshot: DaemonSnapshot): boolean {
   );
 }
 
-export interface DaemonMetaCopy {
-  readonly pid: (pid: number) => string;
-  readonly restarts: (count: number) => string;
-  readonly exitedWithCode: (code: number) => string;
-  readonly waitingFor: (conditions: string) => string;
-}
-
 /**
  * The secondary line under a daemon's name: whichever facts are actually true.
  *
  * Ordered by what a reader needs first — why it isn't ready yet, then how to find the
  * process, then how it died, then whether it has been flapping.
  */
-export function daemonMetaParts(snapshot: DaemonSnapshot, copy: DaemonMetaCopy): string[] {
+export function daemonMetaParts(snapshot: DaemonSnapshot, translate: typeof t = t): string[] {
   const parts: string[] = [];
 
   const pending = snapshot.readyPending ?? [];
   if (snapshot.state === "starting" && pending.length > 0) {
-    parts.push(copy.waitingFor(pending.join(", ")));
+    parts.push(translate("chat:services_waitingFor", { conditions: pending.join(", ") }));
   }
   if (snapshot.pid !== null && snapshot.pid !== undefined && isDaemonAlive(snapshot)) {
-    parts.push(copy.pid(snapshot.pid));
+    parts.push(translate("chat:services_pid", { pid: snapshot.pid }));
   }
   if (!isDaemonAlive(snapshot) && snapshot.exitCode !== null && snapshot.exitCode !== undefined) {
-    parts.push(copy.exitedWithCode(snapshot.exitCode));
+    parts.push(translate("chat:services_exitedWithCode", { code: snapshot.exitCode }));
   }
   if ((snapshot.restartCount ?? 0) > 0) {
-    parts.push(copy.restarts(snapshot.restartCount ?? 0));
+    parts.push(translate("chat:services_restarts", { count: snapshot.restartCount ?? 0 }));
   }
 
   return parts;

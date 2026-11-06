@@ -4,18 +4,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  BrowserAnnotationLocale,
   BrowserAnnotationEvent,
   BrowserAnnotationMethods,
   BrowserAnnotationSession,
   ThreadId,
 } from "@synara/contracts";
 
-import type { Locale } from "@synara/shared/i18n";
-
 import type { BrowserAnnotationDraft } from "../../lib/browserAnnotations";
-import type { Messages } from "~/i18n/locales/en";
 
 import {
+  BROWSER_ANNOTATION_ERROR_MESSAGE_KEYS,
   browserAnnotationActionErrorKey,
   browserAnnotationDraftFromCommittedEvent,
   browserAnnotationMarkers,
@@ -51,10 +50,10 @@ interface UseBrowserAnnotationsInput {
    */
   readonly addAnnotation: (annotation: Omit<BrowserAnnotationDraft, "ordinal">) => boolean;
   readonly onError: (message: string | null) => void;
-  /** Active-locale annotation failure copy, keyed by `browserAnnotationActionErrorKey`. */
-  readonly errorCopy: Messages["browser"]["annotation"]["errors"];
+  /** Renderer translator for locale-free annotation error keys. */
+  readonly translate: (message: string, values?: Record<string, unknown>) => string;
   /** Names the copy table the isolated annotation guest resolves for its in-page popover. */
-  readonly locale: Locale;
+  readonly locale: BrowserAnnotationLocale;
 }
 
 // Main survives renderer reloads, so a module-local 1,2,3 counter could move
@@ -87,7 +86,7 @@ export function useBrowserAnnotations({
   annotations,
   addAnnotation,
   onError,
-  errorCopy,
+  translate,
   locale,
 }: UseBrowserAnnotationsInput): BrowserAnnotationsController {
   const [phase, setPhase] = useState<"idle" | "starting" | "active">("idle");
@@ -114,11 +113,17 @@ export function useBrowserAnnotations({
         .cancel({ threadId: pending.threadId, tabId: pending.tabId })
         .catch((error: unknown) => {
           if (surfaceError) {
-            onError(errorCopy[browserAnnotationActionErrorKey(error, "cancel")]);
+            onError(
+              translate(
+                BROWSER_ANNOTATION_ERROR_MESSAGE_KEYS[
+                  browserAnnotationActionErrorKey(error, "cancel")
+                ],
+              ),
+            );
           }
         });
     },
-    [clearLocalSession, errorCopy, methods, onError],
+    [clearLocalSession, methods, onError, translate],
   );
 
   const toggle = useCallback(() => {
@@ -174,7 +179,13 @@ export function useBrowserAnnotations({
             return;
           }
           clearLocalSession();
-          onError(errorCopy[browserAnnotationActionErrorKey(error, "start")]);
+          onError(
+            translate(
+              BROWSER_ANNOTATION_ERROR_MESSAGE_KEYS[
+                browserAnnotationActionErrorKey(error, "start")
+              ],
+            ),
+          );
         },
       );
   }, [
@@ -182,10 +193,10 @@ export function useBrowserAnnotations({
     cancelPendingSession,
     clearLocalSession,
     enabled,
-    errorCopy,
     locale,
     methods,
     onError,
+    translate,
     threadId,
   ]);
 
@@ -229,7 +240,7 @@ export function useBrowserAnnotations({
         const added = addAnnotation(browserAnnotationDraftFromCommittedEvent(event));
         if (!added) {
           cancelPendingSession(false);
-          onError(errorCopy.draftFull);
+          onError(translate(BROWSER_ANNOTATION_ERROR_MESSAGE_KEYS.draftFull));
         } else {
           onError(null);
         }
@@ -254,7 +265,7 @@ export function useBrowserAnnotations({
         setDocumentRevision((revision) => revision + 1);
       }
     });
-  }, [addAnnotation, cancelPendingSession, clearLocalSession, errorCopy, methods, onError]);
+  }, [addAnnotation, cancelPendingSession, clearLocalSession, methods, onError, translate]);
 
   useEffect(() => {
     const pending = pendingRef.current;
@@ -287,7 +298,11 @@ export function useBrowserAnnotations({
           scope.threadId === threadId &&
           scope.activeTabId === activeTabId
         ) {
-          onError(errorCopy[browserAnnotationActionErrorKey(error, "sync")]);
+          onError(
+            translate(
+              BROWSER_ANNOTATION_ERROR_MESSAGE_KEYS[browserAnnotationActionErrorKey(error, "sync")],
+            ),
+          );
         }
       });
   }, [
@@ -296,10 +311,10 @@ export function useBrowserAnnotations({
     browserStateVersion,
     documentRevision,
     enabled,
-    errorCopy,
     methods,
     onError,
     threadId,
+    translate,
   ]);
 
   useEffect(

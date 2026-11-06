@@ -51,21 +51,8 @@ vi.mock("~/hooks/useTerminalSurfaceController", () => ({
   }),
 }));
 
-vi.mock("~/i18n/context", () => ({
-  useMessages: () => ({
-    chat: {
-      panes: {
-        serviceTerminal: {
-          collapse: "Collapse terminal",
-          expand: "Expand terminal",
-          resize: "Resize terminal",
-          running: (name: string) => `Running ${name}`,
-          runningCount: (count: number) => `Running ${count} services`,
-          title: "Service terminal",
-        },
-      },
-    },
-  }),
+vi.mock("~/i18n", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
 }));
 
 vi.mock("~/lib/icons", () => ({

@@ -1,4 +1,5 @@
 import type { ThreadId } from "./baseSchemas";
+import type { UiLocale } from "./uiLocale";
 
 export const BROWSER_ANNOTATION_MAX_ID_LENGTH = 128;
 export const BROWSER_ANNOTATION_MAX_DOCUMENT_KEY_LENGTH = 128;
@@ -76,11 +77,9 @@ export interface BrowserAnnotationTheme {
  * shadow DOM would widen the injection surface. The renderer therefore only names a locale and
  * the guest resolves its own compile-time copy table.
  *
- * Mirrors `SUPPORTED_LOCALES` in `@synara/shared/i18n`; contracts stays dependency-free, and
- * `browserAnnotationLocales.test.ts` fails if the two lists ever drift apart.
+ * Uses the same locale identity as renderer and native menus.
  */
-export const BROWSER_ANNOTATION_LOCALES = ["en", "zh-CN"] as const;
-export type BrowserAnnotationLocale = (typeof BROWSER_ANNOTATION_LOCALES)[number];
+export type BrowserAnnotationLocale = UiLocale;
 
 export interface BrowserAnnotationStartInput {
   threadId: ThreadId;

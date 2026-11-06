@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { createDesktopHangWatchdogRuntime } from "./desktopHangWatchdogProcess";
 
+function makeInactiveTimer() {
+  const timer = setTimeout(() => undefined, 0);
+  clearTimeout(timer);
+  return timer;
+}
+
 describe("desktop hang watchdog child runtime", () => {
   it("captures configured targets, reports dump failures, and exits cleanly after parent disconnect", async () => {
     const listeners = new Map<string, (message?: unknown) => void>();
@@ -20,13 +26,13 @@ describe("desktop hang watchdog child runtime", () => {
         },
       },
       now: () => now,
-      setInterval: ((callback: () => void) => {
+      setInterval: (callback) => {
         tick = callback;
-        return { unref: () => undefined } as never;
-      }) as typeof setInterval,
-      clearInterval: (() => {
+        return makeInactiveTimer();
+      },
+      clearInterval: () => {
         cleared += 1;
-      }) as typeof clearInterval,
+      },
       exit: () => {
         exited += 1;
       },
@@ -86,8 +92,8 @@ describe("desktop hang watchdog child runtime", () => {
         send: () => true,
       },
       now: () => now,
-      setInterval: (() => ({ unref: () => undefined }) as never) as typeof setInterval,
-      clearInterval: (() => undefined) as typeof clearInterval,
+      setInterval: () => makeInactiveTimer(),
+      clearInterval: () => undefined,
       exit: () => undefined,
       writeDump: async (request) => {
         requests.push(request);
@@ -135,8 +141,8 @@ describe("desktop hang watchdog child runtime", () => {
         send: () => true,
       },
       now: () => 1_000,
-      setInterval: (() => ({ unref: () => undefined }) as never) as typeof setInterval,
-      clearInterval: (() => undefined) as typeof clearInterval,
+      setInterval: () => makeInactiveTimer(),
+      clearInterval: () => undefined,
       exit: () => undefined,
       writeDump: async () => Promise.reject(new Error("dump writer rejected")),
     });

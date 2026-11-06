@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 import {
   ANNOTATION_COLORS,
   ANNOTATION_DEFAULT_COLOR,
@@ -71,12 +71,13 @@ interface PendingTextEntry {
 const ANNOTATION_TOOLS: ReadonlyArray<{
   tool: AnnotationTool;
   icon: LucideIcon;
+  labelKey: string;
 }> = [
-  { tool: "pen", icon: PencilIcon },
-  { tool: "rect", icon: SquareOutlineIcon },
-  { tool: "arrow", icon: ArrowUpRightIcon },
-  { tool: "text", icon: TextLabelIcon },
-  { tool: "mosaic", icon: EraserIcon },
+  { tool: "pen", icon: PencilIcon, labelKey: "computer:annotation_tool_pen" },
+  { tool: "rect", icon: SquareOutlineIcon, labelKey: "computer:annotation_tool_rect" },
+  { tool: "arrow", icon: ArrowUpRightIcon, labelKey: "computer:annotation_tool_arrow" },
+  { tool: "text", icon: TextLabelIcon, labelKey: "computer:annotation_tool_text" },
+  { tool: "mosaic", icon: EraserIcon, labelKey: "computer:annotation_tool_mosaic" },
 ];
 
 function isDragTool(tool: AnnotationTool): tool is AnnotationDragItem["tool"] {
@@ -89,7 +90,7 @@ export function BrowserAnnotationOverlay({
   onCancel,
   onConfirm,
 }: BrowserAnnotationOverlayProps) {
-  const copy = useMessages().browser.annotation;
+  const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
   const draftItemRef = useRef<AnnotationItem | null>(null);
@@ -317,9 +318,9 @@ export function BrowserAnnotationOverlay({
             ref={textInputRef}
             value={pendingText.value}
             maxLength={ANNOTATION_TEXT_MAX_CHARS}
-            aria-label={copy.textLabel}
-            placeholder={copy.textPlaceholder}
-            className="absolute z-10 rounded-md border border-border bg-background/95 px-2 py-1 text-xs text-foreground shadow-lg outline-none"
+            aria-label={t("computer:annotation_textLabel")}
+            placeholder={t("computer:annotation_textPlaceholder")}
+            className="absolute z-10 rounded-md border border-border bg-background/95 px-2 py-1 text-ui text-foreground shadow-lg outline-none"
             style={textInputStyle}
             onChange={(event) => {
               const value = event.target.value;
@@ -351,13 +352,13 @@ export function BrowserAnnotationOverlay({
               variant={tool === entry.tool ? "secondary" : "ghost"}
               size="icon-sm"
               className="size-7"
-              aria-label={copy.tools[entry.tool]}
+              aria-label={t(entry.labelKey)}
               aria-pressed={tool === entry.tool}
-              title={copy.tools[entry.tool]}
+              title={t(entry.labelKey)}
               onClick={() => setTool(entry.tool)}
             >
               <entry.icon className="size-3.5" />
-              <span className="sr-only">{copy.tools[entry.tool]}</span>
+              <span className="sr-only">{t(entry.labelKey)}</span>
             </Button>
           ))}
         </div>
@@ -374,12 +375,12 @@ export function BrowserAnnotationOverlay({
                   : "border-border/60 hover:scale-105",
               )}
               style={{ backgroundColor: entry }}
-              aria-label={copy.useInk(entry)}
+              aria-label={t("computer:annotation_useInk", { color: entry })}
               aria-pressed={color === entry}
-              title={copy.useInk(entry)}
+              title={t("computer:annotation_useInk", { color: entry })}
               onClick={() => setColor(entry)}
             >
-              <span className="sr-only">{copy.useInk(entry)}</span>
+              <span className="sr-only">{t("computer:annotation_useInk", { color: entry })}</span>
             </button>
           ))}
         </div>
@@ -390,12 +391,12 @@ export function BrowserAnnotationOverlay({
             size="icon-sm"
             className="size-7"
             disabled={!canUndoAnnotation(history)}
-            aria-label={copy.undo}
-            title={copy.undoHint}
+            aria-label={t("desktop:toast_undo")}
+            title={t("computer:annotation_undoHint")}
             onClick={undo}
           >
             <Undo2Icon className="size-3.5" />
-            <span className="sr-only">{copy.undo}</span>
+            <span className="sr-only">{t("desktop:toast_undo")}</span>
           </Button>
           <Button
             type="button"
@@ -403,27 +404,27 @@ export function BrowserAnnotationOverlay({
             size="icon-sm"
             className="size-7"
             disabled={!canRedoAnnotation(history)}
-            aria-label={copy.redo}
-            title={copy.redoHint}
+            aria-label={t("desktop:redo")}
+            title={t("computer:annotation_redoHint")}
             onClick={redo}
           >
             <RotateCcwIcon className="size-3.5 scale-x-[-1]" />
-            <span className="sr-only">{copy.redo}</span>
+            <span className="sr-only">{t("desktop:redo")}</span>
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             disabled={history.present.length === 0}
-            aria-label={copy.clearAll}
-            title={copy.clearAllHint}
+            aria-label={t("computer:annotation_clearAll")}
+            title={t("computer:annotation_clearAllHint")}
             onClick={clear}
           >
-            {copy.clear}
+            {t("chat:clear")}
           </Button>
         </div>
         {errorMessage ? (
-          <p className="min-w-0 flex-1 truncate text-[11px] text-destructive" title={errorMessage}>
+          <p className="min-w-0 flex-1 truncate text-ui-sm text-destructive" title={errorMessage}>
             {errorMessage}
           </p>
         ) : (
@@ -436,10 +437,10 @@ export function BrowserAnnotationOverlay({
             size="sm"
             onClick={requestCancel}
           >
-            {confirmingCancel ? copy.confirmDiscard : copy.cancel}
+            {t(confirmingCancel ? "computer:annotation_confirmDiscard" : "common:form_cancel")}
           </Button>
           <Button type="button" size="sm" disabled={!canConfirm} onClick={confirm}>
-            {copy.addToChat}
+            {t("chat:addToChat")}
           </Button>
         </div>
       </div>

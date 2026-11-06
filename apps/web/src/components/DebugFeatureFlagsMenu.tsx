@@ -21,7 +21,7 @@ import {
 import { ComposerPickerMenuPopup } from "./chat/ComposerPickerMenuPopup";
 import { SidebarMenuButton } from "./ui/sidebar";
 import { toastManager } from "./ui/toast";
-import { useMessages } from "~/i18n/context";
+import { t, useTranslation } from "~/i18n";
 
 // Triggers local-only toast scenarios that are awkward to reproduce through real Git failures.
 function triggerActionFailedToasts(values: Record<ToggleFeatureFlagId, boolean>): void {
@@ -36,20 +36,20 @@ function triggerActionFailedToasts(values: Record<ToggleFeatureFlagId, boolean>)
 
   toastManager.add({
     type: "error",
-    title: "Action failed",
-    description: "Error: Git command failed in /Users/ibrahime/Documents/Projects/synara",
+    title: t("common:actionFailed"),
+    description: t("common:errorGitCommandFailedInUsersIbrahimeDocumentsProjects"),
     data: toastData,
   });
   toastManager.add({
     type: "error",
-    title: "Action failed",
-    description: "Error: Git command failed in /Users/ibrahime/Documents/Projects/synara",
+    title: t("common:actionFailed"),
+    description: t("common:errorGitCommandFailedInUsersIbrahimeDocumentsProjects"),
     data: toastData,
   });
 }
 
 export function DebugFeatureFlagsMenu() {
-  const copy = useMessages().app.featureFlags;
+  const { t } = useTranslation();
   const values = useFeatureFlags();
 
   return (
@@ -63,11 +63,11 @@ export function DebugFeatureFlagsMenu() {
         }
       >
         <FlagIcon className="size-[15px]" />
-        <span>{copy.label}</span>
+        <span>{t("common:featureFlags")}</span>
       </MenuTrigger>
       <ComposerPickerMenuPopup align="start" side="top" className="min-w-72">
         <MenuGroup>
-          <MenuGroupLabel>{copy.local}</MenuGroupLabel>
+          <MenuGroupLabel>{t("common:localFeatureFlags")}</MenuGroupLabel>
           {FEATURE_FLAGS.map((flag) => {
             if (flag.kind === "action") {
               return (
@@ -107,8 +107,8 @@ export function DebugFeatureFlagsMenu() {
           })}
         </MenuGroup>
         <MenuSeparator />
-        <div className="px-2 py-1.5 text-[length:var(--app-font-size-ui-xs,10px)] leading-4 text-muted-foreground/58">
-          {copy.storedLocally}
+        <div className="px-2 py-1.5 text-ui-xs leading-4 text-muted-foreground/58">
+          {t("common:storedOnlyInThisBrowserProfile")}
         </div>
       </ComposerPickerMenuPopup>
     </Menu>

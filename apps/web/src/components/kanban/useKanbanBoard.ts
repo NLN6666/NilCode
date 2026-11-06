@@ -23,6 +23,7 @@ import {
 import { useTerminalStateStore } from "../../terminalStateStore";
 import { useWorkspacePathsStore } from "../../workspacePathsStore";
 import { sortProjectsForSidebar } from "../Sidebar.logic";
+import { useTranslation } from "~/i18n";
 import {
   areKanbanComposerDraftSnapshotsEqual,
   buildKanbanBoard,
@@ -42,6 +43,7 @@ const OPTIMISTIC_DISPATCH_TIMEOUT_MS = 30_000;
 const OPTIMISTIC_DISPATCH_EXPIRY_CHECK_MS = 5_000;
 
 export function useKanbanBoard(): KanbanBoard {
+  const { t } = useTranslation();
   const { settings } = useAppSettings();
   // Memoized so the selector's internal reference cache survives across
   // renders (mirroring Sidebar.tsx); rebuilding it inline each render returned
@@ -102,7 +104,13 @@ export function useKanbanBoard(): KanbanBoard {
       projects: [
         ...sortProjectsForSidebar(otherProjects, threads, projectSortOrder),
         ...(canonicalContainer
-          ? [{ id: canonicalContainer.id, kind: canonicalContainer.kind, name: "Chats" }]
+          ? [
+              {
+                id: canonicalContainer.id,
+                kind: canonicalContainer.kind,
+                name: t("workspace:general_chats"),
+              },
+            ]
           : []),
       ],
       projectIdAliases: aliases,
@@ -115,6 +123,7 @@ export function useKanbanBoard(): KanbanBoard {
     projectSortOrder,
     studioWorkspaceRoot,
     threads,
+    t,
   ]);
   const draftsByThreadId = useComposerDraftStore((state) => state.draftsByThreadId);
   const draftThreadsByThreadId = useComposerDraftStore((state) => state.draftThreadsByThreadId);
@@ -174,12 +183,14 @@ export function useKanbanBoard(): KanbanBoard {
       if (outcome === "failed") {
         toastManager.add({
           type: "error",
-          title: "Task didn't start",
-          description: thread.session?.lastError ?? `${entry.title} was moved back to Draft.`,
+          title: t("workspace:taskDidNotStart"),
+          description:
+            thread.session?.lastError ??
+            t("workspace:taskMovedBackToDraft", { value0: entry.title }),
         });
       }
     }
-  }, [optimisticDispatchByThreadId, threads]);
+  }, [optimisticDispatchByThreadId, threads, t]);
 
   // Safety net: a dispatch whose runtime signal never arrives reverts to Draft
   // instead of leaving a ghost card In Progress forever. Keyed on a boolean so
@@ -212,13 +223,13 @@ export function useKanbanBoard(): KanbanBoard {
         }
         toastManager.add({
           type: "error",
-          title: "Task didn't start",
-          description: `${entry.title} was moved back to Draft.`,
+          title: t("workspace:taskDidNotStart"),
+          description: t("workspace:taskMovedBackToDraft", { value0: entry.title }),
         });
       }
     }, OPTIMISTIC_DISPATCH_EXPIRY_CHECK_MS);
     return () => window.clearInterval(intervalId);
-  }, [hasOptimisticDispatches]);
+  }, [hasOptimisticDispatches, t]);
 
   // Project composer drafts down to the few fields the board needs. Empty drafts
   // are dropped so routine composer churn (focus, selections, modes) rarely

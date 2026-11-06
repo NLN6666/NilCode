@@ -1,3 +1,5 @@
+import { AutomationComputerPicker } from "~/components/automation/AutomationComputerPicker";
+import type { WorkspaceAutomationDraft } from "~/lib/hosts/automationWorkspace";
 // FILE: -automations.list.tsx
 // Purpose: The automation list pieces shared by the Automations page and the rail layout's
 //          Automations panel: the list row, its subtitle and unread rules, the countdown
@@ -12,7 +14,7 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 
 import { getProviderStartOptions, useAppSettings } from "~/appSettings";
-import { useMessages } from "~/i18n/context";
+import type { AutomationTranslator } from "~/lib/automationFailurePolicy";
 import {
   hasBlockingAutomationDraftWarnings,
   updateAutomationDraftWarningAcknowledgement,
@@ -32,7 +34,6 @@ import { useStore } from "~/store";
 import { createSidebarThreadSummariesSelector } from "~/storeSelectors";
 import {
   type AutomationFormState,
-  type AutomationsCopy,
   AutomationDialog,
   acknowledgedRiskIdsForFormWarnings,
   automationAttentionLabel,
@@ -48,6 +49,7 @@ import {
   projectModelSelection,
   runStatusLabel,
 } from "./-automations.shared";
+import { getFormatLocale, useTranslation, t } from "~/i18n";
 
 // Sidebar summaries carry every field these surfaces read (id, projectId, title,
 // sidechatSourceThreadId) and do not rebuild on streamed message/activity deltas
@@ -87,7 +89,7 @@ export function AutomationListRow({
   /** The automation open in the content area (panel rows only). */
   readonly active?: boolean;
 }) {
-  const copy = useMessages().automations;
+  const { t } = useTranslation();
   const dimmed = dimmedProp ?? false;
   const isPanel = (densityProp ?? "page") === "panel";
   const active = activeProp ?? false;
@@ -147,8 +149,8 @@ export function AutomationListRow({
       {onDelete ? (
         <button
           type="button"
-          aria-label={copy.actions.deleteAutomation}
-          title={copy.actions.delete}
+          aria-label={t("automation:list_deleteAriaLabel")}
+          title={t("computer:detail_delete")}
           onClick={(event) => {
             event.stopPropagation();
             onDelete();
@@ -173,25 +175,26 @@ export function automationRowSubtitle(
   definition: AutomationDefinition,
   latestRun: AutomationRun | null,
   now: number,
-  copy: AutomationsCopy,
+  formatLocale = getFormatLocale(),
+  translate: AutomationTranslator = t,
 ): string {
-  const segments = [formatCadenceLong(definition.schedule)];
+  const segments = [formatCadenceLong(definition.schedule, formatLocale, translate)];
   if (isLiveRun(latestRun)) {
-    segments.push(runStatusLabel(latestRun.status, copy.runStatus));
+    segments.push(runStatusLabel(latestRun.status, translate));
     return segments.join(" · ");
   }
-  const attention = latestRun === null ? null : automationAttentionLabel(latestRun, copy.attention);
+  const attention = latestRun === null ? null : automationAttentionLabel(latestRun, translate);
   if (definition.enabled) {
-    const nextRun = formatNextRun(definition.nextRunAt, now);
-    if (nextRun) segments.push(copy.nextRunIn(nextRun));
+    const nextRun = formatNextRun(definition.nextRunAt, now, formatLocale, translate);
+    if (nextRun) segments.push(translate("automation:nextRun", { time: nextRun }));
   } else {
-    const stopped = stoppedReasonLabel(definition, copy.stoppedReason);
+    const stopped = stoppedReasonLabel(definition, translate);
     if (stopped) {
       segments.push(stopped);
       return segments.join(" · ");
     }
     if (attention === null && automationLifecycleState(definition) === "done") {
-      segments.push(copy.lifecycle.done);
+      segments.push(translate("git:detail_done"));
     }
   }
   if (attention) segments.push(attention);
@@ -202,17 +205,19 @@ export function automationRowSubtitle(
 // the row already reads "Done" / renders dimmed as paused for those.
 function stoppedReasonLabel(
   definition: AutomationDefinition,
-  copy: AutomationsCopy["stoppedReason"],
+  translate: AutomationTranslator,
 ): string | null {
   switch (definition.disabledReason) {
     case "failures":
       return definition.consecutiveFailureCount === 1
-        ? copy.singleFailure
-        : copy.multipleFailures(definition.consecutiveFailureCount ?? 0);
+        ? translate("automation:stoppedAfterAFailedRun")
+        : translate("automation:stoppedAfterFailedRuns", {
+            value0: definition.consecutiveFailureCount,
+          });
     case "max-iterations":
-      return copy.maxIterations;
+      return translate("automation:stoppedAtRunLimit");
     case "completion":
-      return copy.completion;
+      return translate("automation:stopConditionMet");
     default:
       return null;
   }
@@ -238,19 +243,27 @@ export function AutomationCreateDialog({
   onOpenChange,
   createAutomation,
   busy,
+  initialDraft,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly createAutomation: (input: AutomationCreateInput, onCreated: () => void) => void;
   readonly busy: boolean;
+  readonly initialDraft?: WorkspaceAutomationDraft | undefined;
 }) {
   const { settings } = useAppSettings();
+  const { t, formatLocale } = useTranslation();
   const projects = useStore((state) => state.projects);
   const threads = useStore(selectAllThreads);
   const fallbackProjectId = projects[0]?.id ?? "";
-  const [form, setForm] = useState<AutomationFormState>(() =>
-    formFromDefinition(null, fallbackProjectId, projectModelSelection(projects, fallbackProjectId)),
-  );
+  const [form, setForm] = useState<AutomationFormState>(() => ({
+    ...formFromDefinition(
+      null,
+      fallbackProjectId,
+      projectModelSelection(projects, fallbackProjectId),
+    ),
+    ...initialDraft,
+  }));
   const [warnings, setWarnings] = useState<readonly AutomationDraftWarning[]>([]);
   const [acknowledgedWarningIds, setAcknowledgedWarningIds] = useState<
     ReadonlySet<AutomationDraftWarningId>
@@ -261,11 +274,14 @@ export function AutomationCreateDialog({
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
-      const nextForm = formFromDefinition(
-        null,
-        fallbackProjectId,
-        projectModelSelection(projects, fallbackProjectId),
-      );
+      const nextForm = {
+        ...formFromDefinition(
+          null,
+          fallbackProjectId,
+          projectModelSelection(projects, fallbackProjectId),
+        ),
+        ...initialDraft,
+      };
       setForm(nextForm);
       setWarnings(buildAutomationFormWarnings(nextForm));
       setAcknowledgedWarningIds(new Set());
@@ -284,7 +300,7 @@ export function AutomationCreateDialog({
   };
 
   const submit = () => {
-    if (!isFormSubmittable(form)) return;
+    if (!isFormSubmittable(form, formatLocale, t)) return;
     if (hasBlockingAutomationDraftWarnings(warnings, acknowledgedWarningIds)) return;
     const acknowledgedRisks = acknowledgedRiskIdsForFormWarnings(warnings, acknowledgedWarningIds);
     createAutomation(
@@ -313,6 +329,9 @@ export function AutomationCreateDialog({
       onFormChange={updateForm}
       onSubmit={submit}
       busy={busy}
+      computerPicker={
+        <AutomationComputerPicker form={form} disabled={busy} onMoved={() => onOpenChange(false)} />
+      }
     />
   );
 }

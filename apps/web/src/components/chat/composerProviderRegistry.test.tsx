@@ -312,7 +312,7 @@ describe("getComposerProviderState", () => {
           onPromptChange={vi.fn()}
         />,
       ),
-    ).toContain('aria-label="Change effort, context, and speed"');
+    ).toContain('data-slot="menu-trigger"');
   });
 
   it("hides Antigravity effort controls when the selected model has only one effort", () => {
@@ -687,7 +687,7 @@ describe("getComposerProviderState", () => {
       promptEffort: "xhigh",
       modelOptionsForDispatch: { reasoningEffort: "xhigh" },
     });
-    expect(picker).toContain('aria-label="Change effort, context, and speed"');
+    expect(picker).toContain('data-slot="menu-trigger"');
   });
 
   it("dispatches an explicitly selected Droid effort even when ACP reports it as current", () => {

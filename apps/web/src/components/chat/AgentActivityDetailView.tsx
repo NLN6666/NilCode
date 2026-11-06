@@ -4,6 +4,7 @@
 // Depends on: agentActivity.logic and ChatMarkdown
 
 import type { ThreadId } from "@synara/contracts";
+import { pluralize } from "~/i18n/pluralize";
 import { type CSSProperties, type ReactNode } from "react";
 import { BotIcon, ChevronLeftIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
@@ -26,14 +27,20 @@ import {
   isReasoningUpdateWorkEntry,
 } from "./agentActivity.logic";
 import { collectDetailSubagents, SubagentDetailSections } from "./SubagentDetailSections";
-import { useMessages } from "~/i18n/context";
-import type { Messages } from "~/i18n/locales/en";
+import { useTranslation } from "~/i18n";
 
-type ActivityCopy = Messages["chat"]["activity"];
+const ACTIVITY_TITLE_KEYS = {
+  reasoning: "chat:sessionStatus_reasoning",
+  agentTask: "chat:agentTask",
+  activity: "workspace:profile_activity",
+} as const satisfies Record<Exclude<AgentActivityEntryTitle["kind"], "text">, string>;
 
 /** `agentActivity.logic` stays locale-free, so titles arrive as keys. */
-function resolveActivityTitle(title: AgentActivityEntryTitle, copy: ActivityCopy): string {
-  return title.kind === "text" ? title.text : copy.titles[title.kind];
+function resolveActivityTitle(
+  title: AgentActivityEntryTitle,
+  translate: ReturnType<typeof useTranslation>["t"],
+): string {
+  return title.kind === "text" ? title.text : translate(ACTIVITY_TITLE_KEYS[title.kind]);
 }
 
 const DETAIL_BOTTOM_INSET_PX = 64;
@@ -62,7 +69,7 @@ export function AgentActivityDetailView({
   onOpenSubagentThread,
   timestampFormat,
 }: AgentActivityDetailViewProps) {
-  const copy = useMessages().chat.activity;
+  const { t } = useTranslation();
   const chatTypographyStyle = getChatTranscriptTextStyle(chatFontSizePx);
   const footerTextStyle = getChatMessageFooterTextStyle(chatFontSizePx);
   const scrollStyle: CSSProperties = {
@@ -93,7 +100,7 @@ export function AgentActivityDetailView({
           onClick={onBack}
         >
           <ChevronLeftIcon className="size-3.5" />
-          <span>{copy.back}</span>
+          <span>{t("common:app_back")}</span>
         </button>
 
         <div className="mt-3 border-b border-border/55 pb-4">
@@ -104,10 +111,13 @@ export function AgentActivityDetailView({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <h2 className="truncate text-ui-lg font-medium leading-6 text-foreground/92">
-                  {resolveActivityTitle(detail.title, copy)}
+                  {resolveActivityTitle(detail.title, t)}
                 </h2>
-                <span className="rounded-full border border-border/45 px-2 py-0.5 text-[10px] font-medium text-muted-foreground/56">
-                  {copy.updates(detail.entries.length)}
+                <span className="rounded-full border border-border/45 px-2 py-0.5 text-ui-xs font-medium text-muted-foreground/56">
+                  {t("chat:symbol7", {
+                    value0: detail.entries.length,
+                    value1: pluralize(detail.entries.length, "update"),
+                  })}
                 </span>
               </div>
               {detail.summary ? (
@@ -120,7 +130,7 @@ export function AgentActivityDetailView({
         </div>
 
         {subagents.length > 0 ? (
-          <AgentActivitySection title={copy.subagent.section}>
+          <AgentActivitySection title={t("chat:subagent")}>
             <SubagentDetailSections
               subagents={subagents}
               chatTypographyStyle={chatTypographyStyle}
@@ -132,7 +142,7 @@ export function AgentActivityDetailView({
         ) : null}
 
         {prompt ? (
-          <AgentActivitySection title={copy.prompt}>
+          <AgentActivitySection title={t("chat:agentActivity_promptSection")}>
             <ChatMarkdown
               text={prompt}
               cwd={markdownCwd}
@@ -144,7 +154,7 @@ export function AgentActivityDetailView({
         ) : null}
 
         {result ? (
-          <AgentActivitySection title={copy.result}>
+          <AgentActivitySection title={t("chat:agentActivity_resultSection")}>
             <ChatMarkdown
               text={result}
               cwd={markdownCwd}
@@ -155,7 +165,7 @@ export function AgentActivityDetailView({
           </AgentActivitySection>
         ) : null}
 
-        <AgentActivitySection title={copy.activity}>
+        <AgentActivitySection title={t("workspace:profile_activity")}>
           <div className="divide-y divide-border/45">
             {detail.entries.map((entry) => (
               <AgentActivityEventRow
@@ -192,9 +202,9 @@ function AgentActivityEventRow(props: {
   onImageExpand: (preview: ExpandedImagePreview) => void;
   timestampFormat: TimestampFormat;
 }) {
-  const copy = useMessages().chat.activity;
+  const { formatLocale, t } = useTranslation();
   const preview = formatAgentActivityEntryPreview(props.entry);
-  const title = resolveActivityTitle(formatAgentActivityEntryTitle(props.entry), copy);
+  const title = resolveActivityTitle(formatAgentActivityEntryTitle(props.entry), t);
   const body =
     isReasoningUpdateWorkEntry(props.entry) || props.entry.activityKind === "tool.summary"
       ? (props.entry.detail ?? preview)
@@ -207,7 +217,7 @@ function AgentActivityEventRow(props: {
           {title}
         </p>
         <p className="shrink-0 tabular-nums text-muted-foreground/38" style={props.footerTextStyle}>
-          {formatShortTimestamp(props.entry.createdAt, props.timestampFormat)}
+          {formatShortTimestamp(props.entry.createdAt, props.timestampFormat, formatLocale)}
         </p>
       </div>
       {body ? (

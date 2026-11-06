@@ -5,11 +5,11 @@ import { type ComponentPropsWithoutRef } from "react";
 
 import type { BrowserAnnotationDraft } from "~/lib/browserAnnotations";
 import { formatBrowserAnnotationLabel } from "~/lib/browserAnnotations";
-import { useMessages } from "~/i18n/context";
 import { cn } from "~/lib/utils";
 import { COMPOSER_ATTACHMENT_CHIP_CLASS_NAME } from "../composerInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AttachmentRemoveButton } from "./AttachmentRemoveButton";
+import { useTranslation } from "~/i18n";
 
 interface BrowserAnnotationChipProps extends Omit<
   ComponentPropsWithoutRef<"span">,
@@ -27,10 +27,11 @@ export function BrowserAnnotationChip({
   className,
   ...rest
 }: BrowserAnnotationChipProps) {
-  const copy = useMessages().composer.attachments.browserAnnotation;
-  const label = formatBrowserAnnotationLabel(annotation, copy.fallbackLabel);
+  const { t } = useTranslation();
+
+  const label = formatBrowserAnnotationLabel(annotation, t("chat:browserAnnotation_fallbackLabel"));
   const pageLabel = annotation.source.pageTitle || annotation.source.url;
-  const removeLabel = copy.remove(annotation.ordinal);
+  const removeLabel = t("computer:removeBrowserAnnotation", { value0: annotation.ordinal });
   const trigger =
     variant === "list" ? (
       <span
@@ -39,7 +40,11 @@ export function BrowserAnnotationChip({
           onRemove && "pr-8",
           className,
         )}
-        aria-label={copy.describe(annotation.ordinal, label, pageLabel)}
+        aria-label={t("computer:browserAnnotation", {
+          value0: annotation.ordinal,
+          value1: label,
+          value2: pageLabel,
+        })}
         data-testid="browser-annotation-chip"
         {...rest}
       >
@@ -68,7 +73,11 @@ export function BrowserAnnotationChip({
           onRemove && "pr-5",
           className,
         )}
-        aria-label={copy.describe(annotation.ordinal, label, pageLabel)}
+        aria-label={t("computer:browserAnnotation", {
+          value0: annotation.ordinal,
+          value1: label,
+          value2: pageLabel,
+        })}
         data-testid="browser-annotation-chip"
         {...rest}
       >

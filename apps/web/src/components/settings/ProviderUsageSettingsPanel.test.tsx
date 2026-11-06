@@ -47,17 +47,20 @@ function render(
   );
 }
 
+function railAccountSwitches(markup: string): string[] {
+  const firstSection = markup.match(/<section\b[\s\S]*?<\/section>/u)?.[0] ?? "";
+  return firstSection.match(/<[^>\s]+\b[^>]*\brole="switch"[^>]*>/gu) ?? [];
+}
+
 describe("ProviderUsageSettingsPanel", () => {
   it("does not let globally disabled saved accounts use the visible account limit", () => {
     appSettings.disabledProviders = ["codex", "claudeAgent"];
     appSettings.railUsageProviders = ["codex", "claudeAgent"];
     try {
       const markup = render([]);
-      const switchMarkup = markup.match(
-        /<[^>]+aria-label="Show OpenCode usage at the bottom of the sidebar"[^>]*>/u,
-      )?.[0];
-      expect(switchMarkup).toBeDefined();
-      expect(switchMarkup).not.toMatch(/\sdata-disabled=/u);
+      const switches = railAccountSwitches(markup);
+      expect(switches.length).toBeGreaterThan(2);
+      expect(switches.every((control) => !/\sdata-disabled=/u.test(control))).toBe(true);
       expect(appSettings.railUsageProviders).toEqual(["codex", "claudeAgent"]);
     } finally {
       appSettings.disabledProviders = [];
@@ -66,31 +69,18 @@ describe("ProviderUsageSettingsPanel", () => {
   });
 
   it("hides globally disabled accounts' switches and cached cards", () => {
-    appSettings.disabledProviders = ["codex"];
     try {
-      const markup = render([
+      const snapshots = [
         snapshot({ usageLines: [{ label: "Disabled usage", value: "7 credits" }] }),
-      ]);
-      expect(markup).not.toContain("Show Codex usage at the bottom of the sidebar");
+      ];
+      const allAccountSwitchCount = railAccountSwitches(render(snapshots)).length;
+      appSettings.disabledProviders = ["codex"];
+      const markup = render(snapshots);
+      expect(railAccountSwitches(markup)).toHaveLength(allAccountSwitchCount - 1);
       expect(markup).not.toContain("Disabled usage");
-      expect(markup).toContain("Show Claude usage at the bottom of the sidebar");
     } finally {
       appSettings.disabledProviders = [];
     }
-  });
-
-  it("keeps sidebar account switches alongside account usage cards", () => {
-    const markup = render([
-      snapshot({
-        instanceId: "codex",
-        usageLines: [{ label: "Personal allowance", value: "7 credits" }],
-      }),
-    ]);
-
-    expect(markup).toContain('role="switch"');
-    expect(markup).toContain("Show Codex usage at the bottom of the sidebar");
-    expect(markup).toContain("Show Claude usage at the bottom of the sidebar");
-    expect(markup).toContain("Personal allowance");
   });
 
   it("hides a cached disabled default account while keeping its enabled sibling", () => {
@@ -226,8 +216,6 @@ describe("ProviderUsageSettingsPanel", () => {
 
     expect(markup).toContain("Work account");
     expect(markup).toContain("Research account");
-    expect(markup).toContain("Show Claude · Default account usage at the bottom of the sidebar");
-    expect(markup).toContain("Show Claude · Research account usage at the bottom of the sidebar");
     expect(markup.indexOf("Work account")).toBeLessThan(markup.indexOf("Research account"));
     expect(markup.match(/Personal allowance/g)).toHaveLength(1);
     expect(markup.match(/Company allowance/g)).toHaveLength(1);

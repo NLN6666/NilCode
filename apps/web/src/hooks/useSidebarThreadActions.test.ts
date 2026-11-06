@@ -5,6 +5,20 @@
 import { ProjectId, ThreadId } from "@synara/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// These fixtures invoke the hook directly with a slot-based React harness.
+// Keep the real translator without requiring react-i18next's mounted context.
+vi.mock("~/i18n", async (importOriginal) => {
+  const runtime = await importOriginal<typeof import("~/i18n")>();
+  return {
+    ...runtime,
+    useTranslation: () => ({
+      t: runtime.t,
+      locale: runtime.i18n.language,
+      formatLocale: runtime.getFormatLocale() ?? "en",
+    }),
+  };
+});
+
 const reactHarness = vi.hoisted(() => {
   interface HookSlot {
     value?: unknown;
@@ -241,6 +255,7 @@ function render(
     routeThreadId?: ThreadId | null;
     threadsHydrated?: boolean;
     archiveDeletesOrphanedWorktree?: boolean;
+    confirmThreadArchive?: boolean;
     sidebarTreeThreads?: readonly SidebarThreadSummary[];
     filterThreadsToActiveSpace?: Parameters<
       typeof useSidebarThreadActions
@@ -252,7 +267,7 @@ function render(
     activeSplitView: overrides.activeSplitView ?? null,
     appSettings: {
       archiveDeletesOrphanedWorktree: overrides.archiveDeletesOrphanedWorktree ?? false,
-      confirmThreadArchive: false,
+      confirmThreadArchive: overrides.confirmThreadArchive ?? false,
       confirmThreadDelete: false,
       sidebarThreadAttentionFirst: true,
       sidebarThreadSortOrder: "updated_at",
@@ -439,9 +454,8 @@ describe("useSidebarThreadActions", () => {
       ),
     );
     const undoToast = harness.toast.mock.calls.at(-1)?.[0] as {
-      data: { archiveUndo: { message: string; onUndo: () => Promise<boolean> } };
+      data: { archiveUndo: { onUndo: () => Promise<boolean> } };
     };
-    expect(undoToast.data.archiveUndo.message).toMatch(/^Snoozed until /);
     await expect(undoToast.data.archiveUndo.onUndo()).resolves.toBe(true);
     expect(harness.dispatchCommand).toHaveBeenLastCalledWith(
       expect.objectContaining({ threadId: THREAD_ID, snoozedUntil: null }),
@@ -561,9 +575,7 @@ describe("useSidebarThreadActions", () => {
 
     expect(harness.pinThread).toHaveBeenCalledWith(THREAD_ID);
     expect(harness.unpinThread).toHaveBeenCalledWith(THREAD_ID);
-    expect(harness.toast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Unable to pin thread" }),
-    );
+    expect(harness.toast).toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
   });
 
   it("does not let an older failed pin roll back a newer click", async () => {
@@ -621,6 +633,34 @@ describe("useSidebarThreadActions", () => {
       expect.objectContaining({ params: { threadId: FALLBACK_ID }, replace: true }),
     );
   });
+
+  it.each([true, false])(
+    "checks owner availability after archive confirmation (available: %s)",
+    async (availableAfterConfirmation) => {
+      let confirm!: (value: boolean) => void;
+      harness.confirm.mockImplementation(
+        () =>
+          new Promise<boolean>((resolve) => {
+            confirm = resolve;
+          }),
+      );
+      let available = true;
+      const pending = render({ confirmThreadArchive: true }).confirmAndArchiveThread(
+        THREAD_ID,
+        () => available,
+      );
+      expect(harness.confirm).toHaveBeenCalledOnce();
+      available = availableAfterConfirmation;
+      confirm(true);
+      if (availableAfterConfirmation) {
+        await pending;
+        expect(harness.archiveThread).toHaveBeenCalledOnce();
+      } else {
+        await expect(pending).rejects.toThrow(/no longer available/);
+        expect(harness.archiveThread).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it("restores the saved chat draft when archiving the last thread leaves no fallback", async () => {
     sidebarThreads = [makeThread(THREAD_ID)];
@@ -708,9 +748,7 @@ describe("useSidebarThreadActions", () => {
 
     await expect(undoToast.data.archiveUndo.onUndo()).resolves.toBe(false);
     expect(harness.navigate).not.toHaveBeenCalled();
-    expect(harness.toast).toHaveBeenLastCalledWith(
-      expect.objectContaining({ title: "Unable to undo done" }),
-    );
+    expect(harness.toast).toHaveBeenLastCalledWith(expect.objectContaining({ type: "error" }));
 
     await expect(undoToast.data.archiveUndo.onUndo()).resolves.toBe(true);
     expect(harness.navigate).toHaveBeenCalledWith(
@@ -729,9 +767,7 @@ describe("useSidebarThreadActions", () => {
 
     expect(harness.navigate).not.toHaveBeenCalled();
     expect(harness.handleNewChat).not.toHaveBeenCalled();
-    expect(harness.toast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Unable to mark thread as done" }),
-    );
+    expect(harness.toast).toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
     expect(harness.toast).toHaveBeenCalledOnce();
     errorLog.mockRestore();
   });

@@ -43,6 +43,7 @@ function makeCliInput(homeDir: string): CliInput {
     synaraHome: Option.some(homeDir),
     devUrl: Option.none(),
     publicUrl: Option.none(),
+    sshForwardPort: Option.none(),
     allowInsecureRemote: UNSET_FLAG,
     noBrowser: { positive: true, negative: undefined },
     authToken: Option.none(),

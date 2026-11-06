@@ -9,6 +9,7 @@ import {
   type ModelCapabilities,
   type ProviderKind,
   type ProviderModelDescriptor,
+  type ProviderOptionDescriptor,
 } from "@synara/contracts";
 import {
   getClaudeContextWindowSuffix,
@@ -87,6 +88,28 @@ export function resolveRuntimeModelDescriptor(input: {
   );
 }
 
+// Older hosts publish Claude effort descriptors without a default. Composer normalization
+// drops the default level, so without it an unset effort reads as the first level.
+function withClaudeEffortDefault(
+  descriptors: ReadonlyArray<ProviderOptionDescriptor>,
+  defaultEffort: string | null,
+): ReadonlyArray<ProviderOptionDescriptor> {
+  if (!defaultEffort) return descriptors;
+  return descriptors.map((descriptor) =>
+    descriptor.type === "select" &&
+    descriptor.id === "effort" &&
+    !descriptor.options.some((option) => option.isDefault) &&
+    descriptor.options.some((option) => option.id === defaultEffort)
+      ? {
+          ...descriptor,
+          options: descriptor.options.map((option) =>
+            option.id === defaultEffort ? { ...option, isDefault: true as const } : option,
+          ),
+        }
+      : descriptor,
+  );
+}
+
 // Reuses static capability flags but lets runtime-discovered models override exposed effort menus.
 export function getRuntimeAwareModelCapabilities(input: {
   provider: ProviderKind;
@@ -135,9 +158,19 @@ export function getRuntimeAwareModelCapabilities(input: {
       stripClaudeContextWindowSuffix(normalizedClaudeModel),
     );
   if (runtimeEfforts === undefined || (runtimeEfforts.length > 0 && keepsCuratedClaudeEfforts)) {
+    let resolvedOptionDescriptors = optionDescriptors;
+    if (input.provider === "claudeAgent" && resolvedOptionDescriptors) {
+      const reportedDefault = trimOrNull(input.runtimeModel?.defaultReasoningEffort);
+      resolvedOptionDescriptors = withClaudeEffortDefault(
+        resolvedOptionDescriptors,
+        reportedDefault && reportedDefault !== "default"
+          ? reportedDefault
+          : getDefaultEffort(staticCapabilities),
+      );
+    }
     return {
       ...staticCapabilities,
-      ...(optionDescriptors ? { optionDescriptors } : {}),
+      ...(resolvedOptionDescriptors ? { optionDescriptors: resolvedOptionDescriptors } : {}),
       supportsFastMode,
       supportsThinkingToggle,
       contextWindowOptions,
@@ -176,7 +209,14 @@ export function getRuntimeAwareModelCapabilities(input: {
 
   return {
     ...staticCapabilities,
-    ...(optionDescriptors ? { optionDescriptors } : {}),
+    ...(optionDescriptors
+      ? {
+          optionDescriptors:
+            input.provider === "claudeAgent"
+              ? withClaudeEffortDefault(optionDescriptors, runtimeDefaultEffort)
+              : optionDescriptors,
+        }
+      : {}),
     supportsFastMode,
     supportsThinkingToggle,
     contextWindowOptions,

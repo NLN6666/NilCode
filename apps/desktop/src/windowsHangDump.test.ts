@@ -136,7 +136,7 @@ describe("Windows hang dumps", () => {
           powerShellCalls += 1;
           return { ok: true, stderr: "" };
         },
-      } as never,
+      },
     );
 
     expect(result.captureResult).toBe("failed");

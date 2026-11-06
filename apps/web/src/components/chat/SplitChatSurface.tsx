@@ -76,8 +76,8 @@ import {
 } from "./composerPickerStyles";
 import { routeSplitBrowserPanelOpenRequest } from "./browserPanelOpenRequest";
 import { cn } from "~/lib/utils";
-import { useMessages } from "~/i18n/context";
 import { isSidechatThread } from "@synara/shared/sidechatThread";
+import { useTranslation } from "~/i18n";
 
 const SPLIT_PANE_PANEL_DEFAULT_WIDTH_PX = 22 * 16;
 const BROWSER_SPLIT_PANE_PANEL_DEFAULT_WIDTH_PX = 30 * 16;
@@ -104,6 +104,8 @@ function SplitPaneEmbeddedPanel(props: {
     patch: Partial<Pick<SplitViewPanePanelState, "panel" | "diffTurnId" | "diffFilePath">>,
   ) => void;
 }) {
+  const { t } = useTranslation();
+
   const dockState = useRightDockStore(selectRightDockState(props.threadId));
   const terminalPane = dockState.open
     ? dockState.panes.find((pane) => pane.id === dockState.activePaneId && pane.kind === "terminal")
@@ -213,8 +215,8 @@ function SplitPaneEmbeddedPanel(props: {
       {subagentsPane ? (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <DockPaneHeader
-            title="Subagents"
-            closeLabel="Hide subagents"
+            title={t("chat:subagents")}
+            closeLabel={t("chat:hideSubagents")}
             onClose={props.onClosePanel}
           />
           <SubagentsDockPane hostThreadId={props.threadId} onOpenThread={props.onOpenThread} />
@@ -222,11 +224,11 @@ function SplitPaneEmbeddedPanel(props: {
       ) : terminalPane ? (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <DockPaneHeader
-            title="Terminal"
-            closeLabel="Hide terminal"
+            title={t("workspace:viewportPane_terminal")}
+            closeLabel={t("workspace:hideTerminal")}
             onClose={props.onClosePanel}
           />
-          <Suspense fallback={<PanelStateMessage>Loading terminal...</PanelStateMessage>}>
+          <Suspense fallback={<PanelStateMessage>{t("chat:loadingTerminal")}</PanelStateMessage>}>
             <DockTerminalPane
               hostThreadId={props.threadId}
               paneId={terminalPane.id}
@@ -268,7 +270,8 @@ function SplitPaneEmptyState(props: {
   excludedThreadIds: ReadonlySet<ThreadId>;
   onSelectThread: (threadId: ThreadId) => void;
 }) {
-  const splitCopy = useMessages().chat.split;
+  const { t } = useTranslation();
+
   return (
     <div
       className={cn(
@@ -278,7 +281,9 @@ function SplitPaneEmptyState(props: {
       onMouseDown={props.onFocus}
     >
       <div className="w-full max-w-sm space-y-4">
-        <p className="text-center text-sm font-medium text-foreground/70">{splitCopy.selectChat}</p>
+        <p className="text-center text-ui-lg font-medium text-foreground/70">
+          {t("chat:selectAChat")}
+        </p>
         <div className="max-h-[60vh] space-y-1 overflow-y-auto">
           {props.threads.map((thread) => {
             const isUsed = props.excludedThreadIds.has(thread.id);
@@ -481,7 +486,6 @@ function SplitPaneSurface(props: {
 const selectThreadShells = createThreadShellsSelector();
 
 export function SplitChatSurface(props: { splitViewId: SplitViewId; routeThreadId: ThreadId }) {
-  const splitCopy = useMessages().chat.split;
   const navigate = useNavigate();
   const { handleNewChat } = useHandleNewChat();
   const threads = useStore(selectThreadShells);

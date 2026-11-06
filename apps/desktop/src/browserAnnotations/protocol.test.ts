@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import { createGuestIdentifier } from "./guestIdentity";
 import {
   parseAnnotationGuestMessage,
+  parseBrowserAnnotationLocale,
   parseBrowserAnnotationTheme,
   parseBrowserAnnotationMarkers,
 } from "./protocol";
@@ -95,8 +96,12 @@ describe("browser annotation protocol", () => {
       sessionId: "session-1",
       theme,
     };
-    expect(isGuestAnnotationCommand({ ...command, locale: "en" })).toBe(true);
+    for (const locale of ["en", "es", "zh-CN"]) {
+      expect(parseBrowserAnnotationLocale(locale)).toBe(locale);
+      expect(isGuestAnnotationCommand({ ...command, locale })).toBe(true);
+    }
     expect(isGuestAnnotationCommand(command)).toBe(false);
+    expect(parseBrowserAnnotationLocale("fr")).toBeNull();
     expect(isGuestAnnotationCommand({ ...command, locale: "fr" })).toBe(false);
     expect(isGuestAnnotationCommand({ ...command, locale: 7 })).toBe(false);
   });

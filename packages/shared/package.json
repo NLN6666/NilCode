@@ -20,6 +20,10 @@
       "types": "./src/turnStopActivity.ts",
       "import": "./src/turnStopActivity.ts"
     },
+    "./inboxDay": {
+      "types": "./src/inboxDay.ts",
+      "import": "./src/inboxDay.ts"
+    },
     "./diagnosticIssue": {
       "types": "./src/diagnosticIssue.ts",
       "import": "./src/diagnosticIssue.ts"
@@ -68,6 +72,14 @@
       "types": "./src/model.ts",
       "import": "./src/model.ts"
     },
+    "./socialLinks": {
+      "types": "./src/socialLinks.ts",
+      "import": "./src/socialLinks.ts"
+    },
+    "./modelName": {
+      "types": "./src/modelName.ts",
+      "import": "./src/modelName.ts"
+    },
     "./runtimeMode": {
       "types": "./src/runtimeMode.ts",
       "import": "./src/runtimeMode.ts"
@@ -79,6 +91,10 @@
     "./git": {
       "types": "./src/git.ts",
       "import": "./src/git.ts"
+    },
+    "./account": {
+      "types": "./src/account.ts",
+      "import": "./src/account.ts"
     },
     "./kanban": {
       "types": "./src/kanban.ts",
@@ -412,10 +428,6 @@
       "types": "./src/threadMentions.ts",
       "import": "./src/threadMentions.ts"
     },
-    "./i18n": {
-      "types": "./src/i18n.ts",
-      "import": "./src/i18n.ts"
-    },
     "./mcp/redact": {
       "types": "./src/mcp/redact.ts",
       "import": "./src/mcp/redact.ts"
@@ -464,6 +476,18 @@
       "types": "./src/deviceHelperCache.ts",
       "import": "./src/deviceHelperCache.ts"
     },
+    "./deviceKey": {
+      "types": "./src/deviceKey.ts",
+      "import": "./src/deviceKey.ts"
+    },
+    "./transportRace": {
+      "types": "./src/transportRace.ts",
+      "import": "./src/transportRace.ts"
+    },
+    "./hostSecrets": {
+      "types": "./src/hostSecrets.ts",
+      "import": "./src/hostSecrets.ts"
+    },
     "./computerKeyNames": {
       "types": "./src/computerKeyNames.ts",
       "import": "./src/computerKeyNames.ts"
@@ -471,6 +495,10 @@
     "./computerGrants": {
       "types": "./src/computerGrants.ts",
       "import": "./src/computerGrants.ts"
+    },
+    "./byteAccumulator": {
+      "types": "./src/byteAccumulator.ts",
+      "import": "./src/byteAccumulator.ts"
     },
     "./lengthPrefixedRecords": {
       "types": "./src/lengthPrefixedRecords.ts",
@@ -496,6 +524,18 @@
       "types": "./src/asyncUserInput.ts",
       "import": "./src/asyncUserInput.ts"
     },
+    "./remoteResources": {
+      "types": "./src/remoteResources.ts",
+      "import": "./src/remoteResources.ts"
+    },
+    "./remoteCapabilities": {
+      "types": "./src/remoteCapabilities.ts",
+      "import": "./src/remoteCapabilities.ts"
+    },
+    "./cloudflared": {
+      "types": "./src/cloudflared.ts",
+      "import": "./src/cloudflared.ts"
+    },
     "./groupThreadState": {
       "types": "./src/groupThreadState.ts",
       "import": "./src/groupThreadState.ts"
@@ -508,9 +548,25 @@
       "types": "./src/keybindingRules.ts",
       "import": "./src/keybindingRules.ts"
     },
+    "./codexStderr": {
+      "types": "./src/codexStderr.ts",
+      "import": "./src/codexStderr.ts"
+    },
     "./wsRequestClass": {
       "types": "./src/wsRequestClass.ts",
       "import": "./src/wsRequestClass.ts"
+    },
+    "./uiLocale": {
+      "types": "./src/uiLocale.ts",
+      "import": "./src/uiLocale.ts"
+    },
+    "./uiLocalizationResources": {
+      "types": "./src/uiLocalizationResources.ts",
+      "import": "./src/uiLocalizationResources.ts"
+    },
+    "./nativeLocalizationResources": {
+      "types": "./src/nativeLocalizationResources.ts",
+      "import": "./src/nativeLocalizationResources.ts"
     }
   },
   "scripts": {
@@ -521,7 +577,8 @@
   },
   "dependencies": {
     "@synara/contracts": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "jose": "^6.1.0"
   },
   "devDependencies": {
     "@effect/language-service": "catalog:",

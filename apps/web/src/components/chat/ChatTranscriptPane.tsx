@@ -36,7 +36,6 @@ import { createThreadFindHighlightStore, type ThreadFindHighlightStore } from ".
 import { AgentActivityDetailView } from "./AgentActivityDetailView";
 import type { AgentActivityDetail } from "./agentActivity.logic";
 import { ThemePreviewThreadContext } from "./ThemePreviewCard";
-import { useMessages } from "~/i18n/context";
 import { ThreadErrorBanner } from "./ThreadErrorBanner";
 import { SubagentRunningChip } from "./SubagentRunningChip";
 import { SubagentThreadIntro } from "./SubagentThreadIntro";
@@ -50,6 +49,7 @@ import {
   CHAT_COLUMN_GUTTER_CLASS_NAME,
 } from "./composerPickerStyles";
 import { ImportedHistoryButton, useImportedHistory } from "~/projectImport/ImportedHistoryButton";
+import { useTranslation } from "~/i18n";
 
 interface ChatTranscriptPaneProps {
   activeThreadId: string;
@@ -272,7 +272,8 @@ export function ChatTranscriptPane({
   onResolveWorktreeSetup,
   findHighlightStore: findHighlightStoreProp,
 }: ChatTranscriptPaneProps) {
-  const messageCopy = useMessages().chat.message;
+  const { t } = useTranslation();
+
   // The composer floats over the transcript's bottom edge, so the scroll-to-bottom
   // affordance rides above it on the same inset the transcript content uses.
   const scrollButtonFrameStyle: CSSProperties | undefined =
@@ -540,7 +541,7 @@ export function ChatTranscriptPane({
                 type="button"
                 onClick={onScrollToBottom}
                 data-scroll-anchor-ignore
-                aria-label={messageCopy.scrollToBottom}
+                aria-label={t("common:terminal_scrollToBottom")}
                 aria-hidden={!scrollButtonVisible}
                 tabIndex={scrollButtonVisible ? 0 : -1}
                 className={cn(

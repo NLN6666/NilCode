@@ -22,17 +22,17 @@ describe("SidebarStatusTrailingGlyph", () => {
   it("draws background work as a slow dashed ring, not a coloured dot", () => {
     const markup = renderToStaticMarkup(<SidebarStatusTrailingGlyph status={inBackground} />);
 
-    expect(markup).toContain('title="In background · 2 tasks"');
     expect(markup).toContain("animate-spin-stepped-slow");
     expect(markup).toContain('stroke-dasharray="2 2.6"');
     expect(markup).not.toContain("bg-sky-500");
+    expect(markup.match(/aria-label="([^"]+)"/)?.[1]).toMatch(/\b2\b/u);
   });
 
-  it("uses the singular for one background task", () => {
+  it("keeps a single task count in the accessible glyph", () => {
     const markup = renderToStaticMarkup(
       <SidebarStatusTrailingGlyph status={{ ...inBackground, backgroundTaskCount: 1 }} />,
     );
 
-    expect(markup).toContain('aria-label="In background · 1 task"');
+    expect(markup.match(/aria-label="([^"]+)"/)?.[1]).toMatch(/\b1\b/u);
   });
 });

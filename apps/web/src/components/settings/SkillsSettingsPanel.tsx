@@ -13,7 +13,6 @@ import { SettingsRow, SettingsSection } from "~/components/settings/SettingsPane
 import { DisclosureChevron } from "~/components/ui/DisclosureChevron";
 import { DisclosureRegion } from "~/components/ui/DisclosureRegion";
 import { Switch } from "~/components/ui/switch";
-import { useMessages } from "../../i18n/context";
 import { SkillCubeIcon } from "~/lib/icons";
 import { ensureNativeApi } from "~/nativeApi";
 import {
@@ -32,15 +31,19 @@ import {
   skillToggleState,
   toggleTargetsForGroups,
 } from "./skillsSettingsModel";
+import { useTranslation } from "~/i18n";
 
 function SkillProviderStack({ providers }: { providers: ReadonlyArray<ProviderKind> }) {
-  const m = useMessages();
+  const { t } = useTranslation();
   if (providers.length === 0) {
     return null;
   }
 
   const label = providers.map(providerDisplayName).join(", ");
-  const stackLabel = m.settings.skills.providerReach(providers.length, label);
+  const stackLabel = t("settings:provider", {
+    value0: providers.length === 1 ? t("common:copy") : t("settings:copies"),
+    value1: label,
+  });
   return (
     <span
       className="inline-flex shrink-0 items-center -space-x-1"
@@ -68,7 +71,7 @@ function SkillProviderToggles(props: {
   disabled: DisabledSkillsByProvider;
   onToggle: (targets: ReadonlyArray<SkillToggleTarget>, enabled: boolean) => void;
 }) {
-  const m = useMessages();
+  const { t } = useTranslation();
   const { group, disabled, onToggle } = props;
   return (
     <ul className="flex flex-col gap-1.5 pt-2 pl-5">
@@ -87,10 +90,10 @@ function SkillProviderToggles(props: {
               onCheckedChange={(checked) =>
                 onToggle([{ key: group.key, providers: [provider] }], Boolean(checked))
               }
-              aria-label={m.settings.skills.enableSkillForProvider(
-                group.displayName,
-                providerDisplayName(provider),
-              )}
+              aria-label={t("settings:skills_enableSkillForProvider", {
+                value0: group.displayName,
+                value1: providerDisplayName(provider),
+              })}
             />
           </li>
         );
@@ -100,7 +103,7 @@ function SkillProviderToggles(props: {
 }
 
 export function SkillsSettingsPanel() {
-  const m = useMessages();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const catalogQuery = useQuery(skillsCatalogQueryOptions());
   const serverSettingsQuery = useQuery(serverSettingsQueryOptions());
@@ -109,13 +112,10 @@ export function SkillsSettingsPanel() {
   const disabled = serverSettingsQuery.data?.skills.disabled;
 
   const catalogSkills = catalogQuery.data?.skills;
-  const skillGroups = useMemo(
-    () => buildSettingsSkillGroups(catalogSkills ?? [], m.settings.skills),
-    [catalogSkills, m.settings.skills],
-  );
+  const skillGroups = useMemo(() => buildSettingsSkillGroups(catalogSkills ?? []), [catalogSkills]);
   const skillSections = useMemo(
-    () => buildSettingsSkillSectionsFromGroups(skillGroups, m.settings.skills),
-    [skillGroups, m.settings.skills],
+    () => buildSettingsSkillSectionsFromGroups(skillGroups),
+    [skillGroups],
   );
 
   // Batched so a provider switch, a row, a section, and the whole catalog all travel the
@@ -164,49 +164,45 @@ export function SkillsSettingsPanel() {
 
   return (
     <div className="space-y-8">
-      <SettingsSection title={m.settings.skills.portable}>
+      <SettingsSection title="settings:skills_portableSkills">
         <SettingsRow
-          title={m.settings.skills.folder.title}
-          description={m.settings.skills.folder.description}
+          id="setting-synara-skills-folder"
+          title="settings:skills_synaraSkillsFolder"
+          description="settings:skillsPlacedHereAreAvailableOnEveryProviderWhen"
           status={
             synaraSkillsDir ? (
               <code className="break-all text-ui-sm text-muted-foreground">{synaraSkillsDir}</code>
             ) : null
           }
           control={
-            <span className="flex items-center gap-2.5">
-              <span className="text-xs font-medium text-muted-foreground">
-                {catalogQuery.isLoading
-                  ? m.settings.skills.scanning
-                  : m.settings.skills.enabledCount(enabledSkills, totalSkills)}
-              </span>
-              {totalSkills > 0 ? (
-                <Switch
-                  checked={allToggleState === "all"}
-                  indeterminate={allToggleState === "partial"}
-                  onCheckedChange={(checked) => setSkillsEnabled(allTargets, Boolean(checked))}
-                  aria-label={m.settings.skills.toggleAll}
-                />
-              ) : null}
+            <span className="text-ui leading-snug font-medium text-muted-foreground">
+              {catalogQuery.isLoading
+                ? t("settings:skills_scanning")
+                : t("settings:skillsEnabledOf", {
+                    enabled: enabledSkills,
+                    total: totalSkills,
+                  })}
             </span>
           }
         />
       </SettingsSection>
 
       {catalogQuery.isError ? (
-        <SettingsSection title={m.settings.skills.sectionTitle}>
+        <SettingsSection title="common:plugin_skillsSection">
           <SettingsRow
-            title={m.settings.skills.discoveryFailed.title}
-            description={m.settings.skills.discoveryFailed.description}
+            id="setting-skill-discovery-failed"
+            title="settings:skills_discoveryFailed"
+            description="settings:synaraCouldNotScanTheSkillFoldersRetryAfter"
           />
         </SettingsSection>
       ) : null}
 
       {!catalogQuery.isLoading && !catalogQuery.isError && totalSkills === 0 ? (
-        <SettingsSection title={m.settings.skills.sectionTitle}>
+        <SettingsSection title="common:plugin_skillsSection">
           <SettingsRow
-            title={m.settings.skills.noneFound.title}
-            description={m.settings.skills.noneFound.description}
+            id="setting-no-skills-found"
+            title="common:plugin_noSkillsFound"
+            description="settings:addASkillFolderContainingASKILLMdTo"
           />
         </SettingsSection>
       ) : null}
@@ -214,16 +210,20 @@ export function SkillsSettingsPanel() {
       {skillSections.map((section) => {
         const sectionTargets = toggleTargetsForGroups(section.groups);
         const sectionToggleState = disabled ? skillToggleState(sectionTargets, disabled) : "all";
+        const sectionTitle = section.titleValue
+          ? t(section.titleKey, { value0: t(section.titleValue) })
+          : t(section.titleKey);
         return (
           <SettingsSection
             key={section.key}
-            title={section.title}
+            title={sectionTitle}
+            translateTitle={false}
             action={
               <Switch
                 checked={sectionToggleState === "all"}
                 indeterminate={sectionToggleState === "partial"}
                 onCheckedChange={(checked) => setSkillsEnabled(sectionTargets, Boolean(checked))}
-                aria-label={m.settings.skills.toggleSection(section.title)}
+                aria-label={t("settings:skills_toggleSection", { value0: sectionTitle })}
               />
             }
           >
@@ -262,7 +262,7 @@ export function SkillsSettingsPanel() {
                           <SkillProviderStack providers={group.providers} />
                         )}
                         <span className="truncate text-[11px] text-muted-foreground">
-                          {group.sources.map((source) => source.originInfo.label).join(" · ")}
+                          {group.sources.map((source) => t(source.originInfo.label)).join(" · ")}
                         </span>
                       </span>
                       {group.sources.map((source) => (
@@ -291,7 +291,7 @@ export function SkillsSettingsPanel() {
                       onCheckedChange={(checked) =>
                         setSkillsEnabled(groupTargets, Boolean(checked))
                       }
-                      aria-label={m.settings.skills.enableSkill(group.displayName)}
+                      aria-label={t("settings:enableTheSkill", { value0: group.displayName })}
                     />
                   }
                 />

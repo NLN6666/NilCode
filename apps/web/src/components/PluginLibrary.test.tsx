@@ -29,12 +29,13 @@ it("does not fall back to a disabled provider when no enabled provider supports 
   );
   const markup = renderToStaticMarkup(<PluginLibrary embedded />);
   expect(markup).not.toContain("Codex");
-  expect(markup).toContain("Plugins unavailable for Claude");
+  expect(markup).toContain('aria-pressed="true"');
+  expect(markup).toContain("Claude");
 });
 
 it("offers a recovery hint when every provider is disabled", () => {
   settings.disabledProviders = [...DEFAULT_PROVIDER_ORDER];
   const markup = renderToStaticMarkup(<PluginLibrary embedded />);
   expect(markup).not.toContain("Codex");
-  expect(markup).toContain("Enable a provider in Settings");
+  expect(markup).toMatch(/<input\b(?=[^>]*\bdisabled(?:=""|\s|>))[^>]*>/);
 });

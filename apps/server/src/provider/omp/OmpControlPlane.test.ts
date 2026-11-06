@@ -191,7 +191,7 @@ describe("OmpControlPlane overlay policy", () => {
       const globalConfigText = configured ? `memory:\n  backend: ${configured}\n` : undefined;
       const plan = buildOmpControlPlanePlan({
         overlayPath: "C:/overlay.yml",
-        globalConfigText,
+        ...(globalConfigText !== undefined ? { globalConfigText } : {}),
         env,
       });
 
@@ -208,7 +208,7 @@ describe("OmpControlPlane overlay policy", () => {
     ] as const) {
       const plan = buildOmpControlPlanePlan({
         overlayPath: "C:/overlay.yml",
-        globalConfigText,
+        ...(globalConfigText !== undefined ? { globalConfigText } : {}),
         env: {},
       });
 

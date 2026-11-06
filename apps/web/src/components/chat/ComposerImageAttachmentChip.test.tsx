@@ -68,7 +68,6 @@ describe("ComposerImageAttachmentChip", () => {
     );
 
     expect(markup).toContain("w-52");
-    expect(markup).toContain("Preview AppSnap from Safari");
     expect(markup).toContain("Synara / Safari");
   });
 });

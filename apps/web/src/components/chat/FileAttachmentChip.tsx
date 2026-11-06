@@ -6,7 +6,6 @@
 import { formatBytes } from "@synara/shared/formatBytes";
 
 import { basenameOfPath } from "~/file-icons";
-import { useMessages } from "~/i18n/context";
 import { FileIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { type ChatFileAttachment } from "../../types";
@@ -16,6 +15,7 @@ import { AttachmentCard } from "./AttachmentCard";
 import { AttachmentRemoveButton } from "./AttachmentRemoveButton";
 import { DraftAttachmentWarningIcon } from "./DraftAttachmentWarning";
 import { FileEntryIcon } from "./FileEntryIcon";
+import { useTranslation, t } from "~/i18n";
 
 type FileAttachmentChipVariant = "pill" | "card";
 
@@ -91,7 +91,7 @@ function fileAttachmentTypeLabel(file: ChatFileAttachment): string {
     }
   }
 
-  return "FILE";
+  return t("chat:fILE");
 }
 
 function fileAttachmentDetail(file: ChatFileAttachment, unknownType: string): string {
@@ -110,6 +110,8 @@ function FileAttachmentPillTrigger({
   className?: string | undefined;
   nonPersisted: boolean;
 }) {
+  const { t } = useTranslation();
+
   return (
     <span
       className={cn(
@@ -129,7 +131,7 @@ function FileAttachmentPillTrigger({
         <AttachmentRemoveButton
           size="sm"
           placement="center-right"
-          label={`Remove ${file.name}`}
+          label={t("workspace:remove", { value0: file.name })}
           onRemove={() => onRemove(file.id)}
         />
       ) : null}
@@ -144,10 +146,10 @@ export function FileAttachmentChip({
   nonPersisted: nonPersistedProp,
   variant: variantProp,
 }: FileAttachmentChipProps) {
-  const copy = useMessages().composer.attachments;
+  const { t } = useTranslation();
   const nonPersisted = nonPersistedProp ?? false;
   const variant = variantProp ?? "pill";
-  const detail = fileAttachmentDetail(file, copy.unknownType);
+  const detail = fileAttachmentDetail(file, t("chat:attachment_unknownType"));
   const typeLabel = fileAttachmentTypeLabel(file);
   const trigger =
     variant === "card" ? (
@@ -172,7 +174,7 @@ export function FileAttachmentChip({
           </>
         }
         onRemove={onRemove ? () => onRemove(file.id) : undefined}
-        removeLabel={`Remove ${file.name}`}
+        removeLabel={t("workspace:remove", { value0: file.name })}
       />
     ) : (
       <FileAttachmentPillTrigger
@@ -191,7 +193,9 @@ export function FileAttachmentChip({
           <p className="text-ui leading-snug font-medium text-foreground">{file.name}</p>
           <p className="text-ui-sm text-muted-foreground">{detail}</p>
           {nonPersisted ? (
-            <p className="text-[0.6875rem] text-amber-600">{copy.draftWarningDescription}</p>
+            <p className="text-[0.6875rem] text-amber-600">
+              {t("chat:attachment_draftWarningDescription")}
+            </p>
           ) : null}
         </div>
       </TooltipPopup>

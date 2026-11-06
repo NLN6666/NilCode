@@ -11,6 +11,7 @@ import {
   MCP_CONNECTOR_PRESETS,
   type McpConnectorCategory,
   type McpConnectorPreset,
+  type McpConnectorUrlReasonCode,
   normalizeMcpConnectorUrl,
 } from "@synara/shared/mcpConnectors";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +26,8 @@ import {
 
 import { ComposerPickerMenuPopup } from "~/components/chat/ComposerPickerMenuPopup";
 import { Button } from "~/components/ui/button";
+import { DisclosureChevron } from "~/components/ui/DisclosureChevron";
+import { DisclosureRegion } from "~/components/ui/DisclosureRegion";
 import {
   Dialog,
   DialogDescription,
@@ -42,15 +45,62 @@ import { toastManager } from "~/components/ui/toast";
 import { AddPlusIcon, EllipsisIcon } from "~/lib/icons";
 import { MCP_CONNECTORS_QUERY_KEY, mcpConnectorsQueryOptions } from "~/lib/mcpConnectorsReactQuery";
 import { ensureNativeApi } from "~/nativeApi";
+import { t, useTranslation } from "~/i18n";
 
 import { McpConnectorConnectDialog, type McpConnectorTarget } from "./McpConnectorConnectDialog";
 import { McpConnectorGlyph } from "./McpConnectorGlyph";
+import {
+  MCP_CONNECTOR_CARD_CLASS_NAME,
+  McpConnectorCardHeader,
+  McpConnectorDetails,
+} from "./McpConnectorCard";
+import { McpLocalConnectorDialog } from "./McpLocalConnectorDialog";
+import {
+  McpConnectorProposalCard,
+  mcpConnectorProposalsQueryOptions,
+} from "./McpConnectorProposalCard";
 import { SettingsEmptyState } from "./SettingsPanelPrimitives";
 
 const CATEGORY_LABELS: Record<McpConnectorCategory, string> = {
-  popular: "Popular",
-  developer: "Developer tools",
-  productivity: "Productivity",
+  popular: "settings:connectorPopular",
+  developer: "settings:advanced_developerTools",
+  productivity: "settings:connectorProductivity",
+};
+
+const PRESET_DESCRIPTION_KEYS: Readonly<Record<string, string>> = {
+  supabase: "settings:connectorSupabaseDescription",
+  vercel: "settings:connectorVercelDescription",
+  workos: "settings:connectorWorkosDescription",
+  convex: "settings:connectorConvexDescription",
+  cloudflare: "settings:connectorCloudflareDescription",
+  slack: "settings:connectorSlackDescription",
+  linear: "settings:connectorLinearDescription",
+  notion: "settings:connectorNotionDescription",
+  sentry: "settings:connectorSentryDescription",
+  stripe: "settings:connectorStripeDescription",
+  neon: "settings:connectorNeonDescription",
+  atlassian: "settings:connectorAtlassianDescription",
+  todoist: "settings:connectorTodoistDescription",
+  posthog: "settings:connectorPosthogDescription",
+  netlify: "settings:connectorNetlifyDescription",
+  railway: "settings:connectorRailwayDescription",
+  prisma: "settings:connectorPrismaDescription",
+  huggingface: "settings:connectorHuggingfaceDescription",
+};
+
+function presetDescription(preset: McpConnectorPreset | undefined, translate: typeof t): string {
+  if (!preset) return "";
+  const key = PRESET_DESCRIPTION_KEYS[preset.id];
+  return key ? translate(key) : preset.description;
+}
+
+const URL_REASON_KEYS: Record<McpConnectorUrlReasonCode, string> = {
+  required: "settings:connectorUrlRequired",
+  "too-long": "settings:connectorUrlTooLong",
+  invalid: "settings:connectorUrlInvalid",
+  "https-required": "settings:connectorUrlHttps",
+  credentials: "settings:connectorUrlCredentials",
+  "public-host": "settings:connectorUrlPublicHost",
 };
 
 function presetTarget(preset: McpConnectorPreset): McpConnectorTarget {
@@ -70,7 +120,9 @@ function connectorPreset(connector: McpConnector): McpConnectorPreset | undefine
 
 // Reuse saved credentials, but keep the current redirect visible: the desktop
 // callback port may have changed since the user's OAuth app was registered.
-function connectorTarget(connector: McpConnector): McpConnectorTarget {
+function connectorTarget(
+  connector: Exclude<McpConnector, { transport: "stdio" }>,
+): McpConnectorTarget {
   const preset = connectorPreset(connector);
   return preset
     ? {
@@ -90,6 +142,7 @@ function connectorTarget(connector: McpConnector): McpConnectorTarget {
 
 // Host only: some servers put an API key in the URL path.
 function connectorHost(connector: McpConnector): string {
+  if (connector.transport === "stdio") return connector.command;
   return new URL(connector.url).host;
 }
 
@@ -97,11 +150,15 @@ function matchesSearch(query: string, ...fields: ReadonlyArray<string>): boolean
   return query.length === 0 || fields.some((field) => field.toLowerCase().includes(query));
 }
 
-function ConnectorShelf(props: { title: string; children: ReactNode }) {
+function ConnectorShelf(props: { title: string; children: ReactNode; cards?: boolean }) {
   return (
     <section className="space-y-1">
       <h2 className="px-3 text-ui-lg font-medium text-foreground">{props.title}</h2>
-      <div className="grid grid-cols-1 gap-x-2 sm:grid-cols-2">{props.children}</div>
+      <div
+        className={`grid grid-cols-1 sm:grid-cols-2 ${props.cards ? "items-start gap-3" : "gap-x-2"}`}
+      >
+        {props.children}
+      </div>
     </section>
   );
 }
@@ -122,6 +179,7 @@ function ConnectorRowText(props: { title: string; description: ReactNode }) {
 }
 
 function PresetRow(props: { preset: McpConnectorPreset; onSelect: () => void }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
@@ -129,7 +187,10 @@ function PresetRow(props: { preset: McpConnectorPreset; onSelect: () => void }) 
       className={`${CONNECTOR_ROW_CLASS_NAME} group text-left transition-colors hover:bg-[var(--sidebar-accent)] focus-visible:outline-2 focus-visible:outline-ring`}
     >
       <McpConnectorGlyph name={props.preset.name} url={props.preset.url} />
-      <ConnectorRowText title={props.preset.name} description={props.preset.description} />
+      <ConnectorRowText
+        title={props.preset.name}
+        description={presetDescription(props.preset, t)}
+      />
       <AddPlusIcon
         className="size-5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
         aria-hidden="true"
@@ -144,48 +205,82 @@ function ConnectedRow(props: {
   onReconnect: () => void;
   onDisconnect: () => void;
 }) {
+  const { t } = useTranslation();
+
   const { connector } = props;
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsId = useId();
   const needsAuth = connector.status === "needs-auth";
   return (
-    <div className={CONNECTOR_ROW_CLASS_NAME}>
-      <McpConnectorGlyph name={connector.name} url={connector.url} />
-      <ConnectorRowText
-        title={connector.name}
-        description={
-          needsAuth ? (
-            <span className="text-destructive">Sign-in expired. Reconnect to keep using it.</span>
-          ) : (
-            (connectorPreset(connector)?.description ?? connectorHost(connector))
-          )
-        }
-      />
-      {needsAuth ? (
-        <Button size="xs" variant="outline" onClick={props.onReconnect}>
-          Reconnect
+    <section className={MCP_CONNECTOR_CARD_CLASS_NAME} aria-label={`${connector.name} connector`}>
+      <McpConnectorCardHeader
+        connector={connector}
+        subtitle={presetDescription(connectorPreset(connector), t)}
+      >
+        <Menu>
+          <MenuTrigger
+            render={
+              <IconButton
+                variant="ghost"
+                size="icon-sm"
+                shape="capsule"
+                label={t("settings:connectorActions", { name: connector.name })}
+                disabled={props.disconnecting}
+              >
+                <EllipsisIcon className="size-4" />
+              </IconButton>
+            }
+          />
+          <ComposerPickerMenuPopup
+            align="end"
+            side="bottom"
+            sideOffset={6}
+            className="w-44 min-w-44"
+          >
+            {needsAuth || connector.transport === "stdio" ? null : (
+              <MenuItem onClick={props.onReconnect}>{t("settings:connectorReconnect")}</MenuItem>
+            )}
+            <MenuItem variant="destructive" onClick={props.onDisconnect}>
+              {t("settings:connectorDisconnect")}
+            </MenuItem>
+          </ComposerPickerMenuPopup>
+        </Menu>
+      </McpConnectorCardHeader>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-3">
+        <span className="flex items-center gap-1.5 text-ui-sm text-muted-foreground">
+          <span
+            aria-hidden="true"
+            className={`size-1.5 shrink-0 rounded-full ${needsAuth ? "bg-destructive" : connector.status === "unreachable" ? "bg-muted-foreground" : "bg-success"}`}
+          />
+          {needsAuth
+            ? "Needs sign-in"
+            : connector.status === "unreachable"
+              ? "Not running"
+              : t("chat:connected")}
+        </span>
+        {needsAuth ? (
+          <Button size="xs" variant="outline" onClick={props.onReconnect}>
+            {t("settings:connectorReconnect")}
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="chip"
+          aria-expanded={detailsOpen}
+          aria-controls={detailsId}
+          onClick={() => setDetailsOpen((open) => !open)}
+        >
+          Connection details
+          <DisclosureChevron open={detailsOpen} className="size-3.5" />
         </Button>
-      ) : null}
-      <Menu>
-        <MenuTrigger
-          render={
-            <IconButton
-              variant="ghost"
-              size="icon-sm"
-              shape="capsule"
-              label={`${connector.name} actions`}
-              disabled={props.disconnecting}
-            >
-              <EllipsisIcon className="size-4" />
-            </IconButton>
-          }
-        />
-        <ComposerPickerMenuPopup align="end" side="bottom" sideOffset={6} className="w-44 min-w-44">
-          {needsAuth ? null : <MenuItem onClick={props.onReconnect}>Reconnect</MenuItem>}
-          <MenuItem variant="destructive" onClick={props.onDisconnect}>
-            Disconnect
-          </MenuItem>
-        </ComposerPickerMenuPopup>
-      </Menu>
-    </div>
+      </div>
+      <DisclosureRegion open={detailsOpen}>
+        <div id={detailsId} className="pt-4">
+          <McpConnectorDetails connector={connector} />
+        </div>
+      </DisclosureRegion>
+    </section>
   );
 }
 
@@ -194,6 +289,8 @@ function AddCustomConnectorDialog(props: {
   onOpenChange: (open: boolean) => void;
   onSubmit: (url: string) => void;
 }) {
+  const { t } = useTranslation();
+
   const formId = useId();
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -202,7 +299,12 @@ function AddCustomConnectorDialog(props: {
     event.preventDefault();
     const normalized = normalizeMcpConnectorUrl(url);
     if (!normalized.ok) {
-      setError(normalized.reason);
+      // The shared validator permits loopback HTTP; the main HTTPS-only message does not.
+      setError(
+        normalized.reasonCode && normalized.reasonCode !== "https-required"
+          ? t(URL_REASON_KEYS[normalized.reasonCode])
+          : normalized.reason,
+      );
       return;
     }
     setUrl("");
@@ -220,9 +322,10 @@ function AddCustomConnectorDialog(props: {
     >
       <DialogPopup className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add a custom connector</DialogTitle>
+          <DialogTitle>{t("settings:addCustomConnector")}</DialogTitle>
           <DialogDescription>
-            Any remote MCP server. Synara signs in with OAuth when the server asks for it.
+            A public HTTPS or loopback HTTP MCP server. Synara signs in with OAuth when the server
+            asks for it.
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
@@ -231,7 +334,7 @@ function AddCustomConnectorDialog(props: {
               value={url}
               maxLength={2048}
               placeholder="https://mcp.example.com/mcp"
-              aria-label="MCP server URL"
+              aria-label={t("settings:mcpServerUrl")}
               aria-invalid={error ? true : undefined}
               autoFocus
               onChange={(event) => {
@@ -244,10 +347,10 @@ function AddCustomConnectorDialog(props: {
         </DialogPanel>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => props.onOpenChange(false)}>
-            Cancel
+            {t("common:form_cancel")}
           </Button>
           <Button type="submit" form={formId} disabled={!url.trim()}>
-            Continue
+            {t("git:continue")}
           </Button>
         </DialogFooter>
       </DialogPopup>
@@ -256,14 +359,22 @@ function AddCustomConnectorDialog(props: {
 }
 
 export function McpConnectorsSettingsPanel(props: { active: boolean }) {
+  const { t } = useTranslation();
+
   const queryClient = useQueryClient();
   const [target, setTarget] = useState<McpConnectorTarget | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
 
   const connectorsQuery = useQuery({
     ...mcpConnectorsQueryOptions(),
+    enabled: props.active,
+    refetchInterval: 5_000,
+  });
+  const proposalsQuery = useQuery({
+    ...mcpConnectorProposalsQueryOptions(),
     enabled: props.active,
   });
 
@@ -274,8 +385,8 @@ export function McpConnectorsSettingsPanel(props: { active: boolean }) {
     onError: (error) =>
       toastManager.add({
         type: "error",
-        title: "Could not disconnect",
-        description: error instanceof Error ? error.message : "Try again.",
+        title: t("settings:connectorDisconnectFailed"),
+        description: error instanceof Error ? error.message : t("chat:tryAgain"),
       }),
   });
 
@@ -285,16 +396,22 @@ export function McpConnectorsSettingsPanel(props: { active: boolean }) {
       void queryClient.invalidateQueries({ queryKey: MCP_CONNECTORS_QUERY_KEY });
       toastManager.add({
         type: "success",
-        title: `${connector.name} connected`,
-        description: "New chats can use its tools.",
+        title:
+          connector.status === "unreachable"
+            ? `${connector.name} saved`
+            : t("settings:connectorConnected", { name: connector.name }),
+        description:
+          connector.status === "unreachable"
+            ? "Not running. Start the local server to use its tools."
+            : t("settings:connectorToolsNewChats"),
       });
     },
-    [queryClient],
+    [queryClient, t],
   );
 
   const disconnect = async (connector: McpConnector) => {
     const confirmed = await ensureNativeApi().dialogs.confirm(
-      `Disconnect ${connector.name}?\nAgents lose its tools, and Synara deletes its sign-in from this computer.`,
+      t("settings:connectorDisconnectConfirm", { name: connector.name }),
     );
     if (confirmed) disconnectMutation.mutate(connector.connectorId);
   };
@@ -303,13 +420,15 @@ export function McpConnectorsSettingsPanel(props: { active: boolean }) {
 
   const query = deferredSearch.trim().toLowerCase();
   const connectors = connectorsQuery.data ?? [];
-  const connectedUrls = new Set(connectors.map((connector) => connector.url));
+  const connectedUrls = new Set(
+    connectors.flatMap((connector) => (connector.transport === "stdio" ? [] : [connector.url])),
+  );
   const visibleConnectors = connectors.filter((connector) =>
     matchesSearch(
       query,
       connector.name,
       connectorHost(connector),
-      connectorPreset(connector)?.description ?? "",
+      presetDescription(connectorPreset(connector), t),
     ),
   );
   const shelves = MCP_CONNECTOR_CATEGORIES.map((category) => ({
@@ -318,7 +437,7 @@ export function McpConnectorsSettingsPanel(props: { active: boolean }) {
       (preset) =>
         preset.category === category &&
         !connectedUrls.has(preset.url) &&
-        matchesSearch(query, preset.name, preset.description),
+        matchesSearch(query, preset.name, presetDescription(preset, t)),
     ),
   })).filter((shelf) => shelf.presets.length > 0);
 
@@ -334,13 +453,13 @@ export function McpConnectorsSettingsPanel(props: { active: boolean }) {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <SearchInput
           type="search"
           nativeInput
           shape="capsule"
-          placeholder="Search connectors"
-          aria-label="Search connectors"
+          placeholder={t("settings:searchConnectors")}
+          aria-label={t("settings:searchConnectors")}
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           onKeyDown={(event) => {
@@ -353,7 +472,15 @@ export function McpConnectorsSettingsPanel(props: { active: boolean }) {
         />
         <Button shape="capsule" className="shrink-0" onClick={() => setAddOpen(true)}>
           <AddPlusIcon className="size-4" />
-          Add custom
+          {t("settings:addCustom")}
+        </Button>
+        <Button
+          shape="capsule"
+          variant="outline"
+          className="shrink-0"
+          onClick={() => setLocalOpen(true)}
+        >
+          Add local server
         </Button>
       </div>
 
@@ -361,18 +488,20 @@ export function McpConnectorsSettingsPanel(props: { active: boolean }) {
         <SettingsEmptyState layout="status" tone="destructive">
           {connectorsQuery.error instanceof Error
             ? connectorsQuery.error.message
-            : "Could not load connectors."}
+            : t("settings:connectorsLoadFailed")}
         </SettingsEmptyState>
       ) : null}
 
       {visibleConnectors.length > 0 ? (
-        <ConnectorShelf title="Connected">
+        <ConnectorShelf title="Your connectors" cards>
           {visibleConnectors.map((connector) => (
             <ConnectedRow
               key={connector.connectorId}
               connector={connector}
               disconnecting={disconnectMutation.isPending}
-              onReconnect={() => setTarget(connectorTarget(connector))}
+              onReconnect={() => {
+                if (connector.transport !== "stdio") setTarget(connectorTarget(connector));
+              }}
               onDisconnect={() => {
                 void disconnect(connector);
               }}
@@ -382,7 +511,7 @@ export function McpConnectorsSettingsPanel(props: { active: boolean }) {
       ) : null}
 
       {shelves.map((shelf) => (
-        <ConnectorShelf key={shelf.category} title={CATEGORY_LABELS[shelf.category]}>
+        <ConnectorShelf key={shelf.category} title={t(CATEGORY_LABELS[shelf.category])}>
           {shelf.presets.map((preset) => (
             <PresetRow
               key={preset.id}
@@ -393,19 +522,32 @@ export function McpConnectorsSettingsPanel(props: { active: boolean }) {
         </ConnectorShelf>
       ))}
 
+      {proposalsQuery.data
+        ?.filter((proposal) => proposal.state === "pending")
+        .map((proposal) => (
+          <McpConnectorProposalCard key={proposal.proposalId} proposalId={proposal.proposalId} />
+        ))}
+
       {query.length > 0 && visibleConnectors.length === 0 && shelves.length === 0 ? (
         <SettingsEmptyState>
-          No connectors match “{deferredSearch.trim()}”. Use Add custom to connect any MCP server by
-          URL.
+          {t("settings:connectorsNoMatches", { query: deferredSearch.trim() })}
         </SettingsEmptyState>
       ) : null}
 
       <p className="px-3 text-ui-sm text-muted-foreground">
-        Agents in new chats can use the services you connect here. Pi, Devin, and Antigravity don't
-        support connectors yet.
+        {t("settings:connectorsAvailability")}
       </p>
 
       <AddCustomConnectorDialog open={addOpen} onOpenChange={setAddOpen} onSubmit={addCustom} />
+      <McpLocalConnectorDialog
+        open={localOpen}
+        onOpenChange={setLocalOpen}
+        onUrl={(url) => {
+          setLocalOpen(false);
+          addCustom(url);
+        }}
+        onConnected={onConnected}
+      />
       <McpConnectorConnectDialog
         target={target}
         onOpenChange={(open) => {

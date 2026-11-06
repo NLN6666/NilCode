@@ -19,10 +19,10 @@ import { Button } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
 import { StatusDot } from "~/components/ui/status-chip";
 import { toastManager } from "~/components/ui/toast";
-import { useMessages } from "~/i18n/context";
 import { cn } from "~/lib/utils";
 import { AppSnapPermissionGuide } from "./AppSnapPermissionGuide";
 import { SettingsRow, SettingsSection } from "./SettingsPanelPrimitives";
+import { useTranslation } from "~/i18n";
 
 export interface AppSnapPermissionPaneDescriptor {
   readonly pane: DesktopAppSnapSettingsPane;
@@ -34,15 +34,13 @@ export interface AppSnapPermissionPaneDescriptor {
 export const APP_SNAP_PERMISSION_PANES: readonly AppSnapPermissionPaneDescriptor[] = [
   {
     pane: "input-monitoring",
-    title: "Input Monitoring",
-    description:
-      "Lets Synara notice the double-Option chord while another app owns the keyboard. Nothing you type is recorded.",
+    title: "settings:inputMonitoring",
+    description: "settings:letsSynaraNoticeTheDoubleOptionChordWhileAnother",
   },
   {
     pane: "screen-recording",
-    title: "Screen Recording",
-    description:
-      "Lets Synara capture an image of the frontmost window. Only the single window you snap is captured, only at the moment you press the chord.",
+    title: "settings:screenRecording",
+    description: "settings:letsSynaraCaptureAnImageOfTheFrontmostWindow",
   },
 ];
 
@@ -54,26 +52,37 @@ export const APP_SNAP_PERMISSION_PANES: readonly AppSnapPermissionPaneDescriptor
 export const COMPUTER_PERMISSION_PANES: readonly AppSnapPermissionPaneDescriptor[] = [
   {
     pane: "accessibility",
-    title: "Accessibility",
-    description:
-      "Lets Synara move the pointer, click, and type on your behalf. Nothing is driven unless you authorize a Computer task.",
+    title: "settings:accessibility",
+    description: "settings:letsSynaraMoveThePointerClickAndTypeOn",
   },
   {
     pane: "screen-recording",
-    title: "Screen Recording",
-    description:
-      "Lets Synara capture windows and the desktop so the agent can see what it is driving.",
+    title: "settings:screenRecording",
+    description: "settings:letsSynaraCaptureWindowsAndTheDesktopSoThe",
   },
   {
     pane: "input-monitoring",
-    title: "Input Monitoring",
-    description:
-      "Lets Synara detect Escape and pause when you take over during a Computer task. This does not enable the AppSnap shortcut.",
+    title: "settings:inputMonitoring",
+    description: "settings:letsSynaraDetectEscapeAndPauseWhenYouTake",
   },
 ];
 
+const PERMISSION_LABELS: Record<DesktopAppSnapPermission, string> = {
+  granted: "settings:granted",
+  denied: "settings:denied",
+  "not-determined": "settings:notRequestedYet",
+  restricted: "settings:restricted",
+  unknown: "common:common_unknown",
+};
+
+const PANE_LABELS: Record<DesktopAppSnapSettingsPane, string> = {
+  accessibility: "settings:accessibility",
+  "input-monitoring": "settings:inputMonitoring",
+  "screen-recording": "settings:screenRecording",
+};
+
 function AppSnapPermissionBadge({ permission }: { permission: DesktopAppSnapPermission }) {
-  const copy = useMessages().settings.appSnap.permissions;
+  const { t } = useTranslation();
   return (
     <span className="inline-flex items-center gap-1.5 text-ui-xs font-medium text-muted-foreground">
       <StatusDot
@@ -86,7 +95,7 @@ function AppSnapPermissionBadge({ permission }: { permission: DesktopAppSnapPerm
               : "bg-[color:var(--color-border)]"
         }
       />
-      {copy.labels[permission]}
+      {t(PERMISSION_LABELS[permission])}
     </span>
   );
 }
@@ -186,20 +195,7 @@ export function AppSnapPermissionSection({
    */
   readonly showRecheck?: boolean;
 }) {
-  const m = useMessages();
-  const copy = m.settings.appSnap.permissions;
-  const computerCopy = m.settings.computer.permissions;
-  const isComputer = feature !== "AppSnap";
-  const paneCopy = (pane: DesktopAppSnapSettingsPane) =>
-    isComputer
-      ? pane === "accessibility"
-        ? computerCopy.accessibility
-        : pane === "input-monitoring"
-          ? computerCopy.inputMonitoring
-          : computerCopy.screenRecording
-      : pane === "input-monitoring"
-        ? copy.inputMonitoring
-        : copy.screenRecording;
+  const { t } = useTranslation();
   const [recheckPending, setRecheckPending] = useState(false);
   const requestGuardRef = useRef(createLatestAppSnapRequestGuard());
   const onStateChangeRef = useRef(onStateChange);
@@ -255,17 +251,14 @@ export function AppSnapPermissionSection({
   useEffect(() => {
     if (!guidePane) return;
     if (appSnapPanePermission(state, guidePane) !== "granted") return;
-    const paneLabel = paneCopy(guidePane).title;
+    const paneLabel = t(PANE_LABELS[guidePane]);
     onGuidePaneChange(null);
     toastManager.add({
       type: "success",
-      title: copy.grantedTitle,
-      description: copy.grantedDescription(
-        paneLabel,
-        isComputer ? computerCopy.featureName : feature,
-      ),
+      title: t("settings:permissionGranted"),
+      description: t("settings:isReadyFor", { value0: paneLabel, value1: feature }),
     });
-  }, [guidePane, state, feature, onGuidePaneChange, m]);
+  }, [guidePane, state, feature, onGuidePaneChange, t]);
 
   async function recheckPermissions() {
     const bridge = window.desktopBridge?.appSnap;
@@ -282,16 +275,16 @@ export function AppSnapPermissionSection({
       if (next.status === "permission-required") {
         toastManager.add({
           type: "info",
-          title: copy.unchangedTitle,
-          description: copy.unchangedDescription,
+          title: t("settings:permissionsUnchanged"),
+          description: t("settings:useGrantNextToAPermissionToWalkThrough"),
         });
       }
     } catch (error) {
       if (!requestGuard.isCurrent(requestId)) return;
       toastManager.add({
         type: "error",
-        title: copy.checkFailedTitle,
-        description: error instanceof Error ? error.message : copy.checkFailedDescription,
+        title: t("settings:couldNotCheckPermissions"),
+        description: error instanceof Error ? error.message : t("settings:permissionCheckFailed"),
       });
     } finally {
       if (requestGuard.isCurrent(requestId)) setRecheckPending(false);
@@ -299,16 +292,15 @@ export function AppSnapPermissionSection({
   }
 
   return (
-    <SettingsSection title={copy.title}>
-      {panes.map(({ pane }) => {
+    <SettingsSection title="settings:macOSPermissions">
+      {panes.map(({ pane, title, description }) => {
         const permission = appSnapPanePermission(state, pane);
         const guideOpen = guidePane === pane;
-        const { title, description } = paneCopy(pane);
         return (
           <SettingsRow
             key={pane}
-            title={title}
-            description={description}
+            title={t(title)}
+            description={t(description)}
             control={
               <div className="flex items-center gap-2">
                 <AppSnapPermissionBadge permission={permission} />
@@ -327,7 +319,7 @@ export function AppSnapPermissionSection({
                       }
                     }}
                   >
-                    {guideOpen ? copy.hideSteps : copy.grant}
+                    {guideOpen ? t("settings:hideSteps") : t("settings:grant")}
                   </Button>
                 ) : null}
               </div>
@@ -355,8 +347,9 @@ export function AppSnapPermissionSection({
       })}
       {showRecheck ? (
         <SettingsRow
-          title={copy.status.title}
-          description={copy.status.description}
+          id="setting-permission-status"
+          title="settings:permissionStatus"
+          description="settings:grantEachPermissionWithTheStepsAboveIfYou"
           control={
             <Button
               type="button"
@@ -368,10 +361,10 @@ export function AppSnapPermissionSection({
               {recheckPending ? (
                 <>
                   <Spinner className="size-3" />
-                  {copy.rechecking}
+                  {t("settings:rechecking")}
                 </>
               ) : (
-                copy.recheck
+                t("settings:recheckPermissions")
               )}
             </Button>
           }

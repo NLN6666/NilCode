@@ -16,8 +16,8 @@ import { CHAT_BACKGROUND_CLASS_NAME } from "./composerPickerStyles";
 import { DelayedLoaderFade } from "./DelayedLoaderFade";
 import { Spinner } from "../ui/spinner";
 import { cn } from "~/lib/utils";
-import { useMessages } from "~/i18n/context";
 import { scheduleDeferredChatMount } from "./deferredChatMount";
+import { useTranslation } from "~/i18n";
 
 const DiffPanel = lazy(() => import("../DiffPanel"));
 export const LazyBrowserPanel = lazy(() => import("../BrowserPanel"));
@@ -26,13 +26,13 @@ export const LazyDevicePanel = lazy(() => import("../DevicePanel"));
 export const noopChatSurfaceAction = () => {};
 
 function DiffLoadingFallback(props: { mode: DiffPanelMode; hideHeader?: boolean }) {
-  const copy = useMessages().chat.panes;
+  const { t } = useTranslation();
   return (
     <DiffPanelShell
       mode={props.mode}
       header={props.hideHeader ? null : <DiffPanelHeaderSkeleton />}
     >
-      <DiffPanelLoadingState label={copy.loadingDiffViewer} />
+      <DiffPanelLoadingState label={t("chat:loadingDiffViewer")} />
     </DiffPanelShell>
   );
 }

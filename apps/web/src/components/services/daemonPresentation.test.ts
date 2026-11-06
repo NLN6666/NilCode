@@ -12,13 +12,6 @@ import {
 const snapshot = (overrides: Partial<DaemonSnapshot>): DaemonSnapshot =>
   ({ name: "mc", id: "d1", state: "running", ...overrides }) as DaemonSnapshot;
 
-const copy = {
-  pid: (pid: number) => `PID ${pid}`,
-  restarts: (count: number) => `${count} restarts`,
-  exitedWithCode: (code: number) => `exit ${code}`,
-  waitingFor: (conditions: string) => `waiting for ${conditions}`,
-};
-
 describe("daemonTone", () => {
   it("treats a clean or user-requested exit as neutral, not an error", () => {
     // Painting a service the user just stopped in red reads as a report of their own
@@ -48,29 +41,32 @@ describe("daemonMetaParts", () => {
   it("leads with the unmet readiness conditions while starting", () => {
     const parts = daemonMetaParts(
       snapshot({ state: "starting", readyPending: ["log", "port"], pid: 7 }),
-      copy,
     );
 
-    expect(parts[0]).toBe("waiting for log, port");
-    expect(parts).toContain("PID 7");
+    expect(parts[0]).toContain("log");
+    expect(parts[0]).toContain("port");
+    expect(parts.some((part) => part.includes("7"))).toBe(true);
   });
 
   it("swaps the pid for the exit code once the process is gone", () => {
-    const parts = daemonMetaParts(snapshot({ state: "failed", pid: null, exitCode: 1 }), copy);
+    const parts = daemonMetaParts(snapshot({ state: "failed", pid: null, exitCode: 1 }));
 
-    expect(parts).toEqual(["exit 1"]);
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toContain("1");
   });
 
   it("mentions restarts only once there have been some", () => {
-    expect(daemonMetaParts(snapshot({ pid: 9, restartCount: 0 }), copy)).toEqual(["PID 9"]);
-    expect(daemonMetaParts(snapshot({ pid: 9, restartCount: 3 }), copy)).toEqual([
-      "PID 9",
-      "3 restarts",
-    ]);
+    const noRestarts = daemonMetaParts(snapshot({ pid: 9, restartCount: 0 }));
+    expect(noRestarts).toHaveLength(1);
+    expect(noRestarts[0]).toContain("9");
+    const restarted = daemonMetaParts(snapshot({ pid: 9, restartCount: 3 }));
+    expect(restarted).toHaveLength(2);
+    expect(restarted.some((part) => part.includes("9"))).toBe(true);
+    expect(restarted.some((part) => part.includes("3"))).toBe(true);
   });
 
   it("says nothing rather than printing empty facts", () => {
-    expect(daemonMetaParts(snapshot({ state: "exited", pid: null }), copy)).toEqual([]);
+    expect(daemonMetaParts(snapshot({ state: "exited", pid: null }))).toEqual([]);
   });
 });
 

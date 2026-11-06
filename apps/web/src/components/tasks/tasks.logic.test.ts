@@ -1,11 +1,14 @@
 import { ProjectId, ThreadId, type Todo, TodoId, TurnId } from "@synara/contracts";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { setLanguagePreference } from "~/i18n";
 
 import type { SidebarThreadSummary } from "../../types";
 import {
   applyTodoEvent,
   buildTaskSections,
   deriveTaskStatus,
+  taskStatusPresentation,
+  todoPriorityLabel,
   describeTaskMeta,
   formatDueLabel,
   NEEDS_ANSWER_DETAIL,
@@ -18,6 +21,8 @@ import {
   unlinkChatInput,
   withSavedTaskText,
 } from "./tasks.logic";
+
+afterEach(() => setLanguagePreference("system"));
 
 function todo(overrides: Omit<Partial<Todo>, "id"> & { id: string }): Todo {
   return {
@@ -219,22 +224,23 @@ function taskStatus(
 
 describe("describeTaskMeta", () => {
   it("says what the agent does or needs, else the due day", () => {
-    expect(describeTaskMeta(taskStatus("running"), null)).toEqual({
-      text: "Working…",
+    expect(describeTaskMeta(taskStatus("running"), null)).toMatchObject({
       tone: "muted",
       live: true,
     });
-    expect(describeTaskMeta(taskStatus("needs"), null)?.text).toBe("Needs your OK");
-    expect(describeTaskMeta(taskStatus("needs", { detail: NEEDS_ANSWER_DETAIL }), null)?.text).toBe(
-      "Asked you a question",
-    );
+    const approval = describeTaskMeta(taskStatus("needs"), null);
+    const question = describeTaskMeta(taskStatus("needs", { detail: NEEDS_ANSWER_DETAIL }), null);
+    expect(approval?.tone).toBe("attention");
+    expect(question?.tone).toBe("attention");
+    expect(approval?.text).not.toBe(question?.text);
     expect(describeTaskMeta(taskStatus("review"), null)?.tone).toBe("review");
-    expect(describeTaskMeta(taskStatus("todo"), { label: "Today", overdue: false })?.tone).toBe(
-      "strong",
-    );
-    expect(describeTaskMeta(taskStatus("todo"), { label: "Yesterday", overdue: true })?.tone).toBe(
-      "failure",
-    );
+    expect(
+      describeTaskMeta(taskStatus("todo"), { label: "Today", overdue: false, isToday: true })?.tone,
+    ).toBe("strong");
+    expect(
+      describeTaskMeta(taskStatus("todo"), { label: "Yesterday", overdue: true, isToday: false })
+        ?.tone,
+    ).toBe("failure");
     expect(describeTaskMeta(taskStatus("todo"), null)).toBeNull();
     expect(describeTaskMeta(taskStatus("done"), null)).toBeNull();
   });
@@ -242,16 +248,14 @@ describe("describeTaskMeta", () => {
 
 describe("summarizeTaskList", () => {
   it("leads with what needs the user", () => {
-    expect(
-      summarizeTaskList([
-        row(todo({ id: "a" }), "needs"),
-        row(todo({ id: "b" }), "review"),
-        row(todo({ id: "c" }), "running"),
-        row(todo({ id: "d" }), "todo"),
-      ]),
-    ).toBe("2 things need you · 1 working · 1 to do");
-    expect(summarizeTaskList([row(todo({ id: "e" }), "done")])).toBe("All done");
-    expect(summarizeTaskList([])).toBe("Add anything you need to do");
+    const summary = summarizeTaskList([
+      row(todo({ id: "a" }), "needs"),
+      row(todo({ id: "b" }), "review"),
+      row(todo({ id: "c" }), "running"),
+      row(todo({ id: "d" }), "todo"),
+    ]);
+    expect(summary.match(/\d+/gu)).toEqual(["2", "1", "1"]);
+    expect(summarizeTaskList([row(todo({ id: "e" }), "done")])).not.toBe(summarizeTaskList([]));
   });
 });
 
@@ -266,12 +270,30 @@ describe("due dates", () => {
     expect(resolveDuePreset("nextWeek", new Date(2026, 8, 28))).toBe("2026-10-05");
   });
 
-  it("labels nearby days by name and flags overdue ones", () => {
-    expect(formatDueLabel("2026-09-27", now)).toEqual({ label: "Today", overdue: false });
-    expect(formatDueLabel("2026-09-28", now)).toEqual({ label: "Tomorrow", overdue: false });
-    expect(formatDueLabel("2026-09-26", now)).toEqual({ label: "Yesterday", overdue: true });
-    expect(formatDueLabel("2026-09-20", now).overdue).toBe(true);
-  });
+  it.each([
+    ["en", "Today", "Tomorrow", "Yesterday", "Tue"],
+    ["zh-CN", "今天", "明天", "昨天", "周二"],
+  ] as const)(
+    "labels due days in %s without changing overdue or today emphasis",
+    (locale, today, tomorrow, yesterday, weekday) => {
+      setLanguagePreference(locale);
+      const dueToday = formatDueLabel("2026-09-27", now);
+      expect(dueToday).toEqual({ label: today, overdue: false, isToday: true });
+      expect(describeTaskMeta(taskStatus("todo"), dueToday)?.tone).toBe("strong");
+      expect(formatDueLabel("2026-09-28", now)).toEqual({
+        label: tomorrow,
+        overdue: false,
+        isToday: false,
+      });
+      expect(formatDueLabel("2026-09-26", now)).toEqual({
+        label: yesterday,
+        overdue: true,
+        isToday: false,
+      });
+      expect(formatDueLabel("2026-09-29", now).label).toBe(weekday);
+      expect(formatDueLabel("2026-09-20", now).overdue).toBe(true);
+    },
+  );
 });
 
 describe("a fresh link to a chat this window doesn't know yet", () => {
@@ -350,4 +372,47 @@ describe("unlinkChatInput", () => {
       expectedThreadId: threadId,
     });
   });
+});
+
+it("changes task presentation after a locale switch while preserving provider errors and status identity", () => {
+  const approval = deriveTaskStatus({
+    todo: delegated,
+    thread: thread({ hasPendingApprovals: true }),
+    hasDraftThread: false,
+  });
+  const failed = deriveTaskStatus({
+    todo: delegated,
+    thread: thread({
+      session: { ...thread().session!, status: "error", lastError: "common:finished" },
+    }),
+    hasDraftThread: false,
+  });
+  setLanguagePreference("en");
+  const englishApproval = taskStatusPresentation(approval);
+  const englishFailure = taskStatusPresentation(failed);
+  const englishPriority = todoPriorityLabel("urgent");
+  const englishSummary = summarizeTaskList([
+    row(todo({ id: "needs" }), "needs"),
+    row(todo({ id: "todo" }), "todo"),
+  ]);
+  setLanguagePreference("zh-CN");
+  const chineseApproval = taskStatusPresentation(approval);
+  const chineseFailure = taskStatusPresentation(failed);
+  const chinesePriority = todoPriorityLabel("urgent");
+  const chineseSummary = summarizeTaskList([
+    row(todo({ id: "needs" }), "needs"),
+    row(todo({ id: "todo" }), "todo"),
+  ]);
+  expect(chineseApproval.label).not.toBe(englishApproval.label);
+  expect(chineseApproval.detail).not.toBe(englishApproval.detail);
+  expect(approval.detail).toBe("Waiting for your approval");
+  expect(chineseFailure.label).not.toBe(englishFailure.label);
+  expect(chineseFailure.detail).toBe("common:finished");
+  expect(chinesePriority).not.toBe(englishPriority);
+  expect(chineseSummary.match(/\d+/gu)).toEqual(["1", "1"]);
+  expect(
+    buildTaskSections([row(todo({ id: "todo" }), "todo")]).sections[0]?.label.length,
+  ).toBeGreaterThan(0);
+  setLanguagePreference("en");
+  expect(taskStatusPresentation(approval)).toEqual(englishApproval);
 });

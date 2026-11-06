@@ -41,7 +41,7 @@ import {
   resolvePromotedPullPresentation,
   shouldOfferCreateBranchPrompt,
   summarizeGitResult,
-  type GitCopy,
+  type GitActionTranslator,
 } from "./GitActionsControl.logic";
 import { GIT_ACTION_ICON_CLASS, GitActionGlyph } from "./gitActionGlyphs";
 import { GitCommitDialog, type GitCommitDialogSubmission } from "./GitCommitDialog";
@@ -51,7 +51,6 @@ import {
   type GitCreatePrDialogSubmission,
 } from "./GitCreatePrDialog";
 import { getProviderStartOptions, useAppSettings } from "~/appSettings";
-import { useMessages } from "~/i18n/context";
 import { formatClockDuration } from "~/session-logic";
 import { Button } from "~/components/ui/button";
 import { ButtonGroup, ButtonGroupSeparator } from "~/components/ui/button-group";
@@ -111,6 +110,7 @@ import { resolvePathLinkTarget } from "~/terminal-links";
 import { readNativeApi } from "~/nativeApi";
 import { createThreadGitActionsMetadataSelector } from "~/storeSelectors";
 import { useStore } from "~/store";
+import { useTranslation, t } from "~/i18n";
 
 interface GitActionsControlProps {
   gitCwd: string | null;
@@ -199,7 +199,7 @@ function formatElapsedDescription(startedAtMs: number | null): string | undefine
   if (startedAtMs === null) {
     return undefined;
   }
-  return `Running for ${formatClockDuration(Date.now() - startedAtMs)}`;
+  return t("git:runningFor", { value0: formatClockDuration(Date.now() - startedAtMs) });
 }
 
 function resolveProgressDescription(progress: ActiveGitActionProgress): string | undefined {
@@ -213,7 +213,7 @@ function resolveProgressDescription(progress: ActiveGitActionProgress): string |
 // Every push-family action collapses to "push" so the button matches the picker rows.
 function resolveGitQuickActionGlyph(
   quickAction: GitQuickAction,
-  copy: GitCopy,
+  translate: GitActionTranslator,
 ): GitGlyphName | null {
   if (quickAction.kind === "open_pr") return "view_pr";
   if (quickAction.kind === "run_pull") return "sync";
@@ -223,13 +223,13 @@ function resolveGitQuickActionGlyph(
   }
   // The disabled-hint variants reuse the commit label, so match it against the active
   // catalog rather than the English string.
-  if (quickAction.label === copy.actions.commit) return "commit";
+  if (quickAction.label === translate("git:gitActionCommit")) return "commit";
   return null;
 }
 
 function GitQuickActionIcon({ quickAction }: { quickAction: GitQuickAction }) {
-  const copy = useMessages().git;
-  const name = resolveGitQuickActionGlyph(quickAction, copy);
+  const { t } = useTranslation();
+  const name = resolveGitQuickActionGlyph(quickAction, t);
   if (name) return <GitActionGlyph name={name} />;
   return <InfoIcon className={GIT_ACTION_ICON_CLASS} />;
 }
@@ -264,7 +264,8 @@ export default function GitActionsControl({
   visibleWhen: visibleWhenProp,
   onRegisterCommitAndPushTrigger,
 }: GitActionsControlProps) {
-  const gitCopy = useMessages().git;
+  const { t } = useTranslation();
+
   const hideQuickActionLabel = hideQuickActionLabelProp ?? false;
   const variant = variantProp ?? "header";
   const visibleWhen = visibleWhenProp ?? "always";
@@ -462,6 +463,7 @@ export default function GitActionsControl({
         hasOriginRemote,
         shouldOfferCreateBranch,
         defaultBranchName,
+        t,
       ),
     [
       defaultBranchName,
@@ -470,6 +472,7 @@ export default function GitActionsControl({
       isDefaultBranch,
       isGitActionRunning,
       shouldOfferCreateBranch,
+      t,
     ],
   );
   const gitActionMenuItems = useMemo(
@@ -480,26 +483,26 @@ export default function GitActionsControl({
         hasOriginRemote,
         isDefaultBranch,
         defaultBranchName,
-        gitCopy,
+        t,
       ),
     [
       defaultBranchName,
-      gitCopy,
       gitStatusForActions,
       hasOriginRemote,
       isDefaultBranch,
       isGitActionRunning,
+      t,
     ],
   );
   const quickActionDisabledReason = quickAction.disabled
-    ? (quickAction.hint ?? gitCopy.hints.unavailable)
+    ? (quickAction.hint ?? t("git:gitActionUnavailable"))
     : null;
   const pendingDefaultBranchActionCopy = pendingDefaultBranchAction
     ? resolveDefaultBranchActionDialogCopy({
         action: pendingDefaultBranchAction.action,
         branchName: pendingDefaultBranchAction.branchName,
         includesCommit: pendingDefaultBranchAction.includesCommit,
-        copy: gitCopy,
+        translate: t,
       })
     : null;
   useEffect(() => {
@@ -538,7 +541,7 @@ export default function GitActionsControl({
           progress.lastOutputLine = null;
           break;
         case "hook_started":
-          progress.title = `Running ${event.hookName}...`;
+          progress.title = t("git:gitActionRunningHook", { value0: event.hookName });
           progress.hookName = event.hookName;
           progress.hookStartedAtMs = now;
           progress.lastOutputLine = null;
@@ -547,7 +550,7 @@ export default function GitActionsControl({
           progress.lastOutputLine = event.text;
           break;
         case "hook_finished":
-          progress.title = progress.currentPhaseLabel ?? "Committing...";
+          progress.title = progress.currentPhaseLabel ?? t("git:gitActionCommitting");
           progress.hookName = null;
           progress.hookStartedAtMs = null;
           progress.lastOutputLine = null;
@@ -565,7 +568,7 @@ export default function GitActionsControl({
     };
 
     return api.git.onActionProgress(applyProgressEvent);
-  }, [gitCwd, updateActiveProgressToast]);
+  }, [gitCwd, t, updateActiveProgressToast]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -585,7 +588,7 @@ export default function GitActionsControl({
     if (!api) {
       toastManager.add({
         type: "error",
-        title: gitCopy.toast.linkUnavailable,
+        title: t("git:linkOpeningIsUnavailable"),
         data: threadToastData,
       });
       return;
@@ -594,7 +597,7 @@ export default function GitActionsControl({
     if (!prUrl) {
       toastManager.add({
         type: "error",
-        title: gitCopy.toast.noOpenPr,
+        title: t("git:noOpenPRFound"),
         data: threadToastData,
       });
       return;
@@ -602,12 +605,12 @@ export default function GitActionsControl({
     void api.shell.openExternal(prUrl).catch((err) => {
       toastManager.add({
         type: "error",
-        title: gitCopy.toast.prLinkFailed,
-        description: err instanceof Error ? err.message : gitCopy.toast.genericError,
+        title: t("git:toast_unableToOpenPrLink"),
+        description: err instanceof Error ? err.message : t("common:proposedPlan_unknownError"),
         data: threadToastData,
       });
     });
-  }, [gitCopy, gitStatusForActions, threadToastData]);
+  }, [gitStatusForActions, threadToastData, t]);
 
   // Single entry point for every "Create PR" surface: opens the PR dialog when a
   // PR can be created, opens the existing PR when one is already open, and
@@ -624,6 +627,7 @@ export default function GitActionsControl({
         isDefaultBranch: input?.isDefaultBranchOverride ?? isDefaultBranch,
         hasOriginRemote,
         defaultBranchName,
+        translate: t,
       });
       if (execution.kind === "open_pr") {
         void openExistingPr();
@@ -632,7 +636,7 @@ export default function GitActionsControl({
       if (execution.kind === "unavailable") {
         toastManager.add({
           type: "info",
-          title: "Create PR unavailable",
+          title: t("git:createPRUnavailable"),
           description: execution.hint,
           data: threadToastData,
         });
@@ -652,6 +656,7 @@ export default function GitActionsControl({
       isGitActionRunning,
       openExistingPr,
       threadToastData,
+      t,
     ],
   );
 
@@ -661,7 +666,7 @@ export default function GitActionsControl({
       if (!api || !gitCwd || !headBranch) {
         toastManager.add({
           type: "error",
-          title: "Unable to open compare page.",
+          title: t("git:unableToOpenComparePage2"),
           data: threadToastData,
         });
         return;
@@ -672,8 +677,8 @@ export default function GitActionsControl({
         if (!repoUrl) {
           toastManager.add({
             type: "error",
-            title: "Unable to open compare page",
-            description: "No GitHub repository detected for this project.",
+            title: t("git:unableToOpenComparePage"),
+            description: t("git:noGitHubRepositoryDetectedForThisProject"),
             data: threadToastData,
           });
           return;
@@ -684,38 +689,40 @@ export default function GitActionsControl({
       } catch (error) {
         toastManager.add({
           type: "error",
-          title: "Unable to open compare page",
-          description: error instanceof Error ? error.message : "An error occurred.",
+          title: t("git:unableToOpenComparePage"),
+          description:
+            error instanceof Error ? error.message : t("common:proposedPlan_unknownError"),
           data: threadToastData,
         });
       }
     },
-    [gitCwd, threadToastData],
+    [gitCwd, threadToastData, t],
   );
 
   const runSyncWithRemote = useCallback(() => {
     const promise = pullMutation.mutateAsync();
     toastManager.promise(promise, {
-      loading: { title: gitCopy.toast.syncing, data: threadToastData },
+      loading: { title: t("git:syncingWithRemote"), data: threadToastData },
       success: (result) => ({
-        title: result.status === "pulled" ? gitCopy.toast.synced : gitCopy.toast.alreadySynced,
+        title:
+          result.status === "pulled" ? t("git:remoteSynced") : t("git:providerUpdates_unchanged"),
         description:
           result.status === "pulled"
-            ? gitCopy.toast.syncedFrom(
-                result.branch,
-                result.upstreamBranch ?? gitCopy.toast.upstreamFallback,
-              )
-            : gitCopy.toast.alreadySyncedDetail(result.branch),
+            ? t("git:updatedFrom", {
+                value0: result.branch,
+                value1: result.upstreamBranch ?? t("git:upstream"),
+              })
+            : t("git:isAlreadySynchronized", { value0: result.branch }),
         data: threadToastData,
       }),
       error: (err) => ({
-        title: gitCopy.toast.syncFailed,
-        description: err instanceof Error ? err.message : gitCopy.toast.genericError,
+        title: t("git:syncFailed"),
+        description: err instanceof Error ? err.message : t("common:proposedPlan_unknownError"),
         data: threadToastData,
       }),
     });
     void promise.catch(() => undefined);
-  }, [gitCopy, pullMutation, threadToastData]);
+  }, [pullMutation, threadToastData, t]);
 
   const runGitActionWithToast = useCallback(
     async function runGitActionWithToast({
@@ -772,12 +779,13 @@ export default function GitActionsControl({
           isDefaultBranch: actionIsDefaultBranch,
           hasOriginRemote,
           defaultBranchName,
+          translate: t,
         });
         if (!createPrAvailability.canRun) {
           toastManager.add({
             type: "info",
-            title: gitCopy.toast.createPrUnavailable,
-            description: createPrAvailability.hint ?? gitCopy.hints.noBranchChangesForPr,
+            title: t("git:createPRUnavailable"),
+            description: createPrAvailability.hint ?? t("git:noBranchChangesToIncludeInAPR"),
             data: threadToastData,
           });
           return;
@@ -792,6 +800,7 @@ export default function GitActionsControl({
         forcePushOnly: forcePushOnlyProgress,
         featureBranch,
         shouldPushBeforePr,
+        translate: t,
       });
       const actionId = randomUUID();
       const diagnosticStartedAt = performance.now();
@@ -799,8 +808,8 @@ export default function GitActionsControl({
         progressToastId ??
         toastManager.add({
           type: "loading",
-          title: progressStages[0] ?? gitCopy.progress.running,
-          description: gitCopy.progress.waiting,
+          title: progressStages[0] ?? t("git:runningGitAction"),
+          description: t("git:waitingForGit"),
           timeout: 0,
           data: threadToastData,
         });
@@ -808,12 +817,12 @@ export default function GitActionsControl({
       const actionProgress: ActiveGitActionProgress = {
         toastId: resolvedProgressToastId,
         actionId,
-        title: progressStages[0] ?? gitCopy.progress.running,
+        title: progressStages[0] ?? t("git:runningGitAction"),
         phaseStartedAtMs: null,
         hookStartedAtMs: null,
         hookName: null,
         lastOutputLine: null,
-        currentPhaseLabel: progressStages[0] ?? gitCopy.progress.running,
+        currentPhaseLabel: progressStages[0] ?? t("git:runningGitAction"),
         phase: null,
       };
       activeGitActionProgressRef.current = actionProgress;
@@ -821,8 +830,8 @@ export default function GitActionsControl({
       if (progressToastId) {
         toastManager.update(progressToastId, {
           type: "loading",
-          title: progressStages[0] ?? gitCopy.progress.running,
-          description: gitCopy.progress.waiting,
+          title: progressStages[0] ?? t("git:runningGitAction"),
+          description: t("git:waitingForGit"),
           timeout: 0,
           data: threadToastData,
         });
@@ -845,7 +854,7 @@ export default function GitActionsControl({
         if (activeGitActionProgressRef.current === actionProgress) {
           activeGitActionProgressRef.current = null;
         }
-        const resultToast = summarizeGitResult(result);
+        const resultToast = summarizeGitResult(result, t);
         const persistedPr =
           result.pr.status === "created" || result.pr.status === "opened_existing"
             ? result.pr.number &&
@@ -903,6 +912,7 @@ export default function GitActionsControl({
             isDefaultBranch: actionIsDefaultBranch,
             hasOriginRemote,
             defaultBranchName,
+            translate: t,
           }).kind === "run_action";
         const closeResultToast = () => {
           toastManager.close(resolvedProgressToastId);
@@ -920,7 +930,7 @@ export default function GitActionsControl({
           ...(shouldOfferPushCta
             ? {
                 actionProps: {
-                  children: gitCopy.actions.push,
+                  children: t("git:gitActionPush"),
                   onClick: () => {
                     void runGitActionWithToast({
                       action: "push",
@@ -934,7 +944,7 @@ export default function GitActionsControl({
             : shouldOfferOpenPrCta
               ? {
                   actionProps: {
-                    children: gitCopy.actions.viewPr,
+                    children: t("git:viewPR"),
                     onClick: () => {
                       const api = readNativeApi();
                       if (!api) return;
@@ -946,7 +956,7 @@ export default function GitActionsControl({
               : shouldOfferCreatePrCta
                 ? {
                     actionProps: {
-                      children: gitCopy.actions.createPr,
+                      children: t("git:createPR"),
                       onClick: () => {
                         closeResultToast();
                         openCreatePrDialog({
@@ -967,9 +977,10 @@ export default function GitActionsControl({
         const failureToast = buildGitActionFailureToast({
           message:
             actionProgress.failure?.message ??
-            (err instanceof Error ? err.message : gitCopy.toast.genericError),
+            (err instanceof Error ? err.message : t("common:proposedPlan_unknownError")),
           phase: actionProgress.failure?.phase ?? actionProgress.phase,
           threadId: activeThreadId,
+          translate: t,
         });
         toastManager.update(resolvedProgressToastId, failureToast);
         reportToastIssue(
@@ -984,7 +995,6 @@ export default function GitActionsControl({
       }
     },
     [
-      gitCopy,
       activeThreadId,
       defaultBranchName,
       gitStatusForActions,
@@ -994,6 +1004,7 @@ export default function GitActionsControl({
       persistThreadPr,
       runImmediateGitActionMutation,
       threadToastData,
+      t,
     ],
   );
 
@@ -1046,7 +1057,7 @@ export default function GitActionsControl({
       if (preparation.kind === "unavailable") {
         toastManager.add({
           type: "info",
-          title: "Create PR unavailable",
+          title: t("git:createPRUnavailable"),
           description: preparation.hint,
           data: threadToastData,
         });
@@ -1085,6 +1096,7 @@ export default function GitActionsControl({
       openExistingPr,
       runGitActionWithToast,
       threadToastData,
+      t,
     ],
   );
 
@@ -1251,8 +1263,8 @@ export default function GitActionsControl({
         }
         toastManager.add({
           type: "success",
-          title: gitCopy.toast.keepingBranch(trimmedName),
-          description: gitCopy.toast.branchNameConfirmed,
+          title: t("git:keeping", { value0: trimmedName }),
+          description: t("git:branchNameConfirmed"),
           data: threadToastData,
         });
         return;
@@ -1260,7 +1272,7 @@ export default function GitActionsControl({
 
       const toastId = toastManager.add({
         type: "loading",
-        title: gitCopy.toast.creatingBranch,
+        title: t("git:creatingBranch"),
         timeout: 0,
         data: threadToastData,
       });
@@ -1296,21 +1308,21 @@ export default function GitActionsControl({
 
         toastManager.update(toastId, {
           type: "success",
-          title: gitCopy.toast.switchedToBranch(trimmedName),
-          description: gitCopy.toast.branchCreated,
+          title: t("git:switchedTo", { value0: trimmedName }),
+          description: t("git:branchCreatedAndCheckedOut"),
           data: threadToastData,
         });
       } catch (error) {
         toastManager.update(toastId, {
           type: "error",
-          title: gitCopy.toast.createBranchFailed,
-          description: error instanceof Error ? error.message : gitCopy.toast.genericError,
+          title: t("git:failedToCreateBranch"),
+          description:
+            error instanceof Error ? error.message : t("common:proposedPlan_unknownError"),
           data: threadToastData,
         });
       }
     },
     [
-      gitCopy,
       activeThread?.worktreePath,
       activeThreadId,
       gitCwd,
@@ -1319,6 +1331,7 @@ export default function GitActionsControl({
       queryClient,
       setThreadWorkspaceAction,
       threadToastData,
+      t,
     ],
   );
 
@@ -1370,7 +1383,7 @@ export default function GitActionsControl({
     const pullAvailability = resolvePullActionAvailability({
       gitStatus: gitStatusForActions,
       isBusy: isGitActionRunning,
-      copy: gitCopy,
+      translate: t,
     });
 
     if (commitMenuItem) {
@@ -1383,7 +1396,7 @@ export default function GitActionsControl({
           gitStatus: gitStatusForActions,
           isBusy: isGitActionRunning,
           hasOriginRemote,
-          copy: gitCopy,
+          translate: t,
           isDefaultBranch,
           defaultBranchName,
         }),
@@ -1402,7 +1415,7 @@ export default function GitActionsControl({
           gitStatus: gitStatusForActions,
           isBusy: isGitActionRunning,
           hasOriginRemote,
-          copy: gitCopy,
+          translate: t,
           isDefaultBranch,
           defaultBranchName,
         }),
@@ -1413,7 +1426,7 @@ export default function GitActionsControl({
 
     items.push({
       id: "sync",
-      label: gitCopy.actions.pull,
+      label: t("git:pull"),
       disabled: !pullAvailability.canRun,
       disabledReason: pullAvailability.hint,
       icon: "sync",
@@ -1430,7 +1443,7 @@ export default function GitActionsControl({
           gitStatus: gitStatusForActions,
           isBusy: isGitActionRunning,
           hasOriginRemote,
-          copy: gitCopy,
+          translate: t,
           isDefaultBranch,
           defaultBranchName,
         }),
@@ -1449,7 +1462,7 @@ export default function GitActionsControl({
           gitStatus: gitStatusForActions,
           isBusy: isGitActionRunning,
           hasOriginRemote,
-          copy: gitCopy,
+          translate: t,
           isDefaultBranch,
           defaultBranchName,
         }),
@@ -1460,12 +1473,12 @@ export default function GitActionsControl({
 
     items.push({
       id: "create_branch",
-      label: gitCopy.actions.createBranch,
+      label: t("common:createBranch"),
       disabled: createBranchDisabled,
       disabledReason: createBranchDisabled
         ? isGitActionRunning
-          ? gitCopy.hints.busy
-          : gitCopy.hints.noStatus
+          ? t("git:gitActionBusy")
+          : t("git:waitingForGit")
         : null,
       icon: "branch",
       onSelect: openCreateBranchDialog,
@@ -1473,7 +1486,6 @@ export default function GitActionsControl({
 
     return items;
   }, [
-    gitCopy,
     defaultBranchName,
     gitActionMenuItems,
     gitStatusForActions,
@@ -1483,6 +1495,7 @@ export default function GitActionsControl({
     openCreateBranchDialog,
     openDialogForMenuItem,
     runSyncWithRemote,
+    t,
   ]);
 
   const openChangedFileInEditor = useCallback(
@@ -1491,7 +1504,7 @@ export default function GitActionsControl({
       if (!api || !gitCwd) {
         toastManager.add({
           type: "error",
-          title: gitCopy.toast.editorUnavailable,
+          title: t("git:editorOpeningIsUnavailable"),
           data: threadToastData,
         });
         return;
@@ -1500,13 +1513,14 @@ export default function GitActionsControl({
       void openInPreferredEditor(api, target).catch((error) => {
         toastManager.add({
           type: "error",
-          title: gitCopy.toast.openFileFailed,
-          description: error instanceof Error ? error.message : gitCopy.toast.genericError,
+          title: t("git:unableToOpenFile"),
+          description:
+            error instanceof Error ? error.message : t("common:proposedPlan_unknownError"),
           data: threadToastData,
         });
       });
     },
-    [gitCopy, gitCwd, threadToastData],
+    [gitCwd, threadToastData, t],
   );
 
   if (!gitCwd) return null;
@@ -1514,6 +1528,7 @@ export default function GitActionsControl({
   const promotedPull = resolvePromotedPullPresentation({
     quickAction,
     isPullRunning,
+    translate: t,
   });
   const showPromotedPullAction = promotedPull !== null;
   if (visibleWhen === "pull-available") {
@@ -1559,7 +1574,7 @@ export default function GitActionsControl({
   const gitMenuContent = (
     <>
       <MenuGroup>
-        <MenuGroupLabel>{gitCopy.actions.menu}</MenuGroupLabel>
+        <MenuGroupLabel>{t("git:gitActions")}</MenuGroupLabel>
         {gitPickerMenuItems.map((item) => {
           const menuRow = <GitPickerMenuRow item={item} />;
           if (item.disabled && item.disabledReason) {
@@ -1590,28 +1605,34 @@ export default function GitActionsControl({
         isGitStatusOutOfSync ||
         gitStatusError) && <MenuSeparator className="mx-3 mt-2" />}
       {gitStatusForActions?.branch === null && (
-        <p className="px-3 py-1.5 text-xs text-warning">{gitCopy.commitDialog.detachedHint}</p>
+        <p className="px-3 py-1.5 text-ui leading-snug text-warning">
+          {t("git:detachedHEADCreateAndCheckoutABranchToEnable")}
+        </p>
       )}
       {gitStatusForActions &&
         gitStatusForActions.branch !== null &&
         !gitStatusForActions.hasWorkingTreeChanges &&
         gitStatusForActions.behindCount > 0 &&
         gitStatusForActions.aheadCount === 0 && (
-          <p className="px-3 py-1.5 text-xs text-warning">{gitCopy.commitDialog.behindUpstream}</p>
+          <p className="px-3 py-1.5 text-ui leading-snug text-warning">
+            {t("git:behindUpstreamPullRebaseFirst")}
+          </p>
         )}
       {isGitStatusOutOfSync && (
-        <p className="px-3 py-1.5 text-xs text-muted-foreground">
-          {gitCopy.commitDialog.refreshing}
+        <p className="px-3 py-1.5 text-ui leading-snug text-muted-foreground">
+          {t("git:refreshingGitStatus")}
         </p>
       )}
       {isGitStatusRefreshDelayed && !isGitStatusOutOfSync && (
         <p className="px-3 py-1.5 text-ui leading-snug text-muted-foreground">
-          {isGitStatusFetching ? "Refreshing git status..." : "Git status refresh delayed."}
+          {isGitStatusFetching ? t("git:refreshingGitStatus") : t("git:gitStatusRefreshDelayed")}
         </p>
       )}
       {gitStatusError && !isGitStatusRefreshDelayed && (
         <p className="px-3 py-1.5 text-ui leading-snug text-destructive">
-          {gitStatusError instanceof Error ? gitStatusError.message : "Git status refresh failed."}
+          {gitStatusError instanceof Error
+            ? gitStatusError.message
+            : t("git:gitStatusRefreshFailed")}
         </p>
       )}
     </>
@@ -1651,7 +1672,7 @@ export default function GitActionsControl({
         <DialogPopup className="max-w-xl">
           <DialogHeader>
             <DialogTitle>
-              {pendingDefaultBranchActionCopy?.title ?? gitCopy.defaultBranchDialog.runOnDefault}
+              {pendingDefaultBranchActionCopy?.title ?? t("git:runActionOnDefaultBranch")}
             </DialogTitle>
             <DialogDescription>{pendingDefaultBranchActionCopy?.description}</DialogDescription>
           </DialogHeader>
@@ -1662,7 +1683,7 @@ export default function GitActionsControl({
               shape="capsule"
               onClick={() => setPendingDefaultBranchAction(null)}
             >
-              {gitCopy.actions.abort}
+              {t("git:abort")}
             </Button>
             <Button
               variant="outline"
@@ -1672,9 +1693,8 @@ export default function GitActionsControl({
             >
               {pendingDefaultBranchAction &&
               requiresFeatureBranchForDefaultBranchAction(pendingDefaultBranchAction.action)
-                ? gitCopy.defaultBranchDialog.createFeatureBranch
-                : (pendingDefaultBranchActionCopy?.continueLabel ??
-                  gitCopy.defaultBranchDialog.continue)}
+                ? t("git:createFeatureBranchContinue")
+                : (pendingDefaultBranchActionCopy?.continueLabel ?? t("git:continue"))}
             </Button>
             {pendingDefaultBranchAction &&
             !requiresFeatureBranchForDefaultBranchAction(pendingDefaultBranchAction.action) ? (
@@ -1683,7 +1703,7 @@ export default function GitActionsControl({
                 shape="capsule"
                 onClick={checkoutFeatureBranchAndContinuePendingAction}
               >
-                {gitCopy.actions.checkoutFeatureBranch}
+                {t("git:checkoutFeatureBranchContinue")}
               </Button>
             ) : null}
           </DialogFooter>
@@ -1701,8 +1721,8 @@ export default function GitActionsControl({
       >
         <DialogPopup className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{gitCopy.createBranchDialog.title}</DialogTitle>
-            <DialogDescription>{gitCopy.createBranchDialog.description}</DialogDescription>
+            <DialogTitle>{t("common:createBranch")}</DialogTitle>
+            <DialogDescription>{t("git:createAndSwitchToABranchFromTheCurrent")}</DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-3">
             <form
@@ -1717,19 +1737,24 @@ export default function GitActionsControl({
               }}
             >
               <div className="space-y-1.5">
-                <label className="block font-medium text-sm" htmlFor={createBranchNameFieldId}>
-                  {gitCopy.createBranchDialog.nameLabel}
+                <label
+                  className="block font-medium text-ui leading-snug"
+                  htmlFor={createBranchNameFieldId}
+                >
+                  {t("common:branchName")}
                 </label>
                 <Input
                   autoFocus
                   id={createBranchNameFieldId}
-                  placeholder={gitCopy.createBranchDialog.namePlaceholder}
+                  placeholder={t("common:featureMyChange")}
                   value={createBranchName}
                   onChange={(event) => setCreateBranchName(event.target.value)}
                 />
               </div>
               {createBranchNameConflicts ? (
-                <p className="text-destructive text-sm">{gitCopy.createBranchDialog.duplicate}</p>
+                <p className="text-destructive text-ui leading-snug">
+                  {t("common:aBranchWithThisNameAlreadyExists")}
+                </p>
               ) : null}
               <DialogFooter variant="bare">
                 <Button
@@ -1741,14 +1766,14 @@ export default function GitActionsControl({
                     setCreateBranchName("");
                   }}
                 >
-                  {gitCopy.actions.cancel}
+                  {t("common:form_cancel")}
                 </Button>
                 <Button
                   type="submit"
                   size="sm"
                   disabled={createBranchName.trim().length === 0 || createBranchNameConflicts}
                 >
-                  {gitCopy.actions.createBranch}
+                  {t("common:createBranch")}
                 </Button>
               </DialogFooter>
             </form>
@@ -1761,8 +1786,8 @@ export default function GitActionsControl({
   if (isPanel) {
     const showPanelPullRow = showPromotedPullAction;
     const panelPrimaryLabel = showPanelPullRow
-      ? (promotedPull?.label ?? gitCopy.actions.pull)
-      : (runnableCommitPushMenuItem?.label ?? gitCopy.actions.commitAndPush);
+      ? (promotedPull?.label ?? t("git:pull"))
+      : (runnableCommitPushMenuItem?.label ?? t("git:commitAndPush"));
     const panelGitActionsMenu = (
       <Menu
         onOpenChange={(open) => {
@@ -1777,8 +1802,8 @@ export default function GitActionsControl({
                 ENVIRONMENT_ROW_CLASS_NAME,
                 showPanelPullRow && "w-auto shrink-0 px-1.5",
               )}
-              aria-label={showPanelPullRow ? "Git action options" : panelPrimaryLabel}
-              title="Git actions"
+              aria-label={showPanelPullRow ? t("git:gitActionOptions") : panelPrimaryLabel}
+              title={t("git:gitActions")}
             />
           }
         >
@@ -1803,9 +1828,7 @@ export default function GitActionsControl({
         {!isRepo ? (
           <EnvironmentRow
             icon={<GitActionGlyph name="branch" className={ENVIRONMENT_ROW_ICON_CLASS_NAME} />}
-            label={
-              initMutation.isPending ? gitCopy.actions.initializing : gitCopy.actions.initializeGit
-            }
+            label={initMutation.isPending ? t("git:initializing") : t("git:initializeGit")}
             disabled={initMutation.isPending}
             onClick={() => initMutation.mutate()}
           />
@@ -1854,10 +1877,10 @@ export default function GitActionsControl({
           disabled={initMutation.isPending}
           onClick={() => initMutation.mutate()}
         >
-          {initMutation.isPending ? gitCopy.actions.initializing : gitCopy.actions.initializeGit}
+          {initMutation.isPending ? t("git:initializing") : t("git:initializeGit")}
         </Button>
       ) : (
-        <GitSplitGroup label={gitCopy.actions.menu}>
+        <GitSplitGroup label={t("git:gitActions")}>
           {promotedPull ? (
             <Button
               variant={splitVariant}
@@ -1935,7 +1958,7 @@ export default function GitActionsControl({
             <MenuTrigger
               render={
                 <Button
-                  aria-label={gitCopy.actions.menuOptions}
+                  aria-label={t("git:gitActionOptions")}
                   size="icon-xs"
                   variant={splitVariant}
                   className={cn(

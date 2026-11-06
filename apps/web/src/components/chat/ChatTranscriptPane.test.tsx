@@ -82,9 +82,8 @@ describe("ChatTranscriptPane", () => {
     });
 
     expect(markup).toContain('data-agent-activity-detail="true"');
-    expect(markup).toContain("Back");
     expect(markup).toContain("Checked the sidebar issue.");
-    expect(markup).not.toContain("Scroll to bottom");
+    expect(markup.match(/<button\b/g) ?? []).toHaveLength(1);
     // The timeline is hidden and inert rather than unmounted, so Back does not rebuild it.
     expect(markup).toContain('aria-hidden="true" inert=""');
     expect(markup).not.toContain('inert=""><div data-agent-activity-detail');

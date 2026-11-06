@@ -1,3 +1,4 @@
+import { ChatComputerLabel } from "../hosts/ComputerPicker";
 // FILE: ChatHeader.tsx
 // Purpose: Renders the chat top bar with project actions and panel toggles.
 // Layer: Chat shell header
@@ -67,10 +68,10 @@ import { useOpenFavoriteEditorShortcut } from "~/hooks/useOpenFavoriteEditorShor
 import type { RepoDiffTotals } from "~/hooks/useRepoDiffTotals";
 import { ProviderIcon } from "../ProviderIcon";
 import { ProviderUsageMenuControl } from "../ProviderUsageMenuControl";
-import { useMessages } from "~/i18n/context";
 import { EnvironmentToggle, type EnvironmentToggleState } from "./environment/EnvironmentToggle";
 import { SurfacePanelToggle, type SurfacePanelToggleState } from "./chatHeaderControls";
 import type { ThreadHandoffTarget } from "~/lib/threadHandoff";
+import { useTranslation } from "~/i18n";
 
 /**
  * Width (px) below which collapsible header controls drop their text labels and
@@ -180,7 +181,7 @@ function EditorChatHistoryMenu(props: {
   activeThreadId: ThreadId;
   onNavigateToThread: (threadId: ThreadId) => void;
 }) {
-  const m = useMessages();
+  const { t, formatLocale } = useTranslation();
   const { settings } = useAppSettings();
   const selectDisplayThreads = createSidebarDisplayThreadsSelector({
     hideAutomationRunThreads: !settings.showAutomationRunThreads,
@@ -199,8 +200,8 @@ function EditorChatHistoryMenu(props: {
           <IconButton
             variant="ghost"
             size="icon-xs"
-            label={m.chat.header.chatHistory}
-            title={m.chat.header.chatHistory}
+            label={t("chat:header_chatHistory")}
+            title={t("chat:header_chatHistory")}
             className="size-5 shrink-0 text-muted-foreground hover:text-foreground"
           >
             <HistoryIcon className="size-3.5" />
@@ -209,7 +210,7 @@ function EditorChatHistoryMenu(props: {
       />
       <ComposerPickerMenuPopup align="start" side="bottom" sideOffset={6} className="w-72 min-w-72">
         {historyThreads.length === 0 ? (
-          <MenuItem disabled>{m.chat.header.noChatsInProject}</MenuItem>
+          <MenuItem disabled>{t("chat:header_noChatsInProject")}</MenuItem>
         ) : (
           historyThreads.map((thread) => (
             <MenuItem
@@ -230,7 +231,11 @@ function EditorChatHistoryMenu(props: {
                 <CheckIcon className="size-3.5 shrink-0 text-muted-foreground" />
               ) : (
                 <span className="shrink-0 text-ui-xs text-muted-foreground tabular-nums">
-                  {formatRelativeTime(thread.updatedAt ?? thread.createdAt)}
+                  {formatRelativeTime(
+                    thread.updatedAt ?? thread.createdAt,
+                    undefined,
+                    formatLocale,
+                  )}
                 </span>
               )}
             </MenuItem>
@@ -253,7 +258,7 @@ function EditorRailTabs(props: {
   onOpenTerminal: () => void;
   onCloseTerminal: () => void;
 }) {
-  const m = useMessages();
+  const { t } = useTranslation();
   // The rail's chat tabs are this project's slice of the app-wide open threads, so a chat
   // opened or closed here is opened or closed in the chat header strip too.
   useRecordOpenThreadTab(props.activeSurface === "chat" ? props.activeThreadId : null);
@@ -343,8 +348,8 @@ function EditorRailTabs(props: {
               <IconButton
                 variant="ghost"
                 size="icon-xs"
-                label={m.chat.header.newEditorRailItem}
-                title="New"
+                label={t("chat:header_newEditorRailItem")}
+                title={t("chat:header_new")}
                 className="size-5 shrink-0 text-muted-foreground hover:text-foreground"
               >
                 <PlusIcon className="size-3.5" />
@@ -359,11 +364,11 @@ function EditorRailTabs(props: {
           >
             <MenuItem onClick={props.onNewChat}>
               <MessageCircleIcon className="size-3.5 shrink-0 text-muted-foreground" />
-              <span>{m.chat.header.newChat}</span>
+              <span>{t("workspace:sections_newChat")}</span>
             </MenuItem>
             <MenuItem onClick={newTerminalTab}>
               <TerminalIcon className="size-3.5 shrink-0 text-muted-foreground" />
-              <span>{m.chat.header.newTerminal}</span>
+              <span>{t("chat:workspace_newTerminalButton")}</span>
             </MenuItem>
           </ComposerPickerMenuPopup>
         </Menu>
@@ -383,7 +388,7 @@ function EditorRailTabs(props: {
               key={thread.threadId}
               active={thread.threadId === shownTabKey}
               title={thread.title}
-              label={`Chat ${index + 1}`}
+              label={t("chat:chat", { value0: index + 1 })}
               labelClassName="max-w-24"
               icon={
                 <ProviderIcon
@@ -392,7 +397,7 @@ function EditorRailTabs(props: {
                   className="size-3 shrink-0"
                 />
               }
-              closeLabel={`Close ${thread.title}`}
+              closeLabel={t("common:closeNamedItem", { title: thread.title })}
               onSelect={() => selectChatTab(thread.threadId)}
               onClose={() => closeChatTab(thread.threadId)}
             />
@@ -400,8 +405,8 @@ function EditorRailTabs(props: {
           {terminalTabVisible ? (
             <SurfaceTabChip
               active={shownTabKey === "terminal"}
-              title={m.chat.header.terminal}
-              label={m.chat.header.terminal}
+              title={t("workspace:viewportPane_terminal")}
+              label={t("workspace:viewportPane_terminal")}
               labelClassName="max-w-24"
               icon={<TerminalIcon className="size-3 shrink-0 text-[var(--color-text-accent)]" />}
               trailing={
@@ -410,7 +415,7 @@ function EditorRailTabs(props: {
                 ) : null
               }
               onSelect={openTerminalTab}
-              closeLabel="Close Terminal"
+              closeLabel={t("workspace:closeTerminal")}
               onClose={closeTerminalTab}
             />
           ) : null}
@@ -487,7 +492,7 @@ export function ChatHeader({
   onRenameThread,
   onCloseThreadPane,
 }: ChatHeaderProps) {
-  const m = useMessages();
+  const { t } = useTranslation();
   const hideSidebarControls = hideSidebarControlsProp ?? false;
   const hideHandoffControls = hideHandoffControlsProp ?? false;
   const showHandoffAction = showHandoffActionProp ?? true;
@@ -562,7 +567,7 @@ export function ChatHeader({
             pressed={togglesRightDock ? rightDockOpen : diffOpen}
             onPressedChange={togglesRightDock ? onToggleRightDock : onToggleDiff}
             aria-label={
-              togglesRightDock ? m.chat.header.toggleRightSidebar : m.chat.header.toggleDiffPanel
+              togglesRightDock ? t("chat:toggleRightSidebar") : t("chat:header_toggleDiffPanel")
             }
             variant="default"
             size="xs"
@@ -591,15 +596,15 @@ export function ChatHeader({
       <TooltipPopup side="bottom">
         {togglesRightDock
           ? rightDockOpen
-            ? "Close right sidebar"
-            : "Open right sidebar"
+            ? t("chat:closeRightSidebar")
+            : t("chat:openRightSidebar")
           : !isGitRepo
-            ? "Diff panel is unavailable because this project is not a git repository."
+            ? t("chat:header_diffPanelUnavailable")
             : diffDisabledReason && !diffOpen
               ? diffDisabledReason
               : diffToggleShortcutLabel
-                ? `Toggle diff panel (${diffToggleShortcutLabel})`
-                : "Toggle diff panel"}
+                ? t("chat:toggleDiffPanel", { value0: diffToggleShortcutLabel })
+                : t("chat:header_toggleDiffPanel")}
       </TooltipPopup>
     </Tooltip>
   ) : null;
@@ -656,6 +661,7 @@ export function ChatHeader({
               </div>
             ) : null}
             {threadTabs}
+            <ChatComputerLabel />
           </div>
         ) : (
           <div
@@ -691,7 +697,7 @@ export function ChatHeader({
                       className="inline-flex size-3.5 shrink-0 items-center justify-center"
                       title={
                         threadIconKind === "terminal"
-                          ? m.chat.header.terminal
+                          ? t("workspace:viewportPane_terminal")
                           : PROVIDER_DISPLAY_NAMES[activeProvider]
                       }
                     >
@@ -709,12 +715,13 @@ export function ChatHeader({
                   >
                     {activeThreadTitle}
                   </h2>
+                  <ChatComputerLabel />
                   {showSidechatTitleChip && !isSplitPane && onCloseThreadPane ? (
                     <IconButton
                       variant="chrome"
                       size="icon-xs"
-                      label="Close selected Side"
-                      tooltip="Close selected Side"
+                      label={t("chat:header_closeSelectedSide")}
+                      tooltip={t("chat:header_closeSelectedSide")}
                       tooltipSide="bottom"
                       className="size-5 rounded-lg [-webkit-app-region:no-drag] [&_svg]:size-3"
                       onClick={(event) => {
@@ -777,7 +784,7 @@ export function ChatHeader({
                   >
                     <HandoffIcon className="size-[1em] shrink-0 opacity-80" />
                     {!compact ? (
-                      <span className="truncate font-normal">{m.chat.header.handOff}</span>
+                      <span className="truncate font-normal">{t("common:header_handOff")}</span>
                     ) : null}
                   </MenuTrigger>
                 }
@@ -788,7 +795,7 @@ export function ChatHeader({
               {continueHandoffActionTargets.length > 0 ? (
                 <>
                   <MenuGroup>
-                    <MenuGroupLabel>{m.chat.header.continueHere}</MenuGroupLabel>
+                    <MenuGroupLabel>{t("chat:continueInThisThread")}</MenuGroupLabel>
                     {continueHandoffActionTargets.map((target) => (
                       <MenuItem
                         key={target.instanceId}
@@ -805,7 +812,7 @@ export function ChatHeader({
                 </>
               ) : null}
               <MenuGroup>
-                <MenuGroupLabel>{m.chat.header.continueNewThread}</MenuGroupLabel>
+                <MenuGroupLabel>{t("chat:continueInANewThread")}</MenuGroupLabel>
                 {handoffActionTargets.map((target) => (
                   <MenuItem
                     key={target.instanceId}
@@ -862,16 +869,16 @@ export function ChatHeader({
               <SurfacePanelToggle
                 state={projectPanel}
                 icon={WorkflowIcon}
-                ariaLabel="Toggle hub panel"
-                tooltip="Hub"
+                ariaLabel={t("chat:toggleHubPanel")}
+                tooltip={t("workspace:hub")}
               />
             ) : null}
             {libraryPanel ? (
               <SurfacePanelToggle
                 state={libraryPanel}
                 icon={FoldersIcon}
-                ariaLabel="Toggle library panel"
-                tooltip="Library"
+                ariaLabel={t("chat:toggleLibraryPanel")}
+                tooltip={t("chat:library")}
               />
             ) : null}
             {rightPanelToggleControl}
@@ -906,7 +913,7 @@ export function ChatHeader({
                 <ChatHeaderIconButton
                   type="button"
                   tone="surface"
-                  label="Close chat"
+                  label={t("chat:closeChat")}
                   onMouseDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -917,7 +924,7 @@ export function ChatHeader({
                 </ChatHeaderIconButton>
               }
             />
-            <TooltipPopup side="bottom">Close chat</TooltipPopup>
+            <TooltipPopup side="bottom">{t("chat:closeChat")}</TooltipPopup>
           </Tooltip>
         ) : null}
       </div>

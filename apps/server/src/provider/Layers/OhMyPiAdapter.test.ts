@@ -1,7 +1,7 @@
 import { NodeServices } from "@effect/platform-node";
 import type * as Acp from "@agentclientprotocol/sdk";
-import type { ProviderRuntimeEvent } from "@synara/contracts";
-import { Deferred, Effect, Layer, PubSub, Scope, Stream } from "effect";
+import { ApprovalRequestId, ThreadId, type ProviderRuntimeEvent } from "@synara/contracts";
+import { Deferred, Effect, Layer, Option, PubSub, Scope, Stream } from "effect";
 import { appendFileSync, chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,8 +17,9 @@ import type { AcpParsedSessionEvent } from "../acp/AcpRuntimeModel.ts";
 import type {
   AcpSessionRuntimeShape,
   AcpSessionRuntimeStartResult,
+  SessionEpoch,
 } from "../acp/AcpSessionRuntime.ts";
-import { OH_MY_PI_ACP_17_3_3_FIXTURE } from "../acp/fixtures/ohMyPiAcp17_3_3.ts";
+import { makeOhMyPiAcpRuntimeFixtures } from "../acp/fixtures/ohMyPiAcp17_3_3.ts";
 import type { OhMyPiAcpRuntimeInput } from "../acp/OhMyPiAcpSupport.ts";
 import { OMP_EXTENSION_EVENTS, OMP_EXTENSION_METHODS } from "../omp/OmpExtensionProtocol.ts";
 import { OhMyPiAdapter } from "../Services/OhMyPiAdapter.ts";
@@ -26,6 +27,15 @@ import { makeOhMyPiAdapterLive, unknownOmpExtensionNotificationMethod } from "./
 
 type PermissionHandler = Parameters<AcpSessionRuntimeShape["handleRequestPermission"]>[0];
 type ElicitationHandler = Parameters<AcpSessionRuntimeShape["handleElicitation"]>[0];
+
+const asThreadId = (value: string): ThreadId => ThreadId.makeUnsafe(value);
+
+const {
+  initializeResponse: fixtureInitializeResponse,
+  sessionNewResponse: fixtureNewSessionResponse,
+  configOptions: fixtureConfigOptions,
+  modes: fixtureModes,
+} = makeOhMyPiAcpRuntimeFixtures();
 
 interface FakeRuntimeState {
   readonly inputs: OhMyPiAcpRuntimeInput[];
@@ -99,16 +109,20 @@ function makeFakeRuntimeFactory(state: FakeRuntimeState) {
         if (!handler) throw new Error(`Missing extension handler for ${method}`);
         await Effect.runPromise(handler(extensionEnvelope(data)));
       };
-      let configOptions = [
-        ...(OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse
-          .configOptions as unknown as ReadonlyArray<Acp.SessionConfigOption>),
-      ];
-      const modes = OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse
-        .modes as unknown as Acp.SessionModeState;
+      let configOptions = [...fixtureConfigOptions];
+      const modes = fixtureModes;
+      let sessionEpoch: SessionEpoch = {
+        generation: 0,
+        activeSessionId: Option.none(),
+      };
       yield* Scope.addFinalizer(
         scope,
         Effect.sync(() => {
           state.closed += 1;
+          sessionEpoch = {
+            generation: sessionEpoch.generation + 1,
+            activeSessionId: Option.none(),
+          };
         }).pipe(Effect.andThen(Deferred.succeed(exit, undefined)), Effect.asVoid),
       );
       const register = (name: string, assign?: () => void) =>
@@ -152,24 +166,35 @@ function makeFakeRuntimeFactory(state: FakeRuntimeState) {
                     errorMessage: "resume failed",
                   }),
                 )
-              : Effect.succeed({
-                  sessionId: input.resumeSessionId ?? "omp-session-new",
-                  initializeResult:
-                    OH_MY_PI_ACP_17_3_3_FIXTURE.initializeResponse as unknown as Acp.InitializeResponse,
-                  sessionSetupResult:
-                    OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse as unknown as Acp.NewSessionResponse,
-                  modelConfigId: "model",
-                  sessionSetupMethod:
-                    state.setupMethod ?? (input.resumeSessionId ? "resume" : "new"),
-                } satisfies AcpSessionRuntimeStartResult),
+              : Effect.sync(() => {
+                  const sessionId = input.resumeSessionId ?? "omp-session-new";
+                  sessionEpoch = {
+                    generation: sessionEpoch.generation + 1,
+                    activeSessionId: Option.some(sessionId),
+                  };
+                  return {
+                    sessionId,
+                    initializeResult: fixtureInitializeResponse,
+                    sessionSetupResult: fixtureNewSessionResponse,
+                    modelConfigId: "model",
+                    sessionSetupMethod:
+                      state.setupMethod ?? (input.resumeSessionId ? "resume" : "new"),
+                  } satisfies AcpSessionRuntimeStartResult;
+                }),
         awaitExit: Deferred.await(exit),
         getEvents: () => Stream.fromPubSub(events),
         sessionUpdatesEnqueuedCount: Effect.sync(() => state.enqueued),
         supportsSessionFork: Effect.succeed(false),
-        getModeState: Effect.succeed({
-          currentModeId: modes.currentModeId,
-          availableModes: modes.availableModes,
-        }),
+        supportsSessionRecovery: Effect.succeed(
+          fixtureInitializeResponse.agentCapabilities?.sessionCapabilities?.resume != null ||
+            fixtureInitializeResponse.agentCapabilities?.loadSession === true,
+        ),
+        // This fixture has no session/load replay gate or pre-start notification buffer.
+        awaitLoadReplayReady: Effect.void,
+        getModeState: Effect.succeed(modes),
+        getSessionEpoch: () => Effect.sync(() => sessionEpoch),
+        // This fake publishes parsed events directly and has no pre-start notification buffer.
+        getPendingSessionNotificationCount: () => Effect.succeed(0),
         getConfigOptions: Effect.sync(() => configOptions),
         getAvailableCommands: Effect.succeed([
           { name: "compact", description: "Compact the current session" },
@@ -432,7 +457,7 @@ describe("OhMyPiAdapter", () => {
       Effect.gen(function* () {
         const adapter = yield* OhMyPiAdapter;
         yield* adapter.startSession({
-          threadId: "thread-omp-native-launch",
+          threadId: asThreadId("thread-omp-native-launch"),
           provider: "omp",
           cwd: process.cwd(),
           runtimeMode: "approval-required",
@@ -465,7 +490,7 @@ describe("OhMyPiAdapter", () => {
           supportsLiveTurnDiffPatch: false,
         });
         const session = yield* adapter.startSession({
-          threadId: "thread-omp-1",
+          threadId: asThreadId("thread-omp-1"),
           provider: "omp",
           cwd: process.cwd(),
           runtimeMode: "approval-required",
@@ -493,13 +518,13 @@ describe("OhMyPiAdapter", () => {
           { id: "thinking", value: "max" },
         ]);
 
-        yield* adapter.sendTurn({ threadId: "thread-omp-1", input: "hello" });
-        while ((yield* adapter.readThread("thread-omp-1")).turns.length === 0) {
+        yield* adapter.sendTurn({ threadId: asThreadId("thread-omp-1"), input: "hello" });
+        while ((yield* adapter.readThread(asThreadId("thread-omp-1"))).turns.length === 0) {
           yield* Effect.sleep(5);
         }
         expect(state.prompts).toBe(1);
-        yield* adapter.stopSession("thread-omp-1");
-        expect(yield* adapter.hasSession("thread-omp-1")).toBe(false);
+        yield* adapter.stopSession(asThreadId("thread-omp-1"));
+        expect(yield* adapter.hasSession(asThreadId("thread-omp-1"))).toBe(false);
         expect(state.closed).toBe(1);
       }).pipe(Effect.scoped, Effect.provide(testLayer(state))),
     );
@@ -513,7 +538,7 @@ describe("OhMyPiAdapter", () => {
         const adapter = yield* OhMyPiAdapter;
         return yield* adapter
           .startSession({
-            threadId: "thread-omp-resume",
+            threadId: asThreadId("thread-omp-resume"),
             provider: "omp",
             cwd: process.cwd(),
             runtimeMode: "approval-required",
@@ -576,20 +601,23 @@ describe("OhMyPiAdapter", () => {
         );
         yield* Effect.yieldNow;
         yield* adapter.startSession({
-          threadId: "thread-omp-interactions",
+          threadId: asThreadId("thread-omp-interactions"),
           provider: "omp",
           cwd: process.cwd(),
           runtimeMode: "approval-required",
         });
-        yield* adapter.sendTurn({ threadId: "thread-omp-interactions", input: "interact" });
+        yield* adapter.sendTurn({
+          threadId: asThreadId("thread-omp-interactions"),
+          input: "interact",
+        });
         while (!eventLog.some((event) => event.type === "request.opened")) {
           yield* Effect.sleep(5);
         }
         const permission = eventLog.find((event) => event.type === "request.opened")!;
         if (permission.requestId) {
           yield* adapter.respondToRequest(
-            "thread-omp-interactions",
-            permission.requestId,
+            asThreadId("thread-omp-interactions"),
+            ApprovalRequestId.makeUnsafe(permission.requestId),
             "accept",
           );
         }
@@ -598,14 +626,18 @@ describe("OhMyPiAdapter", () => {
         }
         const inputEvent = eventLog.find((event) => event.type === "user-input.requested")!;
         if (inputEvent.requestId) {
-          yield* adapter.respondToUserInput("thread-omp-interactions", inputEvent.requestId, {
-            answer: "yes",
-          });
+          yield* adapter.respondToUserInput(
+            asThreadId("thread-omp-interactions"),
+            ApprovalRequestId.makeUnsafe(inputEvent.requestId),
+            { answer: "yes" },
+          );
         }
-        while ((yield* adapter.readThread("thread-omp-interactions")).turns.length === 0) {
+        while (
+          (yield* adapter.readThread(asThreadId("thread-omp-interactions"))).turns.length === 0
+        ) {
           yield* Effect.sleep(5);
         }
-        yield* adapter.stopSession("thread-omp-interactions");
+        yield* adapter.stopSession(asThreadId("thread-omp-interactions"));
       }).pipe(Effect.scoped, Effect.provide(testLayer(state))),
     );
   });
@@ -617,17 +649,20 @@ describe("OhMyPiAdapter", () => {
       Effect.gen(function* () {
         const adapter = yield* OhMyPiAdapter;
         yield* adapter.startSession({
-          threadId: "thread-omp-exit",
+          threadId: asThreadId("thread-omp-exit"),
           provider: "omp",
           cwd: process.cwd(),
           runtimeMode: "approval-required",
         });
-        const turn = yield* adapter.sendTurn({ threadId: "thread-omp-exit", input: "wait" });
-        yield* adapter.interruptTurn("thread-omp-exit", turn.turnId);
-        yield* adapter.interruptTurn("thread-omp-exit", turn.turnId);
+        const turn = yield* adapter.sendTurn({
+          threadId: asThreadId("thread-omp-exit"),
+          input: "wait",
+        });
+        yield* adapter.interruptTurn(asThreadId("thread-omp-exit"), turn.turnId);
+        yield* adapter.interruptTurn(asThreadId("thread-omp-exit"), turn.turnId);
         expect(state.cancels).toBe(1);
         state.signalProcessExit?.();
-        while (yield* adapter.hasSession("thread-omp-exit")) {
+        while (yield* adapter.hasSession(asThreadId("thread-omp-exit"))) {
           yield* Effect.sleep(5);
         }
         expect(state.closed).toBe(1);
@@ -651,7 +686,7 @@ describe("OhMyPiAdapter", () => {
         );
         yield* Effect.yieldNow;
         yield* adapter.startSession({
-          threadId: "thread-omp-typed",
+          threadId: asThreadId("thread-omp-typed"),
           provider: "omp",
           cwd: process.cwd(),
           runtimeMode: "approval-required",
@@ -717,8 +752,8 @@ describe("OhMyPiAdapter", () => {
           source: "omp",
         });
 
-        yield* adapter.sendTurn({ threadId: "thread-omp-typed", input: "continue" });
-        while (!(yield* adapter.readThread("thread-omp-typed")).turns.length) {
+        yield* adapter.sendTurn({ threadId: asThreadId("thread-omp-typed"), input: "continue" });
+        while (!(yield* adapter.readThread(asThreadId("thread-omp-typed"))).turns.length) {
           yield* Effect.sleep(1);
         }
         expect(state.extensionRequests).toContain(OMP_EXTENSION_METHODS.advisorDrain);
@@ -730,7 +765,7 @@ describe("OhMyPiAdapter", () => {
               event.payload.message.includes("configured-policy-only"),
           ),
         ).toBe(false);
-        yield* adapter.stopSession("thread-omp-typed");
+        yield* adapter.stopSession(asThreadId("thread-omp-typed"));
       }).pipe(Effect.scoped, Effect.provide(testLayer(state))),
     );
   });
@@ -741,18 +776,21 @@ describe("OhMyPiAdapter", () => {
       Effect.gen(function* () {
         const adapter = yield* OhMyPiAdapter;
         yield* adapter.startSession({
-          threadId: "thread-omp-stock-fallback",
+          threadId: asThreadId("thread-omp-stock-fallback"),
           provider: "omp",
           cwd: process.cwd(),
           runtimeMode: "approval-required",
         });
         expect(state.extensionRequests).toEqual([OMP_EXTENSION_METHODS.capabilities]);
-        yield* adapter.sendTurn({ threadId: "thread-omp-stock-fallback", input: "continue" });
-        while (!(yield* adapter.readThread("thread-omp-stock-fallback")).turns.length) {
+        yield* adapter.sendTurn({
+          threadId: asThreadId("thread-omp-stock-fallback"),
+          input: "continue",
+        });
+        while (!(yield* adapter.readThread(asThreadId("thread-omp-stock-fallback"))).turns.length) {
           yield* Effect.sleep(1);
         }
-        expect(yield* adapter.hasSession("thread-omp-stock-fallback")).toBe(true);
-        yield* adapter.stopSession("thread-omp-stock-fallback");
+        expect(yield* adapter.hasSession(asThreadId("thread-omp-stock-fallback"))).toBe(true);
+        yield* adapter.stopSession(asThreadId("thread-omp-stock-fallback"));
       }).pipe(Effect.scoped, Effect.provide(testLayer(state))),
     );
   });
@@ -773,13 +811,16 @@ describe("OhMyPiAdapter", () => {
         );
         yield* Effect.yieldNow;
         yield* adapter.startSession({
-          threadId: "thread-omp-extension",
+          threadId: asThreadId("thread-omp-extension"),
           provider: "omp",
           cwd: process.cwd(),
           runtimeMode: "approval-required",
         });
-        yield* adapter.sendTurn({ threadId: "thread-omp-extension", input: "continue" });
-        while (!(yield* adapter.readThread("thread-omp-extension")).turns.length) {
+        yield* adapter.sendTurn({
+          threadId: asThreadId("thread-omp-extension"),
+          input: "continue",
+        });
+        while (!(yield* adapter.readThread(asThreadId("thread-omp-extension"))).turns.length) {
           yield* Effect.sleep(5);
         }
         expect(
@@ -789,7 +830,7 @@ describe("OhMyPiAdapter", () => {
               event.payload.message.includes("_omp/fixture_notice"),
           ),
         ).toBe(true);
-        yield* adapter.stopSession("thread-omp-extension");
+        yield* adapter.stopSession(asThreadId("thread-omp-extension"));
       }).pipe(Effect.scoped, Effect.provide(testLayer(state))),
     );
   });
@@ -810,13 +851,16 @@ describe("OhMyPiAdapter", () => {
         );
         yield* Effect.yieldNow;
         yield* adapter.startSession({
-          threadId: "thread-omp-settle-timeout",
+          threadId: asThreadId("thread-omp-settle-timeout"),
           provider: "omp",
           cwd: process.cwd(),
           runtimeMode: "approval-required",
         });
-        yield* adapter.sendTurn({ threadId: "thread-omp-settle-timeout", input: "learn" });
-        while (!(yield* adapter.readThread("thread-omp-settle-timeout")).turns.length) {
+        yield* adapter.sendTurn({
+          threadId: asThreadId("thread-omp-settle-timeout"),
+          input: "learn",
+        });
+        while (!(yield* adapter.readThread(asThreadId("thread-omp-settle-timeout"))).turns.length) {
           yield* Effect.sleep(5);
         }
 
@@ -827,7 +871,7 @@ describe("OhMyPiAdapter", () => {
               event.payload.message.includes("without claiming Auto-Learn capture completed"),
           ),
         ).toBe(true);
-        yield* adapter.stopSession("thread-omp-settle-timeout");
+        yield* adapter.stopSession(asThreadId("thread-omp-settle-timeout"));
       }).pipe(
         Effect.scoped,
         Effect.provide(testLayer(state, {}, { settleMaxWaitMs: 10, settlePollMs: 1 })),
@@ -841,7 +885,8 @@ describe("OhMyPiAdapter", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const adapter = yield* OhMyPiAdapter;
-        for (const threadId of ["thread-omp-load-1", "thread-omp-load-2"] as const) {
+        for (const value of ["thread-omp-load-1", "thread-omp-load-2"] as const) {
+          const threadId = asThreadId(value);
           yield* adapter.startSession({
             threadId,
             provider: "omp",
@@ -867,17 +912,17 @@ describe("OhMyPiAdapter", () => {
         yield* Effect.forkScoped(Stream.runForEach(adapter.streamEvents, () => Effect.sleep(1)));
         yield* Effect.yieldNow;
         yield* adapter.startSession({
-          threadId: "thread-omp-burst",
+          threadId: asThreadId("thread-omp-burst"),
           provider: "omp",
           cwd: process.cwd(),
           runtimeMode: "approval-required",
         });
-        yield* adapter.sendTurn({ threadId: "thread-omp-burst", input: "burst" });
-        while (!(yield* adapter.readThread("thread-omp-burst")).turns.length) {
+        yield* adapter.sendTurn({ threadId: asThreadId("thread-omp-burst"), input: "burst" });
+        while (!(yield* adapter.readThread(asThreadId("thread-omp-burst"))).turns.length) {
           yield* Effect.sleep(5);
         }
         expect(state.enqueued).toBe(2_050);
-        yield* adapter.stopSession("thread-omp-burst");
+        yield* adapter.stopSession(asThreadId("thread-omp-burst"));
       }).pipe(Effect.scoped, Effect.provide(testLayer(state))),
     );
   }, 10_000);

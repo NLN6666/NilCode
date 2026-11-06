@@ -12,7 +12,7 @@ import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Textarea } from "../ui/textarea";
 import { UserInputQuestionForm } from "./UserInputQuestionForm";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 export function AsyncUserInputCard({
   messageId,
@@ -23,18 +23,18 @@ export function AsyncUserInputCard({
   input: AsyncUserInput;
   onRespond?: ((messageId: MessageId, answers: readonly string[]) => Promise<void>) | undefined;
 }) {
-  const copy = useMessages().chat.asyncUserInput;
+  const { t } = useTranslation();
   // Native questions have no IDs. Their positions are stable within this message.
   const questions = useMemo<ReadonlyArray<UserInputQuestion>>(
     () =>
       input.questions.map((question, index) => ({
         id: `question-${index}`,
-        header: copy.question,
+        header: t("chat:question"),
         question: question.title,
         options: (question.options ?? []).map((label) => ({ label, description: label })),
         multiSelect: false,
       })),
-    [copy.question, input.questions],
+    [t, input.questions],
   );
   const [answers, setAnswers] = useState<Record<string, PendingUserInputDraftAnswer>>(() =>
     Object.fromEntries(
@@ -83,7 +83,7 @@ export function AsyncUserInputCard({
       setSubmission({ answers: response, responseSequence: input.responseSequence ?? 0 });
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : copy.submitFailed,
+        cause instanceof Error ? cause.message : t("chat:theAnswerCouldNotBeSubmittedTryAgain"),
       );
     } finally {
       inFlight.current = false;
@@ -95,11 +95,11 @@ export function AsyncUserInputCard({
     <Collapsible open={open} onOpenChange={setOpen} className="my-2">
       <CollapsibleTrigger className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-ui leading-snug text-muted-foreground hover:bg-muted/50 hover:text-foreground">
         <CircleQuestionIcon className="size-3.5" aria-hidden="true" />
-        {copy.count(questions.length)}
+        {questions.length} {questions.length === 1 ? t("chat:question") : t("chat:questions")}
         {answered && (
           <>
             <CheckIcon className="size-3" aria-hidden="true" />
-            <span>{copy.answered}</span>
+            <span>{t("chat:answered")}</span>
           </>
         )}
       </CollapsibleTrigger>
@@ -118,7 +118,7 @@ export function AsyncUserInputCard({
             </dl>
           ) : activeQuestion ? (
             <form
-              aria-label={copy.questionsFromCodex}
+              aria-label={t("chat:questionsFromCodex")}
               onSubmit={(event) => {
                 event.preventDefault();
                 void advance();
@@ -146,14 +146,14 @@ export function AsyncUserInputCard({
               >
                 <div className="mt-3 space-y-2">
                   <Textarea
-                    aria-label={copy.answerLabel(activeQuestion.question)}
+                    aria-label={t("chat:answer2", { value0: activeQuestion.question })}
                     value={progress.customAnswer}
                     disabled={disabled}
                     rows={2}
                     placeholder={
                       activeQuestion.options.length > 0
-                        ? copy.typeOwnAnswer
-                        : copy.typeAnswer
+                        ? t("chat:orTypeYourOwnAnswer")
+                        : t("chat:typeYourAnswer")
                     }
                     onChange={(event) => {
                       const draft = setPendingUserInputCustomAnswer(
@@ -177,7 +177,7 @@ export function AsyncUserInputCard({
                   )}
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-ui leading-snug text-muted-foreground">
-                      {copy.canKeepWorking}
+                      {t("chat:codexCanKeepWorking")}
                     </span>
                     <Button
                       type="submit"
@@ -189,10 +189,10 @@ export function AsyncUserInputCard({
                       }
                     >
                       {submitting
-                        ? copy.submitting
+                        ? t("chat:submitting")
                         : progress.isLastQuestion
-                          ? copy.sendAnswer
-                          : copy.next}
+                          ? t("chat:sendAnswer")
+                          : t("onboarding:common_next")}
                     </Button>
                   </div>
                 </div>

@@ -1,3 +1,4 @@
+import { readExecutionContext } from "~/lib/hosts/executionContext";
 // FILE: AppSnapCoordinator.tsx
 // Purpose: Routes native macOS AppSnaps into the correct Synara composer draft.
 // Layer: Root web coordinator
@@ -33,7 +34,6 @@ import {
 import { requestComposerFocus } from "../composerFocusRequestStore";
 import { useFocusedChatContext } from "../focusedChatContext";
 import { useHandleNewChat } from "../hooks/useHandleNewChat";
-import { useMessages } from "../i18n/context";
 import {
   deleteOrphanedComposerImageBlobs,
   readComposerImageBlob,
@@ -45,6 +45,7 @@ import { useSplitViewStore } from "../splitViewStore";
 import { useStore } from "../store";
 import { useTerminalStateStore } from "../terminalStateStore";
 import { toastManager } from "./ui/toast";
+import { useTranslation } from "~/i18n";
 
 const MAX_REMEMBERED_CAPTURE_IDS = 100;
 
@@ -184,7 +185,12 @@ async function hydratePersistedAppSnaps(
 }
 
 export function AppSnapCoordinator() {
-  const appSnapCopy = useMessages().composer.extras.appSnap;
+  return readExecutionContext()?.remote ? null : <LocalAppSnapCoordinator />;
+}
+
+function LocalAppSnapCoordinator() {
+  const { t } = useTranslation();
+
   const navigate = useNavigate();
   const { settings } = useAppSettings();
   const { handleNewChat } = useHandleNewChat();
@@ -383,11 +389,8 @@ export function AppSnapCoordinator() {
         }
       }
 
-      const persistenceResult = await attachAppSnapCapture(
-        target.threadId,
-        capture,
-        appSnapCopy,
-        () => bridge.acknowledgeCapture(capture.id),
+      const persistenceResult = await attachAppSnapCapture(target.threadId, capture, t, () =>
+        bridge.acknowledgeCapture(capture.id),
       );
       lastAppSnapRef.current = { ...target, atMs: captureAtMs };
       if (!explicitTarget) requestComposerFocus(target.threadId);
@@ -395,18 +398,22 @@ export function AppSnapCoordinator() {
         toastManager.add({
           type: persistenceResult === "unverified" ? "warning" : "success",
           title:
-            persistenceResult === "unverified" ? "AppSnap added with a warning" : "AppSnap added",
+            persistenceResult === "unverified"
+              ? t("common:appSnapAddedWithAWarning")
+              : t("common:appSnapAdded"),
           description:
             persistenceResult === "unverified"
-              ? "The capture is attached, but Synara could not verify its draft metadata. If it is missing after a reload, Synara will attach it again."
+              ? t("common:theCaptureIsAttachedButSynaraCouldNotVerify")
               : capture.sourceAppName
-                ? `Captured ${capture.sourceAppName} and added it to the composer.`
-                : "The frontmost window was added to the composer.",
+                ? t("common:capturedAndAddedItToTheComposer", {
+                    value0: capture.sourceAppName,
+                  })
+                : t("common:theFrontmostWindowWasAddedToTheComposer"),
           data: { allowCrossThreadVisibility: true },
         });
       return persistenceResult;
     },
-    [activateExistingTarget, appSnapCopy, handleNewChat, openChatThreadPage],
+    [activateExistingTarget, handleNewChat, openChatThreadPage, t],
   );
   // Keep the native subscription stable while navigation callbacks change.
   // Pending captures can then never cross a cleanup/re-subscribe dedupe gap.
@@ -460,8 +467,9 @@ export function AppSnapCoordinator() {
           } catch (error) {
             toastManager.add({
               type: "error",
-              title: "AppSnap could not be added",
-              description: error instanceof Error ? error.message : "AppSnap capture failed.",
+              title: t("common:appSnapCouldNotBeAdded"),
+              description:
+                error instanceof Error ? error.message : t("common:appSnapCaptureFailed"),
               actionProps: {
                 children: "Retry",
                 onClick: () => {
@@ -489,7 +497,7 @@ export function AppSnapCoordinator() {
     const unsubscribeError = bridge.onError((error) => {
       toastManager.add({
         type: "error",
-        title: "AppSnap failed",
+        title: t("common:appSnapFailed"),
         description: error.message,
         ...(error.code === "helper-stopped"
           ? {

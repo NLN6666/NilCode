@@ -7,8 +7,10 @@ import { Command } from "effect/unstable/cli";
 import { version } from "../package.json" with { type: "json" };
 import { exitOnceDrained } from "./shutdownExit";
 import { consumeDesktopParentInput, withDesktopParentLifetime } from "./desktopParentLifetime";
+import { initializeDesktopUpdateBridge } from "./desktopUpdateBridge";
 
 const desktopParentInput = consumeDesktopParentInput(process.env, () => process.stdin);
+initializeDesktopUpdateBridge();
 
 /** Keeps the standard exit-code convention and only adds the bounded exit. */
 const teardown: Runtime.Teardown = (exit, onExit) =>

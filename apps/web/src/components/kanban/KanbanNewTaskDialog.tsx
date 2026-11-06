@@ -37,6 +37,7 @@ import {
   COMPOSER_EDITOR_TYPOGRAPHY_CLASS_NAME,
 } from "~/components/chat/composerPickerStyles";
 import { Button } from "~/components/ui/button";
+import { ChatComputerLabel } from "~/components/hosts/ComputerPicker";
 import {
   Dialog,
   DialogDescription,
@@ -73,7 +74,7 @@ import {
 import { useKanbanTaskComposerMenu } from "./useKanbanTaskComposerMenu";
 import { useKanbanTaskScratchDraft } from "./useKanbanTaskScratchDraft";
 import { useKanbanTaskSubmit } from "./useKanbanTaskSubmit";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 const EMPTY_COMPOSER_FILES: ReadonlyArray<ComposerFileAttachment> = [];
 
@@ -103,7 +104,7 @@ export function KanbanNewTaskDialog({
   initialProjectId,
   initialSendAsDraft: initialSendAsDraftProp,
 }: KanbanNewTaskDialogProps) {
-  const copy = useMessages().workspace.kanban;
+  const { t } = useTranslation();
   const initialSendAsDraft = initialSendAsDraftProp ?? false;
   const { settings } = useAppSettings();
   const { resolvedTheme } = useTheme();
@@ -208,11 +209,14 @@ export function KanbanNewTaskDialog({
     composerAssistantSelections.length > 0 ||
     composerFileComments.length > 0 ||
     composerTerminalContexts.some((context) => context.text.trim().length > 0);
-  const taskPreview = buildKanbanTaskPreview({
-    trimmedPrompt,
-    firstImageName: composerImages[0]?.name,
-    assistantSelectionCount: composerAssistantSelections.length,
-  });
+  const taskPreview = buildKanbanTaskPreview(
+    {
+      trimmedPrompt,
+      firstImageName: composerImages[0]?.name,
+      assistantSelectionCount: composerAssistantSelections.length,
+    },
+    t,
+  );
   const { canCreate, isCreating, handleCreate } = useKanbanTaskSubmit({
     selectedProjectId,
     hasSendableContent,
@@ -344,8 +348,11 @@ export function KanbanNewTaskDialog({
       onUnsupportedFiles: (files) => {
         toastManager.add({
           type: "warning",
-          title: copy.imagesOnly,
-          description: files.length === 1 ? copy.oneFileRejected : copy.filesRejected(files.length),
+          title: t("common:onlyImagesCanBeAttachedToNewTasks"),
+          description:
+            files.length === 1
+              ? t("common:thatFileWasNotAdded")
+              : t("common:filesWereNotAdded", { value0: files.length }),
         });
       },
     },
@@ -380,11 +387,14 @@ export function KanbanNewTaskDialog({
               onProjectIdChange={setSelectedProjectId}
             />
             <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
-            <DialogTitle className="font-system-ui truncate font-medium text-[length:var(--app-font-size-ui,12px)] leading-none">
-              {copy.newTask}
+            <DialogTitle className="font-system-ui truncate font-medium text-ui leading-none">
+              {t("common:kanban_newTask")}
             </DialogTitle>
+            <ChatComputerLabel />
           </div>
-          <DialogDescription className="sr-only">{copy.newTaskDescription}</DialogDescription>
+          <DialogDescription className="sr-only">
+            {t("common:draftAPromptAndPlaceItInTheBoard")}
+          </DialogDescription>
         </DialogHeader>
         {/* Flush, borderless composer body: same Lexical prompt editor and attachment row as chat. */}
         <DialogPanel
@@ -405,7 +415,7 @@ export function KanbanNewTaskDialog({
                 {isLocalFolderBrowserOpen ? (
                   <ComposerLocalDirectoryMenu
                     mentionQuery={mentionTriggerQuery}
-                    rootLabel={localFolderBrowseRootPath ?? copy.localFoldersUnavailable}
+                    rootLabel={localFolderBrowseRootPath ?? t("common:localFoldersUnavailable")}
                     homeDir={serverConfigQuery.data?.homeDir ?? null}
                     onSelectEntry={(absolutePath) =>
                       handleSelectLocalDirectoryMention(absolutePath)
@@ -444,7 +454,8 @@ export function KanbanNewTaskDialog({
                 role="status"
               >
                 <LoaderCircleIcon className="size-3.5 animate-spin" />
-                Optimizing {pendingImageCount === 1 ? "image" : "images"}…
+                {t("chat:optimizing")}{" "}
+                {pendingImageCount === 1 ? t("common:image") : t("chat:images")}…
               </div>
             ) : null}
             <ComposerPromptEditor
@@ -454,7 +465,7 @@ export function KanbanNewTaskDialog({
               terminalContexts={composerTerminalContexts}
               mentionReferences={composerMentions}
               disabled={voice.isVoiceTranscribing}
-              placeholder={copy.promptPlaceholder}
+              placeholder={t("common:describeTheTaskTagFilesFoldersPasteImagesOr")}
               className={cn(
                 COMPOSER_EDITOR_MIN_HEIGHT_CLASS_NAME,
                 COMPOSER_EDITOR_TYPOGRAPHY_CLASS_NAME,
@@ -523,8 +534,8 @@ export function KanbanNewTaskDialog({
                   size="icon-sm"
                   variant="ghost"
                   className="mr-1 shrink-0 text-muted-foreground/70 hover:text-foreground"
-                  aria-label={copy.attachImages}
-                  title={copy.attachImages}
+                  aria-label={t("common:kanban_attachImages")}
+                  title={t("common:kanban_attachImages")}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <PaperclipIcon className="size-4" />
@@ -547,21 +558,25 @@ export function KanbanNewTaskDialog({
                   checked={sendAsDraft}
                   onCheckedChange={(checked) => setSendAsDraft(checked === true)}
                 />
-                {copy.sendAsDraft}
+                {t("common:kanban_sendAsDraft")}
               </label>
               <label
                 className="flex cursor-pointer items-center gap-2 text-ui-xs text-muted-foreground"
-                title={sendAsDraft ? "Turn off Send as draft to send as goal." : undefined}
+                title={sendAsDraft ? t("common:turnOffSendAsDraftToSendAsGoal") : undefined}
               >
                 <Switch
                   checked={sendAsGoal && !sendAsDraft}
                   disabled={sendAsDraft}
                   onCheckedChange={(checked) => setSendAsGoal(checked === true)}
                 />
-                Send as goal
+                {t("common:sendAsGoal")}
               </label>
               <Button size="sm" onClick={handleCreateRequest} disabled={!canCreate}>
-                {isCreating ? copy.creating : isPreparingImages ? copy.optimizing : copy.createTask}
+                {isCreating
+                  ? t("common:kanban_creating")
+                  : isPreparingImages
+                    ? t("common:optimizing")
+                    : t("common:kanban_createTask")}
               </Button>
             </div>
           </div>

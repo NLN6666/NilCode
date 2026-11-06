@@ -39,7 +39,8 @@ export interface SettingsSkillGroup {
 
 export interface SettingsSkillSection {
   readonly key: string;
-  readonly title: string;
+  readonly titleKey: string;
+  readonly titleValue?: string;
   readonly groups: ReadonlyArray<SettingsSkillGroup>;
 }
 
@@ -69,22 +70,6 @@ export const ORIGIN_SECTION_ORDER = [
   "project",
 ] as const;
 /**
- * Structural subset of the `settings.skills` catalog group. The panel passes `m.settings.skills`
- * straight through, so adding a label here is a compile error in every locale — the same safety
- * net the catalogs themselves provide. Provider names are product nouns and stay untranslated.
- */
-export interface SettingsSkillLabels {
-  readonly sharedSkills: string;
-  readonly fromOrigin: (label: string) => string;
-  readonly noDescription: string;
-  readonly origins: {
-    readonly shared: string;
-    readonly project: string;
-    readonly personal: string;
-  };
-}
-
-/**
  * Provider that owns an origin folder on disk, used only for labelling the section. This is
  * not the set of providers that read the folder — several agents read `~/.claude/skills`, but
  * only Claude owns it. Use {@link providersForSkillOrigin} for reach.
@@ -104,10 +89,7 @@ const ORIGIN_OWNER_PROVIDER: Readonly<Record<string, ProviderKind>> = {
   antigravity: "antigravity",
 };
 
-export function skillOriginInfo(
-  scope: string | undefined,
-  labels: SettingsSkillLabels["origins"],
-): SkillOriginInfo {
+export function skillOriginInfo(scope: string | undefined): SkillOriginInfo {
   const owner = scope ? ORIGIN_OWNER_PROVIDER[scope] : undefined;
   if (owner) {
     return { label: PROVIDER_DISPLAY_NAMES[owner], provider: owner };
@@ -117,11 +99,11 @@ export function skillOriginInfo(
       return { label: "Synara", provider: null };
 
     case "agents":
-      return { label: labels.shared, provider: null };
+      return { label: "settings:skills_sharedOrigin", provider: null };
     case "project":
-      return { label: labels.project, provider: null };
+      return { label: "settings:skills_projectOrigin", provider: null };
     default:
-      return { label: scope ?? labels.personal, provider: null };
+      return { label: scope ?? "settings:skills_personalOrigin", provider: null };
   }
 }
 
@@ -152,11 +134,14 @@ function sourceSortKey(source: SettingsSkillSource): string {
   return `${originRank(source.origin).toString().padStart(2, "0")}\u0000${source.skill.path}`;
 }
 
-function sectionTitle(section: string, labels: SettingsSkillLabels): string {
+function sectionTitle(section: string): Pick<SettingsSkillSection, "titleKey" | "titleValue"> {
   if (section === SHARED_SKILLS_SECTION) {
-    return labels.sharedSkills;
+    return { titleKey: "settings:skills_sharedSkills" };
   }
-  return labels.fromOrigin(skillOriginInfo(section, labels.origins).label);
+  return {
+    titleKey: "settings:skills_fromOrigin",
+    titleValue: skillOriginInfo(section).label,
+  };
 }
 
 function sectionRank(section: string): number {
@@ -170,7 +155,6 @@ function sectionRank(section: string): number {
 // stay visible as sources instead of letting the first origin hide the rest.
 export function buildSettingsSkillGroups(
   skills: ReadonlyArray<ProviderSkillDescriptor>,
-  labels: SettingsSkillLabels,
 ): SettingsSkillGroup[] {
   const groups = new Map<string, SettingsSkillSource[]>();
   for (const skill of skills) {
@@ -179,7 +163,7 @@ export function buildSettingsSkillGroups(
     const source: SettingsSkillSource = {
       skill,
       origin,
-      originInfo: skillOriginInfo(origin, labels.origins),
+      originInfo: skillOriginInfo(origin),
     };
     groups.set(key, [...(groups.get(key) ?? []), source]);
   }
@@ -203,7 +187,7 @@ export function buildSettingsSkillGroups(
       const description =
         primarySkill.interface?.shortDescription ??
         primarySkill.description ??
-        labels.noDescription;
+        "settings:skills_noDescription";
       return {
         key,
         displayName: skillDisplayName(primarySkill),
@@ -220,7 +204,6 @@ export function buildSettingsSkillGroups(
 
 export function buildSettingsSkillSectionsFromGroups(
   groups: ReadonlyArray<SettingsSkillGroup>,
-  labels: SettingsSkillLabels,
 ): SettingsSkillSection[] {
   const sections = new Map<string, SettingsSkillGroup[]>();
   for (const group of groups) {
@@ -230,7 +213,7 @@ export function buildSettingsSkillSectionsFromGroups(
   return [...sections.entries()]
     .map(([key, groups]) => ({
       key,
-      title: sectionTitle(key, labels),
+      ...sectionTitle(key),
       groups,
     }))
     .sort((left, right) => sectionRank(left.key) - sectionRank(right.key));

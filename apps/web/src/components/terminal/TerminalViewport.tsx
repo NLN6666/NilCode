@@ -13,7 +13,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { type TerminalContextSelection } from "~/lib/terminalContext";
 import { readNativeApi } from "~/nativeApi";
 import { cn } from "~/lib/utils";
-import { useMessages } from "~/i18n/context";
 import {
   resolveTerminalSelectionActionPosition,
   resolveTerminalSelectionAnchorRect,
@@ -31,6 +30,7 @@ import { matchesFixedShortcut } from "~/fixedShortcuts";
 import { hasOpenDismissibleOverlay } from "~/lib/editableEventTarget";
 import { TerminalSearch } from "../TerminalSearch";
 import { TerminalScrollToBottom } from "../TerminalScrollToBottom";
+import { useTranslation } from "~/i18n";
 
 function serializeRuntimeEnv(runtimeEnv: Record<string, string> | undefined): string {
   if (!runtimeEnv) return "";
@@ -66,7 +66,8 @@ function getTerminalSelectionRect(
 }
 
 function TerminalRuntimeStatusOverlay({ status }: { status: TerminalRuntimeStatus }) {
-  const copy = useMessages().editor.terminal;
+  const { t } = useTranslation();
+
   if (status !== "error") return null;
 
   return (
@@ -79,7 +80,7 @@ function TerminalRuntimeStatusOverlay({ status }: { status: TerminalRuntimeStatu
       )}
     >
       <TriangleAlertIcon className="size-3" />
-      <span className="truncate">{copy.error}</span>
+      <span className="truncate">{t("chat:providerUsage_error")}</span>
     </div>
   );
 }
@@ -125,6 +126,7 @@ export default function TerminalViewport({
   autoFocus,
   isVisible,
 }: TerminalViewportProps) {
+  const { t } = useTranslation();
   const terminalCliKind = terminalCliKindProp ?? null;
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -200,7 +202,7 @@ export default function TerminalViewport({
     onAddTerminalContextRef.current = onAddTerminalContext;
   }, [onAddTerminalContext]);
 
-  const addToChatLabel = useMessages().chat.selection.addToChat;
+  const addToChatLabel = t("chat:addToChat");
   const addToChatLabelRef = useRef(addToChatLabel);
   useLayoutEffect(() => {
     addToChatLabelRef.current = addToChatLabel;

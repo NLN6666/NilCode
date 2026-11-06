@@ -12,6 +12,7 @@ import {
 } from "./pullRequestDetail.logic";
 import { PR_BODY_TEXT_CLASS_NAME, PR_META_TEXT_CLASS_NAME } from "./pullRequestText";
 import { cn } from "~/lib/utils";
+import { useTranslation } from "~/i18n";
 
 export function PullRequestTimelineTab({
   detail,
@@ -20,7 +21,9 @@ export function PullRequestTimelineTab({
   detail: GitHubItemTimelineSource;
   noun?: "pull request" | "issue";
 }) {
-  const events = buildPullRequestTimelineEvents(detail, noun);
+  const { t, formatLocale } = useTranslation();
+
+  const events = buildPullRequestTimelineEvents(detail, t, noun);
   return (
     <div className="h-full overflow-y-auto px-5 py-5">
       <div className="relative ml-2 border-l border-border/70 pl-5">
@@ -29,7 +32,7 @@ export function PullRequestTimelineTab({
             <span className="absolute -left-[1.55rem] top-1 size-2 rounded-full border border-border bg-background" />
             <div className="font-medium">{event.title}</div>
             <div className={cn(PR_META_TEXT_CLASS_NAME, "text-muted-foreground")}>
-              {formatRelativeTime(event.at)}
+              {formatRelativeTime(event.at, undefined, formatLocale)}
             </div>
             {event.body ? (
               <p

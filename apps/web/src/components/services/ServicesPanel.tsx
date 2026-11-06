@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 
 import { emptyDaemonLogBuffer } from "~/daemonLogBuffer";
 import { useDaemonStore } from "~/daemonStore";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 import { describeErrorMessage } from "@synara/shared/errorMessages";
 import { ensureNativeApi } from "~/nativeApi";
 import { useProviderStatusesForLocalConfig } from "~/hooks/useProviderStatusesForLocalConfig";
@@ -100,8 +100,8 @@ function useDaemonLogBacklog(name: string | null): void {
 }
 
 function DaemonRow(props: { snapshot: DaemonSnapshot; selected: boolean; onSelect: () => void }) {
-  const copy = useMessages().chat.services;
-  const parts = daemonMetaParts(props.snapshot, copy);
+  const { t } = useTranslation();
+  const parts = daemonMetaParts(props.snapshot, t);
 
   return (
     <button
@@ -119,30 +119,30 @@ function DaemonRow(props: { snapshot: DaemonSnapshot; selected: boolean; onSelec
         className={cn("size-2 shrink-0 rounded-full", TONE_DOT_CLASS[daemonTone(props.snapshot)])}
       />
       <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-xs">{props.snapshot.name}</span>
+        <span className="block truncate font-medium text-ui">{props.snapshot.name}</span>
         {parts.length > 0 && (
-          <span className="block truncate text-[11px] text-foreground/60">{parts.join(" · ")}</span>
+          <span className="block truncate text-ui-sm text-foreground/60">{parts.join(" · ")}</span>
         )}
       </span>
-      <span className="shrink-0 text-[11px] text-foreground/60">
-        {copy.states[props.snapshot.state]}
+      <span className="shrink-0 text-ui-sm text-foreground/60">
+        {t(`chat:services_state_${props.snapshot.state}`)}
       </span>
     </button>
   );
 }
 
 function DaemonConsole(props: { snapshot: DaemonSnapshot; onError: (detail: string) => void }) {
-  const copy = useMessages().chat.services;
+  const { t } = useTranslation();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const availability = daemonInputAvailability(props.snapshot);
 
   if (!availability.enabled) {
     return (
-      <p className="px-3 py-2 text-[11px] text-foreground/60">
+      <p className="px-3 py-2 text-ui-sm text-foreground/60">
         {availability.reason === "detached"
-          ? copy.inputUnavailableDetached
-          : copy.inputUnavailableExited}
+          ? t("chat:services_inputUnavailableDetached")
+          : t("chat:services_inputUnavailableExited")}
       </p>
     );
   }
@@ -157,7 +157,9 @@ function DaemonConsole(props: { snapshot: DaemonSnapshot; onError: (detail: stri
     setText("");
     void ensureNativeApi()
       .daemons.sendText({ name: props.snapshot.name, text: value })
-      .catch((error: unknown) => props.onError(describeErrorMessage(error, copy.unknownError)))
+      .catch((error: unknown) =>
+        props.onError(describeErrorMessage(error, t("common:proposedPlan_unknownError"))),
+      )
       .finally(() => setBusy(false));
   };
 
@@ -167,20 +169,20 @@ function DaemonConsole(props: { snapshot: DaemonSnapshot; onError: (detail: stri
         value={text}
         variant="soft"
         size="sm"
-        aria-label={copy.inputLabel}
-        placeholder={copy.inputPlaceholder}
+        aria-label={t("chat:services_inputLabel")}
+        placeholder={t("chat:services_inputPlaceholder")}
         onChange={(event) => setText(event.target.value)}
         className="flex-1 font-mono"
       />
       <Button type="submit" size="sm" variant="secondary" disabled={text.length === 0 || busy}>
-        {copy.send}
+        {t("chat:send")}
       </Button>
     </form>
   );
 }
 
 function DaemonDetail(props: { snapshot: DaemonSnapshot }) {
-  const copy = useMessages().chat.services;
+  const { t } = useTranslation();
   const buffer =
     useDaemonStore((store) => store.logsByName[props.snapshot.name]) ?? EMPTY_LOG_BUFFER;
   const [pendingAction, setPendingAction] = useState<"stop" | "restart" | null>(null);
@@ -196,13 +198,14 @@ function DaemonDetail(props: { snapshot: DaemonSnapshot }) {
       const request = action === "stop" ? api.stop({ name }) : api.restart({ name });
       void request
         .catch((cause: unknown) => {
-          if (mountedRef.current) setError(describeErrorMessage(cause, copy.unknownError));
+          if (mountedRef.current)
+            setError(describeErrorMessage(cause, t("common:proposedPlan_unknownError")));
         })
         .finally(() => {
           if (mountedRef.current) setPendingAction(null);
         });
     },
-    [copy.unknownError],
+    [t],
   );
 
   const alive = isDaemonAlive(props.snapshot);
@@ -210,13 +213,13 @@ function DaemonDetail(props: { snapshot: DaemonSnapshot }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-border border-b px-3 py-2">
-        <span className="min-w-0 flex-1 truncate font-medium text-xs">{props.snapshot.name}</span>
+        <span className="min-w-0 flex-1 truncate font-medium text-ui">{props.snapshot.name}</span>
         {props.snapshot.detached === true && (
           <span
-            title={copy.detachedHint}
-            className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-foreground/60"
+            title={t("chat:services_detachedHint")}
+            className="shrink-0 rounded border border-border px-1.5 py-0.5 text-ui-xs text-foreground/60"
           >
-            {copy.detached}
+            {t("chat:services_detached")}
           </span>
         )}
         <Button
@@ -225,7 +228,7 @@ function DaemonDetail(props: { snapshot: DaemonSnapshot }) {
           disabled={pendingAction !== null}
           onClick={() => runAction("restart", props.snapshot.name)}
         >
-          {pendingAction === "restart" ? copy.restarting : copy.restart}
+          {t(pendingAction === "restart" ? "chat:services_restarting" : "common:restart")}
         </Button>
         <Button
           size="xs"
@@ -233,25 +236,25 @@ function DaemonDetail(props: { snapshot: DaemonSnapshot }) {
           disabled={pendingAction !== null || !alive}
           onClick={() => runAction("stop", props.snapshot.name)}
         >
-          {pendingAction === "stop" ? copy.stopping : copy.stop}
+          {t(pendingAction === "stop" ? "chat:services_stopping" : "chat:stop")}
         </Button>
       </div>
 
       {error !== null && (
-        <p className="border-border border-b px-3 py-1.5 text-[11px] text-red-500">
-          {copy.actionFailed(error)}
+        <p className="border-border border-b px-3 py-1.5 text-ui-sm text-red-500">
+          {t("chat:services_actionFailed", { detail: error })}
         </p>
       )}
       {buffer.droppedBytes > 0 && (
-        <p className="border-border border-b px-3 py-1.5 text-[11px] text-foreground/60">
-          {copy.droppedBytes(buffer.droppedBytes)}
+        <p className="border-border border-b px-3 py-1.5 text-ui-sm text-foreground/60">
+          {t("chat:services_droppedBytes", { bytes: buffer.droppedBytes })}
         </p>
       )}
 
       <DaemonLogView
         key={props.snapshot.name}
         buffer={buffer}
-        label={copy.logsLabel}
+        label={t("chat:services_logsLabel")}
         className="min-h-0 flex-1 px-2 py-1"
       />
 
@@ -263,7 +266,7 @@ function DaemonDetail(props: { snapshot: DaemonSnapshot }) {
 }
 
 function OmpLaunchDetail(props: { service: OmpRuntimeService }) {
-  const copy = useMessages().chat.services;
+  const { t } = useTranslation();
   const [logs, setLogs] = useState<string | null>(null);
   const [description, setDescription] = useState<OmpLaunchDescribeResult | null>(null);
   const [text, setText] = useState("");
@@ -292,10 +295,11 @@ function OmpLaunchDetail(props: { service: OmpRuntimeService }) {
         }
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(describeErrorMessage(cause, copy.unknownError));
+        if (!cancelled)
+          setError(describeErrorMessage(cause, t("common:proposedPlan_unknownError")));
       });
     return () => void (cancelled = true);
-  }, [copy.unknownError, owner, props.service.name]);
+  }, [t, owner, props.service.name]);
 
   const run = (action: "stop" | "restart") => {
     if (!owner || pendingAction) return;
@@ -306,7 +310,9 @@ function OmpLaunchDetail(props: { service: OmpRuntimeService }) {
         ? ensureNativeApi().ompLaunch.stop({ owner, name: props.service.name, timeoutSeconds: 5 })
         : ensureNativeApi().ompLaunch.restart({ owner, name: props.service.name });
     void request
-      .catch((cause: unknown) => setError(describeErrorMessage(cause, copy.unknownError)))
+      .catch((cause: unknown) =>
+        setError(describeErrorMessage(cause, t("common:proposedPlan_unknownError"))),
+      )
       .finally(() => setPendingAction(null));
   };
 
@@ -319,21 +325,23 @@ function OmpLaunchDetail(props: { service: OmpRuntimeService }) {
     setError(null);
     void ensureNativeApi()
       .ompLaunch.sendText({ owner, name: props.service.name, text: value })
-      .catch((cause: unknown) => setError(describeErrorMessage(cause, copy.unknownError)))
+      .catch((cause: unknown) =>
+        setError(describeErrorMessage(cause, t("common:proposedPlan_unknownError"))),
+      )
       .finally(() => setPendingAction(null));
   };
 
   return (
     <div className="flex min-h-0 flex-col border-border border-t">
       <div className="flex items-center gap-2 px-3 py-2">
-        <span className="min-w-0 flex-1 truncate font-medium text-xs">{props.service.name}</span>
+        <span className="min-w-0 flex-1 truncate font-medium text-ui">{props.service.name}</span>
         <Button
           size="xs"
           variant="ghost"
           disabled={!owner || pendingAction !== null}
           onClick={() => run("restart")}
         >
-          {pendingAction === "restart" ? copy.restarting : copy.restart}
+          {t(pendingAction === "restart" ? "chat:services_restarting" : "common:restart")}
         </Button>
         <Button
           size="xs"
@@ -341,36 +349,38 @@ function OmpLaunchDetail(props: { service: OmpRuntimeService }) {
           disabled={!owner || pendingAction !== null || !isOmpServiceAlive(props.service)}
           onClick={() => run("stop")}
         >
-          {pendingAction === "stop" ? copy.stopping : copy.stop}
+          {t(pendingAction === "stop" ? "chat:services_stopping" : "chat:stop")}
         </Button>
       </div>
       {description ? (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 border-border border-t px-3 py-2 text-[11px]">
-          <dt className="text-foreground/60">{copy.ompCommand}</dt>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 border-border border-t px-3 py-2 text-ui-sm">
+          <dt className="text-foreground/60">{t("chat:services_ompCommand")}</dt>
           <dd className="min-w-0 truncate font-mono" title={description.command}>
             {description.command}
           </dd>
-          <dt className="text-foreground/60">{copy.ompCwd}</dt>
+          <dt className="text-foreground/60">{t("chat:services_ompCwd")}</dt>
           <dd className="min-w-0 truncate font-mono" title={description.cwd}>
             {description.cwd}
           </dd>
-          <dt className="text-foreground/60">{copy.ompRestartPolicy}</dt>
+          <dt className="text-foreground/60">{t("chat:services_ompRestartPolicy")}</dt>
           <dd>{description.restart}</dd>
         </dl>
       ) : null}
       {error ? (
-        <p className="px-3 py-1.5 text-[11px] text-red-500">{copy.actionFailed(error)}</p>
+        <p className="px-3 py-1.5 text-ui-sm text-red-500">
+          {t("chat:services_actionFailed", { detail: error })}
+        </p>
       ) : null}
-      <pre className="max-h-36 overflow-auto whitespace-pre-wrap border-border border-t px-3 py-2 font-mono text-[11px] text-foreground/80">
-        {logs ?? copy.ompLogsLoading}
+      <pre className="max-h-36 overflow-auto whitespace-pre-wrap border-border border-t px-3 py-2 font-mono text-ui-sm text-foreground/80">
+        {logs ?? t("chat:services_ompLogsLoading")}
       </pre>
       <form onSubmit={submit} className="flex items-center gap-2 border-border border-t px-3 py-2">
         <Input
           value={text}
           variant="soft"
           size="sm"
-          aria-label={copy.inputLabel}
-          placeholder={copy.inputPlaceholder}
+          aria-label={t("chat:services_inputLabel")}
+          placeholder={t("chat:services_inputPlaceholder")}
           onChange={(event) => setText(event.target.value)}
           className="flex-1 font-mono"
         />
@@ -380,7 +390,7 @@ function OmpLaunchDetail(props: { service: OmpRuntimeService }) {
           variant="secondary"
           disabled={!owner || !text || pendingAction !== null}
         >
-          {copy.send}
+          {t("chat:send")}
         </Button>
       </form>
     </div>
@@ -388,7 +398,7 @@ function OmpLaunchDetail(props: { service: OmpRuntimeService }) {
 }
 
 function OmpLaunchServices(props: { services: readonly OmpRuntimeService[] }) {
-  const copy = useMessages().chat.services;
+  const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(props.services[0]?.serviceId ?? null);
   const selected =
     props.services.find((service) => service.serviceId === selectedId) ?? props.services[0] ?? null;
@@ -396,8 +406,8 @@ function OmpLaunchServices(props: { services: readonly OmpRuntimeService[] }) {
   return (
     <section className="shrink-0 border-border border-b">
       <div className="px-3 py-2">
-        <div className="font-medium text-xs text-foreground">{copy.ompAuthority}</div>
-        <div className="text-[11px] text-foreground/60">{copy.ompScoped}</div>
+        <div className="font-medium text-ui text-foreground">{t("chat:services_ompAuthority")}</div>
+        <div className="text-ui-sm text-foreground/60">{t("chat:services_ompScoped")}</div>
       </div>
       <div className="flex flex-col gap-0.5 px-1.5 pb-1.5">
         {props.services.map((service) => (
@@ -416,8 +426,10 @@ function OmpLaunchServices(props: { services: readonly OmpRuntimeService[] }) {
               aria-hidden
               className={cn("size-2 rounded-full", TONE_DOT_CLASS[ompServiceTone(service)])}
             />
-            <span className="min-w-0 flex-1 truncate text-xs">{service.name}</span>
-            <span className="text-[11px] text-foreground/60">{copy.states[service.state]}</span>
+            <span className="min-w-0 flex-1 truncate text-ui">{service.name}</span>
+            <span className="text-ui-sm text-foreground/60">
+              {t(`chat:services_state_${service.state}`)}
+            </span>
           </button>
         ))}
       </div>
@@ -430,7 +442,7 @@ function OmpLaunchServices(props: { services: readonly OmpRuntimeService[] }) {
 // dock entry that opens this pane is gated on the roster, so the roster cannot depend
 // on the pane being open. See findings.md #17.
 export function ServicesPanel() {
-  const copy = useMessages().chat.services;
+  const { t } = useTranslation();
   const providerStatuses = useProviderStatusesForLocalConfig();
 
   const daemonsByName = useDaemonStore((store) => store.daemonsByName);
@@ -445,13 +457,14 @@ export function ServicesPanel() {
       ?.services ?? [];
   const selected = selectedName === null ? null : (daemonsByName[selectedName] ?? null);
 
-  if (!hydrated) return <PanelStateMessage>{copy.loading}</PanelStateMessage>;
+  if (!hydrated)
+    return <PanelStateMessage>{t("chat:loadingBackgroundServices")}</PanelStateMessage>;
   if (daemons.length === 0 && ompServices.length === 0) {
     return (
       <PanelStateMessage>
         <span className="flex flex-col gap-1">
-          <span>{copy.empty}</span>
-          <span className="text-[11px] text-foreground/60">{copy.emptyHint}</span>
+          <span>{t("chat:services_empty")}</span>
+          <span className="text-ui-sm text-foreground/60">{t("chat:services_emptyHint")}</span>
         </span>
       </PanelStateMessage>
     );

@@ -7,12 +7,11 @@
 // Layer: Pull request presentation
 // Exports: PullRequestSummaryTab, PullRequestPageSummary, GitHubItemPageSummary, GitHubItemComments
 
-import type { PullRequestComment, PullRequestDetail } from "@synara/contracts";
+import type { GitPullRequestCheck, PullRequestComment, PullRequestDetail } from "@synara/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 import {
-  PULL_REQUEST_CHECK_STATUS_LABELS,
   summarizePullRequestChecks,
   summarizePullRequestComments,
   withStableCheckKeys,
@@ -44,7 +43,16 @@ import {
   PR_META_TEXT_CLASS_NAME,
 } from "./pullRequestText";
 import { cn } from "~/lib/utils";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
+
+const PULL_REQUEST_CHECK_STATUS_TRANSLATION_KEYS = {
+  pending: "git:prCheckStatus_running",
+  success: "git:prCheckStatus_succeeded",
+  failure: "git:prCheckStatus_failed",
+  skipped: "git:prCheckStatus_skipped",
+  neutral: "git:prCheckStatus_neutral",
+  cancelled: "git:prCheckStatus_cancelled",
+} as const satisfies Record<GitPullRequestCheck["status"], string>;
 
 /** A branch name in the Branch meta row (head and base render identically). Plain text at the
  *  row's own size — no chip, no width cap: it gives up characters only once the row genuinely
@@ -75,11 +83,17 @@ export function GitHubItemPageSummary({
   /** The comments section's content, usually a GitHubItemComments. */
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div>
-      <PullRequestMarkdown text={body} fallback="_No description provided._" cwd={workspaceRoot} />
+      <PullRequestMarkdown
+        text={body}
+        fallback={t("git:pullRequestNoDescription")}
+        cwd={workspaceRoot}
+      />
       <div className="mt-6">
-        <PullRequestDisclosureSection flush label="Comments" count={commentCount}>
+        <PullRequestDisclosureSection flush label={t("git:comments")} count={commentCount}>
           {children}
         </PullRequestDisclosureSection>
       </div>
@@ -104,12 +118,14 @@ export function GitHubItemComments({
   target: GitHubCommentTarget;
   mutation: GitHubCommentMutation;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="space-y-2">
       {warning ? <PullRequestWarningNote>{warning}</PullRequestWarningNote> : null}
       {comments.length === 0 ? (
         <p className={cn(PR_BODY_TEXT_CLASS_NAME, "py-4 text-center text-muted-foreground")}>
-          No comments
+          {t("git:noComments")}
         </p>
       ) : (
         <div>
@@ -130,7 +146,7 @@ export function GitHubItemComments({
 }
 
 function PullRequestComments({ detail }: { detail: PullRequestDetail }) {
-  const copy = useMessages().pullRequests;
+  const { t } = useTranslation();
   const commentMutation = usePullRequestCommentMutation();
   return (
     <GitHubItemComments
@@ -139,9 +155,9 @@ function PullRequestComments({ detail }: { detail: PullRequestDetail }) {
       workspaceRoot={detail.workspaceRoot}
       warning={
         detail.commentsIncomplete
-          ? copy.summary.partialComments
+          ? t("git:pullRequestCommentsIncomplete")
           : detail.commentsTruncated
-            ? copy.summary.moreComments
+            ? t("git:prEnvironment_moreComments")
             : null
       }
       target={detail}
@@ -176,8 +192,9 @@ export function PullRequestSummaryTab({
   /** The title and author line. Off when the host already shows them in a GitHubItemHeader. */
   showHeading?: boolean;
 }) {
+  const { t, formatLocale } = useTranslation();
+
   const showHeading = showHeadingProp ?? true;
-  const copy = useMessages().pullRequests;
   return (
     <div className="h-full overflow-y-auto">
       <section className={cn("space-y-4 px-5", showHeading ? "py-5" : "py-3")}>
@@ -192,15 +209,15 @@ export function PullRequestSummaryTab({
                 actor={detail.author}
                 className="font-medium text-foreground"
               />
-              <span>{formatRelativeTime(detail.updatedAt)}</span>
-              <span>{describePullRequestState(detail.state, detail.isDraft)}</span>
+              <span>{formatRelativeTime(detail.updatedAt, undefined, formatLocale)}</span>
+              <span>{describePullRequestState(detail.state, detail.isDraft, t)}</span>
             </PullRequestMetaLine>
           </div>
         ) : null}
         <div>
           <PullRequestMetaRow
             icon={<GitBranchIcon className="size-4" />}
-            label={copy.summary.branch}
+            label={t("common:sessionStatus_branch")}
           >
             {/* One line: the branch names absorb every pixel the row has spare, and only the
                 separator and the counts are pinned. */}
@@ -223,17 +240,14 @@ export function PullRequestSummaryTab({
           {detail.state === "open" && detail.mergeability === "conflicting" ? (
             <PullRequestMetaRow
               icon={<PullRequestConflictIcon className="size-4" />}
-              label={copy.summary.merge}
+              label={t("git:merge")}
             >
-              {copy.summary.conflictsWith} {detail.baseBranch}
+              {t("git:conflictsWith")} {detail.baseBranch}
             </PullRequestMetaRow>
           ) : null}
-          <PullRequestMetaRow
-            icon={<UsersIcon className="size-4" />}
-            label={copy.summary.reviewers}
-          >
+          <PullRequestMetaRow icon={<UsersIcon className="size-4" />} label={t("git:reviewers")}>
             {detail.reviewers.length === 0 ? (
-              <span className="text-muted-foreground">{copy.summary.noReviewers}</span>
+              <span className="text-muted-foreground">{t("chat:none")}</span>
             ) : (
               <span className="flex flex-wrap items-center gap-1.5">
                 {detail.reviewers.map((actor) => (
@@ -248,33 +262,33 @@ export function PullRequestSummaryTab({
           </PullRequestMetaRow>
           <PullRequestMetaRow
             icon={<ChatBubbleIcon className="size-4" />}
-            label={copy.summary.comments}
+            label={t("git:comments")}
           >
-            {summarizePullRequestComments(detail.comments.length)}
+            {summarizePullRequestComments(detail.comments.length, false, t)}
           </PullRequestMetaRow>
           {/* Tone tinting intentionally omitted: the summary reads as plain metadata
               here, matching the muted meta rows around it. */}
           <PullRequestMetaRow
             icon={<PullRequestChecksRing checks={detail.checks} />}
-            label={copy.summary.checks}
+            label={t("git:checks")}
           >
-            {summarizePullRequestChecks(detail.checks).label}
+            {summarizePullRequestChecks(detail.checks, t).label}
           </PullRequestMetaRow>
         </div>
       </section>
       {/* No edit pencil here: there is no backend "edit PR description" action to back it. */}
-      <PullRequestDisclosureSection label={copy.summary.description}>
+      <PullRequestDisclosureSection label={t("git:description")}>
         <PullRequestMarkdown
           text={detail.body}
-          fallback={copy.summary.noDescription}
+          fallback={t("git:pullRequestNoDescription")}
           cwd={detail.workspaceRoot}
         />
       </PullRequestDisclosureSection>
-      <PullRequestDisclosureSection label={copy.summary.checks} count={detail.checks.length}>
+      <PullRequestDisclosureSection label={t("git:checks")} count={detail.checks.length}>
         <div className="space-y-1">
           {detail.checks.length === 0 ? (
             <p className={cn(PR_META_TEXT_CLASS_NAME, "text-muted-foreground")}>
-              {copy.summary.noChecks}
+              {t("git:noChecksReported")}
             </p>
           ) : (
             withStableCheckKeys(detail.checks).map(({ key, check }) => (
@@ -295,7 +309,7 @@ export function PullRequestSummaryTab({
                 <PullRequestCheckStatusIcon status={check.status} />
                 <span className="min-w-0 flex-1 truncate">{check.name}</span>
                 <span className="text-muted-foreground">
-                  {PULL_REQUEST_CHECK_STATUS_LABELS[check.status]}
+                  {t(PULL_REQUEST_CHECK_STATUS_TRANSLATION_KEYS[check.status])}
                 </span>
               </button>
             ))
@@ -303,7 +317,7 @@ export function PullRequestSummaryTab({
         </div>
       </PullRequestDisclosureSection>
       {/* Open by default so the comment composer is immediately reachable. */}
-      <PullRequestDisclosureSection label={copy.summary.comments} count={detail.comments.length}>
+      <PullRequestDisclosureSection label={t("git:comments")} count={detail.comments.length}>
         <PullRequestComments detail={detail} />
       </PullRequestDisclosureSection>
     </div>

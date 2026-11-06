@@ -20,25 +20,77 @@ import {
 import { Button } from "~/components/ui/button";
 import { toastManager } from "~/components/ui/toast";
 import { copyTextToClipboard } from "~/hooks/useCopyToClipboard";
-import { useMessages } from "~/i18n/context";
-import type { Messages } from "~/i18n/locales/en";
+import { t, useTranslation } from "~/i18n";
 
 export type PullRequestConfirmAction =
   | { kind: "merge"; method: PullRequestMergeMethod }
   | { kind: "close" };
 
-export function copyPullRequestLink(url: string, copy: Messages["pullRequests"]["toast"]): void {
+export function copyPullRequestLink(url: string): void {
   void copyTextToClipboard(url)
     .then(() => {
-      toastManager.add({ type: "success", title: copy.linkCopied });
+      toastManager.add({ type: "success", title: t("git:linkCopied") });
     })
     .catch((error: unknown) => {
       toastManager.add({
         type: "error",
-        title: copy.linkCopyFailed,
-        description: error instanceof Error ? error.message : copy.clipboardFailed,
+        title: t("git:couldNotCopyLink"),
+        description: error instanceof Error ? error.message : t("git:clipboardAccessFailed"),
       });
     });
+}
+
+function confirmTitle(
+  translate: typeof t,
+  action: PullRequestConfirmAction,
+  stack: PullRequestStack | null,
+  stackMergeTargetCount: number,
+): string {
+  if (action.kind === "close") return translate("git:closePullRequest2");
+  return stack
+    ? translate("git:merge2", {
+        value0: stackMergeTargetCount,
+        value1:
+          stackMergeTargetCount === 1
+            ? translate("chat:pullRequest")
+            : translate("git:pullRequests2"),
+      })
+    : translate("git:mergePullRequest");
+}
+
+function confirmDescription(
+  translate: typeof t,
+  action: PullRequestConfirmAction,
+  number: number,
+  baseBranch: string | null,
+  stack: PullRequestStack | null,
+): string {
+  if (action.kind === "close") {
+    return translate("git:thisWillCloseWithoutMergingIt", { value0: number });
+  }
+  if (stack) {
+    return translate("git:thisWillAtomicallyMergeEveryOpenPullRequestThrough", {
+      value0: number,
+      value1: stack.baseBranch,
+      value2: action.method,
+      value3:
+        stack.position < stack.size
+          ? translate("git:pullRequestsAboveItWillRemainOpenAndGitHub")
+          : "",
+    });
+  }
+  if (baseBranch) {
+    return translate("git:thisWillMergeIntoBranchUsing", {
+      value0: number,
+      value1: baseBranch,
+      value2: action.method,
+    });
+  }
+  return translate("git:thisWillMergeUsing", {
+    value0: number,
+    value1: "",
+    value2: action.method,
+  });
 }
 
 export function PullRequestConfirmActionDialog({
@@ -61,7 +113,8 @@ export function PullRequestConfirmActionDialog({
   onConfirm: (action: PullRequestConfirmAction) => void;
   onDismiss: () => void;
 }) {
-  const copy = useMessages().pullRequests;
+  const { t } = useTranslation();
+
   // Keep rendering the last action while the dialog animates out, so the copy does not
   // flip to another action's text once the owner resets `action` to null.
   const [shownAction, setShownAction] = useState(action);
@@ -90,28 +143,15 @@ export function PullRequestConfirmActionDialog({
           <>
             <AlertDialogHeader>
               <AlertDialogTitle>
-                {shown.kind === "close"
-                  ? copy.confirm.closeTitle
-                  : stack
-                    ? copy.confirm.mergeStackTitle(stackMergeTargetCount)
-                    : copy.confirm.mergeTitle}
+                {confirmTitle(t, shown, stack, stackMergeTargetCount)}
               </AlertDialogTitle>
               <AlertDialogDescription>
-                {shown.kind === "close"
-                  ? copy.confirm.closeDescription(number)
-                  : stack
-                    ? copy.confirm.mergeStackDescription(
-                        number,
-                        stack.baseBranch,
-                        shown.method,
-                        stack.position < stack.size,
-                      )
-                    : copy.confirm.mergeDescription(number, shown.method, baseBranch)}
+                {confirmDescription(t, shown, number, baseBranch, stack)}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogClose render={<Button variant="outline" size="sm" />}>
-                {copy.actions.cancel}
+                {t("common:form_cancel")}
               </AlertDialogClose>
               <Button
                 size="sm"
@@ -123,10 +163,10 @@ export function PullRequestConfirmActionDialog({
                 }}
               >
                 {shown.kind === "close"
-                  ? copy.confirm.close
+                  ? t("common:app_close")
                   : stack
-                    ? copy.confirm.mergeStack
-                    : copy.confirm.merge}
+                    ? t("git:mergeStack")
+                    : t("git:merge")}
               </Button>
             </AlertDialogFooter>
           </>

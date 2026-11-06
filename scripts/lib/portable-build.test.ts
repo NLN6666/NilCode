@@ -18,9 +18,13 @@ function fixture() {
       "desktopHangWatchdogProcess",
       "cuaDriverHostStandalone",
     ].map((name) => `apps/desktop/dist-electron/${name}.js`),
-    ...["index", "restoreMigrationBackup", "runtimeDependencySmoke"].map(
-      (name) => `apps/server/dist/${name}.mjs`,
-    ),
+    ...[
+      "index",
+      "restoreMigrationBackup",
+      "compactDatabase",
+      "runtimeDependencySmoke",
+      "languageWorker",
+    ].map((name) => `apps/server/dist/${name}.mjs`),
     "apps/server/dist/client/index.html",
     "apps/server/dist/device-helper/build.sh",
   ]) {
@@ -47,6 +51,8 @@ describe("portable release outputs", () => {
     for (const env of [
       { AZURE_TRUSTED_SIGNING_SUBJECT_DN: "publisher" },
       { VITE_FEEDBACK_ENDPOINT: "https://example.test" },
+      { SYNARA_STABLE_ACCOUNT_URL: "https://account.example.test" },
+      { VITE_SYNARA_BILLING_ENABLED: "1" },
       { SYNARA_WEB_SOURCEMAP: "1" },
     ])
       expect(() => verifyPortableBuild(root, commit, manifest, env)).toThrow("mismatch");
@@ -70,6 +76,13 @@ describe("portable release outputs", () => {
     rmSync(join(root, "apps/desktop/dist-electron/desktopHangWatchdogProcess.js"));
     expect(() => portableBuildManifest(root, commit)).toThrow(
       "Missing portable build output: apps/desktop/dist-electron/desktopHangWatchdogProcess.js",
+    );
+  });
+  it("rejects a portable server without its editor language worker", () => {
+    const root = fixture();
+    rmSync(join(root, "apps/server/dist/languageWorker.mjs"));
+    expect(() => portableBuildManifest(root, commit, {})).toThrow(
+      "Missing portable build output: apps/server/dist/languageWorker.mjs",
     );
   });
   it("rejects symlinks, native products and lost helper executable modes", () => {

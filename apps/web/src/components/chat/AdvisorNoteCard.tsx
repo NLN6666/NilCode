@@ -11,8 +11,8 @@
 import type { CSSProperties } from "react";
 
 import { EyeIcon } from "~/lib/icons";
+import { useTranslation } from "~/i18n";
 import type { WorkLogAdvisorNote } from "../../workLog";
-import { useMessages } from "~/i18n/context";
 import { cn } from "~/lib/utils";
 
 // Severity is the whole point of the rail: a nit must not read as urgently as
@@ -38,7 +38,7 @@ export function AdvisorNoteCard({
   note: WorkLogAdvisorNote;
   chatTypographyStyle?: CSSProperties;
 }) {
-  const copy = useMessages().chat.advisor;
+  const { t } = useTranslation();
 
   return (
     <div className="flex min-w-0 gap-3">
@@ -50,12 +50,22 @@ export function AdvisorNoteCard({
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] tracking-[0.01em]">
           <span className="inline-flex items-center gap-1.5 text-muted-foreground/80">
             <EyeIcon className="size-3 shrink-0" />
-            <span className="font-medium uppercase">{copy.label}</span>
+            <span className="font-medium uppercase">{t("chat:advisorNoteCard_label")}</span>
           </span>
           <span className={cn("font-medium", SEVERITY_TEXT_CLASS[note.severity])}>
-            {copy.severity[note.severity]}
+            {note.severity === "nit"
+              ? t("chat:advisorNoteCard_severity_nit")
+              : note.severity === "concern"
+                ? t("chat:advisorNoteCard_severity_concern")
+                : t("chat:advisorNoteCard_severity_blocker")}
           </span>
-          <span className="text-muted-foreground/60">{copy.channel[note.channel]}</span>
+          <span className="text-muted-foreground/60">
+            {note.channel === "steer"
+              ? t("chat:advisorNoteCard_channel_steer")
+              : note.channel === "aside"
+                ? t("chat:advisorNoteCard_channel_aside")
+                : t("chat:advisorNoteCard_channel_preserve")}
+          </span>
         </div>
         {/* Plain text, not markdown: the protocol caps a note at one or two
             sentences, and rendering it as markdown would let advisor output

@@ -5,6 +5,7 @@
 //          SettingsListRow, SettingsRow, SettingsSelectPopup
 
 import { type ComponentProps, type ReactNode } from "react";
+import { useTranslation } from "~/i18n";
 import { cn } from "~/lib/utils";
 import { settingRowAnchorId } from "~/settingsNavigation";
 import {
@@ -59,24 +60,27 @@ export function SettingsCard({
  */
 export function SettingsSectionShell({
   title,
+  translateTitle = true,
   action,
   id,
   children,
 }: {
   title: string;
+  translateTitle?: boolean;
   action?: ReactNode;
   id?: string;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   return (
     <section id={id} className={cn(SETTINGS_PANEL_SECTION_CLASS_NAME, id && "scroll-mt-24")}>
       {action != null ? (
         <div className="flex items-center justify-between gap-2">
-          <h2 className={SETTINGS_SECTION_LABEL_CLASS_NAME}>{title}</h2>
+          <h2 className={SETTINGS_SECTION_LABEL_CLASS_NAME}>{translateTitle ? t(title) : title}</h2>
           {action}
         </div>
       ) : (
-        <h2 className={SETTINGS_SECTION_LABEL_CLASS_NAME}>{title}</h2>
+        <h2 className={SETTINGS_SECTION_LABEL_CLASS_NAME}>{translateTitle ? t(title) : title}</h2>
       )}
       {children}
     </section>
@@ -87,13 +91,15 @@ export function SettingsSection({
   title,
   action,
   children,
+  translateTitle,
 }: {
   title: string;
   action?: ReactNode;
   children: ReactNode;
+  translateTitle?: boolean;
 }) {
   return (
-    <SettingsSectionShell title={title} action={action}>
+    <SettingsSectionShell title={title} translateTitle={translateTitle ?? true} action={action}>
       <SettingsCard>{children}</SettingsCard>
     </SettingsSectionShell>
   );
@@ -169,12 +175,15 @@ export function SettingsListRow({
   title,
   description,
   actions,
+  leading,
   align: alignProp,
   onContextMenu,
 }: {
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
+  /** Glyph before the text block (a device or platform icon). */
+  leading?: ReactNode;
   align?: "center" | "start";
   onContextMenu?: ComponentProps<"div">["onContextMenu"];
 }) {
@@ -191,11 +200,18 @@ export function SettingsListRow({
           align === "start" ? "sm:items-start" : "sm:items-center",
         )}
       >
-        <div className="min-w-0 flex-1 space-y-0.5">
-          <div className={cn(SETTINGS_CARD_ROW_TITLE_CLASS_NAME, "truncate")}>{title}</div>
-          {description != null ? (
-            <div className={SETTINGS_CARD_ROW_DESCRIPTION_CLASS_NAME}>{description}</div>
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {leading != null ? (
+            <span className="flex size-8 shrink-0 items-center justify-center text-muted-foreground">
+              {leading}
+            </span>
           ) : null}
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <div className={cn(SETTINGS_CARD_ROW_TITLE_CLASS_NAME, "truncate")}>{title}</div>
+            {description != null ? (
+              <div className={SETTINGS_CARD_ROW_DESCRIPTION_CLASS_NAME}>{description}</div>
+            ) : null}
+          </div>
         </div>
         {actions != null ? (
           <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:justify-end">
@@ -209,6 +225,7 @@ export function SettingsListRow({
 
 export function SettingsRow({
   title,
+  id,
   description,
   status,
   resetAction,
@@ -218,6 +235,8 @@ export function SettingsRow({
   anchorKey,
 }: {
   title: ReactNode;
+  /** Stable navigation target, independent of display copy and locale. */
+  id?: string;
   description: string;
   status?: ReactNode;
   resetAction?: ReactNode;
@@ -234,10 +253,11 @@ export function SettingsRow({
   // via `?target=…`; scroll-margin keeps the row clear of the sticky settings header.
   const anchorSource = anchorKey ?? (typeof title === "string" ? title : undefined);
   const anchorId = anchorSource === undefined ? undefined : settingRowAnchorId(anchorSource);
+  const { t } = useTranslation();
   return (
     <div
-      id={anchorId}
-      className={cn(SETTINGS_CARD_ROW_CLASS_NAME, anchorId && "scroll-mt-24")}
+      id={id ?? anchorId}
+      className={cn(SETTINGS_CARD_ROW_CLASS_NAME, (id ?? anchorId) && "scroll-mt-24")}
       data-slot="settings-row"
     >
       <div
@@ -249,12 +269,14 @@ export function SettingsRow({
       >
         <div className="min-w-0 flex-1 space-y-0.5">
           <div className="flex min-h-5 items-center gap-1.5">
-            <h3 className={SETTINGS_CARD_ROW_TITLE_CLASS_NAME}>{title}</h3>
+            <h3 className={SETTINGS_CARD_ROW_TITLE_CLASS_NAME}>
+              {typeof title === "string" ? t(title) : title}
+            </h3>
             <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
               {resetAction}
             </span>
           </div>
-          <p className={SETTINGS_CARD_ROW_DESCRIPTION_CLASS_NAME}>{description}</p>
+          <p className={SETTINGS_CARD_ROW_DESCRIPTION_CLASS_NAME}>{t(description)}</p>
           {status ? <div className="pt-1 text-ui-sm text-muted-foreground">{status}</div> : null}
         </div>
         {control ? (

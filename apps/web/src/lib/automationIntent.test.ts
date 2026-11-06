@@ -37,7 +37,6 @@ describe("parseChatAutomationIntent", () => {
     );
 
     expect(intent).toMatchObject({
-      cadenceLabel: "Every 6h",
       prompt:
         "check if on this website the black google fitbit air is available in black https://www.amazon.it/example",
       schedule: { type: "interval", everySeconds: 21_600 },
@@ -49,7 +48,6 @@ describe("parseChatAutomationIntent", () => {
     const intent = parseChatAutomationIntent("/automation say hi every 15 seconds for 3 times");
 
     expect(intent).toMatchObject({
-      cadenceLabel: "Every 15s",
       prompt: "say hi",
       schedule: { type: "interval", everySeconds: 15 },
       maxIterations: 3,
@@ -60,7 +58,6 @@ describe("parseChatAutomationIntent", () => {
     expect(
       parseChatAutomationIntent("/automation say hi every 15 seconds 3 times total"),
     ).toMatchObject({
-      cadenceLabel: "Every 15s",
       prompt: "say hi",
       schedule: { type: "interval", everySeconds: 15 },
       maxIterations: 3,
@@ -70,7 +67,6 @@ describe("parseChatAutomationIntent", () => {
     expect(
       parseChatAutomationIntent("/automation say hi every 15 seconds per un totale di 3 volte"),
     ).toMatchObject({
-      cadenceLabel: "Every 15s",
       prompt: "say hi",
       schedule: { type: "interval", everySeconds: 15 },
       maxIterations: 3,
@@ -98,7 +94,6 @@ describe("parseChatAutomationIntent", () => {
     expect(
       parseChatAutomationIntent("/automation how do automations work every day?"),
     ).toMatchObject({
-      cadenceLabel: "Daily at 09:00",
       prompt: "how do automations work ?",
     });
   });
@@ -107,7 +102,6 @@ describe("parseChatAutomationIntent", () => {
     expect(
       parsePlainChatAutomationInvocation("can you remind me every day to stretch?"),
     ).toMatchObject({
-      cadenceLabel: "Daily at 09:00",
       prompt: "remind me stretch",
       schedule: { type: "daily", timeOfDay: "09:00" },
       executionScope: "thread",
@@ -118,7 +112,6 @@ describe("parseChatAutomationIntent", () => {
         "could you check the website every 15 seconds for 3 times",
       ),
     ).toMatchObject({
-      cadenceLabel: "Every 15s",
       prompt: "check the website",
       schedule: { type: "interval", everySeconds: 15 },
       maxIterations: 3,
@@ -128,7 +121,6 @@ describe("parseChatAutomationIntent", () => {
     expect(
       parsePlainChatAutomationInvocation("could you say hi every 15 seconds for 3 times"),
     ).toMatchObject({
-      cadenceLabel: "Every 15s",
       prompt: "say hi",
       schedule: { type: "interval", everySeconds: 15 },
       maxIterations: 3,
@@ -139,7 +131,6 @@ describe("parseChatAutomationIntent", () => {
   it("detects explicit standalone and worktree scopes without saving scope scaffolding", () => {
     expect(parseChatAutomationIntent("/automation run standalone every 5m check CI")).toMatchObject(
       {
-        cadenceLabel: "Every 5m",
         prompt: "check CI",
         schedule: { type: "interval", everySeconds: 300 },
         executionScope: "standalone",
@@ -149,7 +140,6 @@ describe("parseChatAutomationIntent", () => {
     expect(
       parseChatAutomationIntent("/automation in a new worktree every 5m check CI"),
     ).toMatchObject({
-      cadenceLabel: "Every 5m",
       prompt: "check CI",
       schedule: { type: "interval", everySeconds: 300 },
       executionScope: "worktree",
@@ -158,14 +148,12 @@ describe("parseChatAutomationIntent", () => {
     expect(
       parseChatAutomationIntent("/automation every 5m check whether the new run finished"),
     ).toMatchObject({
-      cadenceLabel: "Every 5m",
       prompt: "check whether the new run finished",
       schedule: { type: "interval", everySeconds: 300 },
       executionScope: "thread",
     });
 
     expect(parseChatAutomationIntent("/automation every 5m check CI as a new run")).toMatchObject({
-      cadenceLabel: "Every 5m",
       prompt: "check CI",
       schedule: { type: "interval", everySeconds: 300 },
       executionScope: "standalone",
@@ -232,7 +220,6 @@ describe("parseChatAutomationIntent", () => {
         nowIso: "2026-06-19T10:00:00.000Z",
       }),
     ).toMatchObject({
-      cadenceLabel: "In 15s",
       schedule: { type: "once", runAt: "2026-06-19T10:00:15.000Z" },
       prompt: "remind me here",
     });
@@ -242,7 +229,6 @@ describe("parseChatAutomationIntent", () => {
         nowIso: "2026-06-19T10:00:00.000Z",
       }),
     ).toMatchObject({
-      cadenceLabel: "In 5m",
       schedule: { type: "once", runAt: "2026-06-19T10:05:00.000Z" },
       prompt: "controlla il deploy",
     });
@@ -252,7 +238,6 @@ describe("parseChatAutomationIntent", () => {
         nowIso: "2026-06-19T10:00:00.000Z",
       }),
     ).toMatchObject({
-      cadenceLabel: "In 15s",
       schedule: { type: "once", runAt: "2026-06-19T10:00:15.000Z" },
       prompt: "scrivi qui: test automation ok",
     });
@@ -262,7 +247,6 @@ describe("parseChatAutomationIntent", () => {
     const intent = parseChatAutomationInvocation("cron 0 9 * * * run $check-code on stale PRs");
 
     expect(intent).toMatchObject({
-      cadenceLabel: "Cron 0 9 * * *",
       prompt: "run $check-code on stale PRs",
       schedule: { type: "cron", expression: "0 9 * * *" },
     });
@@ -274,7 +258,6 @@ describe("parseChatAutomationIntent", () => {
     );
 
     expect(intent).toMatchObject({
-      cadenceLabel: "Every 30m",
       prompt: "check if the staging site is up",
       schedule: { type: "interval", everySeconds: 1_800 },
     });
@@ -284,27 +267,23 @@ describe("parseChatAutomationIntent", () => {
     expect(
       parseChatAutomationIntent("/automation schedule a check daily at 9:30 to scan the changelog"),
     ).toMatchObject({
-      cadenceLabel: "Daily at 09:30",
       schedule: { type: "daily", timeOfDay: "09:30" },
     });
 
     expect(
       parseChatAutomationIntent("@automation remind me weekdays at 18 to write the standup note"),
     ).toMatchObject({
-      cadenceLabel: "Weekdays at 18:00",
       schedule: { type: "weekdays", timeOfDay: "18:00" },
     });
   });
 
   it("parses meridiem times instead of falling back to the default daily time", () => {
     expect(parseChatAutomationIntent("/automation daily at 9pm check the queue")).toMatchObject({
-      cadenceLabel: "Daily at 21:00",
       prompt: "check the queue",
       schedule: { type: "daily", timeOfDay: "21:00" },
     });
 
     expect(parseChatAutomationIntent("/automation weekdays at 12am check logs")).toMatchObject({
-      cadenceLabel: "Weekdays at 00:00",
       prompt: "check logs",
       schedule: { type: "weekdays", timeOfDay: "00:00" },
     });
@@ -321,7 +300,6 @@ describe("parseChatAutomationIntent", () => {
 
   it("strips weekday and weekly cadence text from deterministic prompts", () => {
     expect(parseChatAutomationIntent("/automation every Monday at 9 check CI")).toMatchObject({
-      cadenceLabel: "Weekly at 09:00",
       prompt: "check CI",
       schedule: { type: "weekly", dayOfWeek: 1, timeOfDay: "09:00" },
     });
@@ -329,13 +307,11 @@ describe("parseChatAutomationIntent", () => {
     expect(
       parseChatAutomationIntent("@automation weekdays at 18 write standup note"),
     ).toMatchObject({
-      cadenceLabel: "Weekdays at 18:00",
       prompt: "write standup note",
       schedule: { type: "weekdays", timeOfDay: "18:00" },
     });
 
     expect(parseChatAutomationIntent("/automation ogni lunedì alle 9 controlla CI")).toMatchObject({
-      cadenceLabel: "Weekly at 09:00",
       prompt: "controlla CI",
       schedule: { type: "weekly", dayOfWeek: 1, timeOfDay: "09:00" },
     });
@@ -532,7 +508,7 @@ describe("parseChatAutomationIntent", () => {
       requiresReview: true,
       intent: {
         name: "Controlla disponibilita",
-        cadenceLabel: "Every 6h",
+        schedule: { type: "interval", everySeconds: 21_600 },
       },
     });
   });
@@ -621,7 +597,7 @@ describe("parseChatAutomationIntent", () => {
     expect(resolved).toMatchObject({
       source: "generated",
       generatedNeedsConfirmation: true,
-      intent: { schedule: { type: "interval", everySeconds: 15 }, cadenceLabel: "Every 15s" },
+      intent: { schedule: { type: "interval", everySeconds: 15 } },
     });
   });
 

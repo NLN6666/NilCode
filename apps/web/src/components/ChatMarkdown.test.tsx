@@ -99,7 +99,6 @@ describe("ChatMarkdown", () => {
 
     expect(markup).toContain('data-github-alert="note"');
     expect(markup).toContain('class="markdown-alert-title"');
-    expect(markup).toContain(">Note</p>");
     expect(markup).not.toContain("[!NOTE]");
     expect(markup).toContain("<strong>Medium Risk</strong>");
   });

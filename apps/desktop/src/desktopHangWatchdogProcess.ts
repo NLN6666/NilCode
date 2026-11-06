@@ -21,11 +21,14 @@ type ParentChannel = {
   disconnect?(): void;
 };
 
+type WatchdogIntervalTimer = ReturnType<typeof setInterval>;
+type WatchdogIntervalScheduler = (callback: () => void, delay: number) => WatchdogIntervalTimer;
+
 export interface DesktopHangWatchdogRuntimeOptions {
   readonly parent: ParentChannel;
   readonly now?: () => number;
-  readonly setInterval?: typeof setInterval;
-  readonly clearInterval?: typeof clearInterval;
+  readonly setInterval?: WatchdogIntervalScheduler;
+  readonly clearInterval?: (timer: WatchdogIntervalTimer) => void;
   readonly exit?: (code?: number) => never | void;
   readonly writeDump?: (request: WindowsHangDumpRequest) => Promise<WindowsHangDumpResult>;
 }
@@ -48,7 +51,7 @@ export function createDesktopHangWatchdogRuntime(
   let rendererPid: number | null = null;
   let backendPid: number | null = null;
   let captureSequence = 0;
-  let timer: ReturnType<typeof setInterval> | null = null;
+  let timer: WatchdogIntervalTimer | null = null;
   let stopped = false;
 
   const sendResult = (message: Record<string, unknown>): void => {

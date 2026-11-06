@@ -16,7 +16,7 @@ import {
   type BrowserAnnotationSource,
   type BrowserAnnotationTheme,
   type BrowserAnnotationLocale,
-  BROWSER_ANNOTATION_LOCALES,
+  UI_LOCALES,
 } from "@synara/contracts";
 import { sanitizeBrowserAnnotationPageTitle } from "@synara/shared/browserAnnotations";
 
@@ -155,7 +155,7 @@ export function parseBrowserAnnotationTheme(value: unknown): BrowserAnnotationTh
  * theme, instead of quietly serving English.
  */
 export function parseBrowserAnnotationLocale(value: unknown): BrowserAnnotationLocale | null {
-  return BROWSER_ANNOTATION_LOCALES.includes(value as BrowserAnnotationLocale)
+  return UI_LOCALES.includes(value as BrowserAnnotationLocale)
     ? (value as BrowserAnnotationLocale)
     : null;
 }

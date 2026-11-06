@@ -24,7 +24,7 @@ import { ensureNativeApi } from "~/nativeApi";
 import { PullRequestActorLabel } from "./PullRequestActorLabel";
 import { PullRequestMarkdown } from "./PullRequestMarkdown";
 import { parseFindingComment, type PullRequestCommentSeverity } from "./pullRequestComment.logic";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 function severityToneClassName(severity: PullRequestCommentSeverity): string {
   if (severity === "High") return "text-destructive";
@@ -45,7 +45,8 @@ export function PullRequestCommentCard({
    *  dozens of markdown trees. */
   defaultOpen?: boolean;
 }) {
-  const copy = useMessages().pullRequests;
+  const { t, formatLocale } = useTranslation();
+
   const defaultOpen = defaultOpenProp ?? true;
   const [open, setOpen] = useState(defaultOpen);
   const finding = parseFindingComment(comment.body);
@@ -65,7 +66,7 @@ export function PullRequestCommentCard({
         <span
           className={cn(PR_FINE_TEXT_CLASS_NAME, "shrink-0 tabular-nums text-muted-foreground")}
         >
-          {formatRelativeTime(comment.createdAt)}
+          {formatRelativeTime(comment.createdAt, undefined, formatLocale)}
         </span>
         <DisclosureChevron open={open} />
       </CollapsibleTrigger>
@@ -93,13 +94,20 @@ export function PullRequestCommentCard({
                   severityToneClassName(finding.severity),
                 )}
               >
-                {copy.summary.severity(finding.severity)}
+                {t("git:pullRequestSeverity", {
+                  value0:
+                    finding.severity === "High"
+                      ? t("git:severityHigh")
+                      : finding.severity === "Medium"
+                        ? t("git:severityMedium")
+                        : t("git:severityLow"),
+                })}
               </p>
             </div>
           ) : null}
           <PullRequestMarkdown
             text={finding ? finding.body : comment.body}
-            fallback={copy.summary.noReviewBody}
+            fallback={t("git:pullRequestNoReviewBody")}
             cwd={workspaceRoot}
           />
           <div className="mt-2 flex justify-end">
@@ -111,7 +119,7 @@ export function PullRequestCommentCard({
                 "rounded px-1.5 py-0.5 font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
               )}
             >
-              {copy.actions.reply}
+              {t("git:reply")}
             </button>
           </div>
         </div>

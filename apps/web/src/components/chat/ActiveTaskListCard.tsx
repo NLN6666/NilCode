@@ -25,7 +25,7 @@ import {
   COMPOSER_STACKED_PANEL_ICON_CLASS_NAME,
   COMPOSER_STACKED_PANEL_SCROLL_REGION_CLASS_NAME,
 } from "./composerStackedPanelStyles";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 interface ActiveTaskListCardProps {
   activeTaskList: ActiveTaskListState;
@@ -38,8 +38,7 @@ export function ActiveTaskListCard({
   backgroundTaskCount: backgroundTaskCountProp,
   onOpenSidebar,
 }: ActiveTaskListCardProps) {
-  const messages = useMessages();
-  const copy = messages.chat.tasks;
+  const { t } = useTranslation();
   const backgroundTaskCount = backgroundTaskCountProp ?? 0;
   const totalCount = activeTaskList.tasks.length;
   const completedCount = activeTaskList.tasks.filter((task) => task.status === "completed").length;
@@ -51,7 +50,7 @@ export function ActiveTaskListCard({
         <ComposerStackedPanelRowMain>
           <PiSlidersHorizontal className={COMPOSER_STACKED_PANEL_ICON_CLASS_NAME} />
           <ComposerStackedPanelRowLabel tone="meta">
-            {copy.completed(completedCount, totalCount)}
+            {completedCount} {t("chat:outOf")} {totalCount} {t("chat:tasksCompleted")}
           </ComposerStackedPanelRowLabel>
         </ComposerStackedPanelRowMain>
         <div className="flex shrink-0 items-center gap-0.5">
@@ -61,8 +60,8 @@ export function ActiveTaskListCard({
             size="icon-xs"
             className={COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME}
             onClick={onOpenSidebar}
-            aria-label={copy.openSidebar}
-            title={copy.openSidebar}
+            aria-label={t("chat:activeTaskList_openTasksSidebar")}
+            title={t("chat:activeTaskList_openTasksSidebar")}
           >
             <PiSidebarSimple className="size-3" />
           </Button>
@@ -92,7 +91,7 @@ export function ActiveTaskListCard({
           <div className="flex min-w-0 items-center gap-1.5">
             <BotIcon className="size-3 shrink-0" />
             <span className="truncate">
-              {backgroundTaskCount} background {pluralize(backgroundTaskCount, "agent")}
+              {backgroundTaskCount} {t("chat:background")} {pluralize(backgroundTaskCount, "agent")}
             </span>
           </div>
         </div>

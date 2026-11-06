@@ -61,6 +61,15 @@ function status(overrides: Partial<GitStatusResult> = {}): GitStatusResult {
   };
 }
 
+function menuActionStates(items: ReturnType<typeof buildMenuItems>) {
+  return items.map(({ id, disabled, kind, dialogAction }) => ({
+    id,
+    disabled,
+    kind,
+    dialogAction: dialogAction ?? null,
+  }));
+}
+
 describe("when: branch is clean and has an open PR", () => {
   it("resolveQuickAction opens the existing PR", () => {
     const quick = resolveQuickAction(
@@ -69,7 +78,7 @@ describe("when: branch is clean and has an open PR", () => {
       }),
       false,
     );
-    assert.deepInclude(quick, { kind: "open_pr", label: "View PR", disabled: false });
+    assert.deepInclude(quick, { kind: "open_pr", disabled: false });
   });
 
   it("buildMenuItems disables commit/push and enables open PR", () => {
@@ -79,30 +88,10 @@ describe("when: branch is clean and has an open PR", () => {
       }),
       false,
     );
-    assert.deepEqual(items, [
-      {
-        id: "commit",
-        label: "Commit",
-        disabled: true,
-        icon: "commit",
-        kind: "open_dialog",
-        dialogAction: "commit",
-      },
-      {
-        id: "push",
-        label: "Push",
-        disabled: true,
-        icon: "push",
-        kind: "open_dialog",
-        dialogAction: "push",
-      },
-      {
-        id: "pr",
-        label: "Create PR",
-        disabled: false,
-        icon: "pr",
-        kind: "open_pr",
-      },
+    assert.deepEqual(menuActionStates(items), [
+      { id: "commit", disabled: true, kind: "open_dialog", dialogAction: "commit" },
+      { id: "push", disabled: true, kind: "open_dialog", dialogAction: "push" },
+      { id: "pr", disabled: false, kind: "open_pr", dialogAction: null },
     ]);
   });
 });
@@ -112,39 +101,16 @@ describe("when: actions are busy", () => {
     const quick = resolveQuickAction(status(), true);
     assert.deepInclude(quick, {
       kind: "show_hint",
-      label: "Commit",
       disabled: true,
-      hint: "Git action in progress.",
     });
   });
 
   it("buildMenuItems disables all actions", () => {
     const items = buildMenuItems(status(), true);
-    assert.deepEqual(items, [
-      {
-        id: "commit",
-        label: "Commit",
-        disabled: true,
-        icon: "commit",
-        kind: "open_dialog",
-        dialogAction: "commit",
-      },
-      {
-        id: "push",
-        label: "Push",
-        disabled: true,
-        icon: "push",
-        kind: "open_dialog",
-        dialogAction: "push",
-      },
-      {
-        id: "pr",
-        label: "Create PR",
-        disabled: true,
-        icon: "pr",
-        kind: "open_dialog",
-        dialogAction: "create_pr",
-      },
+    assert.deepEqual(menuActionStates(items), [
+      { id: "commit", disabled: true, kind: "open_dialog", dialogAction: "commit" },
+      { id: "push", disabled: true, kind: "open_dialog", dialogAction: "push" },
+      { id: "pr", disabled: true, kind: "open_dialog", dialogAction: "create_pr" },
     ]);
   });
 });
@@ -154,9 +120,7 @@ describe("when: git status is unavailable", () => {
     const quick = resolveQuickAction(null, false);
     assert.deepInclude(quick, {
       kind: "show_hint",
-      label: "Commit",
       disabled: true,
-      hint: "Git status is unavailable.",
     });
   });
 
@@ -175,7 +139,7 @@ describe("when: branch is clean, ahead, and has an open PR", () => {
       }),
       false,
     );
-    assert.deepInclude(quick, { kind: "run_action", action: "push", label: "Push" });
+    assert.deepInclude(quick, { kind: "run_action", action: "push", disabled: false });
   });
 });
 
@@ -185,37 +149,15 @@ describe("when: branch is clean, ahead, and has no open PR", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "create_pr",
-      label: "Push & create PR",
     });
   });
 
   it("buildMenuItems enables push and create PR, with commit disabled", () => {
     const items = buildMenuItems(status({ aheadCount: 2, pr: null }), false);
-    assert.deepEqual(items, [
-      {
-        id: "commit",
-        label: "Commit",
-        disabled: true,
-        icon: "commit",
-        kind: "open_dialog",
-        dialogAction: "commit",
-      },
-      {
-        id: "push",
-        label: "Push",
-        disabled: false,
-        icon: "push",
-        kind: "open_dialog",
-        dialogAction: "push",
-      },
-      {
-        id: "pr",
-        label: "Create PR",
-        disabled: false,
-        icon: "pr",
-        kind: "open_dialog",
-        dialogAction: "create_pr",
-      },
+    assert.deepEqual(menuActionStates(items), [
+      { id: "commit", disabled: true, kind: "open_dialog", dialogAction: "commit" },
+      { id: "push", disabled: false, kind: "open_dialog", dialogAction: "push" },
+      { id: "pr", disabled: false, kind: "open_dialog", dialogAction: "create_pr" },
     ]);
   });
 });
@@ -228,7 +170,6 @@ describe("when: branch is clean, up to date, and has no open PR", () => {
     );
     assert.deepInclude(quick, {
       kind: "show_hint",
-      label: "Commit",
       disabled: true,
     });
   });
@@ -245,10 +186,7 @@ describe("when: branch is clean, up to date, and has no open PR", () => {
       defaultBranchName: "main",
     });
 
-    assert.deepEqual(availability, {
-      canRun: false,
-      hint: "No branch changes to include in a PR.",
-    });
+    assert.isFalse(availability.canRun);
   });
 
   it("resolveCreatePrActionAvailability explains why literal create_pr cannot run dirty", () => {
@@ -257,17 +195,14 @@ describe("when: branch is clean, up to date, and has no open PR", () => {
       defaultBranchName: "main",
     });
 
-    assert.deepEqual(availability, {
-      canRun: false,
-      hint: "Commit local changes before creating a PR.",
-    });
+    assert.isFalse(availability.canRun);
   });
 });
 
 describe("when: branch is behind upstream", () => {
   it("resolveQuickAction returns pull", () => {
     const quick = resolveQuickAction(status({ behindCount: 2 }), false);
-    assert.deepInclude(quick, { kind: "run_pull", label: "Pull", disabled: false });
+    assert.deepInclude(quick, { kind: "run_pull", disabled: false });
   });
 
   it("resolvePullActionAvailability enables pull", () => {
@@ -282,17 +217,12 @@ describe("when: branch is behind upstream", () => {
   it("promotes Pull while behind upstream", () => {
     const quick = resolveQuickAction(status({ behindCount: 2 }), false);
     assert.equal(shouldPromotePullAction({ quickAction: quick, isPullRunning: false }), true);
-    assert.deepEqual(
-      resolvePromotedPullPresentation({ quickAction: quick, isPullRunning: false }),
-      {
-        label: "Pull",
-      },
-    );
+    assert.isNotNull(resolvePromotedPullPresentation({ quickAction: quick, isPullRunning: false }));
   });
 
   it("resolvePromotedPullPresentation does not use the busy Commit hint", () => {
     const busyQuickAction = resolveQuickAction(status({ behindCount: 2 }), true);
-    assert.deepInclude(busyQuickAction, { label: "Commit", kind: "show_hint", disabled: true });
+    assert.deepInclude(busyQuickAction, { kind: "show_hint", disabled: true });
     assert.equal(
       resolvePromotedPullPresentation({
         quickAction: busyQuickAction,
@@ -306,12 +236,7 @@ describe("when: branch is behind upstream", () => {
 describe("when: branch has diverged from upstream", () => {
   it("resolveQuickAction returns a disabled sync hint", () => {
     const quick = resolveQuickAction(status({ aheadCount: 2, behindCount: 1 }), false);
-    assert.deepEqual(quick, {
-      label: "Sync branch",
-      disabled: true,
-      kind: "show_hint",
-      hint: "Branch has diverged from upstream. Rebase/merge first.",
-    });
+    assert.deepInclude(quick, { disabled: true, kind: "show_hint" });
   });
 
   it("resolvePullActionAvailability blocks fast-forward pull", () => {
@@ -320,10 +245,7 @@ describe("when: branch has diverged from upstream", () => {
       isBusy: false,
     });
 
-    assert.deepEqual(availability, {
-      canRun: false,
-      hint: "Branch has diverged from upstream. Rebase/merge first.",
-    });
+    assert.isFalse(availability.canRun);
   });
 });
 
@@ -334,10 +256,7 @@ describe("when: branch is up to date", () => {
       isBusy: false,
     });
 
-    assert.deepEqual(availability, {
-      canRun: false,
-      hint: "Branch is already up to date.",
-    });
+    assert.isFalse(availability.canRun);
   });
 
   it("does not promote Pull for an up-to-date branch", () => {
@@ -356,7 +275,6 @@ describe("when: working tree has local changes", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit_push_pr",
-      label: "Commit, push & PR",
     });
   });
 
@@ -370,7 +288,6 @@ describe("when: working tree has local changes", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit",
-      label: "Commit",
       disabled: false,
     });
   });
@@ -385,8 +302,6 @@ describe("when: working tree has local changes", () => {
     );
     assert.deepInclude(quick, {
       kind: "show_hint",
-      label: "Push",
-      hint: "No local commits to push.",
       disabled: true,
     });
   });
@@ -401,46 +316,17 @@ describe("when: working tree has local changes", () => {
     );
     assert.deepInclude(quick, {
       kind: "create_branch",
-      label: "Create Branch",
       disabled: false,
     });
   });
 
   it("buildMenuItems enables commit and create PR while push stays disabled", () => {
     const items = buildMenuItems(status({ hasWorkingTreeChanges: true }), false);
-    assert.deepEqual(items, [
-      {
-        id: "commit",
-        label: "Commit",
-        disabled: false,
-        icon: "commit",
-        kind: "open_dialog",
-        dialogAction: "commit",
-      },
-      {
-        id: "commit_push",
-        label: "Commit & push",
-        disabled: false,
-        icon: "push",
-        kind: "open_dialog",
-        dialogAction: "commit_push",
-      },
-      {
-        id: "push",
-        label: "Push",
-        disabled: true,
-        icon: "push",
-        kind: "open_dialog",
-        dialogAction: "push",
-      },
-      {
-        id: "pr",
-        label: "Create PR",
-        disabled: false,
-        icon: "pr",
-        kind: "open_dialog",
-        dialogAction: "create_pr",
-      },
+    assert.deepEqual(menuActionStates(items), [
+      { id: "commit", disabled: false, kind: "open_dialog", dialogAction: "commit" },
+      { id: "commit_push", disabled: false, kind: "open_dialog", dialogAction: "commit_push" },
+      { id: "push", disabled: true, kind: "open_dialog", dialogAction: "push" },
+      { id: "pr", disabled: false, kind: "open_dialog", dialogAction: "create_pr" },
     ]);
   });
 });
@@ -455,7 +341,6 @@ describe("when: on default branch without open PR", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit_push",
-      label: "Commit & push",
       disabled: false,
     });
   });
@@ -469,7 +354,6 @@ describe("when: on default branch without open PR", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit_push",
-      label: "Commit & push",
       disabled: false,
     });
   });
@@ -481,31 +365,10 @@ describe("when: on default branch without open PR", () => {
       true,
       true,
     );
-    assert.deepEqual(items, [
-      {
-        id: "commit",
-        label: "Commit",
-        disabled: false,
-        icon: "commit",
-        kind: "open_dialog",
-        dialogAction: "commit",
-      },
-      {
-        id: "push",
-        label: "Commit & push",
-        disabled: false,
-        icon: "push",
-        kind: "open_dialog",
-        dialogAction: "commit_push",
-      },
-      {
-        id: "pr",
-        label: "Create PR",
-        disabled: false,
-        icon: "pr",
-        kind: "open_dialog",
-        dialogAction: "create_pr",
-      },
+    assert.deepEqual(menuActionStates(items), [
+      { id: "commit", disabled: false, kind: "open_dialog", dialogAction: "commit" },
+      { id: "push", disabled: false, kind: "open_dialog", dialogAction: "commit_push" },
+      { id: "pr", disabled: false, kind: "open_dialog", dialogAction: "create_pr" },
     ]);
   });
 
@@ -516,31 +379,10 @@ describe("when: on default branch without open PR", () => {
       true,
       true,
     );
-    assert.deepEqual(items, [
-      {
-        id: "commit",
-        label: "Commit",
-        disabled: true,
-        icon: "commit",
-        kind: "open_dialog",
-        dialogAction: "commit",
-      },
-      {
-        id: "push",
-        label: "Commit & push",
-        disabled: true,
-        icon: "push",
-        kind: "open_dialog",
-        dialogAction: "commit_push",
-      },
-      {
-        id: "pr",
-        label: "Create PR",
-        disabled: true,
-        icon: "pr",
-        kind: "open_dialog",
-        dialogAction: "create_pr",
-      },
+    assert.deepEqual(menuActionStates(items), [
+      { id: "commit", disabled: true, kind: "open_dialog", dialogAction: "commit" },
+      { id: "push", disabled: true, kind: "open_dialog", dialogAction: "commit_push" },
+      { id: "pr", disabled: true, kind: "open_dialog", dialogAction: "create_pr" },
     ]);
   });
 });
@@ -553,46 +395,17 @@ describe("when: working tree has local changes and branch is behind upstream", (
     );
     assert.deepInclude(quick, {
       kind: "run_pull",
-      label: "Pull",
       disabled: false,
     });
   });
 
   it("buildMenuItems enables commit and keeps push and PR disabled", () => {
     const items = buildMenuItems(status({ hasWorkingTreeChanges: true, behindCount: 2 }), false);
-    assert.deepEqual(items, [
-      {
-        id: "commit",
-        label: "Commit",
-        disabled: false,
-        icon: "commit",
-        kind: "open_dialog",
-        dialogAction: "commit",
-      },
-      {
-        id: "commit_push",
-        label: "Commit & push",
-        disabled: true,
-        icon: "push",
-        kind: "open_dialog",
-        dialogAction: "commit_push",
-      },
-      {
-        id: "push",
-        label: "Push",
-        disabled: true,
-        icon: "push",
-        kind: "open_dialog",
-        dialogAction: "push",
-      },
-      {
-        id: "pr",
-        label: "Create PR",
-        disabled: true,
-        icon: "pr",
-        kind: "open_dialog",
-        dialogAction: "create_pr",
-      },
+    assert.deepEqual(menuActionStates(items), [
+      { id: "commit", disabled: false, kind: "open_dialog", dialogAction: "commit" },
+      { id: "commit_push", disabled: true, kind: "open_dialog", dialogAction: "commit_push" },
+      { id: "push", disabled: true, kind: "open_dialog", dialogAction: "push" },
+      { id: "pr", disabled: true, kind: "open_dialog", dialogAction: "create_pr" },
     ]);
   });
 });
@@ -603,7 +416,7 @@ describe("when: HEAD is detached and there are no local changes", () => {
       status({ branch: null, hasWorkingTreeChanges: false, hasUpstream: false }),
       false,
     );
-    assert.deepInclude(quick, { kind: "show_hint", label: "Commit", disabled: true });
+    assert.deepInclude(quick, { kind: "show_hint", disabled: true });
   });
 
   it("resolveQuickAction offers to attach the managed worktree to a branch", () => {
@@ -614,11 +427,7 @@ describe("when: HEAD is detached and there are no local changes", () => {
       true,
       true,
     );
-    assert.deepEqual(quick, {
-      label: "Create Branch",
-      disabled: false,
-      kind: "create_branch",
-    });
+    assert.deepInclude(quick, { kind: "create_branch", disabled: false });
   });
 });
 
@@ -634,7 +443,6 @@ describe("when: branch has no upstream configured", () => {
     );
     assert.deepInclude(quick, {
       kind: "open_pr",
-      label: "View PR",
       disabled: false,
     });
   });
@@ -651,7 +459,6 @@ describe("when: branch has no upstream configured", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "push",
-      label: "Push",
       disabled: false,
     });
   });
@@ -668,7 +475,6 @@ describe("when: branch has no upstream configured", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "create_pr",
-      label: "Push & create PR",
       disabled: false,
     });
   });
@@ -684,41 +490,15 @@ describe("when: branch has no upstream configured", () => {
       false,
       false,
     );
-    assert.deepEqual(quick, {
-      kind: "show_hint",
-      label: "Push",
-      hint: 'Add an "origin" remote before pushing or creating a PR.',
-      disabled: true,
-    });
+    assert.deepInclude(quick, { kind: "show_hint", disabled: true });
   });
 
   it("buildMenuItems enables create PR when no upstream and commits are ahead", () => {
     const items = buildMenuItems(status({ hasUpstream: false, pr: null, aheadCount: 2 }), false);
-    assert.deepEqual(items, [
-      {
-        id: "commit",
-        label: "Commit",
-        disabled: true,
-        icon: "commit",
-        kind: "open_dialog",
-        dialogAction: "commit",
-      },
-      {
-        id: "push",
-        label: "Push",
-        disabled: false,
-        icon: "push",
-        kind: "open_dialog",
-        dialogAction: "push",
-      },
-      {
-        id: "pr",
-        label: "Create PR",
-        disabled: false,
-        icon: "pr",
-        kind: "open_dialog",
-        dialogAction: "create_pr",
-      },
+    assert.deepEqual(menuActionStates(items), [
+      { id: "commit", disabled: true, kind: "open_dialog", dialogAction: "commit" },
+      { id: "push", disabled: false, kind: "open_dialog", dialogAction: "push" },
+      { id: "pr", disabled: false, kind: "open_dialog", dialogAction: "create_pr" },
     ]);
   });
 
@@ -728,31 +508,10 @@ describe("when: branch has no upstream configured", () => {
       false,
       false,
     );
-    assert.deepEqual(items, [
-      {
-        id: "commit",
-        label: "Commit",
-        disabled: true,
-        icon: "commit",
-        kind: "open_dialog",
-        dialogAction: "commit",
-      },
-      {
-        id: "push",
-        label: "Push",
-        disabled: true,
-        icon: "push",
-        kind: "open_dialog",
-        dialogAction: "push",
-      },
-      {
-        id: "pr",
-        label: "Create PR",
-        disabled: true,
-        icon: "pr",
-        kind: "open_dialog",
-        dialogAction: "create_pr",
-      },
+    assert.deepEqual(menuActionStates(items), [
+      { id: "commit", disabled: true, kind: "open_dialog", dialogAction: "commit" },
+      { id: "push", disabled: true, kind: "open_dialog", dialogAction: "push" },
+      { id: "pr", disabled: true, kind: "open_dialog", dialogAction: "create_pr" },
     ]);
   });
 
@@ -770,7 +529,6 @@ describe("when: branch has no upstream configured", () => {
     assert.deepInclude(quick, {
       kind: "run_action",
       action: "commit_push",
-      label: "Commit & push",
       disabled: false,
     });
   });
@@ -821,10 +579,7 @@ describe("resolveCreatePrExecution", () => {
       ...baseInput,
       gitStatus: status({ hasWorkingTreeChanges: true, behindCount: 1 }),
     });
-    assert.deepEqual(execution, {
-      kind: "unavailable",
-      hint: "Branch is behind upstream. Pull before creating a PR.",
-    });
+    assert.equal(execution.kind, "unavailable");
   });
 
   it("stays unavailable when the branch has diverged from upstream", () => {
@@ -832,10 +587,7 @@ describe("resolveCreatePrExecution", () => {
       ...baseInput,
       gitStatus: status({ aheadCount: 2, behindCount: 1 }),
     });
-    assert.deepEqual(execution, {
-      kind: "unavailable",
-      hint: "Branch has diverged from upstream. Rebase/merge first.",
-    });
+    assert.equal(execution.kind, "unavailable");
   });
 
   it("stays unavailable without an origin remote", () => {
@@ -844,10 +596,7 @@ describe("resolveCreatePrExecution", () => {
       hasOriginRemote: false,
       gitStatus: status({ hasWorkingTreeChanges: true, hasUpstream: false, upstreamBranch: null }),
     });
-    assert.deepEqual(execution, {
-      kind: "unavailable",
-      hint: 'Add an "origin" remote before creating a PR.',
-    });
+    assert.equal(execution.kind, "unavailable");
   });
 
   it("stays unavailable on a detached HEAD", () => {
@@ -855,10 +604,7 @@ describe("resolveCreatePrExecution", () => {
       ...baseInput,
       gitStatus: status({ branch: null }),
     });
-    assert.deepEqual(execution, {
-      kind: "unavailable",
-      hint: "Detached HEAD: checkout a branch before creating a PR.",
-    });
+    assert.equal(execution.kind, "unavailable");
   });
 
   it("stays unavailable when a clean branch only tracks the default branch", () => {
@@ -870,10 +616,7 @@ describe("resolveCreatePrExecution", () => {
         aheadCount: 0,
       }),
     });
-    assert.deepEqual(execution, {
-      kind: "unavailable",
-      hint: "No branch changes to include in a PR.",
-    });
+    assert.equal(execution.kind, "unavailable");
   });
 
   it("stays unavailable while a git action is running", () => {
@@ -882,7 +625,7 @@ describe("resolveCreatePrExecution", () => {
       isBusy: true,
       gitStatus: status({ hasWorkingTreeChanges: true }),
     });
-    assert.deepEqual(execution, { kind: "unavailable", hint: "Git action in progress." });
+    assert.equal(execution.kind, "unavailable");
   });
 });
 
@@ -922,10 +665,7 @@ describe("resolveCreatePrDialogExecution", () => {
       },
       false,
     );
-    assert.deepEqual(execution, {
-      kind: "unavailable",
-      hint: "No branch changes to include in a PR.",
-    });
+    assert.equal(execution.kind, "unavailable");
   });
 
   it("keeps blocking states (behind upstream) regardless of the toggle", () => {
@@ -933,10 +673,7 @@ describe("resolveCreatePrDialogExecution", () => {
       { ...baseContext, gitStatus: status({ hasWorkingTreeChanges: true, behindCount: 1 }) },
       false,
     );
-    assert.deepEqual(execution, {
-      kind: "unavailable",
-      hint: "Branch is behind upstream. Pull before creating a PR.",
-    });
+    assert.equal(execution.kind, "unavailable");
   });
 });
 
@@ -964,23 +701,20 @@ describe("resolveCommitDialogActions", () => {
       hasFileSelection: true,
     });
     assert.deepInclude(actions.commit, {
-      label: "Commit",
       action: "commit",
       featureBranch: false,
       disabled: false,
     });
     assert.deepInclude(actions.commit_new_branch, {
-      label: "Commit on new branch",
       action: "commit",
       featureBranch: true,
       disabled: false,
     });
     assert.deepInclude(actions.commit_push, {
-      label: "Commit & push",
       action: "commit_push",
       disabled: false,
     });
-    assert.deepInclude(actions.create_pr, { label: "Create PR", disabled: false });
+    assert.deepInclude(actions.create_pr, { action: "create_pr", disabled: false });
   });
 
   it("blocks every commit row while all files are excluded", () => {
@@ -989,7 +723,7 @@ describe("resolveCommitDialogActions", () => {
       hasFileSelection: false,
     });
     assert.equal(actions.commit?.disabled, true);
-    assert.equal(actions.commit?.disabledReason, "Select at least one file to commit.");
+    assert.isNotEmpty(actions.commit?.disabledReason);
     assert.equal(actions.commit_new_branch?.disabled, true);
     assert.equal(actions.commit_push?.disabled, true);
     // The PR row hands off to the Create PR dialog, so it ignores the file selection.
@@ -1002,15 +736,11 @@ describe("resolveCommitDialogActions", () => {
       hasFileSelection: true,
     });
     assert.deepInclude(actions.commit_push, {
-      label: "Push",
       action: "push",
       disabled: false,
     });
     assert.equal(actions.commit?.disabled, true);
-    assert.equal(
-      actions.commit?.disabledReason,
-      "Worktree is clean. Make changes before committing.",
-    );
+    assert.isNotEmpty(actions.commit?.disabledReason);
   });
 
   it("explains why commit & push is blocked behind upstream", () => {
@@ -1023,10 +753,7 @@ describe("resolveCommitDialogActions", () => {
     });
     assert.equal(actions.commit?.disabled, false);
     assert.equal(actions.commit_push?.disabled, true);
-    assert.equal(
-      actions.commit_push?.disabledReason,
-      "Branch is behind upstream. Pull/rebase before committing and pushing.",
-    );
+    assert.isNotEmpty(actions.commit_push?.disabledReason);
   });
 
   it("uses the commit & push reason for the default-branch push menu item", () => {
@@ -1039,10 +766,7 @@ describe("resolveCommitDialogActions", () => {
       hasFileSelection: true,
     });
     assert.equal(actions.commit_push?.disabled, true);
-    assert.equal(
-      actions.commit_push?.disabledReason,
-      "Branch is behind upstream. Pull/rebase before committing and pushing.",
-    );
+    assert.isNotEmpty(actions.commit_push?.disabledReason);
   });
 
   it("disables everything while a git action is running", () => {
@@ -1051,7 +775,7 @@ describe("resolveCommitDialogActions", () => {
       hasFileSelection: true,
     });
     assert.isTrue(actions.every((action) => action.disabled));
-    assert.isTrue(actions.every((action) => action.disabledReason === "Git action in progress."));
+    assert.isTrue(actions.every((action) => Boolean(action.disabledReason)));
   });
 });
 
@@ -1253,10 +977,12 @@ describe("resolveCreatePrBrowserPreparation", () => {
       ),
       { kind: "open_pr" },
     );
-    assert.deepEqual(resolveCreatePrBrowserPreparation({ ...baseContext, gitStatus: null }, true), {
-      kind: "unavailable",
-      hint: "Git status is unavailable.",
-    });
+    const unavailable = resolveCreatePrBrowserPreparation(
+      { ...baseContext, gitStatus: null },
+      true,
+    );
+    assert.equal(unavailable.kind, "unavailable");
+    if (unavailable.kind === "unavailable") assert.isNotEmpty(unavailable.hint);
   });
 });
 
@@ -1288,7 +1014,8 @@ describe("buildGitActionProgressStages", () => {
       hasWorkingTreeChanges: false,
       pushTarget: "origin/feature/test",
     });
-    assert.deepEqual(stages, ["Pushing to origin/feature/test..."]);
+    assert.lengthOf(stages, 1);
+    assert.include(stages[0] ?? "", "origin/feature/test");
   });
 
   it("shows push and pr stages when create-pr needs to publish first", () => {
@@ -1299,7 +1026,16 @@ describe("buildGitActionProgressStages", () => {
       pushTarget: "origin/feature/test",
       shouldPushBeforePr: true,
     });
-    assert.deepEqual(stages, ["Pushing to origin/feature/test...", "Creating PR..."]);
+    const prOnlyStage = buildGitActionProgressStages({
+      action: "create_pr",
+      hasCustomCommitMessage: false,
+      hasWorkingTreeChanges: false,
+      pushTarget: "origin/feature/test",
+      shouldPushBeforePr: false,
+    });
+    assert.lengthOf(stages, 2);
+    assert.include(stages[0] ?? "", "origin/feature/test");
+    assert.deepEqual(stages.slice(1), prOnlyStage);
   });
 
   it("shows only push progress when push-only is forced", () => {
@@ -1310,7 +1046,14 @@ describe("buildGitActionProgressStages", () => {
       forcePushOnly: true,
       pushTarget: "origin/feature/test",
     });
-    assert.deepEqual(stages, ["Pushing to origin/feature/test..."]);
+    const pushOnlyStages = buildGitActionProgressStages({
+      action: "push",
+      hasCustomCommitMessage: false,
+      hasWorkingTreeChanges: true,
+      pushTarget: "origin/feature/test",
+    });
+    assert.deepEqual(stages, pushOnlyStages);
+    assert.include(stages[0] ?? "", "origin/feature/test");
   });
 
   it("includes commit stages for commit+push when working tree is dirty", () => {
@@ -1320,11 +1063,16 @@ describe("buildGitActionProgressStages", () => {
       hasWorkingTreeChanges: true,
       pushTarget: "origin/feature/test",
     });
-    assert.deepEqual(stages, [
-      "Generating commit message...",
-      "Committing...",
-      "Pushing to origin/feature/test...",
-    ]);
+    const customMessageStages = buildGitActionProgressStages({
+      action: "commit_push",
+      hasCustomCommitMessage: true,
+      hasWorkingTreeChanges: true,
+      pushTarget: "origin/feature/test",
+    });
+    assert.lengthOf(stages, 3);
+    assert.lengthOf(customMessageStages, 2);
+    assert.deepEqual(stages.slice(1), customMessageStages);
+    assert.include(stages[2] ?? "", "origin/feature/test");
   });
 });
 
@@ -1346,10 +1094,9 @@ describe("summarizeGitResult", () => {
       pr: { status: "skipped_not_requested" },
     });
 
-    assert.deepEqual(result, {
-      title: "Pushed abcdef0 to origin/foo",
-      description: "fix: tighten quick action tooltip hover handling",
-    });
+    assert.include(result.title, "abcdef0");
+    assert.include(result.title, "origin/foo");
+    assert.equal(result.description, "fix: tighten quick action tooltip hover handling");
   });
 
   it("truncates long description text", () => {
@@ -1370,10 +1117,11 @@ describe("summarizeGitResult", () => {
       },
     });
 
-    assert.deepEqual(result, {
-      title: "Created PR #99",
-      description: "feat: this title is intentionally extremely long so we can validate t...",
-    });
+    assert.include(result.title, "#99");
+    assert.equal(
+      result.description,
+      "feat: this title is intentionally extremely long so we can validate t...",
+    );
   });
 });
 

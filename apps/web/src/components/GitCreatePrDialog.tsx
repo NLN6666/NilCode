@@ -24,8 +24,8 @@ import {
   GitDialogShell,
 } from "./GitDialogChrome";
 import { CreatePullRequestIcon, ExternalLinkIcon, GitPullRequestDraftIcon } from "~/lib/icons";
-import { useMessages } from "~/i18n/context";
 import { cn } from "~/lib/utils";
+import { useTranslation } from "~/i18n";
 
 export interface GitCreatePrDialogSubmission {
   action: "create_pr" | "commit_push_pr";
@@ -55,7 +55,8 @@ export function GitCreatePrDialog({
   onSubmit,
   onOpenInBrowser,
 }: GitCreatePrDialogProps) {
-  const copy = useMessages().git;
+  const { t } = useTranslation();
+
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [includeLocalChanges, setIncludeLocalChanges] = useState(true);
@@ -69,16 +70,17 @@ export function GitCreatePrDialog({
 
   const view = useMemo(() => resolveCreatePrDialogView(context), [context]);
   const execution = useMemo(
-    () => resolveCreatePrDialogExecution(context, includeLocalChanges, copy),
-    [context, includeLocalChanges, copy],
+    () => resolveCreatePrDialogExecution(context, includeLocalChanges, t),
+    [context, includeLocalChanges, t],
   );
   const browserPreparation = useMemo(
-    () => resolveCreatePrBrowserPreparation(context, includeLocalChanges, copy),
-    [context, includeLocalChanges, copy],
+    () => resolveCreatePrBrowserPreparation(context, includeLocalChanges, t),
+    [context, includeLocalChanges, t],
   );
   const canCreate = execution.kind === "run_action";
   const canOpenInBrowser = browserPreparation.kind !== "unavailable";
   const unavailableHint = execution.kind === "unavailable" ? execution.hint : null;
+  const branchLabel = view.isNewBranch ? t("git:newBranch") : t("common:branch");
 
   const submit = (draft: boolean) => {
     if (execution.kind !== "run_action") return;
@@ -94,29 +96,29 @@ export function GitCreatePrDialog({
   return (
     <GitDialogShell open={open} onOpenChange={onOpenChange} onSubmitShortcut={() => submit(false)}>
       <GitDialogHeading
-        eyebrow={copy.createPrDialog.eyebrow(view.isNewBranch, view.baseBranchName)}
+        eyebrow={`${branchLabel} → ${view.baseBranchName}`}
         subject={
           view.willCreateFeatureBranch
-            ? copy.createPrDialog.autoNamedFeatureBranch
-            : (view.branchName ?? copy.commitDialog.detachedHead)
+            ? t("git:autoNamedFeatureBranch")
+            : (view.branchName ?? t("common:detachedHEAD"))
         }
         subjectMuted={view.willCreateFeatureBranch}
       />
       <GitDialogBody>
         <input
           autoFocus
-          aria-label={copy.createPrDialog.titleAriaLabel}
+          aria-label={t("git:pullRequestTitle")}
           className={GIT_DIALOG_FIELD_CLASS}
           maxLength={300}
-          placeholder={copy.createPrDialog.titlePlaceholder}
+          placeholder={t("git:titleLeaveEmptyToGenerate")}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
         />
         <textarea
-          aria-label={copy.createPrDialog.descriptionAriaLabel}
+          aria-label={t("git:pullRequestDescription")}
           className={cn(GIT_DIALOG_FIELD_CLASS, "resize-none")}
           maxLength={60_000}
-          placeholder={copy.createPrDialog.descriptionPlaceholder}
+          placeholder={t("git:descriptionLeaveEmptyToGenerate")}
           rows={2}
           value={body}
           onChange={(event) => setBody(event.target.value)}
@@ -127,7 +129,7 @@ export function GitCreatePrDialog({
               checked={includeLocalChanges}
               onCheckedChange={(checked) => setIncludeLocalChanges(checked === true)}
             />
-            <span className="flex-1">{copy.createPrDialog.commitAndPushLocalChanges}</span>
+            <span className="flex-1">{t("git:commitAndPushLocalChanges")}</span>
             <DiffStat
               className="shrink-0 font-mono text-ui leading-snug"
               insertions={view.insertions}
@@ -143,14 +145,14 @@ export function GitCreatePrDialog({
         <GitDialogActionRow
           disabled={!canCreate}
           icon={<GitPullRequestDraftIcon />}
-          label={copy.createPrDialog.createDraftPr}
+          label={t("git:createDraftPR")}
           onClick={() => submit(true)}
         />
         <GitDialogActionRow
           highlighted
           disabled={!canCreate}
           icon={<CreatePullRequestIcon />}
-          label={copy.actions.createPr}
+          label={t("git:createPR")}
           trailing={<SubmitShortcutKbd />}
           aria-keyshortcuts={getSubmitShortcutKeyShortcuts()}
           onClick={() => submit(false)}
@@ -158,7 +160,7 @@ export function GitCreatePrDialog({
         <GitDialogActionRow
           disabled={!canOpenInBrowser}
           icon={<ExternalLinkIcon />}
-          label={copy.createPrDialog.openPrInBrowser}
+          label={t("git:openPRInBrowser")}
           onClick={() => onOpenInBrowser({ preparation: browserPreparation, includeLocalChanges })}
         />
       </GitDialogActionList>

@@ -25,7 +25,6 @@ import {
   createCachedLoginShellEnvironmentReader,
   createCachedLoginShellPathReader,
   LOGIN_SHELL_ENVIRONMENT_NAMES,
-  loginShellEnvironmentCachePath,
 } from "./loginShellEnvironment";
 
 const temporaryRoots: Array<string> = [];
@@ -355,16 +354,5 @@ describe("createCachedLoginShellEnvironmentReader", () => {
 
     expect(probe).toHaveBeenCalledTimes(2);
     expect(FS.existsSync(Path.dirname(fixture.cachePath))).toBe(false);
-  });
-});
-
-describe("loginShellEnvironmentCachePath", () => {
-  it("anchors the cache in the Synara home both processes resolve", () => {
-    expect(loginShellEnvironmentCachePath({ env: { SYNARA_HOME: "/tmp/synara-home" } })).toBe(
-      Path.join("/tmp/synara-home", "cache", "login-shell-environment.json"),
-    );
-    expect(loginShellEnvironmentCachePath({ env: {}, homeDirectory: "/users/test" })).toBe(
-      Path.join("/users/test", ".synara", "cache", "login-shell-environment.json"),
-    );
   });
 });

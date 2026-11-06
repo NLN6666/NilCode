@@ -5,6 +5,8 @@ import type {
   ExternalMcpStdioConfiguration,
 } from "@synara/contracts";
 
+import { t, getFormatLocale } from "~/i18n";
+
 // `synara` is reserved by the Codex provider for Synara's managed, in-process
 // HTTP gateway. External clients run a separate stdio server, so they must use
 // a different entry name or Codex merges the two transports when it layers the
@@ -183,44 +185,37 @@ export function buildExternalMcpSetupPrompt(input: {
   return sections.join("\n\n");
 }
 
-/** Structural subset of the `settings.integrations.describe` catalog group. */
-export type ExternalMcpDescribeCopy = {
-  readonly allProjects: string;
-  readonly noProjects: string;
-  readonly ownTasks: string;
-  readonly readProjectTasks: string;
-  readonly localCheckout: string;
-  readonly fullAccess: string;
-};
-
 export function describeExternalMcpProjects(
   input: {
     readonly projectScope?: ExternalMcpProjectScope | undefined;
     readonly allowedProjects: ReadonlyArray<{ readonly title: string }>;
   },
-  copy: ExternalMcpDescribeCopy,
+  translate: typeof t = t,
+  formatLocale = getFormatLocale(),
 ): string {
-  if (input.projectScope === "all") return copy.allProjects;
+  if (input.projectScope === "all") return translate("settings:externalAllProjects");
   const titles = input.allowedProjects.map((project) => project.title);
-  return titles.length > 0 ? titles.join(", ") : copy.noProjects;
+  return titles.length > 0
+    ? new Intl.ListFormat(formatLocale, { style: "long", type: "unit" }).format(titles)
+    : translate("settings:externalNoProjects");
 }
 
 export function describeExternalMcpPermissions(
   capabilities: ReadonlyArray<ExternalMcpCapability>,
-  copy: ExternalMcpDescribeCopy,
+  translate: typeof t = t,
 ): string {
-  const descriptions = [copy.ownTasks];
+  const descriptions = [translate("settings:externalPermission_ownTasks")];
   if (capabilities.includes("tasks:read-project")) {
-    descriptions.push(copy.readProjectTasks);
+    descriptions.push(translate("settings:externalPermission_readProject"));
   }
   if (capabilities.includes("runtime:local")) {
-    descriptions.push(copy.localCheckout);
+    descriptions.push(translate("settings:externalPermission_local"));
   }
   if (capabilities.includes("runtime:full-access")) {
-    descriptions.push(copy.fullAccess);
+    descriptions.push(translate("settings:externalPermission_fullAccess"));
   }
   if (capabilities.includes("computer:control")) {
-    descriptions.push("Control this Mac (per-action approval still applies)");
+    descriptions.push(translate("settings:externalPermission_computer"));
   }
   return descriptions.join(" · ");
 }

@@ -26,6 +26,7 @@ export const SETTINGS_SECTION_IDS = [
   "mcpServers",
   "connectors",
   "integrations",
+  "connections",
   "advanced",
 ] as const;
 
@@ -44,25 +45,32 @@ export const SETTINGS_TARGETS = {
 } as const;
 
 /**
- * Structure only. Labels and descriptions live in the i18n catalogs under `settingsNav`, keyed by
- * these same ids, so the taxonomy has one shape and one translation source.
+ * Section metadata stays locale-neutral at runtime: visible copy is stored as canonical translation
+ * keys, while ids remain stable for navigation and search.
  */
 export type SettingsNavItem = {
   id: SettingsSectionId;
   group: SettingsNavGroupId;
+  label: string;
+  description: string;
+  eyebrow: string;
   /** Basename of a SVG under `/central-icons-reversed`. */
   icon: string;
-  /** Section maturity label (omitted for settled sections). */
-  badge?: "beta";
+  /** Translation key for the section maturity label, omitted for settled sections. */
+  badge?: string;
 };
 
-export const SETTINGS_NAV_GROUP_IDS = [
-  "personal",
-  "integrations",
-  "coding",
-  "system",
-  "archived",
-] as const satisfies readonly SettingsNavGroupId[];
+// Keep English source keys here: callers translate at render time, while section/row ids stay stable.
+export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
+  id: SettingsNavGroupId;
+  label: string;
+}> = [
+  { id: "personal", label: "settings:personal" },
+  { id: "integrations", label: "common:integrations" },
+  { id: "coding", label: "settings:coding" },
+  { id: "system", label: "common:themeOptions_system" },
+  { id: "archived", label: "workspace:archived_archivedRelative" },
+] as const;
 
 /** Sections that exist only where their Beta-only feature is on. */
 const SETTINGS_SECTION_BETA_FEATURES: Partial<Record<SettingsSectionId, string>> = {
@@ -79,27 +87,159 @@ export function isSettingsSectionAvailable(
 }
 
 const ALL_SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
-  { id: "general", group: "personal", icon: "settings-gear-4" },
-  { id: "profile", group: "personal", icon: "user" },
-  { id: "appearance", group: "personal", icon: "color-palette" },
-  { id: "notifications", group: "personal", icon: "bell" },
-  { id: "behavior", group: "personal", icon: "settings-slider-hor" },
-  { id: "shortcuts", group: "personal", icon: KEYBINDINGS_ICON_NAME },
-  { id: "usage", group: "personal", icon: "gauge" },
-  { id: "appsnap", group: "integrations", icon: "screen-capture" },
-  { id: "computer", group: "integrations", icon: "computer-use", badge: "beta" },
-  // Sits immediately before Integrations so the two MCP pages are neighbours. The icon is
-  // deliberately not `plugin-1` (Integrations owns that) — the pages point in opposite
-  // directions and must be distinguishable at a glance.
-  { id: "connectors", group: "integrations", icon: "connectors-1" },
-  { id: "mcpServers", group: "integrations", icon: "api-connection" },
-  { id: "integrations", group: "integrations", icon: "plugin-1" },
-  { id: "providers", group: "coding", icon: "puzzle" },
-  { id: "models", group: "coding", icon: "brain" },
-  { id: "skills", group: "coding", icon: "building-blocks" },
-  { id: "worktrees", group: "coding", icon: "branch-simple" },
-  { id: "advanced", group: "system", icon: "toolbox" },
-  { id: "archived", group: "archived", icon: "archive" },
+  {
+    id: "general",
+    group: "personal",
+    label: "settings:nav_general",
+    description: "settings:chooseDefaultsForNewChatsNavigationAndTheEnvironment",
+    icon: "settings-gear-4",
+    eyebrow: "Workflow defaults",
+  },
+  {
+    id: "profile",
+    group: "personal",
+    label: "computer:nav_profile",
+    description: "settings:nav_profileDescription",
+    icon: "user",
+    eyebrow: "Your stats",
+  },
+  {
+    id: "appearance",
+    group: "personal",
+    label: "common:nav_appearance",
+    description: "settings:customizeTheThemeTypographyDensityAndTimeFormat",
+    icon: "color-palette",
+    eyebrow: "Visual language",
+  },
+  {
+    id: "notifications",
+    group: "personal",
+    label: "settings:nav_notifications",
+    description: "settings:chooseHowSynaraTellsYouWhenWorkFinishesOr",
+    icon: "bell",
+    eyebrow: "Alerts",
+  },
+  {
+    id: "behavior",
+    group: "personal",
+    label: "settings:chatBehavior",
+    description: "settings:controlLiveResponsesFollowUpsReviewDefaultsAndSafety",
+    icon: "settings-slider-hor",
+    eyebrow: "Interaction rules",
+  },
+  {
+    id: "shortcuts",
+    group: "personal",
+    label: "common:advanced_keybindings",
+    description: "settings:changeAddOrRemoveTheShortcutForEverySynara",
+    icon: KEYBINDINGS_ICON_NAME,
+    eyebrow: "Key bindings",
+  },
+  {
+    id: "usage",
+    group: "personal",
+    label: "settings:usageLimits",
+    description: "settings:seeRemainingQuotaAndCreditsForEverySignedIn",
+    icon: "gauge",
+    eyebrow: "Provider limits",
+  },
+  {
+    id: "appsnap",
+    group: "integrations",
+    label: "settings:appSnap",
+    description: "settings:captureAnotherAppSFrontmostWindowDirectlyIntoA",
+    icon: "screen-capture",
+    eyebrow: "Screen capture",
+  },
+  {
+    id: "computer",
+    group: "integrations",
+    label: "settings:computerUse",
+    description: "settings:letAgentsSeeAndControlThisComputerSDesktop",
+    icon: "computer-use",
+    eyebrow: "Desktop control",
+    badge: "workspace:beta",
+  },
+  {
+    id: "connectors",
+    group: "integrations",
+    label: "settings:connectors",
+    description: "settings:connectorsDescription",
+    icon: "connectors-1",
+    eyebrow: "Remote MCP servers",
+  },
+  {
+    id: "mcpServers",
+    group: "integrations",
+    label: "settings:agentMcp_sectionTitle",
+    description: "settings:agentMcp_overviewDescription",
+    icon: "plugin-1",
+    eyebrow: "settings:agentMcp_overviewTitle",
+  },
+  {
+    id: "integrations",
+    group: "integrations",
+    label: "settings:mCPConnections",
+    description: "settings:giveCodexClaudeAndOtherLocalAgentsScopedAccess",
+    icon: "plugin-1",
+    eyebrow: "External agents",
+  },
+  {
+    id: "connections",
+    group: "integrations",
+    label: "settings:connections",
+    description: "settings:connectionsDescription",
+    icon: "globe",
+    eyebrow: "settings:remoteAccess",
+  },
+  {
+    id: "providers",
+    group: "coding",
+    label: "settings:agentProviders",
+    description: "settings:chooseVisibleCodingAgentsAndManageTheirInstalledCLI",
+    icon: "puzzle",
+    eyebrow: "Coding agents",
+  },
+  {
+    id: "models",
+    group: "coding",
+    label: "settings:modelsWriting",
+    description: "settings:chooseTheSourceControlWritingStyleGitWritingModel",
+    icon: "brain",
+    eyebrow: "Model configuration",
+  },
+  {
+    id: "skills",
+    group: "coding",
+    label: "settings:nav_skillsEyebrow",
+    description: "settings:reviewReusableWorkflowsDiscoveredAcrossAllConfiguredProviders",
+    icon: "building-blocks",
+    eyebrow: "Reusable workflows",
+  },
+  {
+    id: "worktrees",
+    group: "coding",
+    label: "onboarding:managedWorktrees",
+    description: "settings:reviewAndCleanUpIsolatedWorkspacesCreatedBySynara",
+    icon: "branch-simple",
+    eyebrow: "Workspace management",
+  },
+  {
+    id: "advanced",
+    group: "system",
+    label: "settings:nav_advancedEyebrow",
+    description: "settings:manageSessionsRecoveryToolsLowLevelKeybindingsAndVersion",
+    icon: "toolbox",
+    eyebrow: "System tools",
+  },
+  {
+    id: "archived",
+    group: "archived",
+    label: "settings:archivedThreads",
+    description: "settings:findAndRestoreThreadsYouPreviouslyArchived",
+    icon: "archive",
+    eyebrow: "Thread management",
+  },
 ] as const;
 
 export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = ALL_SETTINGS_NAV_ITEMS.filter(

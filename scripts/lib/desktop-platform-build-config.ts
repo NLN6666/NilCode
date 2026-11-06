@@ -10,6 +10,7 @@ import {
   SYNARA_STABLE_WINDOWS_INSTALLER_GUID,
 } from "@synara/shared/betaChannel";
 import type { SynaraPackagedDesktopFlavor } from "@synara/shared/desktopIdentity";
+import { availableUiLocales } from "@synara/shared/uiLocale";
 
 import {
   createDesktopBundleFilePatterns,
@@ -43,6 +44,8 @@ export const WINDOWS_INSTALLER_GUID = SYNARA_STABLE_WINDOWS_INSTALLER_GUID;
 // default "is the app still running?" check, which cannot close Synara's windowless backend and
 // Chromium helper processes and dead-ends the installer instead.
 export const WINDOWS_INSTALLER_INCLUDE = "nsis-check-app-running.nsh";
+// Remote must install alongside Stable and Beta without owning their uninstaller.
+const REMOTE_WINDOWS_INSTALLER_GUID = "7639a24e-c753-4f4c-b4e3-37b259bdc793";
 // Asset catalog name of the compiled Icon Composer icon. macOS 26 reads
 // CFBundleIconName out of Assets.car and renders that layered icon with the
 // Liquid Glass material; older releases ignore it and keep using the ICNS.
@@ -118,9 +121,11 @@ export function createDesktopPlatformBuildConfig(
     diagnostics: preserveDependencyDiagnostics(process.env),
     linuxGlibc: typeof report?.header?.glibcVersionRuntime === "string",
   });
+  const connectorResources = { from: "apps/desktop/resources/cloudflared", to: "cloudflared" };
   const nativePackaging = {
     asarUnpack: [...NODE_PTY_ASAR_UNPACK_GLOBS],
     files,
+    extraResources: [connectorResources],
     // TypeScript reads these declarations at runtime in the intelligence worker.
     // electron-builder otherwise removes every dependency .d.ts file.
     onNodeModuleFile: fileURLToPath(new URL("./desktop-runtime-files.cjs", import.meta.url)),
@@ -153,11 +158,12 @@ export function createDesktopPlatformBuildConfig(
         MAC_APPSNAP_HELPER_BUNDLE_PATH,
         MAC_WINDOW_MATERIAL_ADDON_BUNDLE_PATH,
         "Contents/Resources/cua-driver/cua-driver",
+        "Contents/Resources/cloudflared/cloudflared",
       ],
       // The universal build stages the same pre-lipo'd helper and addon in both app trees.
       // @electron/universal needs this pattern to preserve those existing fat binaries.
       x64ArchFiles:
-        "Contents/{Helpers/synara-appsnap-helper,Frameworks/synara-window-material.node,Resources/cua-driver/cua-driver}",
+        "Contents/{Helpers/synara-appsnap-helper,Frameworks/synara-window-material.node,Resources/cua-driver/cua-driver,Resources/cloudflared/cloudflared}",
       extendInfo: {
         NSMicrophoneUsageDescription: MICROPHONE_USAGE_DESCRIPTION,
         NSAudioCaptureUsageDescription: AUDIO_CAPTURE_USAGE_DESCRIPTION,
@@ -220,6 +226,14 @@ export function createDesktopPlatformBuildConfig(
           from: MAC_ICON_ASSETS_CAR_STAGE_PATH,
           to: MAC_ICON_ASSETS_CAR_BUNDLE_PATH,
         },
+        // macOS reads permission explanations from the bundle's language folders.
+        ...availableUiLocales(input.flavor ?? "production").map((locale) => {
+          const directory = `${locale === "zh-CN" ? "zh-Hans" : locale}.lproj`;
+          return {
+            from: `apps/desktop/resources/localizations/${directory}`,
+            to: `Resources/${directory}`,
+          };
+        }),
       ],
       mac,
     };
@@ -236,15 +250,18 @@ export function createDesktopPlatformBuildConfig(
         "!apps/desktop/resources/cua-driver/**",
         "!apps/desktop/prod-resources/cua-driver/**",
       ],
-      extraResources: [{ from: "apps/desktop/resources/cua-driver", to: "cua-driver" }],
+      extraResources: [
+        connectorResources,
+        { from: "apps/desktop/resources/cua-driver", to: "cua-driver" },
+      ],
       linux: {
         target: [input.target],
-        executableName: "synara",
+        executableName: input.flavor === "remote" ? "synara-remote" : "synara",
         icon: "icon.png",
         category: "Development",
         desktop: {
           entry: {
-            StartupWMClass: "synara",
+            StartupWMClass: input.flavor === "remote" ? "synara-remote" : "synara",
           },
         },
       },
@@ -256,7 +273,12 @@ export function createDesktopPlatformBuildConfig(
     // Keep the Windows product registration stable while the public app ID changes.
     // This lets NSIS updates replace the existing installation and own its uninstaller.
     nsis: {
-      guid: input.flavor === "beta" ? SYNARA_BETA_WINDOWS_INSTALLER_GUID : WINDOWS_INSTALLER_GUID,
+      guid:
+        input.flavor === "remote"
+          ? REMOTE_WINDOWS_INSTALLER_GUID
+          : input.flavor === "beta"
+            ? SYNARA_BETA_WINDOWS_INSTALLER_GUID
+            : WINDOWS_INSTALLER_GUID,
       include: WINDOWS_INSTALLER_INCLUDE,
     },
     win: {

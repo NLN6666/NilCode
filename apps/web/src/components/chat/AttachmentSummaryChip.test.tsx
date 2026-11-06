@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { AssistantSelectionsSummaryChip } from "./AssistantSelectionsSummaryChip";
 
 describe("AssistantSelectionsSummaryChip", () => {
-  it("renders a pluralized count and a labelled dismiss control", () => {
+  it("renders a dismiss control when a handler is provided", () => {
     const markup = renderToStaticMarkup(
       <AssistantSelectionsSummaryChip
         selections={[
@@ -21,8 +21,8 @@ describe("AssistantSelectionsSummaryChip", () => {
       />,
     );
 
-    expect(markup).toContain("2 selections");
-    expect(markup).toContain("Remove selections");
+    expect(markup.match(/<span class="truncate">([^<]*)<\/span>/)?.[1]).toMatch(/\b2\b/u);
+    expect(markup.match(/<button\b/g) ?? []).toHaveLength(1);
   });
 
   it("omits the dismiss control without an onRemove handler", () => {
@@ -34,8 +34,8 @@ describe("AssistantSelectionsSummaryChip", () => {
       />,
     );
 
-    expect(markup).toContain("1 selection");
-    expect(markup).not.toContain("Remove selections");
+    expect(markup).not.toContain("<button");
+    expect(markup.match(/<span class="truncate">([^<]*)<\/span>/)?.[1]).toMatch(/\b1\b/u);
   });
 
   it("renders nothing when empty", () => {

@@ -27,7 +27,6 @@ import {
   WindowIcon,
 } from "~/lib/icons";
 import { cn } from "~/lib/utils";
-import { useMessages } from "~/i18n/context";
 import {
   COMPOSER_MENU_PANEL_GLYPH_CLASS_NAME,
   ComposerMenuPanel,
@@ -35,6 +34,9 @@ import {
   type ComposerMenuPanelRow,
 } from "./ComposerMenuPanel";
 import { useAppSnapWindows } from "./useAppSnapWindows";
+import { useTranslation } from "~/i18n";
+
+type ChatTranslator = ReturnType<typeof useTranslation>["t"];
 
 /** Marks the `+` trigger so the panel's outside-press close does not fight the trigger's toggle. */
 export const COMPOSER_EXTRAS_TRIGGER_ATTRIBUTE = "data-composer-extras-trigger";
@@ -79,7 +81,7 @@ export function ComposerExtrasPanel(props: {
   onClose: () => void;
   panelId: string;
 }) {
-  const copy = useMessages().composer.extras;
+  const { t } = useTranslation();
   const inputId = useId();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -116,22 +118,26 @@ export function ComposerExtrasPanel(props: {
       ? [
           {
             id: "windows",
-            label: copy.attachWindow,
+            label: t("chat:attachWindow"),
             rows: [
-              { id: ROW_BACK, icon: <ArrowLeftIcon className={GLYPH} />, title: copy.back },
-              ...appSnapWindowRows(appSnap, copy),
+              {
+                id: ROW_BACK,
+                icon: <ArrowLeftIcon className={GLYPH} />,
+                title: t("common:app_back"),
+              },
+              ...appSnapWindowRows(appSnap, t),
             ],
           },
         ]
       : [
           {
             id: "add",
-            label: copy.add,
+            label: t("workspace:models_add"),
             rows: [
               {
                 id: ROW_FILES,
                 icon: <PaperclipIcon className={GLYPH} />,
-                title: copy.filesAndFolders,
+                title: t("chat:filesAndFolders"),
               },
               ...(appSnap.available
                 ? [
@@ -139,12 +145,14 @@ export function ComposerExtrasPanel(props: {
                       ? {
                           id: ROW_WINDOW,
                           icon: windowGlyph(frontmostWindow),
-                          title: copy.attachApp(frontmostWindow.appName?.trim() || copy.window),
+                          title: t("chat:attach", {
+                            value0: frontmostWindow.appName?.trim() || t("chat:window"),
+                          }),
                           disabled: appSnap.busy,
                           trailing: (
                             <button
                               type="button"
-                              aria-label={copy.chooseAnotherWindow}
+                              aria-label={t("chat:chooseAnotherWindow")}
                               className={cn(
                                 "-mr-1 flex size-5 items-center justify-center rounded-md text-muted-foreground/60 transition-colors",
                                 "hover:bg-[var(--color-background-button-secondary)] hover:text-foreground/80",
@@ -161,8 +169,8 @@ export function ComposerExtrasPanel(props: {
                       : {
                           id: ROW_WINDOW,
                           icon: <WindowIcon className={GLYPH} />,
-                          title: copy.attachWindow,
-                          secondary: copy.captureWindow,
+                          title: t("chat:attachWindow"),
+                          secondary: t("chat:composerExtras_captureWindow"),
                           trailing: <ChevronRightIcon className="size-3.5" />,
                         },
                   ]
@@ -170,15 +178,16 @@ export function ComposerExtrasPanel(props: {
               {
                 id: ROW_GOAL,
                 icon: <GoalIcon className={GLYPH} />,
-                title: copy.goal,
-                secondary: copy.goalDescription,
+                title: t("chat:goal"),
+                secondary: t("chat:composerExtras_goalDescription"),
               },
               {
                 id: ROW_PLAN,
                 icon: <ListTodoIcon className={GLYPH} />,
-                title: copy.planMode,
-                secondary: copy.toggleMode(
-                  copy.planMode.toLowerCase(),
+                title: t("chat:composerExtras_planMode"),
+                secondary: toggleDescription(
+                  t,
+                  t("chat:composerExtras_planMode").toLowerCase(),
                   props.interactionMode === "plan",
                 ),
                 trailing: props.interactionMode === "plan" ? CHECK : null,
@@ -186,9 +195,10 @@ export function ComposerExtrasPanel(props: {
               {
                 id: ROW_DEBUG,
                 icon: <BugIcon className={GLYPH} />,
-                title: copy.debugMode,
-                secondary: copy.toggleMode(
-                  copy.debugMode.toLowerCase(),
+                title: t("chat:debugMode2"),
+                secondary: toggleDescription(
+                  t,
+                  t("chat:debugMode2").toLowerCase(),
                   props.interactionMode === "debug",
                 ),
                 trailing: props.interactionMode === "debug" ? CHECK : null,
@@ -198,8 +208,12 @@ export function ComposerExtrasPanel(props: {
                     {
                       id: ROW_FAST,
                       icon: <FastModeIcon className={GLYPH} />,
-                      title: copy.fastMode,
-                      secondary: copy.toggleMode(copy.fastMode.toLowerCase(), props.fastModeEnabled),
+                      title: t("chat:sessionStatus_fastMode"),
+                      secondary: toggleDescription(
+                        t,
+                        t("chat:sessionStatus_fastMode").toLowerCase(),
+                        props.fastModeEnabled,
+                      ),
                       trailing: props.fastModeEnabled ? CHECK : null,
                     },
                   ]
@@ -209,19 +223,21 @@ export function ComposerExtrasPanel(props: {
                     {
                       id: ROW_ADVISOR_DEFAULT,
                       icon: <MessageCircleIcon className={GLYPH} />,
-                      title: `${copy.advisor.title}: ${copy.advisor.followDefault}`,
+                      title: `${t("chat:composerExtras_advisor")}: ${t(
+                        "chat:composerExtras_advisorFollowDefault",
+                      )}`,
                       trailing: (props.advisorOverride ?? null) === null ? CHECK : null,
                     },
                     {
                       id: ROW_ADVISOR_ON,
                       icon: <MessageCircleIcon className={GLYPH} />,
-                      title: `${copy.advisor.title}: ${copy.advisor.on}`,
+                      title: `${t("chat:composerExtras_advisor")}: ${t("chat:composerExtras_on")}`,
                       trailing: props.advisorOverride === true ? CHECK : null,
                     },
                     {
                       id: ROW_ADVISOR_OFF,
                       icon: <MessageCircleIcon className={GLYPH} />,
-                      title: `${copy.advisor.title}: ${copy.advisor.off}`,
+                      title: `${t("chat:composerExtras_advisor")}: ${t("chat:composerExtras_off")}`,
                       trailing: props.advisorOverride === false ? CHECK : null,
                     },
                   ]
@@ -273,14 +289,8 @@ export function ComposerExtrasPanel(props: {
       props.onClose();
       return;
     }
-    if (
-      rowId === ROW_ADVISOR_DEFAULT ||
-      rowId === ROW_ADVISOR_ON ||
-      rowId === ROW_ADVISOR_OFF
-    ) {
-      props.onSetAdvisorOverride?.(
-        rowId === ROW_ADVISOR_DEFAULT ? null : rowId === ROW_ADVISOR_ON,
-      );
+    if (rowId === ROW_ADVISOR_DEFAULT || rowId === ROW_ADVISOR_ON || rowId === ROW_ADVISOR_OFF) {
+      props.onSetAdvisorOverride?.(rowId === ROW_ADVISOR_DEFAULT ? null : rowId === ROW_ADVISOR_ON);
       props.onClose();
       return;
     }
@@ -403,19 +413,25 @@ export function ComposerExtrasPanel(props: {
 
 function appSnapWindowRows(
   appSnap: ReturnType<typeof useAppSnapWindows>,
-  copy: ReturnType<typeof useMessages>["composer"]["extras"],
+  translate: ChatTranslator,
 ): ComposerMenuPanelRow[] {
   if (appSnap.unavailableMessage) {
     return [{ id: "extras:window-status", title: appSnap.unavailableMessage, disabled: true }];
   }
   if (appSnap.windows === null) {
-    return [{ id: "extras:window-status", title: copy.loadingWindows, disabled: true }];
+    return [
+      {
+        id: "extras:window-status",
+        title: translate("chat:loadingWindows"),
+        disabled: true,
+      },
+    ];
   }
   if (appSnap.windows.length === 0) {
     return [
       {
         id: "extras:window-status",
-        title: copy.noWindows,
+        title: translate("chat:noOtherAppWindowsAreVisible"),
         disabled: true,
       },
     ];
@@ -424,8 +440,14 @@ function appSnapWindowRows(
   return appSnap.windows.map((entry) => ({
     id: `${WINDOW_ROW_PREFIX}${entry.windowId}`,
     icon: windowGlyph(entry),
-    title: entry.appName?.trim() || copy.capturedApp,
+    title: entry.appName?.trim() || translate("chat:capturedApp"),
     secondary: entry.windowTitle?.trim() || null,
     disabled: appSnap.busy,
   }));
+}
+
+function toggleDescription(translate: ChatTranslator, modeLabel: string, enabled: boolean): string {
+  return translate(enabled ? "chat:composerExtras_turnOffMode" : "chat:composerExtras_turnOnMode", {
+    value0: modeLabel,
+  });
 }

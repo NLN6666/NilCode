@@ -14,15 +14,14 @@ afterEach(() => {
 });
 
 describe("ComputerGettingStarted", () => {
-  it("introduces explicit task requests and explains that hiding the preview does not stop control", () => {
+  it("opens the three-step guide without showing a modal or writing acknowledgement", () => {
     const markup = renderToStaticMarkup(<ComputerGettingStarted appSnapAvailable={true} />);
     expect(markup).toContain('aria-expanded="true"');
-    expect(markup).toContain("/computer-use open Calculator");
-    expect(markup).toContain("for that request only");
-    expect(markup).toContain("Use Stop in the chat");
-    expect(markup).toContain("Closing the preview only hides it");
-    expect(markup).toContain("AppSnap is separate");
-    expect(markup).toContain("Got it");
+    expect(markup).toContain('id="setting-ask-for-a-task"');
+    expect(markup).toContain('id="setting-approve-the-task"');
+    expect(markup).toContain('id="setting-follow-and-stop"');
+    expect(markup).not.toContain('inert=""');
+    expect(markup.match(/<button\b/g) ?? []).toHaveLength(2);
     expect(markup).not.toContain('role="dialog"');
     expect(storage.write).not.toHaveBeenCalled();
   });
@@ -31,8 +30,8 @@ describe("ComputerGettingStarted", () => {
     storage.acknowledged = true;
     const markup = renderToStaticMarkup(<ComputerGettingStarted appSnapAvailable={false} />);
     expect(markup).toContain('aria-expanded="false"');
-    expect(markup).toContain("Show guide");
-    expect(markup).not.toContain("Got it");
-    expect(markup).not.toContain("AppSnap is separate");
+    expect(markup).toContain('aria-hidden="true"');
+    expect(markup).toContain('inert=""');
+    expect(markup.match(/<button\b/g) ?? []).toHaveLength(1);
   });
 });

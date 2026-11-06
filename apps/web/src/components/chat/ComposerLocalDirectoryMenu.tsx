@@ -29,8 +29,9 @@ import {
   COMPOSER_COMMAND_MENU_SURFACE_CLASS_NAME,
   COMPOSER_PICKER_MENU_POPUP_BODY_CLASS_NAME,
 } from "./composerPickerStyles";
-import { useMessages } from "~/i18n/context";
-import type { Messages } from "~/i18n/locales/en";
+import { useTranslation } from "~/i18n";
+
+type ChatTranslator = ReturnType<typeof useTranslation>["t"];
 
 type EntriesByPath = Record<string, readonly ProjectFileSystemEntry[] | undefined>;
 
@@ -129,21 +130,18 @@ function isRootDirectory(directoryPath: string): boolean {
 
 // Effect/fs errors come through with deep stack traces and absolute internal paths.
 // Surface a short, user-friendly reason so the popover stays tidy on missing/denied paths.
-function summarizeDirectoryLoadError(
-  error: unknown,
-  copy: Messages["composer"]["directory"]["errors"],
-): string {
+function summarizeDirectoryLoadError(error: unknown, translate: ChatTranslator): string {
   const raw = error instanceof Error ? error.message : String(error ?? "");
   if (/ENOENT|no such file or directory/i.test(raw)) {
-    return copy.notFound;
+    return translate("chat:localDirectory_errorNotFound");
   }
   if (/EACCES|permission denied/i.test(raw)) {
-    return copy.permissionDenied;
+    return translate("chat:localDirectory_errorPermissionDenied");
   }
   if (/ENOTDIR|not a directory/i.test(raw)) {
-    return copy.notAFolder;
+    return translate("chat:localDirectory_errorNotAFolder");
   }
-  return copy.loadFailed;
+  return translate("chat:localDirectory_errorLoadFailed");
 }
 
 export function ComposerLocalDirectoryMenu(props: {
@@ -154,7 +152,7 @@ export function ComposerLocalDirectoryMenu(props: {
   onNavigateFolder: (absolutePath: string) => void;
   handleRef?: Ref<ComposerLocalDirectoryMenuHandle>;
 }) {
-  const copy = useMessages().composer.directory;
+  const { t } = useTranslation();
   const { mentionQuery, rootLabel, homeDir, onSelectEntry, onNavigateFolder, handleRef } = props;
   const [entriesByPath, setEntriesByPath] = useState<EntriesByPath>({});
   const [loadingPaths, setLoadingPaths] = useState<ReadonlySet<string>>(() => new Set());
@@ -196,7 +194,7 @@ export function ComposerLocalDirectoryMenu(props: {
       if (cancelled) return;
       const api = readNativeApi();
       if (!api) {
-        setErrorMessage(copy.errors.appConnecting);
+        setErrorMessage(t("chat:projectPicker_connecting"));
         return;
       }
 
@@ -211,7 +209,7 @@ export function ComposerLocalDirectoryMenu(props: {
         })
         .catch((error) => {
           setEntriesByPath((current) => ({ ...current, [expandedDirectory]: [] }));
-          setErrorMessage(summarizeDirectoryLoadError(error, copy.errors));
+          setErrorMessage(summarizeDirectoryLoadError(error, t));
         })
         .finally(() => {
           setLoadingPaths((current) => {
@@ -225,7 +223,7 @@ export function ComposerLocalDirectoryMenu(props: {
       cancelled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [entriesByPath, expandedDirectory, isAwaitingHomeDir, loadingPaths]);
+  }, [entriesByPath, expandedDirectory, isAwaitingHomeDir, loadingPaths, t]);
 
   const rawEntries = entriesByPath[expandedDirectory];
   const isLoading = loadingPaths.has(expandedDirectory);
@@ -404,7 +402,7 @@ export function ComposerLocalDirectoryMenu(props: {
           {parent ? (
             <button
               type="button"
-              aria-label={copy.goUp}
+              aria-label={t("chat:localDirectory_goUpDirectory")}
               onMouseDown={(event) => event.preventDefault()}
               onClick={handleGoUp}
               className={cn(
@@ -427,7 +425,7 @@ export function ComposerLocalDirectoryMenu(props: {
               onClick={handleSelectCurrentDirectory}
               className={cn(DIRECTORY_MENU_HEADER_ACTION_CLASS_NAME, "px-1.5 py-0.5 text-ui-xs")}
             >
-              {copy.useThisFolder}
+              {t("chat:localDirectory_useThisFolder")}
             </button>
           ) : null}
         </div>
@@ -494,8 +492,8 @@ export function ComposerLocalDirectoryMenu(props: {
                   <CommandSeparator className="my-0.5" />
                 ) : null}
                 <CommandGroup>
-                  <CommandGroupLabel className="px-2 pt-1.5 pb-1 text-[10px] font-semibold text-muted-foreground/55">
-                    {copy.matchesDeeper}
+                  <CommandGroupLabel className="px-2 pt-1.5 pb-1 text-ui-xs font-semibold text-muted-foreground/55">
+                    {t("chat:localDirectory_matchesDeeper")}
                   </CommandGroupLabel>
                   {searchRows.map((entry, searchIndex) => {
                     const absoluteIndex = searchRowStartIndex + searchIndex;
@@ -517,19 +515,29 @@ export function ComposerLocalDirectoryMenu(props: {
           </CommandList>
         </div>
         {isAwaitingHomeDir ? (
-          <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">{copy.awaitingHomeDir}</p>
+          <p className="px-2 py-1.5 text-muted-foreground/50 text-ui-sm">
+            {t("chat:waitingForHomeDirectoryFromServer")}
+          </p>
         ) : isLoading && visibleCount === 0 ? (
-          <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">{copy.loading}</p>
+          <p className="px-2 py-1.5 text-muted-foreground/50 text-ui-sm">
+            {t("chat:loadingLocalFiles")}
+          </p>
         ) : errorMessage ? (
           <p className="px-2 py-1.5 text-destructive/80 text-ui-sm">{errorMessage}</p>
         ) : isSearchPending ? (
-          <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">{copy.searching}</p>
+          <p className="px-2 py-1.5 text-muted-foreground/50 text-ui-sm">
+            {t("chat:searchingNestedFiles")}
+          </p>
         ) : visibleCount === 0 ? (
-          <p className="px-2 py-1.5 text-muted-foreground/50 text-[11px]">
-            {filter.trim().length > 0 ? copy.noMatches : copy.empty}
+          <p className="px-2 py-1.5 text-muted-foreground/50 text-ui-sm">
+            {filter.trim().length > 0
+              ? t("chat:localDirectory_noMatches")
+              : t("chat:localDirectory_noFilesOrFolders")}
           </p>
         ) : searchQuery.data?.truncated ? (
-          <p className="px-2 py-1 text-muted-foreground/40 text-[10.5px]">{copy.topMatches}</p>
+          <p className="px-2 py-1 text-muted-foreground/40 text-ui-xs">
+            {t("chat:localDirectory_showingTopMatches")}
+          </p>
         ) : null}
       </div>
     </Command>
@@ -543,8 +551,9 @@ function UseCurrentFolderRow(props: {
   onHighlight: (index: number) => void;
   onActivate: () => void;
 }) {
+  const { t } = useTranslation();
+
   const { directoryLabel, index, isHighlighted, onHighlight, onActivate } = props;
-  const copy = useMessages().composer.directory;
   return (
     <CommandItem
       data-highlight-index={index}
@@ -560,16 +569,20 @@ function UseCurrentFolderRow(props: {
     >
       <FolderIcon className="size-3.5 text-muted-foreground/60" />
       <div className="min-w-0 flex flex-1 items-center gap-1.5 overflow-hidden">
-        <span className="shrink-0 text-[11.5px] font-medium text-foreground/80">
-          {copy.useThisFolder}
+        <span className="shrink-0 text-ui-sm font-medium text-foreground/80">
+          {t("chat:localDirectory_useThisFolder")}
         </span>
-        <span className="truncate text-[11px] text-muted-foreground/55">{directoryLabel}</span>
+        <span className="truncate text-ui-sm text-muted-foreground/55">{directoryLabel}</span>
       </div>
     </CommandItem>
   );
 }
 
-function buildSearchRowSubtitle(entry: ProjectLocalSearchEntry, rootPath: string): string {
+function buildSearchRowSubtitle(
+  entry: ProjectLocalSearchEntry,
+  rootPath: string,
+  translate: ChatTranslator,
+): string {
   const parent = entry.parentPath ?? "";
   if (!parent) return "";
   if (rootPath.length > 0 && parent.startsWith(rootPath)) {
@@ -578,7 +591,7 @@ function buildSearchRowSubtitle(entry: ProjectLocalSearchEntry, rootPath: string
     const relative = parent.slice(rootPath.length);
     if (relative.length === 0) return "";
     if (relative.startsWith("/") || relative.startsWith("\\")) return relative;
-    return `/${relative}`;
+    return translate("chat:symbol", { value0: relative });
   }
   return parent;
 }
@@ -591,9 +604,10 @@ function LocalSearchRow(props: {
   onActivate: (entry: ProjectLocalSearchEntry) => void;
   onHighlight: (index: number) => void;
 }) {
+  const { t } = useTranslation();
   const { entry, rootPath, index, isHighlighted, onActivate, onHighlight } = props;
   const isDirectory = entry.kind === "directory";
-  const subtitle = buildSearchRowSubtitle(entry, rootPath);
+  const subtitle = buildSearchRowSubtitle(entry, rootPath, t);
 
   return (
     <CommandItem

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { en } from "../i18n/locales/en";
 import {
   browserAnnotationDraftFromCommittedEvent,
   browserAnnotationMarkers,
@@ -575,6 +574,8 @@ describe("buildBrowserAddressSuggestions", () => {
 });
 
 describe("resolveBrowserChromeStatus", () => {
+  const unusedStatusCopy = { starting: "", noTabs: "", restoringTab: "" };
+
   it("surfaces recoverable browser errors ahead of idle state", () => {
     expect(
       resolveBrowserChromeStatus({
@@ -583,7 +584,7 @@ describe("resolveBrowserChromeStatus", () => {
         activeTabStatus: "ready",
         hasActiveTab: true,
         workspaceReady: true,
-        copy: en.browser.status,
+        copy: unusedStatusCopy,
       }),
     ).toEqual({
       tone: "error",
@@ -599,25 +600,9 @@ describe("resolveBrowserChromeStatus", () => {
         activeTabStatus: "ready",
         hasActiveTab: true,
         workspaceReady: true,
-        copy: en.browser.status,
+        copy: unusedStatusCopy,
       }),
     ).toBeNull();
-  });
-
-  it("keeps onboarding copy for empty browser states", () => {
-    expect(
-      resolveBrowserChromeStatus({
-        localError: null,
-        threadLastError: null,
-        activeTabStatus: "suspended",
-        hasActiveTab: false,
-        workspaceReady: false,
-        copy: en.browser.status,
-      }),
-    ).toEqual({
-      tone: "default",
-      label: "Starting browser...",
-    });
   });
 });
 

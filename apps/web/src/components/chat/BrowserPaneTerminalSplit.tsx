@@ -23,7 +23,7 @@ import { resolveThreadWorkspaceCwd } from "@synara/shared/threadEnvironment";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useTerminalContextComposerTarget } from "~/hooks/useTerminalContextComposerTarget";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 import { SINGLE_CHAT_PANE_SCOPE_ID } from "~/lib/chatPaneScope";
 import { TerminalIcon } from "~/lib/icons";
 import { resolveProjectScriptTerminalScope } from "~/lib/projectServiceTerminalScope";
@@ -46,7 +46,7 @@ export function BrowserPaneTerminalSplit(props: {
   projectId: ProjectId | null;
   children: ReactNode;
 }) {
-  const copy = useMessages().chat.panes.serviceTerminal;
+  const { t } = useTranslation();
   const scopeId =
     resolveProjectScriptTerminalScope({
       isService: true,
@@ -151,10 +151,10 @@ export function BrowserPaneTerminalSplit(props: {
       : [];
   const statusLabel =
     runningScriptNames.length === 1 && runningScriptNames[0]
-      ? copy.running(runningScriptNames[0])
+      ? t("chat:serviceTerminal_running", { value0: runningScriptNames[0] })
       : runningScriptNames.length > 1
-        ? copy.runningCount(runningScriptNames.length)
-        : copy.title;
+        ? t("chat:serviceTerminal_runningCount", { count: runningScriptNames.length })
+        : t("chat:terminal");
 
   return (
     <div ref={containerRef} className="flex h-full min-h-0 w-full flex-col">
@@ -163,7 +163,7 @@ export function BrowserPaneTerminalSplit(props: {
       <div
         role="separator"
         aria-orientation="horizontal"
-        aria-label={copy.resize}
+        aria-label={t("chat:serviceTerminal_resize")}
         className={cn(
           "h-1 shrink-0 border-t border-border/70 transition-colors",
           expanded ? "cursor-row-resize hover:bg-[var(--color-border)]" : "cursor-default",
@@ -179,8 +179,10 @@ export function BrowserPaneTerminalSplit(props: {
           type="button"
           className="flex h-7 shrink-0 items-center gap-1.5 px-2 text-ui-xs text-muted-foreground transition-colors hover:text-foreground"
           aria-expanded={expanded}
-          aria-label={expanded ? copy.collapse : copy.expand}
-          title={expanded ? copy.collapse : copy.expand}
+          aria-label={
+            expanded ? t("chat:serviceTerminal_collapse") : t("chat:serviceTerminal_expand")
+          }
+          title={expanded ? t("chat:serviceTerminal_collapse") : t("chat:serviceTerminal_expand")}
           onClick={() => setTerminalOpen(scopeId, !expanded)}
         >
           <DisclosureChevron open={expanded} />

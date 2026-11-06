@@ -1,3 +1,4 @@
+import { Translation } from "~/i18n/Translation";
 // FILE: ProvidersSettingsPanel.tsx
 // Purpose: Own provider picker, update, and CLI installation settings workflows.
 // Layer: Settings panel
@@ -18,7 +19,6 @@ import {
   providerCliCommandName,
 } from "@synara/shared/providerCliProfiles";
 import { providerImportedDirectoryConfig } from "@synara/shared/providerInstances";
-import { pluralize } from "@synara/shared/text";
 import {
   closestCenter,
   DndContext,
@@ -63,8 +63,6 @@ import {
 } from "~/appSettings";
 import { useProviderStatusesForLocalConfig } from "~/hooks/useProviderStatusesForLocalConfig";
 import { useRefreshProviderStatusesNow } from "~/hooks/useProviderStatusRefresh";
-import { useMessages } from "../../i18n/context";
-import type { Messages } from "../../i18n/locales/en";
 import { CentralIcon } from "~/lib/central-icons";
 import {
   CopyIcon,
@@ -137,6 +135,8 @@ import {
   useSettingsRestoreSignal,
 } from "./SettingControls";
 import { SettingsListRow, SettingsRow, SettingsSection } from "./SettingsPanelPrimitives";
+import { UsageLimitRecoverySetting } from "./UsageLimitRecoverySetting";
+import { t, useTranslation } from "~/i18n";
 
 type ProviderInstallTextKey =
   | "claudeBinaryPath"
@@ -162,68 +162,26 @@ type ProviderInstallBooleanKey =
   | "claudeConfirmColdCacheResume"
   | "openCodeExperimentalWebSockets";
 
-type ProvidersCopy = Messages["settings"]["providers"];
-
-function providerSetupLabel(
-  status: ServerProviderStatus | undefined,
-  reconciled: boolean,
-  disabled: boolean,
-  copy: ProvidersCopy["activity"]["setupStatus"],
-): string {
-  if (disabled) return copy.disabled;
-  if (!reconciled || !status) return copy.checking;
-  if (!status.available) return copy.unavailable;
-  if (status.authStatus === "unauthenticated") return copy.needsSignIn;
-  if (status.status !== "ready") return copy.needsAttention;
-  if (status.authStatus === "unknown") return copy.unverifiedSignIn;
-  return copy.connected;
-}
-
-type ProviderInstallFieldCopy = {
-  readonly label: string;
-  readonly placeholder?: string;
-  readonly description: ReactNode;
-};
-
-/**
- * Each field names its own catalog entry instead of carrying copy, so a locale that renames a
- * label cannot drift from the settings key it belongs to. Binary-path fields build their hint
- * from the shared sentence and mark the executable so it still renders as inline code.
- */
-type ProviderInstallCopy = (copy: ProvidersCopy) => ProviderInstallFieldCopy;
-
-/** Renders `binary` inside the sentence as <code>, wherever the translation places it. */
-function withInlineCode(sentence: string, binary: string): ReactNode {
-  const index = sentence.indexOf(binary);
-  if (index < 0) return sentence;
-  return (
-    <>
-      {sentence.slice(0, index)}
-      <code>{binary}</code>
-      {sentence.slice(index + binary.length)}
-    </>
-  );
-}
-
-function binaryHint(copy: ProvidersCopy, binary: string): ReactNode {
-  return withInlineCode(copy.binaryHint(binary), binary);
-}
-
 type ProviderInstallTextField = {
   readonly kind: "text";
   readonly settingsKey: ProviderInstallTextKey;
-  readonly copy: ProviderInstallCopy;
+  readonly label: string;
+  readonly placeholder: string;
+  readonly description: string | ((translate: typeof t) => ReactNode);
 };
 type ProviderInstallPasswordField = {
   readonly kind: "password";
   readonly settingsKey: ProviderInstallPasswordKey;
   readonly configuredKey: ProviderInstallPasswordConfiguredKey;
-  readonly copy: ProviderInstallCopy;
+  readonly label: string;
+  readonly placeholder: string;
+  readonly description: string | ((translate: typeof t) => ReactNode);
 };
 type ProviderInstallBooleanField = {
   readonly kind: "boolean";
   readonly settingsKey: ProviderInstallBooleanKey;
-  readonly copy: ProviderInstallCopy;
+  readonly label: string;
+  readonly description: string | ((translate: typeof t) => ReactNode);
 };
 type ProviderInstallField =
   | ProviderInstallTextField
@@ -232,7 +190,7 @@ type ProviderInstallField =
 type ProviderInstallSettings = {
   readonly provider: ProviderKind;
   readonly docs: ReadonlyArray<{
-    readonly labelKey: keyof ProvidersCopy["docs"];
+    readonly label: string;
     readonly href: string;
   }>;
   readonly fields: readonly ProviderInstallField[];
@@ -248,109 +206,176 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
   {
     provider: "codex",
     docs: [
-      { labelKey: "install", href: "https://help.openai.com/en/articles/11096431" },
-      { labelKey: "update", href: "https://help.openai.com/en/articles/11096431" },
-      { labelKey: "config", href: "https://github.com/openai/codex/blob/main/docs/config.md" },
+      {
+        label: "settings:providers_docInstall",
+        href: "https://help.openai.com/en/articles/11096431",
+      },
+      {
+        label: "computer:providerUpdates_update",
+        href: "https://help.openai.com/en/articles/11096431",
+      },
+      {
+        label: "settings:providers_docConfig",
+        href: "https://github.com/openai/codex/blob/main/docs/config.md",
+      },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "codexBinaryPath",
-        copy: (c) => ({ ...c.fields.codexBinaryPath, description: binaryHint(c, "codex") }),
+        label: "settings:codexBinaryPath",
+        placeholder: "settings:codexBinaryPath",
+        description: () => (
+          <Translation
+            message="settings:binaryPathDescription"
+            values={{ command: "codex" }}
+            components={{ command: <code /> }}
+          />
+        ),
       },
       {
         kind: "text",
         settingsKey: "codexHomePath",
-        copy: (c) => c.fields.codexHomePath,
+        label: "settings:providers_codexHomePath",
+        placeholder: "settings:cODEXHOME",
+        description: "settings:providers_codexHomeDescription",
       },
     ],
   },
   {
     provider: "claudeAgent",
     docs: [
-      { labelKey: "install", href: "https://code.claude.com/docs/en/installation" },
       {
-        labelKey: "update",
+        label: "settings:providers_docInstall",
+        href: "https://code.claude.com/docs/en/installation",
+      },
+      {
+        label: "computer:providerUpdates_update",
         href: "https://code.claude.com/docs/en/installation#update-claude-code",
       },
-      { labelKey: "config", href: "https://code.claude.com/docs/en/settings" },
+      { label: "settings:providers_docConfig", href: "https://code.claude.com/docs/en/settings" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "claudeBinaryPath",
-        copy: (c) => ({ ...c.fields.claudeBinaryPath, description: binaryHint(c, "claude") }),
+        label: "settings:claudeBinaryPath",
+        placeholder: "settings:claudeBinaryPath",
+        description: () => (
+          <Translation
+            message="settings:binaryPathDescription"
+            values={{ command: "claude" }}
+            components={{ command: <code /> }}
+          />
+        ),
       },
       {
         kind: "text",
         settingsKey: "claudeHomePath",
-        copy: (c) => c.fields.claudeHomePath,
+        label: "settings:claudeHOMEPath",
+        placeholder: "settings:claudeHOME",
+        description: "settings:optionalHOMEDirectoryForThisClaudeAccount",
       },
       {
         kind: "boolean",
         settingsKey: "claudeEnableArtifacts",
-        copy: (c) => c.fields.claudeEnableArtifacts,
+        label: "settings:artifactsDesignAndSlides",
+        description: () => (
+          <Translation
+            message="settings:claudeArtifactsDescription"
+            components={{ design: <code />, slides: <code /> }}
+          />
+        ),
       },
       {
         kind: "boolean",
         settingsKey: "claudeConfirmColdCacheResume",
-        copy: (c) => c.fields.claudeConfirmColdCacheResume,
+        label: "settings:askBeforeResumingALongIdleSession",
+        description: "settings:offByDefaultLikeClaudeCodeWhenOnAfter",
       },
     ],
   },
   {
     provider: "cursor",
     docs: [
-      { labelKey: "install", href: "https://docs.cursor.com/en/cli/installation" },
-      { labelKey: "update", href: "https://docs.cursor.com/en/cli/installation#updates" },
-      { labelKey: "config", href: "https://docs.cursor.com/en/cli/overview" },
+      {
+        label: "settings:providers_docInstall",
+        href: "https://docs.cursor.com/en/cli/installation",
+      },
+      {
+        label: "computer:providerUpdates_update",
+        href: "https://docs.cursor.com/en/cli/installation#updates",
+      },
+      { label: "settings:providers_docConfig", href: "https://docs.cursor.com/en/cli/overview" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "cursorBinaryPath",
-        copy: (c) => ({
-          ...c.fields.cursorBinaryPath,
-          description: withInlineCode(c.cursorBinaryHint("cursor-agent"), "cursor-agent"),
-        }),
+        label: "settings:cursorBinaryPath",
+        placeholder: "settings:cursorAgentOrCursorCLIPath",
+        description: () => (
+          <Translation
+            message="settings:cursorBinaryDescription"
+            components={{ command: <code /> }}
+          />
+        ),
       },
       {
         kind: "text",
         settingsKey: "cursorApiEndpoint",
-        copy: (c) => c.fields.cursorApiEndpoint,
+        label: "settings:providers_cursorApiEndpoint",
+        placeholder: "https://api2.cursor.sh",
+        description: "settings:optionalCursorAPIEndpointOverridePassedToCursorAgent",
       },
     ],
   },
   {
     provider: "antigravity",
     docs: [
-      { labelKey: "install", href: "https://antigravity.google/docs/cli-using" },
-      { labelKey: "reference", href: "https://antigravity.google/docs/cli-reference" },
-      { labelKey: "hooks", href: "https://antigravity.google/docs/hooks" },
+      { label: "settings:providers_docInstall", href: "https://antigravity.google/docs/cli-using" },
+      { label: "settings:reference", href: "https://antigravity.google/docs/cli-reference" },
+      { label: "settings:hooks", href: "https://antigravity.google/docs/hooks" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "antigravityBinaryPath",
-        copy: (c) => ({
-          ...c.fields.antigravityBinaryPath,
-          description: binaryHint(c, "agy"),
-        }),
+        label: "settings:antigravityBinaryPath",
+        placeholder: "settings:antigravityCLIBinaryPath",
+        description: () => (
+          <Translation
+            message="settings:binaryPathDescription"
+            values={{ command: "agy" }}
+            components={{ command: <code /> }}
+          />
+        ),
       },
     ],
   },
   {
     provider: "grok",
     docs: [
-      { labelKey: "install", href: "https://docs.x.ai/build/overview" },
-      { labelKey: "headless", href: "https://docs.x.ai/build/cli/headless-scripting" },
-      { labelKey: "config", href: "https://docs.x.ai/build/overview" },
+      { label: "settings:providers_docInstall", href: "https://docs.x.ai/build/overview" },
+      {
+        label: "settings:providers_docHeadless",
+        href: "https://docs.x.ai/build/cli/headless-scripting",
+      },
+      { label: "settings:providers_docConfig", href: "https://docs.x.ai/build/overview" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "grokBinaryPath",
-        copy: (c) => ({ ...c.fields.grokBinaryPath, description: binaryHint(c, "grok") }),
+        label: "settings:grokBinaryPath",
+        placeholder: "settings:grokBinaryPath",
+        description: () => (
+          <Translation
+            message="settings:binaryPathDescription"
+            values={{ command: "grok" }}
+            components={{ command: <code /> }}
+          />
+        ),
       },
     ],
   },
@@ -358,7 +383,7 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
     provider: "droid",
     docs: [
       {
-        labelKey: "quickstart",
+        label: "settings:quickstart",
         href: "https://docs.factory.ai/cli/getting-started/quickstart.md",
       },
     ],
@@ -366,102 +391,147 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
       {
         kind: "text",
         settingsKey: "droidBinaryPath",
-        copy: (c) => ({ ...c.fields.droidBinaryPath, description: binaryHint(c, "droid") }),
+        label: "settings:droidBinaryPath",
+        placeholder: "settings:droid",
+        description: () => (
+          <Translation
+            message="settings:binaryPathDescription"
+            values={{ command: "droid" }}
+            components={{ command: <code /> }}
+          />
+        ),
       },
     ],
   },
   {
     provider: "devin",
     docs: [
-      { labelKey: "install", href: "https://docs.devin.ai/cli" },
-      { labelKey: "commands", href: "https://docs.devin.ai/cli/reference/commands" },
-      { labelKey: "config", href: "https://docs.devin.ai/cli/reference/configuration/config-file" },
+      { label: "settings:providers_docInstall", href: "https://docs.devin.ai/cli" },
+      { label: "settings:commands", href: "https://docs.devin.ai/cli/reference/commands" },
+      {
+        label: "settings:providers_docConfig",
+        href: "https://docs.devin.ai/cli/reference/configuration/config-file",
+      },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "devinBinaryPath",
-        copy: (c) => ({
-          ...c.fields.devinBinaryPath,
-          description: (
-            <>
-              {binaryHint(c, "devin")} {withInlineCode(c.devinAuthHint, "devin auth login")}
-            </>
-          ),
-        }),
+        label: "settings:devinBinaryPath",
+        placeholder: "settings:devin",
+        description: () => (
+          <Translation
+            message="settings:devinBinaryDescription"
+            components={{ command: <code />, login: <code /> }}
+          />
+        ),
       },
     ],
   },
   {
     provider: "opencode",
     docs: [
-      { labelKey: "install", href: "https://opencode.ai/docs/" },
-      { labelKey: "update", href: "https://opencode.ai/docs/cli/" },
-      { labelKey: "config", href: "https://opencode.ai/docs/config/" },
+      { label: "settings:providers_docInstall", href: "https://opencode.ai/docs/" },
+      { label: "computer:providerUpdates_update", href: "https://opencode.ai/docs/cli/" },
+      { label: "settings:providers_docConfig", href: "https://opencode.ai/docs/config/" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "openCodeBinaryPath",
-        copy: (c) => ({
-          ...c.fields.openCodeBinaryPath,
-          description: binaryHint(c, "opencode"),
-        }),
+        label: "settings:openCodeBinaryPath",
+        placeholder: "settings:openCodeBinaryPath",
+        description: () => (
+          <Translation
+            message="settings:binaryPathDescription"
+            values={{ command: "opencode" }}
+            components={{ command: <code /> }}
+          />
+        ),
       },
       {
         kind: "text",
         settingsKey: "openCodeServerUrl",
-        copy: (c) => c.fields.openCodeServerUrl,
+        label: "settings:openCodeServerURL",
+        placeholder: "http://127.0.0.1:4096",
+        description: "settings:optionalExistingOpenCodeServerURLLeaveBlankToSpawn",
       },
       {
         kind: "password",
         settingsKey: "openCodeServerPassword",
         configuredKey: "openCodeServerPasswordConfigured",
-        copy: (c) => c.fields.openCodeServerPassword,
+        label: "settings:openCodeServerPassword",
+        placeholder: "settings:openCodeServerPassword",
+        description: "settings:optionalPasswordForAnExternallyManagedOpenCodeServer",
       },
       {
         kind: "boolean",
         settingsKey: "openCodeExperimentalWebSockets",
-        copy: (c) => c.fields.openCodeExperimentalWebSockets,
-      },
-    ],
-  },
-  {
-    provider: "omp",
-    docs: [
-      { labelKey: "install", href: "https://github.com/can1357/oh-my-pi" },
-      { labelKey: "config", href: "https://github.com/can1357/oh-my-pi" },
-    ],
-    fields: [
-      {
-        kind: "text",
-        settingsKey: "ompBinaryPath",
-        copy: (c) => ({ ...c.fields.ompBinaryPath, description: binaryHint(c, "omp") }),
-      },
-      {
-        kind: "text",
-        settingsKey: "ompAgentDir",
-        copy: (c) => c.fields.ompAgentDir,
+        label: "settings:providers_openaiResponseWebSockets",
+        description: "settings:providers_openaiResponseWebSocketsDescription",
       },
     ],
   },
   {
     provider: "pi",
     docs: [
-      { labelKey: "install", href: "https://pi.dev/docs/latest" },
-      { labelKey: "update", href: "https://pi.dev/docs/latest/settings" },
-      { labelKey: "config", href: "https://pi.dev/docs/latest/settings" },
+      { label: "settings:providers_docInstall", href: "https://pi.dev/docs/latest" },
+      { label: "computer:providerUpdates_update", href: "https://pi.dev/docs/latest/settings" },
+      { label: "settings:providers_docConfig", href: "https://pi.dev/docs/latest/settings" },
     ],
     fields: [
       {
         kind: "text",
         settingsKey: "piBinaryPath",
-        copy: (c) => ({ ...c.fields.piBinaryPath, description: binaryHint(c, "pi") }),
+        label: "settings:piBinaryPath",
+        placeholder: "settings:piBinaryPath",
+        description: () => (
+          <Translation
+            message="settings:binaryPathDescription"
+            values={{ command: "pi" }}
+            components={{ command: <code /> }}
+          />
+        ),
       },
       {
         kind: "text",
         settingsKey: "piAgentDir",
-        copy: (c) => c.fields.piAgentDir,
+        label: "settings:providers_piAgentDir",
+        placeholder: "settings:providers_piAgentDir",
+        description: "settings:providers_piAgentDirDescription",
+      },
+    ],
+  },
+  {
+    provider: "omp",
+    docs: [
+      { label: "workspace:docs", href: "https://omp.sh/docs" },
+      { label: "settings:providers_docInstall", href: "https://omp.sh/docs/quickstart" },
+      {
+        label: "common:workspaceFilePreviewHeader_source",
+        href: "https://github.com/can1357/oh-my-pi",
+      },
+    ],
+    fields: [
+      {
+        kind: "text",
+        settingsKey: "ompBinaryPath",
+        label: "settings:ohMyPiBinaryPath",
+        placeholder: "settings:ohMyPiBinaryPath",
+        description: () => (
+          <Translation
+            message="settings:binaryPathDescription"
+            values={{ command: "omp" }}
+            components={{ command: <code /> }}
+          />
+        ),
+      },
+      {
+        kind: "text",
+        settingsKey: "ompAgentDir",
+        label: "settings:ohMyPiAgentDirectory",
+        placeholder: "settings:ohMyPiAgentDirectory",
+        description: "settings:optionalCustomOhMyPiAgentDirectoryForAuth",
       },
     ],
   },
@@ -584,7 +654,7 @@ function SortableProviderVisibilityRow(props: {
   isHidden: boolean;
   onHiddenChange: (hidden: boolean) => void;
 }) {
-  const m = useMessages();
+  const { t } = useTranslation();
   const {
     attributes,
     listeners,
@@ -617,7 +687,7 @@ function SortableProviderVisibilityRow(props: {
             ELEVATED_HOVER_SURFACE_RAISED_TEXT_CLASS_NAME,
             SETTINGS_INSET_RADIUS_CLASS_NAME,
           )}
-          aria-label={m.settings.providers.picker.reorder(props.option.title)}
+          aria-label={t("workspace:reorder", { value0: props.option.title })}
           {...attributes}
           {...listeners}
         >
@@ -629,11 +699,13 @@ function SortableProviderVisibilityRow(props: {
             {props.option.title}
           </span>
           <span className="block text-ui-sm text-muted-foreground">
-            {providerSetupLabel(
-              props.providerStatus,
-              props.statusReconciled,
-              props.isDisabled,
-              m.settings.providers.activity.setupStatus,
+            {providerSetupStatusLabel(
+              {
+                status: props.providerStatus,
+                reconciled: props.statusReconciled,
+                disabled: props.isDisabled,
+              },
+              t,
             )}
           </span>
         </span>
@@ -644,10 +716,12 @@ function SortableProviderVisibilityRow(props: {
         onCheckedChange={(checked) => props.onHiddenChange(!Boolean(checked))}
         aria-label={
           isChecking
-            ? m.settings.providers.picker.checkingCli(props.option.title)
+            ? t("settings:checkingCLIAvailability", { value0: props.option.title })
             : isAvailable
-              ? m.settings.providers.picker.showInPicker(props.option.title)
-              : m.settings.providers.picker.cliNotInstalled(props.option.title)
+              ? t("settings:showInTheProviderPicker", { value0: props.option.title })
+              : t("settings:isUnavailableInTheProviderPicker", {
+                  value0: props.option.title,
+                })
         }
       />
     </div>
@@ -655,22 +729,23 @@ function SortableProviderVisibilityRow(props: {
 }
 
 function ProviderDocsLinks({ docs }: { docs: ProviderInstallSettings["docs"] }) {
-  const m = useMessages();
+  const { t } = useTranslation();
+
   return (
     <div className={cn(SETTINGS_OUTLINED_SURFACE_CLASS_NAME, "px-3 py-2.5")}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <span className="text-xs font-medium text-foreground">
-          {m.settings.providers.tools.cliDocs}
+        <span className="text-ui leading-snug font-medium text-foreground">
+          {t("settings:providers_cliDocs")}
         </span>
         <div className="flex flex-wrap gap-2">
           {docs.map((doc) => (
             <Button
-              key={`${doc.labelKey}:${doc.href}`}
+              key={`${doc.label}:${doc.href}`}
               variant="outline"
               size="sm"
               render={<a href={doc.href} target="_blank" rel="noreferrer" />}
             >
-              <span>{m.settings.providers.docs[doc.labelKey]}</span>
+              <span>{t(doc.label)}</span>
               <ExternalLinkIcon className="size-3" />
             </Button>
           ))}
@@ -686,45 +761,29 @@ function formatProviderVersion(value: string | null | undefined): string | null 
   return trimmed.startsWith("v") ? trimmed : `v${trimmed}`;
 }
 
-function providerUpdateStatusLabel(
-  provider: ServerProviderStatus,
-  copy: ProvidersCopy,
-): string | null {
+function providerUpdateStatusLabel(provider: ServerProviderStatus): string | null {
   const state = provider.updateState?.status;
-  if (state === "queued") return copy.update.queued;
-  if (state === "running") return copy.update.running;
-  if (state === "succeeded") return copy.update.succeeded;
-  if (state === "failed") return copy.update.failed;
-  if (state === "unchanged") return copy.update.unchanged;
+  if (state === "queued") return t("settings:updateQueued");
+  if (state === "running") return t("settings:providers_updating");
+  if (state === "succeeded") return t("common:updated");
+  if (state === "failed") return t("common:providerUpdates_failed");
+  if (state === "unchanged") return t("settings:stillOutdated");
   const advisory = provider.versionAdvisory;
   if (advisory?.status === "behind_latest" && advisory.latestVersion) {
     const currentVersion = formatProviderVersion(advisory.currentVersion);
     const latestVersion = formatProviderVersion(advisory.latestVersion);
     return currentVersion
-      ? `${currentVersion} -> ${latestVersion}`
-      : copy.update.latest(latestVersion ?? "");
+      ? t("settings:symbol", { value0: currentVersion, value1: latestVersion })
+      : t("settings:latest", { value0: latestVersion });
   }
   const currentVersion = formatProviderVersion(provider.version);
-  return currentVersion ? copy.update.current(currentVersion) : null;
+  return currentVersion ? t("settings:current", { value0: currentVersion }) : null;
 }
 
-function providerUpdateFailureMessage(
-  provider: ServerProviderStatus | undefined,
-  copy: ProvidersCopy,
-): string | null {
+function providerUpdateFailureMessage(provider: ServerProviderStatus | undefined): string | null {
   const state = provider?.updateState;
   if (!state || (state.status !== "failed" && state.status !== "unchanged")) return null;
-  return state.output?.trim() || state.message || copy.update.didNotComplete;
-}
-
-/** Same "off / N available / none" line under both the updates and the installed-CLI rows. */
-function providerCheckStatusLabel(
-  copy: ProvidersCopy,
-  checksEnabled: boolean,
-  outdatedCount: number,
-): string {
-  if (!checksEnabled) return copy.checkStatus.off;
-  return outdatedCount > 0 ? copy.checkStatus.available(outdatedCount) : copy.checkStatus.none;
+  return state.output?.trim() || state.message || t("settings:theProviderUpdateDidNotComplete");
 }
 
 function providerStatusDisplayName(status: ServerProviderStatus): string {
@@ -739,7 +798,7 @@ function ProviderUpdateAction(props: {
   disabled: boolean;
   onUpdate: (provider: ProviderKind, instanceId?: ProviderInstanceId) => void;
 }) {
-  const m = useMessages();
+  const { t } = useTranslation();
   const advisory = props.providerStatus.versionAdvisory;
   return (
     <Button
@@ -748,9 +807,7 @@ function ProviderUpdateAction(props: {
       variant="outline"
       disabled={props.disabled}
       title={
-        advisory?.updateCommand
-          ? m.settings.providers.update.runCommand(advisory.updateCommand)
-          : undefined
+        advisory?.updateCommand ? t("workspace:run", { value0: advisory.updateCommand }) : undefined
       }
       onClick={(event: MouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();
@@ -764,7 +821,7 @@ function ProviderUpdateAction(props: {
       ) : (
         <DownloadIcon className="size-3.5" />
       )}
-      {props.active ? m.settings.providers.update.running : m.settings.providers.update.action}
+      {props.active ? t("settings:providers_updating") : t("computer:providerUpdates_update")}
     </Button>
   );
 }
@@ -774,8 +831,7 @@ function ProviderInstallFieldControl(props: {
   settings: AppSettings;
   updateSettings: (patch: Partial<AppSettings>) => void;
 }) {
-  const m = useMessages();
-  const copy = props.field.copy(m.settings.providers);
+  const { t } = useTranslation();
   const id = `provider-install-${props.field.settingsKey}`;
   if (props.field.kind === "boolean") {
     return (
@@ -784,8 +840,14 @@ function ProviderInstallFieldControl(props: {
         className="flex items-start justify-between gap-3 rounded-md border border-border/70 bg-background/60 px-3 py-2"
       >
         <span className="min-w-0">
-          <span className="block text-xs font-medium text-foreground">{copy.label}</span>
-          <span className="mt-1 block text-xs text-muted-foreground">{copy.description}</span>
+          <span className="block text-ui leading-snug font-medium text-foreground">
+            {t(props.field.label)}
+          </span>
+          <span className="mt-1 block text-ui leading-snug text-muted-foreground">
+            {typeof props.field.description === "string"
+              ? t(props.field.description)
+              : props.field.description(t)}
+          </span>
         </span>
         <Switch
           id={id}
@@ -803,7 +865,9 @@ function ProviderInstallFieldControl(props: {
   const isPassword = props.field.kind === "password";
   return (
     <label htmlFor={id} className="block">
-      <span className="block text-xs font-medium text-foreground">{copy.label}</span>
+      <span className="block text-ui leading-snug font-medium text-foreground">
+        {t(props.field.label)}
+      </span>
       <DebouncedSettingTextInput
         id={id}
         size="sm"
@@ -815,14 +879,18 @@ function ProviderInstallFieldControl(props: {
         }
         placeholder={
           isPassword && configured
-            ? m.settings.providers.tools.passwordConfigured
-            : copy.placeholder
+            ? t("settings:configuredEnterAReplacementOrLeaveBlank")
+            : t(props.field.placeholder)
         }
         type={isPassword ? "password" : undefined}
         autoComplete={isPassword ? "new-password" : undefined}
         spellCheck={false}
       />
-      <span className="mt-1 block text-xs text-muted-foreground">{copy.description}</span>
+      <span className="mt-1 block text-ui leading-snug text-muted-foreground">
+        {typeof props.field.description === "string"
+          ? t(props.field.description)
+          : props.field.description(t)}
+      </span>
     </label>
   );
 }
@@ -838,57 +906,60 @@ function formatOmpRuntimeDetail(value: unknown): string | undefined {
 }
 
 function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus | undefined }) {
-  const m = useMessages();
+  const { t } = useTranslation();
   const projection = projectOmpProviderPolicy(props.status);
   if (!projection) return null;
-  const copy = m.settings.providers.tools.ompPolicy;
   const featureLabels: Record<OmpPolicyFeatureId, string> = {
-    launch: copy.launch,
-    advisor: copy.advisor,
-    memory: copy.memory,
-    autoLearn: copy.autoLearn,
+    launch: t("settings:ompPolicy_launch"),
+    advisor: t("settings:ompPolicy_advisor"),
+    memory: t("settings:ompPolicy_memory"),
+    autoLearn: t("settings:ompPolicy_autoLearn"),
   };
   const runtime = projection.runtime;
 
   return (
     <div className={cn(SETTINGS_OUTLINED_SURFACE_CLASS_NAME, "space-y-3 p-3 text-xs")}>
-      <div className="font-medium text-foreground">{copy.title}</div>
+      <div className="font-medium text-foreground">{t("settings:ompPolicy_title")}</div>
       <div className="grid gap-2 sm:grid-cols-2">
         {projection.features.map((feature) => {
           const value =
             feature.id === "advisor" && projection.advisorState === "degraded"
-              ? copy.degraded
+              ? t("settings:ompPolicy_degraded")
               : feature.id === "memory"
                 ? projection.memoryBackend
                 : feature.id === "autoLearn"
-                  ? copy.autoLearnDetail
-                  : copy.enabled;
+                  ? t("settings:ompPolicy_autoLearnDetail")
+                  : t("settings:ompPolicy_enabled");
           return (
             <div key={feature.id} className="flex items-start justify-between gap-3">
               <span className="text-muted-foreground">{featureLabels[feature.id]}</span>
               <span className="text-right text-foreground">
-                {value} · {copy.owner}
+                {value} · {t("settings:ompPolicy_owner")}
               </span>
             </div>
           );
         })}
       </div>
       <div className="space-y-1 text-muted-foreground">
-        <div>{copy.sharedHome}</div>
+        <div>{t("settings:ompPolicy_sharedHome")}</div>
         <div>
-          {copy.memoryEffective}:{" "}
+          {t("settings:ompPolicy_memoryEffective")}:{" "}
           <span className="text-foreground">{projection.memoryBackend}</span> ·{" "}
-          {projection.memorySource === "user-config" ? copy.memoryUser : copy.memoryFallback}
+          {t(
+            projection.memorySource === "user-config"
+              ? "settings:ompPolicy_memoryUser"
+              : "settings:ompPolicy_memoryFallback",
+          )}
         </div>
         {projection.advisorModelRole ? (
           <div>
-            {copy.advisorRole}:{" "}
+            {t("settings:ompPolicy_advisorRole")}:{" "}
             <code className="text-foreground">{projection.advisorModelRole}</code>
           </div>
         ) : null}
-        <div>{copy.autoLearnCost}</div>
+        <div>{t("settings:ompPolicy_autoLearnCost")}</div>
         <div>
-          {copy.overlay}:{" "}
+          {t("settings:ompPolicy_overlay")}:{" "}
           <code className="break-all text-foreground">{projection.overlayPath}</code>
         </div>
       </div>
@@ -899,62 +970,92 @@ function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus
       ) : null}
       {runtime?.mode === "typed" ? (
         <div className="space-y-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2.5 py-2 text-muted-foreground">
-          <div className="font-medium text-foreground">{copy.typedLive}</div>
+          <div className="font-medium text-foreground">{t("settings:ompPolicy_typedLive")}</div>
           <div>
-            {copy.runtimeVersion}:{" "}
+            {t("settings:ompPolicy_runtimeVersion")}:{" "}
             <span className="text-foreground">{runtime.ompVersion ?? "—"}</span>
             {" · "}
-            {copy.runtimeSessions}: <span className="text-foreground">{runtime.sessionCount}</span>
+            {t("settings:ompPolicy_runtimeSessions")}:{" "}
+            <span className="text-foreground">{runtime.sessionCount}</span>
           </div>
           {runtime.advisor ? (
             <div>
-              {copy.advisorLive}:{" "}
-              <span className="text-foreground">{runtime.advisor.active ? "active" : "idle"}</span>
+              {t("settings:ompPolicy_advisorLive")}:{" "}
+              <span className="text-foreground">
+                {t(
+                  runtime.advisor.active ? "settings:ompPolicy_active" : "settings:ompPolicy_idle",
+                )}
+              </span>
               {" · "}
-              {copy.advisorRisk}:{" "}
-              <span className="text-foreground">{runtime.advisor.toolRisk}</span>
-              {runtime.advisor.inFlight ? " · in flight" : ""}
+              {t("settings:ompPolicy_advisorRisk")}:{" "}
+              <span className="text-foreground">
+                {t(
+                  runtime.advisor.toolRisk === "read-only"
+                    ? "settings:ompPolicy_readOnlyRisk"
+                    : "settings:ompPolicy_writeOrExecRisk",
+                )}
+              </span>
+              {runtime.advisor.inFlight ? ` · ${t("settings:ompPolicy_inFlight")}` : ""}
               {runtime.advisor.drain
-                ? ` · drain ${runtime.advisor.drain.settled ? "settled" : "degraded"}${runtime.advisor.drain.error ? `: ${runtime.advisor.drain.error}` : ""}`
+                ? ` · ${t("settings:ompPolicy_drain", {
+                    value0: t(
+                      runtime.advisor.drain.settled
+                        ? "settings:ompPolicy_settled"
+                        : "settings:ompPolicy_degraded",
+                    ),
+                  })}${runtime.advisor.drain.error ? `: ${runtime.advisor.drain.error}` : ""}`
                 : ""}
             </div>
           ) : null}
           {runtime.autolearn ? (
             <div>
-              {copy.autoLearnLive}:{" "}
+              {t("settings:ompPolicy_autoLearnLive")}:{" "}
               <span className="text-foreground">{runtime.autolearn.state}</span>
-              {` · generation ${runtime.autolearn.captureGeneration}`}
-              {runtime.autolearn.pending ? " · pending" : ""}
+              {` · ${t("settings:ompPolicy_generation", {
+                value0: runtime.autolearn.captureGeneration,
+              })}`}
+              {runtime.autolearn.pending ? ` · ${t("settings:ompPolicy_pending")}` : ""}
               {runtime.autolearn.drain
-                ? ` · drain ${runtime.autolearn.drain.settled ? "settled" : "degraded"}${runtime.autolearn.drain.cancelled ? " (cancelled)" : ""}${runtime.autolearn.drain.error ? `: ${runtime.autolearn.drain.error}` : ""}`
+                ? ` · ${t("settings:ompPolicy_drain", {
+                    value0: t(
+                      runtime.autolearn.drain.settled
+                        ? "settings:ompPolicy_settled"
+                        : "settings:ompPolicy_degraded",
+                    ),
+                  })}${runtime.autolearn.drain.cancelled ? ` (${t("settings:ompPolicy_cancelled")})` : ""}${runtime.autolearn.drain.error ? `: ${runtime.autolearn.drain.error}` : ""}`
                 : ""}
               {runtime.autolearn.lastFailure ? ` · ${runtime.autolearn.lastFailure}` : ""}
             </div>
           ) : null}
           {runtime.memory ? (
             <div>
-              {copy.memoryLive}: <span className="text-foreground">{runtime.memory.backend}</span>
+              {t("settings:ompPolicy_memoryLive")}:{" "}
+              <span className="text-foreground">{runtime.memory.backend}</span>
               {runtime.memory.scope ? ` · ${runtime.memory.scope}` : ""}
               {formatOmpRuntimeDetail(runtime.memory.queue)
-                ? ` · queue ${formatOmpRuntimeDetail(runtime.memory.queue)}`
+                ? ` · ${t("settings:ompPolicy_queue", {
+                    value0: formatOmpRuntimeDetail(runtime.memory.queue),
+                  })}`
                 : ""}
               {runtime.memory.error ? ` · ${runtime.memory.error}` : ""}
             </div>
           ) : null}
           {runtime.launch ? (
             <div>
-              {copy.launchLive}: <span className="text-foreground">OMP</span>
-              {` · ${runtime.launch.services.length} service(s)`}
+              {t("settings:ompPolicy_launchLive")}: <span className="text-foreground">OMP</span>
+              {` · ${t("settings:ompPolicy_serviceCount", {
+                count: runtime.launch.services.length,
+              })}`}
             </div>
           ) : null}
         </div>
       ) : runtime?.degradedReason ? (
         <div className="rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-2 text-amber-950 dark:text-amber-100">
-          {copy.typedFallback}: {runtime.degradedReason}
+          {t("settings:ompPolicy_typedFallback")}: {runtime.degradedReason}
         </div>
       ) : null}
       {projection.typedObservabilityPending ? (
-        <div className="text-muted-foreground">{copy.typedBoundary}</div>
+        <div className="text-muted-foreground">{t("settings:ompPolicy_typedBoundary")}</div>
       ) : null}
     </div>
   );
@@ -966,6 +1067,8 @@ function CodexDefaultAccountControl(props: {
   settings: AppSettings;
   updateSettings: (patch: Partial<AppSettings>) => void;
 }) {
+  const { t } = useTranslation();
+
   // The default account goes by the provider's name here too, as in the account list.
   const accountOptions = getCodexAccountOptions(props.settings).map((account) =>
     account.isDefault ? { ...account, label: PROVIDER_DISPLAY_NAMES.codex } : account,
@@ -977,12 +1080,12 @@ function CodexDefaultAccountControl(props: {
   return (
     <div className="space-y-1">
       <span className="block text-ui-sm font-medium text-foreground">
-        Codex account for new threads
+        {t("settings:codexAccountForNewThreads")}
       </span>
       <SettingsSelectControl
         value={props.settings.selectedCodexAccountId}
         onValueChange={(selectedCodexAccountId) => props.updateSettings({ selectedCodexAccountId })}
-        ariaLabel="Codex account for new threads"
+        ariaLabel={t("settings:codexAccountForNewThreads")}
         triggerClassName="w-full"
         valueContent={<span className="truncate">{selectedAccountLabel}</span>}
       >
@@ -993,7 +1096,7 @@ function CodexDefaultAccountControl(props: {
         ))}
       </SettingsSelectControl>
       <span className="block text-ui-sm text-muted-foreground">
-        Used until you pick another account in the model picker.
+        {t("settings:usedUntilYouPickAnotherAccountInTheModel")}
       </span>
     </div>
   );
@@ -1066,9 +1169,9 @@ function providerAccountIdentityFields(
     return [
       {
         key: "homePath",
-        label: "CODEX_HOME path",
+        label: t("settings:providers_codexHomePath"),
         placeholder: "~/.codex-work",
-        description: "Leave blank and Synara keeps this account's sign-in in its own folder.",
+        description: t("settings:leaveBlankAndSynaraKeepsThisAccountSSign"),
       },
     ];
   }
@@ -1076,7 +1179,7 @@ function providerAccountIdentityFields(
     return [
       {
         key: "configDir",
-        label: "Claude config directory",
+        label: t("settings:claudeConfigDirectory"),
         placeholder: "~/.claude-work",
         description:
           "Leave blank and Synara keeps this account's sign-in in its own folder. " +
@@ -1088,9 +1191,9 @@ function providerAccountIdentityFields(
   return [
     {
       key: "profileDir",
-      label: "Profile directory",
-      placeholder: "Provider account directory",
-      description: "Used as this account's provider config root without changing your shell files.",
+      label: t("settings:profileDirectory"),
+      placeholder: t("settings:providerAccountDirectory"),
+      description: t("settings:usedAsThisAccountSProviderConfigRootWithout"),
     },
   ];
 }
@@ -1118,7 +1221,7 @@ function ProviderAccountsControl(props: {
   updateSettings: (patch: Partial<AppSettings>) => void;
   updateSettingsAndWait: (patch: Partial<AppSettings>) => Promise<void>;
 }) {
-  const copy = useMessages().settings.providers;
+  const { t } = useTranslation();
   const provider = props.config.provider;
   const providerLabel = PROVIDER_DISPLAY_NAMES[provider];
   const usageQuery = useQuery(
@@ -1167,8 +1270,9 @@ function ProviderAccountsControl(props: {
     } catch (error) {
       toastManager.add({
         type: "error",
-        title: "Unable to start sign-in",
-        description: error instanceof Error ? error.message : "Unable to save provider settings.",
+        title: t("settings:unableToStartSignIn"),
+        description:
+          error instanceof Error ? error.message : t("settings:unableToSaveProviderSettings"),
       });
     } finally {
       signInPendingRef.current = false;
@@ -1216,10 +1320,11 @@ function ProviderAccountsControl(props: {
     if (input.provider === provider) setSelectedAccountId(input.instanceId);
     toastManager.add({
       type: "success",
-      title: "Account added",
-      description: `${PROVIDER_DISPLAY_NAMES[input.provider]} account '${
-        input.displayName || input.instanceId
-      }' was added.`,
+      title: t("settings:accountAdded"),
+      description: t("settings:accountWasAdded", {
+        value0: PROVIDER_DISPLAY_NAMES[input.provider],
+        value1: input.displayName || input.instanceId,
+      }),
     });
   };
   const nextImportedInstanceId = () => {
@@ -1251,8 +1356,8 @@ function ProviderAccountsControl(props: {
     setSelectedAccountId(instanceId);
     toastManager.add({
       type: "success",
-      title: `${providerLabel} account imported`,
-      description: "Synara references the selected directory; no files were moved or copied.",
+      title: t("settings:accountImported", { value0: providerLabel }),
+      description: t("settings:synaraReferencesTheSelectedDirectoryNoFilesWereMoved"),
     });
   };
   const updateInstance = (
@@ -1301,7 +1406,6 @@ function ProviderAccountsControl(props: {
     field: ProviderInstallField,
     { instanceId, instance, legacyCodexAccountId }: ManageableProviderInstance,
   ) => {
-    const fieldCopy = field.copy(copy);
     const configKey = providerInstanceConfigKey(field);
     if (configKey === null) return null;
     if (field.kind === "boolean") {
@@ -1310,13 +1414,16 @@ function ProviderAccountsControl(props: {
           key={field.settingsKey}
           className="flex items-center justify-between gap-3 sm:col-span-2"
         >
-          <span className="text-ui-sm font-medium text-foreground">{fieldCopy.label}</span>
+          <span className="text-ui-sm font-medium text-foreground">{t(field.label)}</span>
           <Switch
             checked={readConfigBoolean(instance.config, configKey)}
             onCheckedChange={(checked) =>
               updateInstance(instanceId, { config: { [configKey]: checked } })
             }
-            aria-label={`${fieldCopy.label} for ${instance.displayName || instanceId}`}
+            aria-label={t("settings:for", {
+              value0: t(field.label),
+              value1: instance.displayName || instanceId,
+            })}
           />
         </label>
       );
@@ -1331,7 +1438,7 @@ function ProviderAccountsControl(props: {
     return (
       <div className="block" key={field.settingsKey}>
         <label htmlFor={inputId} className="block text-ui-sm font-medium text-foreground">
-          {fieldCopy.label}
+          {t(field.label)}
         </label>
         <div className="mt-1 flex items-center gap-2">
           <DebouncedSettingTextInput
@@ -1345,7 +1452,7 @@ function ProviderAccountsControl(props: {
               if (redacted && value.length === 0) return;
               updateInstance(instanceId, { config: { [configKey]: value } }, legacyCodexAccountId);
             }}
-            placeholder={redacted ? "Secret saved — type to replace" : fieldCopy.placeholder}
+            placeholder={redacted ? t("settings:secretSavedTypeToReplace") : t(field.placeholder)}
             spellCheck={false}
           />
           {redacted ? (
@@ -1354,11 +1461,12 @@ function ProviderAccountsControl(props: {
               size="xs"
               variant="ghost"
               onClick={() => updateInstance(instanceId, { config: { [configKey]: "" } })}
-              aria-label={`Clear saved ${fieldCopy.label.toLowerCase()} for ${
-                instance.displayName || instanceId
-              }`}
+              aria-label={t("settings:clearSavedFor", {
+                value0: t(field.label).toLowerCase(),
+                value1: instance.displayName || instanceId,
+              })}
             >
-              Clear
+              {t("chat:clear")}
             </Button>
           ) : null}
         </div>
@@ -1376,7 +1484,9 @@ function ProviderAccountsControl(props: {
       <>
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="block sm:col-span-2">
-            <span className="block text-ui-sm font-medium text-foreground">Terminal command</span>
+            <span className="block text-ui-sm font-medium text-foreground">
+              {t("settings:terminalCommand")}
+            </span>
             <div className="mt-1 flex items-center gap-2">
               <code className="min-w-0 flex-1 truncate rounded-md border border-border/70 bg-background/60 px-2.5 py-1.5 text-ui-sm">
                 {cliCommand}
@@ -1385,7 +1495,7 @@ function ProviderAccountsControl(props: {
                 type="button"
                 size="xs"
                 variant="ghost"
-                aria-label={`Copy ${cliCommand}`}
+                aria-label={t("settings:copy", { value0: cliCommand })}
                 onClick={() => void copyTextToClipboard(cliCommand)}
               >
                 <CopyIcon className="size-3.5" />
@@ -1397,7 +1507,9 @@ function ProviderAccountsControl(props: {
             .map((field) => renderField(field, entry))}
           {provider === "codex" ? (
             <label className="block">
-              <span className="block text-ui-sm font-medium text-foreground">Shadow auth home</span>
+              <span className="block text-ui-sm font-medium text-foreground">
+                {t("settings:shadowAuthHome")}
+              </span>
               <DebouncedSettingTextInput
                 id={`provider-instance-${instanceId}-shadow-home`}
                 size="sm"
@@ -1415,7 +1527,7 @@ function ProviderAccountsControl(props: {
           {provider === "claudeAgent" ? (
             <label className="block sm:col-span-2">
               <span className="block text-ui-sm font-medium text-foreground">
-                Claude config directory
+                {t("settings:claudeConfigDirectory")}
               </span>
               <DebouncedSettingTextInput
                 id={`provider-instance-${instanceId}-config-dir`}
@@ -1443,7 +1555,7 @@ function ProviderAccountsControl(props: {
           {!isAccountProvider && provider !== "pi" && provider !== "omp" ? (
             <label className="block sm:col-span-2">
               <span className="block text-ui-sm font-medium text-foreground">
-                Profile directory
+                {t("settings:profileDirectory")}
               </span>
               <DebouncedSettingTextInput
                 id={`provider-instance-${instanceId}-profile-dir`}
@@ -1452,18 +1564,20 @@ function ProviderAccountsControl(props: {
                 className="mt-1"
                 value={readConfigString(instance.config, "profileDir")}
                 onCommit={(profileDir) => updateInstance(instanceId, { config: { profileDir } })}
-                placeholder="Provider account directory"
+                placeholder={t("settings:providerAccountDirectory")}
                 spellCheck={false}
               />
               <span className="mt-1 block text-ui-sm text-muted-foreground">
-                Used as this account&apos;s provider config root without changing your shell files.
+                {t("settings:usedAsThisAccountSProviderConfigRootWithout")}
               </span>
             </label>
           ) : null}
         </div>
         <ProviderInstanceAdvancedSection>
           <label className="block sm:col-span-2">
-            <span className="block text-ui-sm font-medium text-foreground">Command override</span>
+            <span className="block text-ui-sm font-medium text-foreground">
+              {t("settings:commandOverride")}
+            </span>
             <DebouncedSettingTextInput
               id={`provider-instance-${instanceId}-cli-alias`}
               size="sm"
@@ -1483,17 +1597,17 @@ function ProviderAccountsControl(props: {
               )}
             >
               {cliAliasInvalid
-                ? "Use 1–64 letters, numbers, dashes, or underscores; bare provider commands are reserved."
+                ? t("settings:use164LettersNumbersDashesOrUnderscoresBare")
                 : cliCommandConflicts
-                  ? "This command is already assigned to another account. Choose a unique override."
-                  : "Available in Synara terminals for zsh, bash, fish, and scripts."}
+                  ? t("settings:thisCommandIsAlreadyAssignedToAnotherAccountChoose")
+                  : t("settings:availableInSynaraTerminalsForZshBashFishAnd")}
             </span>
           </label>
           {props.config.fields.filter(isAdvancedField).map((field) => renderField(field, entry))}
           {provider === "claudeAgent" ? (
             <label className="block">
               <span className="block text-ui-sm font-medium text-foreground">
-                Claude credential directory
+                {t("settings:claudeCredentialDirectory")}
               </span>
               <DebouncedSettingTextInput
                 id={`provider-instance-${instanceId}-secure-storage-dir`}
@@ -1504,11 +1618,11 @@ function ProviderAccountsControl(props: {
                 onCommit={(secureStorageDir) =>
                   updateInstance(instanceId, { config: { secureStorageDir } })
                 }
-                placeholder="Optional shared credential directory"
+                placeholder={t("settings:optionalSharedCredentialDirectory")}
                 spellCheck={false}
               />
               <span className="mt-1 block text-ui-sm text-muted-foreground">
-                Leave blank unless your setup already uses a separate secure-storage directory.
+                {t("settings:leaveBlankUnlessYourSetupAlreadyUsesASeparate")}
               </span>
             </label>
           ) : null}
@@ -1523,11 +1637,14 @@ function ProviderAccountsControl(props: {
     const explicit = props.settings.providerInstances[instanceId];
     const legacyCodexAccountId = manageable?.legacyCodexAccountId ?? null;
     const liveStatus = props.providerStatusByInstance.get(instanceId);
-    const status = providerAccountStatusSummary({
-      status: liveStatus,
-      enabled: account.enabled,
-      usageSnapshot: usageByInstance.get(instanceId),
-    });
+    const status = providerAccountStatusSummary(
+      {
+        status: liveStatus,
+        enabled: account.enabled,
+        usageSnapshot: usageByInstance.get(instanceId),
+      },
+      t,
+    );
     const cliCommand = account.isDefault
       ? provider === "claudeAgent"
         ? "claude"
@@ -1556,7 +1673,7 @@ function ProviderAccountsControl(props: {
         // Remount per account so a pending debounced edit can never land on another one.
         key={instanceId}
         role="group"
-        aria-label={`${account.label} account`}
+        aria-label={t("settings:account", { value0: account.label })}
       >
         <div className="flex items-start gap-3 border-b border-border/70 bg-muted/25 px-3 py-3">
           <ProviderAccountAvatar provider={provider} accentColor={account.accentColor} size="md" />
@@ -1567,7 +1684,7 @@ function ProviderAccountsControl(props: {
               </span>
               {account.isDefault ? (
                 <span className="shrink-0 rounded-full border border-border/70 px-1.5 py-px text-ui-2xs font-medium text-muted-foreground">
-                  Default
+                  {t("settings:reasoningModes_default")}
                 </span>
               ) : null}
             </div>
@@ -1584,7 +1701,7 @@ function ProviderAccountsControl(props: {
             size="xs"
             variant="outline"
             disabled={!account.enabled || liveStatus?.available === false || startingSignIn}
-            aria-label={`Sign in to ${account.label}`}
+            aria-label={t("settings:signInTo2", { value0: account.label })}
             onClick={() => void startSignIn(account)}
           >
             {startingSignIn ? (
@@ -1592,12 +1709,12 @@ function ProviderAccountsControl(props: {
             ) : (
               <PlayIcon className="size-3.5" />
             )}
-            Sign in
+            {t("chat:providerModelPicker_signIn")}
           </Button>
           {account.isDefault ? (
             defaultIsCustomized ? (
               <SettingResetButton
-                label={`${account.label} account`}
+                label={t("settings:account", { value0: account.label })}
                 onClick={resetDefaultAccount}
               />
             ) : null
@@ -1612,7 +1729,7 @@ function ProviderAccountsControl(props: {
               }}
             >
               <XIcon className="size-3.5" />
-              Remove
+              {t("workspace:edit_remove")}
             </Button>
           )}
         </div>
@@ -1620,19 +1737,19 @@ function ProviderAccountsControl(props: {
         {status.detail && status.tone !== "ready" && status.tone !== "idle" ? (
           <div className="border-b border-border/70 px-3 py-2 text-ui-sm text-muted-foreground">
             {liveStatus?.authStatus === "unauthenticated"
-              ? "Use Sign in to authenticate this account, then complete the provider's prompts."
+              ? t("settings:useSignInToAuthenticateThisAccountThenComplete")
               : status.detail}
           </div>
         ) : null}
 
-        <ProviderAccountEditorSection title="Identity">
+        <ProviderAccountEditorSection title={t("settings:identity")}>
           <div className="space-y-3">
             <div className="space-y-1">
               <label
                 htmlFor={`provider-instance-${instanceId}-label`}
                 className="block text-ui-sm font-medium text-foreground"
               >
-                Display name
+                {t("common:edit_displayName")}
               </label>
               <DebouncedSettingTextInput
                 id={`provider-instance-${instanceId}-label`}
@@ -1646,12 +1763,14 @@ function ProviderAccountsControl(props: {
                 onCommit={(displayName) =>
                   updateInstance(instanceId, { displayName }, legacyCodexAccountId)
                 }
-                placeholder={account.isDefault ? providerLabel : "Work"}
+                placeholder={account.isDefault ? providerLabel : t("common:work")}
                 spellCheck={false}
               />
             </div>
             <div className="space-y-1">
-              <span className="block text-ui-sm font-medium text-foreground">Accent color</span>
+              <span className="block text-ui-sm font-medium text-foreground">
+                {t("settings:accentColor")}
+              </span>
               <div className="flex min-h-7 items-center">
                 <ProviderAccentColorControl
                   value={account.accentColor}
@@ -1665,7 +1784,7 @@ function ProviderAccountsControl(props: {
           </div>
         </ProviderAccountEditorSection>
 
-        <ProviderAccountEditorSection title="Runtime">
+        <ProviderAccountEditorSection title={t("settings:runtime")}>
           {account.isDefault ? (
             <div className="space-y-3">
               {props.config.fields.map((field) => (
@@ -1691,7 +1810,7 @@ function ProviderAccountsControl(props: {
         {/* A migrated Codex account is routed by its saved identity; an environment of
             its own would make the server drop that route, so none is offered. */}
         {legacyCodexAccountId === null ? (
-          <ProviderAccountEditorSection title="Environment">
+          <ProviderAccountEditorSection title={t("chat:general_environmentPanel")}>
             <ProviderInstanceEnvironmentEditor
               instanceId={instanceId}
               environment={
@@ -1710,11 +1829,10 @@ function ProviderAccountsControl(props: {
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 sm:flex-nowrap">
         <div className="min-w-0">
           <span className="block text-ui-sm font-medium text-foreground">
-            {providerLabel} accounts
+            {providerLabel} {t("settings:accounts")}
           </span>
           <span className="mt-1 block text-ui-sm text-muted-foreground">
-            Each account signs in on its own and gets its own tab in the model picker. A thread
-            stays on the account it started with.
+            {t("settings:eachAccountSignsInOnItsOwnAndGets2")}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -1726,16 +1844,18 @@ function ProviderAccountsControl(props: {
             disabled={typeof window === "undefined" || !window.desktopBridge}
             title={
               typeof window === "undefined" || !window.desktopBridge
-                ? "Directory import is available in the Synara desktop app."
-                : `Use an existing ${providerLabel} directory as a new account, without moving it.`
+                ? t("settings:directoryImportIsAvailableInTheSynaraDesktopApp")
+                : t("settings:useAnExistingDirectoryAsANewAccountWithout", {
+                    value0: providerLabel,
+                  })
             }
           >
             <FolderOpenIcon className="size-3.5" />
-            Import directory
+            {t("settings:importDirectory")}
           </Button>
           <Button type="button" size="xs" variant="outline" onClick={() => setAddDialogOpen(true)}>
             <PlusIcon className="size-3.5" />
-            Add account
+            {t("settings:addAccount")}
           </Button>
         </div>
       </div>
@@ -1743,7 +1863,7 @@ function ProviderAccountsControl(props: {
       <div className="flex flex-col gap-3 md:flex-row md:items-start">
         <div
           role="list"
-          aria-label={`${providerLabel} accounts`}
+          aria-label={t("settings:accounts2", { value0: providerLabel })}
           className={cn(
             SETTINGS_INSET_LIST_CLASS_NAME,
             SETTINGS_STACKED_ROWS_DIVIDER_CLASS_NAME,
@@ -1752,11 +1872,14 @@ function ProviderAccountsControl(props: {
         >
           {accounts.map((account) => {
             const selected = account.instanceId === selectedAccount?.instanceId;
-            const status = providerAccountStatusSummary({
-              status: props.providerStatusByInstance.get(account.instanceId),
-              enabled: account.enabled,
-              usageSnapshot: usageByInstance.get(account.instanceId),
-            });
+            const status = providerAccountStatusSummary(
+              {
+                status: props.providerStatusByInstance.get(account.instanceId),
+                enabled: account.enabled,
+                usageSnapshot: usageByInstance.get(account.instanceId),
+              },
+              t,
+            );
             return (
               <div
                 key={account.instanceId}
@@ -1779,7 +1902,7 @@ function ProviderAccountsControl(props: {
               >
                 <button
                   type="button"
-                  aria-label={`Select ${account.label}`}
+                  aria-label={t("settings:select", { value0: account.label })}
                   aria-current={selected ? "true" : undefined}
                   className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
                   onClick={() => setSelectedAccountId(account.instanceId)}
@@ -1797,7 +1920,7 @@ function ProviderAccountsControl(props: {
                   onCheckedChange={(enabled) =>
                     updateInstance(account.instanceId, { enabled: Boolean(enabled) })
                   }
-                  aria-label={`Enable ${account.label}`}
+                  aria-label={t("workspace:enable", { value0: account.label })}
                 />
               </div>
             );
@@ -1807,7 +1930,11 @@ function ProviderAccountsControl(props: {
       </div>
 
       {signInAccount ? (
-        <Suspense fallback={<p className="text-ui-sm text-muted-foreground">Opening sign-in…</p>}>
+        <Suspense
+          fallback={
+            <p className="text-ui-sm text-muted-foreground">{t("settings:openingSignIn")}</p>
+          }
+        >
           <ProviderSignInDialog
             provider={provider}
             instanceId={String(signInAccount.instanceId)}
@@ -1864,6 +1991,8 @@ function ProviderAccountEditorSection(props: { title: string; children: ReactNod
 }
 
 function ProviderInstanceAdvancedSection(props: { children: ReactNode }) {
+  const { t } = useTranslation();
+
   const [open, setOpen] = useState(false);
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -1871,7 +2000,7 @@ function ProviderInstanceAdvancedSection(props: { children: ReactNode }) {
         type="button"
         className="mt-3 flex items-center gap-1 text-ui-sm text-muted-foreground"
       >
-        Advanced
+        {t("settings:nav_advanced")}
         <DisclosureChevron open={open} className="size-3.5 shrink-0" />
       </CollapsibleTrigger>
       <CollapsiblePanel>
@@ -1898,7 +2027,7 @@ function ProviderToolRow(props: {
   updateSettings: (patch: Partial<AppSettings>) => void;
   updateSettingsAndWait: (patch: Partial<AppSettings>) => Promise<void>;
 }) {
-  const m = useMessages();
+  const { t } = useTranslation();
   const title = PROVIDER_DISPLAY_NAMES[props.config.provider];
   const isDirty = isProviderInstallConfigDirty(props.config, props.settings, props.defaults);
   const showProviderUpdateStatus = props.providerStatus
@@ -1915,11 +2044,11 @@ function ProviderToolRow(props: {
   const providerUpdateLabel = props.providerStatus
     ? !props.settings.enableProviderUpdateChecks
       ? currentProviderVersion
-        ? m.settings.providers.update.current(currentProviderVersion)
+        ? t("settings:current", { value0: currentProviderVersion })
         : null
       : providerUpdateSuppressed
         ? null
-        : providerUpdateStatusLabel(props.providerStatus, m.settings.providers)
+        : providerUpdateStatusLabel(props.providerStatus)
     : null;
   const updateActive = Boolean(
     (props.providerStatus && isProviderUpdateActive(props.providerStatus)) ||
@@ -1950,8 +2079,8 @@ function ProviderToolRow(props: {
           >
             <span className="min-w-0 flex-1 text-ui-lg font-medium text-foreground">{title}</span>
             {isDirty ? (
-              <span className="shrink-0 text-[11px] text-muted-foreground">
-                {m.settings.providers.tools.custom}
+              <span className="shrink-0 text-ui-sm text-muted-foreground">
+                {t("settings:schedule_custom")}
               </span>
             ) : null}
             {providerUpdateLabel ? (
@@ -1989,19 +2118,18 @@ function ProviderToolRow(props: {
                 <div className="text-ui leading-snug text-muted-foreground">
                   {updateAdvisory.canUpdate && updateAdvisory.updateCommand ? (
                     <>
-                      <span>{m.settings.providers.tools.command}</span>
+                      <span>{t("settings:command")} </span>
                       <code className="font-mono">{updateAdvisory.updateCommand}</code>
                     </>
                   ) : (
-                    m.settings.providers.tools.noSafeCommand
+                    t("settings:providers_newerVersionAvailable")
                   )}
                 </div>
               ) : null}
               {showSelfManagedUpdate && props.providerStatus ? (
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0 text-ui leading-snug text-muted-foreground">
-                    {title} manages its own releases, so Synara cannot tell whether a newer version
-                    exists. Run the update to be sure.
+                    {title} {t("settings:managesItsOwnReleasesSoSynaraCannotTellWhether")}
                   </div>
                   <ProviderUpdateAction
                     providerStatus={props.providerStatus}
@@ -2045,7 +2173,7 @@ export function ProvidersSettingsPanel({
   providerTarget = null,
   resetEpoch,
 }: ProvidersSettingsPanelProps) {
-  const m = useMessages();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const localProviderStatuses = useProviderStatusesForLocalConfig();
@@ -2219,21 +2347,20 @@ export function ProvidersSettingsPanel({
               (status.driver ?? status.provider) === provider &&
               providerStatusInstanceKey(status) === targetId,
           );
-          const failureMessage = providerUpdateFailureMessage(
-            refreshedProvider,
-            m.settings.providers,
-          );
+          const failureMessage = providerUpdateFailureMessage(refreshedProvider);
           if (failureMessage) {
             const manualCommand = refreshedProvider?.versionAdvisory?.updateCommand?.trim();
             toastManager.add({
               type: "error",
-              title: m.settings.providers.update.failedTitle(
-                refreshedProvider
+              title: t("settings:couldNotUpdate", {
+                value0: refreshedProvider
                   ? providerStatusDisplayName(refreshedProvider)
                   : PROVIDER_DISPLAY_NAMES[provider],
-              ),
+              }),
               description: manualCommand
-                ? m.settings.providers.update.manualHint(failureMessage)
+                ? t("settings:copyTheCommandBelowToUpdateManuallyInA", {
+                    value0: failureMessage,
+                  })
                 : failureMessage,
               ...(manualCommand ? { data: { copyText: manualCommand } } : {}),
             });
@@ -2241,20 +2368,20 @@ export function ProvidersSettingsPanel({
           }
           toastManager.add({
             type: "success",
-            title: m.settings.providers.update.finishedTitle(
-              refreshedProvider
+            title: t("settings:updateFinished", {
+              value0: refreshedProvider
                 ? providerStatusDisplayName(refreshedProvider)
                 : PROVIDER_DISPLAY_NAMES[provider],
-            ),
-            description: m.settings.providers.update.finishedDescription,
+            }),
+            description: t("settings:newSessionsWillUseTheRefreshedProvider"),
           });
         })
         .catch((error: unknown) => {
           toastManager.add({
             type: "error",
-            title: m.settings.providers.update.failedTitle(PROVIDER_DISPLAY_NAMES[provider]),
+            title: t("settings:couldNotUpdate", { value0: PROVIDER_DISPLAY_NAMES[provider] }),
             description:
-              error instanceof Error ? error.message : m.settings.providers.update.requestFailed,
+              error instanceof Error ? error.message : t("settings:theProviderUpdateFailed"),
           });
         })
         .finally(async () => {
@@ -2268,7 +2395,7 @@ export function ProvidersSettingsPanel({
           });
         });
     },
-    [m, queryClient, updatingProviders],
+    [queryClient, updatingProviders, t],
   );
 
   if (!active) return null;
@@ -2300,11 +2427,14 @@ export function ProvidersSettingsPanel({
         description={
           <>
             <span className="block">
-              {providerSetupStatusLabel({
-                status: providerStatus,
-                reconciled: providerStatusesReconciled,
-                disabled: !enabled,
-              })}
+              {providerSetupStatusLabel(
+                {
+                  status: providerStatus,
+                  reconciled: providerStatusesReconciled,
+                  disabled: !enabled,
+                },
+                t,
+              )}
             </span>
             {enabled &&
             providerStatusesReconciled &&
@@ -2320,9 +2450,9 @@ export function ProvidersSettingsPanel({
               variant="outline"
               size="xs"
               render={<a href={option.setupDocsHref} target="_blank" rel="noreferrer" />}
-              aria-label={`${option.title} setup guide`}
+              aria-label={t("settings:setupGuide2", { value0: option.title })}
             >
-              Setup guide
+              {t("settings:setupGuide")}
               <ExternalLinkIcon className="size-3" />
             </Button>
             <Switch
@@ -2337,7 +2467,9 @@ export function ProvidersSettingsPanel({
                   ),
                 )
               }
-              aria-label={`${enabled ? "Disable" : "Enable"} ${option.title}`}
+              aria-label={t(enabled ? "settings:disableProvider" : "settings:enableProvider", {
+                provider: option.title,
+              })}
             />
           </>
         }
@@ -2347,10 +2479,11 @@ export function ProvidersSettingsPanel({
 
   return (
     <div className="space-y-6">
-      <SettingsSection title={m.settings.providers.activity.title}>
+      <SettingsSection title="settings:providerActivity">
         <SettingsRow
-          title={m.settings.providers.activity.enabledTitle}
-          description={m.settings.providers.activity.description}
+          id="setting-enabled-providers"
+          title="settings:enabledProviders"
+          description="settings:enableProvidersAcrossSynaraDisabledProvidersAreHiddenFrom"
           control={
             <Button
               variant="outline"
@@ -2359,23 +2492,21 @@ export function ProvidersSettingsPanel({
               onClick={() => void refreshProviders()}
             >
               {refreshingProviders ? <Loader2Icon className="size-3.5 animate-spin" /> : null}
-              {refreshingProviders
-                ? m.settings.providers.activity.checkingSetup
-                : m.settings.providers.activity.refreshStatus}
+              {refreshingProviders ? t("settings:checkingSetup") : t("chat:refreshStatus")}
             </Button>
           }
           status={
             providerEnablementMutationPending
-              ? m.settings.providers.activity.saving
-              : m.settings.providers.activity.enabledCount(
-                  enabledProviderCount,
-                  PROVIDER_VISIBILITY_OPTIONS.length,
-                )
+              ? t("settings:providers_activitySaving")
+              : t("settings:providers_activityEnabledCount", {
+                  value0: enabledProviderCount,
+                  value1: PROVIDER_VISIBILITY_OPTIONS.length,
+                })
           }
           resetAction={
             disabledProviderSet.size > 0 && !providerEnablementMutationPending ? (
               <SettingResetButton
-                label={m.settings.providers.activity.resetLabel}
+                label={t("settings:enabledProviders2")}
                 onClick={() => void updateProviderEnablement([...defaults.disabledProviders])}
               />
             ) : null
@@ -2393,7 +2524,7 @@ export function ProvidersSettingsPanel({
             </div>
           ) : (
             <p className="mt-4 text-ui text-muted-foreground">
-              No providers enabled. Open Disabled providers below to enable one.
+              {t("settings:noProvidersEnabledOpenDisabledProvidersBelowToEnable")}
             </p>
           )}
           {disabledProviderOptions.length > 0 ? (
@@ -2404,7 +2535,10 @@ export function ProvidersSettingsPanel({
             >
               <CollapsibleTrigger className="flex w-full items-center gap-2 py-2 text-left text-ui text-muted-foreground">
                 <DisclosureChevron open={disabledProvidersOpen} className="size-4 shrink-0" />
-                <span>Disabled providers ({disabledProviderOptions.length})</span>
+                <span>
+                  {t("settings:disabledProviders")}
+                  {disabledProviderOptions.length})
+                </span>
               </CollapsibleTrigger>
               <CollapsiblePanel>
                 <div
@@ -2421,30 +2555,32 @@ export function ProvidersSettingsPanel({
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection title={m.settings.providers.picker.title}>
+      <SettingsSection title="settings:providers_providerPicker">
         <SettingsRow
-          title={m.settings.providers.picker.visible.title}
-          anchorKey="providers:visible-providers"
-          description={m.settings.providers.picker.visible.description}
+          id="setting-available-clis"
+          title="settings:availableCLIs"
+          description="settings:showOrHideInstalledProvidersInThePickerAnd2"
           status={
             serverConfigQuery.isPending || hasPendingProviderStatuses
-              ? m.settings.providers.picker.checking
+              ? t("settings:providers_pickerChecking")
               : availableProviderCount === 0
-                ? m.settings.providers.picker.noneInstalled
+                ? t("settings:providers_pickerNoneInstalled")
                 : visibleAvailableProviderCount < availableProviderCount
-                  ? m.settings.providers.picker.shownCount(
-                      visibleAvailableProviderCount,
-                      availableProviderCount,
-                    )
-                  : m.settings.providers.picker.installedCount(
-                      availableProviderCount,
-                      isProviderOrderDirty,
-                    )
+                  ? t("settings:providers_pickerShownCount", {
+                      value0: visibleAvailableProviderCount,
+                      value1: availableProviderCount,
+                    })
+                  : t("settings:providers_pickerInstalledCount", {
+                      value0: availableProviderCount,
+                      value1: isProviderOrderDirty
+                        ? ` · ${t("settings:providers_customOrder")}`
+                        : "",
+                    })
           }
           resetAction={
             hiddenProviderCount > 0 || isProviderOrderDirty ? (
               <SettingResetButton
-                label={m.settings.providers.picker.visible.resetLabel}
+                label={t("settings:providerPicker")}
                 onClick={() =>
                   updateSettings({
                     hiddenProviders: defaults.hiddenProviders,
@@ -2491,15 +2627,17 @@ export function ProvidersSettingsPanel({
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection title="Performance">
+      <SettingsSection title="settings:performance">
+        <UsageLimitRecoverySetting />
         <SettingsRow
-          title="Keep Synara responsive"
-          description="Give agent processes and their commands a moderately lower CPU priority when the machine is busy."
+          id="setting-keep-synara-responsive"
+          title="settings:keepSynaraResponsive"
+          description="settings:giveAgentProcessesAndTheirCommandsAModeratelyLower"
           status="Applies to newly launched agent processes. Restart existing sessions to apply consistently."
           resetAction={
             settings.lowerProviderProcessPriority !== defaults.lowerProviderProcessPriority ? (
               <SettingResetButton
-                label="Keep Synara responsive"
+                label={t("settings:keepSynaraResponsive")}
                 onClick={() =>
                   updateSettings({
                     lowerProviderProcessPriority: defaults.lowerProviderProcessPriority,
@@ -2514,22 +2652,22 @@ export function ProvidersSettingsPanel({
               onCheckedChange={(checked) =>
                 updateSettings({ lowerProviderProcessPriority: Boolean(checked) })
               }
-              aria-label="Keep Synara responsive"
+              aria-label={t("settings:keepSynaraResponsive")}
             />
           }
         />
       </SettingsSection>
 
       <div id={SETTINGS_TARGETS.providerUpdates}>
-        <SettingsSection title={m.settings.providers.updates.title}>
+        <SettingsSection title="settings:providerUpdates_updates">
           <SettingsRow
-            title={m.settings.providers.updates.autoChecks.title}
-            anchorKey="providers:automatic-cli-update-checks"
-            description={m.settings.providers.updates.autoChecks.description}
+            id="setting-automatic-cli-update-checks"
+            title="settings:providerUpdates_automaticCliUpdateChecks"
+            description="settings:checkCodexClaudeAndOtherProviderCLIsForNewer"
             resetAction={
               settings.enableProviderUpdateChecks !== defaults.enableProviderUpdateChecks ? (
                 <SettingResetButton
-                  label={m.settings.providers.updates.autoChecks.resetLabel}
+                  label={t("settings:cLIUpdateChecks")}
                   onClick={() =>
                     updateSettings({
                       enableProviderUpdateChecks: defaults.enableProviderUpdateChecks,
@@ -2544,20 +2682,22 @@ export function ProvidersSettingsPanel({
                 onCheckedChange={(checked) =>
                   updateSettings({ enableProviderUpdateChecks: Boolean(checked) })
                 }
-                aria-label={m.settings.providers.updates.autoChecks.ariaLabel}
+                aria-label={t("settings:providerUpdates_automaticCliUpdateChecks")}
               />
             }
           />
 
           <SettingsRow
-            title={m.settings.providers.updates.providerUpdates.title}
-            anchorKey="providers:provider-updates"
-            description={m.settings.providers.updates.providerUpdates.description}
-            status={providerCheckStatusLabel(
-              m.settings.providers,
-              settings.enableProviderUpdateChecks,
-              outdatedProviderCount,
-            )}
+            id="setting-provider-updates"
+            title="settings:providerUpdates_providerUpdates"
+            description="settings:reviewInstalledProviderToolsThatSynaraCanSafelyUpdate"
+            status={
+              !settings.enableProviderUpdateChecks
+                ? t("settings:providers_updateChecksOff")
+                : outdatedProviderCount > 0
+                  ? t("settings:providers_updateCount", { count: outdatedProviderCount })
+                  : t("settings:providers_noUpdates")
+            }
           >
             {settings.enableProviderUpdateChecks && outdatedProviderStatuses.length > 0 ? (
               <div
@@ -2571,10 +2711,7 @@ export function ProvidersSettingsPanel({
                   const instanceId = providerStatusInstanceKey(providerStatus);
                   const updateActive =
                     isProviderUpdateActive(providerStatus) || updatingProviders.has(instanceId);
-                  const updateLabel = providerUpdateStatusLabel(
-                    providerStatus,
-                    m.settings.providers,
-                  );
+                  const updateLabel = providerUpdateStatusLabel(providerStatus);
                   return (
                     <SettingsListRow
                       key={instanceId}
@@ -2589,8 +2726,8 @@ export function ProvidersSettingsPanel({
                             onUpdate={(provider) => void runProviderUpdate(provider)}
                           />
                         ) : (
-                          <span className="text-[11px] text-muted-foreground">
-                            {m.settings.providers.updates.manualUpdate}
+                          <span className="text-ui-sm text-muted-foreground">
+                            {t("settings:providerUpdates_manualUpdate")}
                           </span>
                         )
                       }
@@ -2604,20 +2741,22 @@ export function ProvidersSettingsPanel({
       </div>
 
       <div id={SETTINGS_TARGETS.providerInstalls}>
-        <SettingsSection title={m.settings.providers.tools.title}>
+        <SettingsSection title="settings:providers_providerTools">
           <SettingsRow
-            title={m.settings.providers.tools.installed.title}
-            anchorKey="providers:installed-clis"
-            description={m.settings.providers.tools.installed.description}
-            status={providerCheckStatusLabel(
-              m.settings.providers,
-              settings.enableProviderUpdateChecks,
-              outdatedProviderCount,
-            )}
+            id="setting-installed-clis"
+            title="settings:providers_installedClis"
+            description="settings:providers_installedClisDescription"
+            status={
+              !settings.enableProviderUpdateChecks
+                ? t("settings:providers_updateChecksOff")
+                : outdatedProviderCount > 0
+                  ? t("settings:providers_updateCount", { count: outdatedProviderCount })
+                  : t("settings:providers_noUpdates")
+            }
             resetAction={
               installSettingsDirty ? (
                 <SettingResetButton
-                  label={m.settings.providers.tools.installed.resetLabel}
+                  label={t("settings:providerTools")}
                   onClick={() => {
                     updateSettings(createProviderInstallResetPatch(defaults));
                     setOpenInstallProviders(createClosedProviderInstallDisclosureState());

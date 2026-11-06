@@ -3,7 +3,6 @@
 // Layer: Chat composer presentation
 // Depends on: composer draft image metadata, shared chip styles, and expanded image preview helpers.
 
-import { useMessages } from "~/i18n/context";
 import { WindowIcon } from "~/lib/icons";
 import { type ComposerImageAttachment } from "../../composerDraftStore";
 import { normalizeComposerImageSource } from "../../lib/composerImageSource";
@@ -11,6 +10,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AttachmentRemoveButton } from "./AttachmentRemoveButton";
 import { DraftAttachmentWarningIcon } from "./DraftAttachmentWarning";
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
+import { useTranslation } from "~/i18n";
 
 interface ComposerImageAttachmentChipProps {
   image: ComposerImageAttachment;
@@ -27,7 +27,7 @@ export function ComposerImageAttachmentChip({
   onExpandImage,
   onRemoveImage,
 }: ComposerImageAttachmentChipProps) {
-  const copy = useMessages().composer.attachments;
+  const { t } = useTranslation();
   // Normalize here so a legacy "appshot" provenance still renders as an AppSnap.
   const appSnapSource = normalizeComposerImageSource(image.source) ?? null;
   const previewImage = () => {
@@ -37,7 +37,7 @@ export function ComposerImageAttachmentChip({
   };
 
   if (appSnapSource) {
-    const appName = appSnapSource.appName?.trim() || copy.capturedApp;
+    const appName = appSnapSource.appName?.trim() || t("chat:capturedApp");
     const windowTitle = appSnapSource.windowTitle?.trim() || null;
     // Lead with the captured window title, but avoid repeating an app whose title
     // merely echoes its name (e.g. "ChatGPT / ChatGPT").
@@ -52,7 +52,7 @@ export function ComposerImageAttachmentChip({
         <button
           type="button"
           className="relative flex size-full items-center justify-center overflow-hidden bg-[var(--color-background-secondary)] p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-          aria-label={`Preview AppSnap from ${appName}`}
+          aria-label={t("chat:previewAppSnapFrom", { value0: appName })}
           title={provenance}
           onClick={previewImage}
         >
@@ -64,7 +64,7 @@ export function ComposerImageAttachmentChip({
             />
           ) : (
             <span className="flex size-full items-center justify-center text-ui-xs font-medium text-muted-foreground/70">
-              IMG
+              {t("chat:iMG")}
             </span>
           )}
 
@@ -97,14 +97,14 @@ export function ComposerImageAttachmentChip({
               }
             />
             <TooltipPopup side="top" className="max-w-64 whitespace-normal leading-tight">
-              {copy.draftWarningDescription}
+              {t("chat:attachment_draftWarningDescription")}
             </TooltipPopup>
           </Tooltip>
         )}
 
         <AttachmentRemoveButton
           size="sm"
-          label={`Remove AppSnap from ${appName}`}
+          label={t("chat:removeAppSnapFrom", { value0: appName })}
           className="opacity-70 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
           onRemove={() => onRemoveImage(image.id)}
         />
@@ -117,7 +117,7 @@ export function ComposerImageAttachmentChip({
       <button
         type="button"
         className="block size-16 overflow-hidden rounded-xl border border-[color:var(--color-border-light)] bg-[var(--color-background-elevated-secondary)] transition-colors hover:border-[color:var(--color-border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`Preview ${image.name}`}
+        aria-label={t("chat:preview", { value0: image.name })}
         title={image.name}
         onClick={previewImage}
       >
@@ -125,7 +125,7 @@ export function ComposerImageAttachmentChip({
           <img src={image.previewUrl} alt={image.name} className="size-full object-cover" />
         ) : (
           <span className="flex size-full items-center justify-center text-ui-xs font-medium text-muted-foreground/70">
-            IMG
+            {t("chat:iMG")}
           </span>
         )}
       </button>
@@ -138,14 +138,14 @@ export function ComposerImageAttachmentChip({
             }
           />
           <TooltipPopup side="top" className="max-w-64 whitespace-normal leading-tight">
-            {copy.draftWarningDescription}
+            {t("chat:attachment_draftWarningDescription")}
           </TooltipPopup>
         </Tooltip>
       )}
 
       <AttachmentRemoveButton
         size="md"
-        label={`Remove ${image.name}`}
+        label={t("workspace:remove", { value0: image.name })}
         onRemove={() => onRemoveImage(image.id)}
       />
     </div>

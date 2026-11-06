@@ -9,7 +9,7 @@
 import { useState } from "react";
 
 import { ArrowLeftIcon, ArrowRightIcon } from "~/lib/icons";
-import { SynaraLogo } from "~/components/SynaraLogo";
+import { SynaraLogo } from "@synara/profile-ui/logo";
 
 import { ChangelogAccordion } from "../whatsNew/ChangelogAccordion";
 import { FeatureSection } from "../whatsNew/FeatureSection";
@@ -24,7 +24,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "./ui/dialog";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 type View = "current" | "changelog";
 
@@ -89,7 +89,8 @@ function WhatsNewDialogContent({
   readonly currentVersion: string;
   readonly onOpenChange: (open: boolean) => void;
 }) {
-  const copy = useMessages().dialogs.whatsNew;
+  const { t } = useTranslation();
+
   const [view, setView] = useState<View>("current");
 
   return (
@@ -122,11 +123,11 @@ function WhatsNewDialogContent({
             className="gap-1 text-muted-foreground"
             onClick={() => setView("changelog")}
           >
-            {copy.viewChangelog}
+            {t("common:viewChangelog")}
             <ArrowRightIcon className="size-3" />
           </Button>
           <Button size="sm" onClick={() => onOpenChange(false)}>
-            {copy.gotIt}
+            {t("common:whatsNew_gotIt")}
           </Button>
         </DialogFooter>
       )}
@@ -141,14 +142,16 @@ function CurrentHeader({
   readonly entry: WhatsNewEntry;
   readonly currentVersion: string;
 }) {
-  const headerCopy = useMessages().dialogs.whatsNew;
+  const { t } = useTranslation();
+
   return (
     <div className="flex items-center gap-3">
       <SynaraLogo aria-hidden className="size-8 shrink-0 text-foreground" />
       <div className="flex min-w-0 flex-col">
-        <DialogTitle className="text-base">{headerCopy.title}</DialogTitle>
-        <DialogDescription className="text-xs">
-          v{currentVersion}
+        <DialogTitle className="text-base">{t("common:whatSNew")}</DialogTitle>
+        <DialogDescription className="text-ui leading-snug">
+          {t("common:v")}
+          {currentVersion}
           <span aria-hidden="true"> · </span>
           {entry.date}
         </DialogDescription>
@@ -158,16 +161,22 @@ function CurrentHeader({
 }
 
 function ChangelogHeader({ onBack }: { readonly onBack: () => void }) {
-  const changelogCopy = useMessages().dialogs.whatsNew;
+  const { t } = useTranslation();
+
   return (
     <div className="flex items-center gap-3">
-      <Button size="icon-sm" variant="ghost" aria-label={changelogCopy.back} onClick={onBack}>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label={t("common:backToWhatSNew")}
+        onClick={onBack}
+      >
         <ArrowLeftIcon className="size-4" />
       </Button>
       <div className="flex min-w-0 flex-col">
-        <DialogTitle className="text-base">{changelogCopy.changelogTitle}</DialogTitle>
-        <DialogDescription className="text-xs">
-          {changelogCopy.changelogDescription}
+        <DialogTitle className="text-base">{t("common:whatsNew_completeChangelog")}</DialogTitle>
+        <DialogDescription className="text-ui leading-snug">
+          {t("common:everyCuratedReleaseNewestFirst")}
         </DialogDescription>
       </div>
     </div>

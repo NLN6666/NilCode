@@ -15,6 +15,7 @@ import type {
 } from "@synara/contracts";
 
 import type { RightDockPane } from "~/rightDockStore.logic";
+import { t as defaultTranslate } from "~/i18n";
 
 import { pullRequestMarkdownPreview } from "./pullRequestMarkdown.logic";
 
@@ -51,11 +52,15 @@ export function pullRequestDetailInputFromPane(pane: RightDockPane): PullRequest
 // Plain-language state descriptor shown next to the author line — the state color itself is
 // already conveyed by the PullRequestStateGlyph in the header, so this stays neutral text.
 // State only, matching git: conflicts are a merge signal and render as their own row.
-export function describePullRequestState(state: PullRequestState, isDraft: boolean): string {
-  if (isDraft && state === "open") return "Draft";
-  if (state === "open") return "Ready for review";
-  if (state === "merged") return "Merged";
-  return "Closed";
+export function describePullRequestState(
+  state: PullRequestState,
+  isDraft: boolean,
+  translate: typeof defaultTranslate,
+): string {
+  if (isDraft && state === "open") return translate("git:column_draft");
+  if (state === "open") return translate("git:readyForReview");
+  if (state === "merged") return translate("git:merged");
+  return translate("chat:closed");
 }
 
 // stripHtmlComments now lives with the rest of the markdown preprocessing.
@@ -89,16 +94,21 @@ export type GitHubItemTimelineSource = Pick<
  *  merge, and showing "closed" for a merged pull request would misstate what happened. */
 export function buildPullRequestTimelineEvents(
   detail: GitHubItemTimelineSource,
+  translate: typeof defaultTranslate,
   noun?: "pull request" | "issue",
 ): PullRequestTimelineEvent[] {
-  const itemNoun = noun ?? "pull request";
-  const ItemNoun = itemNoun === "issue" ? "Issue" : "Pull request";
+  const isIssue = noun === "issue";
+  const itemNoun = isIssue ? translate("settings:issue") : translate("chat:pullRequest");
+  const someone = translate("git:timelineSomeone");
   const mergedAt = detail.mergedAt ?? null;
   const events: PullRequestTimelineEvent[] = [
     {
       id: "created",
       at: detail.createdAt,
-      title: `${githubActorName(detail.author) ?? "Someone"} opened this ${itemNoun}`,
+      title: translate("git:timelineOpenedThis", {
+        value0: githubActorName(detail.author) ?? someone,
+        value1: itemNoun,
+      }),
       body: null,
     },
     ...(detail.commits ?? []).map((commit) => {
@@ -107,21 +117,47 @@ export function buildPullRequestTimelineEvents(
         id: commit.oid,
         at: commit.committedDate,
         title: authorLabel
-          ? `Commit ${commit.oid.slice(0, 7)} by ${authorLabel}`
-          : `Commit ${commit.oid.slice(0, 7)}`,
-        body: commit.messageHeadline || "No commit message.",
+          ? translate("git:timelineCommitBy", {
+              value0: commit.oid.slice(0, 7),
+              value1: authorLabel,
+            })
+          : translate("git:timelineCommit", { value0: commit.oid.slice(0, 7) }),
+        body: commit.messageHeadline || translate("git:timelineNoCommitMessage"),
       };
     }),
     ...detail.comments.map((comment) => ({
       id: comment.id,
       at: comment.createdAt,
-      title: `${githubActorName(comment.author) ?? "Someone"} ${comment.kind === "review" ? "reviewed" : "commented"}`,
+      title:
+        comment.kind === "review"
+          ? translate("git:timelineReviewedBy", {
+              value0: githubActorName(comment.author) ?? someone,
+            })
+          : translate("git:timelineCommentedBy", {
+              value0: githubActorName(comment.author) ?? someone,
+            }),
       // Timeline previews are plain text, so raw markdown/HTML would print literally.
       body: pullRequestMarkdownPreview(comment.body) || null,
     })),
-    ...(mergedAt ? [{ id: "merged", at: mergedAt, title: `${ItemNoun} merged`, body: null }] : []),
+    ...(mergedAt
+      ? [
+          {
+            id: "merged",
+            at: mergedAt,
+            title: translate("git:pr_merged"),
+            body: null,
+          },
+        ]
+      : []),
     ...(detail.closedAt && !mergedAt
-      ? [{ id: "closed", at: detail.closedAt, title: `${ItemNoun} closed`, body: null }]
+      ? [
+          {
+            id: "closed",
+            at: detail.closedAt,
+            title: translate(isIssue ? "git:issueClosed" : "git:pr_closed"),
+            body: null,
+          },
+        ]
       : []),
   ];
   return events.toSorted((left, right) => left.at.localeCompare(right.at));
@@ -132,17 +168,21 @@ export type PullRequestMergeStatusTone = "success" | "conflict" | "muted";
 /** The Merge status line of the detail's info column, from what GitHub reports. */
 export function describePullRequestMergeStatus(
   detail: Pick<PullRequestDetail, "state" | "isDraft" | "mergeability" | "baseBranch">,
+  translate: typeof defaultTranslate,
 ): { tone: PullRequestMergeStatusTone; label: string } {
-  if (detail.state === "merged") return { tone: "muted", label: "Merged" };
-  if (detail.state === "closed") return { tone: "muted", label: "Closed" };
-  if (detail.isDraft) return { tone: "muted", label: "Draft" };
+  if (detail.state === "merged") return { tone: "muted", label: translate("git:merged") };
+  if (detail.state === "closed") return { tone: "muted", label: translate("chat:closed") };
+  if (detail.isDraft) return { tone: "muted", label: translate("git:column_draft") };
   if (detail.mergeability === "conflicting") {
-    return { tone: "conflict", label: `Conflicts with ${detail.baseBranch}` };
+    return {
+      tone: "conflict",
+      label: `${translate("git:conflictsWith")} ${detail.baseBranch}`,
+    };
   }
   if (detail.mergeability === "mergeable") {
-    return { tone: "success", label: "Can merge without conflicts" };
+    return { tone: "success", label: translate("git:pullRequestCanMergeWithoutConflicts") };
   }
-  return { tone: "muted", label: "Merge status unknown" };
+  return { tone: "muted", label: translate("git:pullRequestMergeStatusUnknown") };
 }
 
 /** "24 successful", "2 failing, 22 successful": the checks row's one-line summary. */
@@ -150,19 +190,23 @@ export function describePullRequestChecksBrief(
   checks: ReadonlyArray<{
     status: PullRequestDetail["checks"][number]["status"];
   }>,
+  translate: typeof defaultTranslate,
 ): { tone: "success" | "failure" | "pending" | "none"; label: string } {
-  if (checks.length === 0) return { tone: "none", label: "No checks" };
+  if (checks.length === 0) return { tone: "none", label: translate("git:noChecks") };
   const count = (...statuses: string[]) =>
     checks.filter((check) => statuses.includes(check.status)).length;
   const failing = count("failure", "cancelled");
   const pending = count("pending");
   const successful = count("success");
   const parts = [
-    failing > 0 ? `${failing} failing` : null,
-    pending > 0 ? `${pending} pending` : null,
-    successful > 0 ? `${successful} successful` : null,
+    failing > 0 ? translate("git:checksSummary_failing", { count: failing }) : null,
+    pending > 0 ? translate("git:checksSummary_pending", { count: pending }) : null,
+    successful > 0 ? translate("git:checksSummary_succeeded", { count: successful }) : null,
   ].filter((part) => part !== null);
-  const label = parts.length > 0 ? parts.join(", ") : `${checks.length} skipped`;
+  const label =
+    parts.length > 0
+      ? parts.join(", ")
+      : translate("git:checksSummary_skipped", { count: checks.length });
   return {
     tone: failing > 0 ? "failure" : pending > 0 ? "pending" : successful > 0 ? "success" : "none",
     label,

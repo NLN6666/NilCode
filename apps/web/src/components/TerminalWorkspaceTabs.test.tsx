@@ -21,9 +21,8 @@ describe("TerminalWorkspaceTabs", () => {
       />,
     );
 
-    expect(markup).toContain("Terminal");
-    expect(markup).toContain("Close terminal");
-    expect(markup).not.toContain(">Chat<");
+    expect(markup).toContain('data-testid="terminal-workspace-tab-strip"');
+    expect(markup.match(/<button\b/g)).toHaveLength(2);
   });
 
   it("shows the chat switcher when the workspace still includes chat", () => {
@@ -38,7 +37,7 @@ describe("TerminalWorkspaceTabs", () => {
       />,
     );
 
-    expect(markup).toContain("Terminal");
-    expect(markup).toContain("Chat");
+    expect(markup).toContain('data-testid="terminal-workspace-tab-strip"');
+    expect(markup.match(/<button\b/g)).toHaveLength(3);
   });
 });

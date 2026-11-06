@@ -8,28 +8,32 @@ import { HiOutlineArchiveBox } from "react-icons/hi2";
 
 import type { ThreadId } from "@synara/contracts";
 
-import { useMessages } from "~/i18n/context";
 import { cn } from "~/lib/utils";
 import { SIDEBAR_TRAILING_ICON_CLASS } from "./sidebarGlyphs";
 import { SidebarIconButton } from "./SidebarIconButton";
+import { useTranslation } from "~/i18n";
 
 export const THREAD_ARCHIVE_ICON = HiOutlineArchiveBox;
 
 export function ThreadArchiveActionButton({
   threadId,
   toneClassName,
+  disabled,
   onArchive,
 }: {
   threadId: ThreadId;
   toneClassName?: string;
+  disabled?: boolean;
   onArchive: () => void;
 }) {
-  const archiveLabel = useMessages().sidebar.thread.archive;
+  const { t } = useTranslation();
+
   return (
     <SidebarIconButton
       icon={THREAD_ARCHIVE_ICON}
-      label={archiveLabel}
-      title={archiveLabel}
+      label={t("common:archive_archiveThread")}
+      title={t("common:archive_archiveThread")}
+      disabled={disabled}
       data-testid={`thread-archive-${threadId}`}
       size="md"
       // Match the pin and the right-side meta chips (shared trailing-icon size).

@@ -20,15 +20,13 @@ import {
 import { Button } from "./ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { useHorizontalWheelScroll } from "./chat/chatHeaderControls";
+import { useTranslation } from "~/i18n";
 
 export interface BrowserTabStripProps {
   tabs: readonly BrowserTabState[];
   activeTabId: string | null;
   status: BrowserChromeStatus | null;
   agentControlLabel: string | null;
-  untitledLabel: string;
-  closeTabLabel: string;
-  newTabLabel: string;
   // Extend the frameless window drag region across the strip's empty space so the panel
   // is easy to grab; interactive children stay no-drag via global CSS (`.drag-region button`).
   dragRegion: boolean;
@@ -38,6 +36,8 @@ export interface BrowserTabStripProps {
 }
 
 export function BrowserTabStrip(props: BrowserTabStripProps) {
+  const { t } = useTranslation();
+
   const { activeTabId, onCloseTab, onCreateTab, onSelectTab } = props;
   const stripRef = useRef<HTMLDivElement>(null);
   useHorizontalWheelScroll(stripRef);
@@ -96,7 +96,7 @@ export function BrowserTabStrip(props: BrowserTabStripProps) {
               <button
                 type="button"
                 className="flex min-w-0 flex-1 items-center gap-1.5 self-stretch rounded-md pl-2 pr-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring/60 focus-visible:ring-inset"
-                title={tab.title || props.untitledLabel}
+                title={tab.title || t("computer:panel_untitled")}
                 onClick={() => onSelectTab(tab.id)}
               >
                 {tab.faviconUrl ? (
@@ -104,7 +104,7 @@ export function BrowserTabStrip(props: BrowserTabStripProps) {
                 ) : (
                   <GlobeIcon className="size-3 shrink-0 text-muted-foreground" />
                 )}
-                <span className="truncate">{tab.title || props.untitledLabel}</span>
+                <span className="truncate">{tab.title || t("computer:panel_untitled")}</span>
               </button>
               <Button
                 type="button"
@@ -117,7 +117,7 @@ export function BrowserTabStrip(props: BrowserTabStripProps) {
                 }}
               >
                 <XIcon className="size-3" />
-                <span className="sr-only">{props.closeTabLabel}</span>
+                <span className="sr-only">{t("computer:panel_closeTab")}</span>
               </Button>
             </div>
           );
@@ -129,16 +129,16 @@ export function BrowserTabStrip(props: BrowserTabStripProps) {
             <Button
               type="button"
               variant="ghost"
-              size="icon-sm"
-              className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-              aria-label={props.newTabLabel}
+              size="icon-chip"
+              className="text-muted-foreground hover:text-foreground"
+              aria-label={t("computer:panel_newTab")}
               onClick={onCreateTab}
             />
           }
         >
           <PlusIcon className="size-3.5" />
         </TooltipTrigger>
-        <TooltipPopup>{props.newTabLabel}</TooltipPopup>
+        <TooltipPopup>{t("computer:panel_newTab")}</TooltipPopup>
       </Tooltip>
       {props.agentControlLabel ? (
         <div

@@ -21,7 +21,7 @@ import {
 } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Spinner } from "./ui/spinner";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 interface PullRequestThreadDialogProps {
   open: boolean;
@@ -76,7 +76,8 @@ function PullRequestThreadDialogContent({
 }: Omit<PullRequestThreadDialogProps, "open"> & {
   onBusyChange: (busy: boolean) => void;
 }) {
-  const copy = useMessages().pullRequests;
+  const { t } = useTranslation();
+
   const queryClient = useQueryClient();
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const [reference, setReference] = useState(initialReference ?? "");
@@ -184,34 +185,38 @@ function PullRequestThreadDialogContent({
   const validationMessage = !referenceDirty
     ? null
     : reference.trim().length === 0
-      ? copy.checkoutDialog.hint
+      ? t("git:pasteAGitHubPullRequestURLOrEnter123")
       : parsedReference === null
-        ? copy.checkoutDialog.invalid
+        ? t("git:useAGitHubPullRequestURL123Or123")
         : null;
   const errorMessage =
     validationMessage ??
     (resolvedPullRequest === null && resolvePullRequestQuery.isError
       ? resolvePullRequestQuery.error instanceof Error
         ? resolvePullRequestQuery.error.message
-        : copy.checkoutDialog.resolveFailed
+        : t("git:prDialog_resolveFailed")
       : preparePullRequestThreadMutation.error instanceof Error
         ? preparePullRequestThreadMutation.error.message
         : preparePullRequestThreadMutation.error
-          ? copy.checkoutDialog.prepareFailed
+          ? t("git:failedToPreparePullRequestThread")
           : null);
 
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{copy.checkoutDialog.title}</DialogTitle>
-        <DialogDescription>{copy.checkoutDialog.description}</DialogDescription>
+        <DialogTitle>{t("common:checkoutPullRequest")}</DialogTitle>
+        <DialogDescription>
+          {t("git:resolveAGitHubPullRequestThenCreateTheDraft")}
+        </DialogDescription>
       </DialogHeader>
       <DialogPanel className="space-y-4">
         <label className="grid gap-1.5">
-          <span className="text-xs font-medium text-foreground">{copy.checkoutDialog.label}</span>
+          <span className="text-ui leading-snug font-medium text-foreground">
+            {t("git:general_environmentPullRequest")}
+          </span>
           <Input
             ref={referenceInputRef}
-            placeholder={copy.checkoutDialog.referencePlaceholder}
+            placeholder={t("git:pullRequestReferencePlaceholder")}
             value={reference}
             onChange={(event) => {
               setReferenceDirty(true);
@@ -237,12 +242,16 @@ function PullRequestThreadDialogContent({
                   {resolvedPullRequest.title}
                 </p>
                 <p className="truncate text-muted-foreground text-ui leading-snug">
-                  #{resolvedPullRequest.number} · {resolvedPullRequest.headBranch} to{" "}
+                  #{resolvedPullRequest.number} · {resolvedPullRequest.headBranch} {t("git:to")}{" "}
                   {resolvedPullRequest.baseBranch}
                 </p>
               </div>
               <span className={cn("shrink-0 text-ui leading-snug capitalize", statusTone)}>
-                {resolvedPullRequest.state}
+                {resolvedPullRequest.state === "open"
+                  ? t("onboarding:notification_open")
+                  : resolvedPullRequest.state === "merged"
+                    ? t("git:merged")
+                    : t("chat:closed")}
               </span>
             </div>
           </div>
@@ -251,7 +260,7 @@ function PullRequestThreadDialogContent({
         {isResolving ? (
           <div className="flex items-center gap-2 text-muted-foreground text-ui leading-snug">
             <Spinner className="size-3.5" />
-            {copy.checkoutDialog.resolving}
+            {t("git:prDialog_resolving")}
           </div>
         ) : null}
 
@@ -267,7 +276,7 @@ function PullRequestThreadDialogContent({
           onClick={() => onOpenChange(false)}
           disabled={preparePullRequestThreadMutation.isPending}
         >
-          {copy.checkoutDialog.cancel}
+          {t("common:form_cancel")}
         </Button>
         <Button
           type="button"
@@ -284,8 +293,8 @@ function PullRequestThreadDialogContent({
           }
         >
           {preparingMode === "local"
-            ? copy.checkoutDialog.preparingLocal
-            : copy.checkoutDialog.local}
+            ? t("git:prDialog_preparingLocal")
+            : t("computer:worktreeMode_local")}
         </Button>
         <Button
           type="button"
@@ -301,8 +310,8 @@ function PullRequestThreadDialogContent({
           }
         >
           {preparingMode === "worktree"
-            ? copy.checkoutDialog.preparingWorktree
-            : copy.checkoutDialog.worktree}
+            ? t("git:timeline_preparingWorktree")
+            : t("common:worktreeMode_worktree")}
         </Button>
       </DialogFooter>
     </>

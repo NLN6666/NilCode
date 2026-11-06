@@ -1,15 +1,19 @@
 // Deterministic, redacted subset captured from stock Oh My Pi 17.3.3 on Windows.
 // It intentionally omits user paths, credentials, session ids, usage, model catalogs, and skills.
+import type * as Acp from "@agentclientprotocol/sdk";
+
+import type { AcpSessionModeState } from "../AcpRuntimeModel.ts";
+
 export const OH_MY_PI_ACP_17_3_3_FIXTURE = {
   initializeRequest: {
     protocolVersion: 1,
     clientCapabilities: {
       fs: { readTextFile: true, writeTextFile: true },
       terminal: true,
-      elicitation: true,
+      elicitation: { form: {} },
     },
     clientInfo: { name: "synara", version: "fixture" },
-  },
+  } satisfies Acp.InitializeRequest,
   initializeResponse: {
     protocolVersion: 1,
     agentInfo: { name: "oh-my-pi", title: "Oh My Pi", version: "17.3.3" },
@@ -26,7 +30,7 @@ export const OH_MY_PI_ACP_17_3_3_FIXTURE = {
       promptCapabilities: { embeddedContext: true, image: true },
       sessionCapabilities: { list: {}, fork: {}, resume: {}, close: {} },
     },
-  },
+  } satisfies Acp.InitializeResponse,
   authenticateRequest: { methodId: "agent", _meta: { headless: true } },
   authenticateResponse: {},
   sessionNewResponse: {
@@ -78,7 +82,7 @@ export const OH_MY_PI_ACP_17_3_3_FIXTURE = {
       ],
       currentModeId: "default",
     },
-  },
+  } satisfies Acp.NewSessionResponse,
   availableCommandsUpdate: {
     sessionId: "omp-fixture-session",
     update: {
@@ -103,3 +107,42 @@ export const OH_MY_PI_ACP_17_3_3_FIXTURE = {
   cancelledPromptResponse: { stopReason: "cancelled" },
   closeResponse: {},
 } as const;
+
+export interface OhMyPiAcpRuntimeFixtures {
+  readonly initializeResponse: Acp.InitializeResponse;
+  readonly sessionNewResponse: Acp.NewSessionResponse;
+  readonly configOptions: Acp.SessionConfigOption[];
+  readonly modes: AcpSessionModeState;
+}
+
+export function makeOhMyPiAcpRuntimeFixtures(): OhMyPiAcpRuntimeFixtures {
+  const initializeResponse: Acp.InitializeResponse = {
+    ...OH_MY_PI_ACP_17_3_3_FIXTURE.initializeResponse,
+    authMethods: OH_MY_PI_ACP_17_3_3_FIXTURE.initializeResponse.authMethods.map((method) => ({
+      ...method,
+    })),
+  };
+  const configOptions: Acp.SessionConfigOption[] =
+    OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse.configOptions.map((option) => ({
+      ...option,
+      options: option.options.map((value) => ({ ...value })),
+    }));
+  const fixtureModes = OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse.modes;
+  const modes: AcpSessionModeState = {
+    currentModeId: fixtureModes.currentModeId,
+    availableModes: fixtureModes.availableModes.map(({ id, name, description }) => ({
+      id,
+      name,
+      ...(description !== undefined && description !== null ? { description } : {}),
+    })),
+  };
+  const sessionNewResponse: Acp.NewSessionResponse = {
+    ...OH_MY_PI_ACP_17_3_3_FIXTURE.sessionNewResponse,
+    configOptions: configOptions.map((option) => ({ ...option })),
+    modes: {
+      currentModeId: modes.currentModeId,
+      availableModes: modes.availableModes.map((mode) => ({ ...mode })),
+    },
+  };
+  return { initializeResponse, sessionNewResponse, configOptions, modes };
+}

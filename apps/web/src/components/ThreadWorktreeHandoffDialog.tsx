@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Input } from "./ui/input";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 interface ThreadWorktreeHandoffDialogProps {
   open: boolean;
@@ -29,7 +29,8 @@ export function ThreadWorktreeHandoffDialog({
   onOpenChange,
   onConfirm,
 }: ThreadWorktreeHandoffDialogProps) {
-  const copy = useMessages().dialogs.worktreeHandoff;
+  const { t } = useTranslation();
+
   const busy = busyProp ?? false;
   const worktreeInputRef = useRef<HTMLInputElement>(null);
 
@@ -63,8 +64,10 @@ export function ThreadWorktreeHandoffDialog({
     >
       <DialogPopup className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{copy.title}</DialogTitle>
-          <DialogDescription>{copy.description}</DialogDescription>
+          <DialogTitle>{t("common:worktreeHandoff_title")}</DialogTitle>
+          <DialogDescription>
+            {t("common:createADetachedWorktreeFromTheCurrentBranchTo")}
+          </DialogDescription>
         </DialogHeader>
         <DialogPanel>
           <form
@@ -74,7 +77,9 @@ export function ThreadWorktreeHandoffDialog({
             }}
           >
             <label className="grid gap-1.5">
-              <span className="text-xs font-medium text-foreground">{copy.nameLabel}</span>
+              <span className="text-ui leading-snug font-medium text-foreground">
+                {t("common:worktreeHandoff_worktreeName")}
+              </span>
               <Input
                 ref={worktreeInputRef}
                 value={worktreeName}
@@ -86,17 +91,17 @@ export function ThreadWorktreeHandoffDialog({
                     onOpenChange(false);
                   }
                 }}
-                placeholder={copy.namePlaceholder}
+                placeholder={t("common:synaraFeatureName")}
               />
             </label>
           </form>
         </DialogPanel>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={busy}>
-            {copy.cancel}
+            {t("common:form_cancel")}
           </Button>
           <Button size="sm" onClick={handleSubmit} disabled={!canSubmit}>
-            {busy ? copy.handingOff : copy.handOff}
+            {busy ? t("common:worktreeHandoff_handingOff") : t("common:header_handOff")}
           </Button>
         </DialogFooter>
       </DialogPopup>

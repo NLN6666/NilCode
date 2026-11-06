@@ -14,8 +14,13 @@ import { PlusIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { KanbanCardView, type KanbanCardPrLookup } from "./KanbanCardView";
 import { KanbanStatusIcon } from "./KanbanStatusIcon";
-import { resolveDraftDropAction, type KanbanCard, type KanbanColumnKey } from "./kanban.logic";
-import { useMessages } from "~/i18n/context";
+import {
+  KANBAN_COLUMN_LABEL_KEYS,
+  resolveDraftDropAction,
+  type KanbanCard,
+  type KanbanColumnKey,
+} from "./kanban.logic";
+import { useTranslation } from "~/i18n";
 
 const COLUMN_DROP_ID_PREFIX = "kanban-column";
 const DONE_RENDER_CAP = 30;
@@ -121,7 +126,7 @@ function KanbanColumnComponent({
   /** The review board owns its fold; other boards keep the local Done cap. */
   capDone?: boolean;
 }) {
-  const copy = useMessages().workspace.kanban;
+  const { t } = useTranslation();
   const sortable = sortableProp ?? false;
   const droppable = droppableProp ?? false;
   const activeCard = activeCardProp ?? null;
@@ -170,19 +175,23 @@ function KanbanColumnComponent({
   return (
     <section className="flex min-h-0 min-w-64 flex-1 flex-col">
       <header className="flex shrink-0 items-center gap-2 px-1.5 pb-2">
-        <h3 className="text-ui-lg font-medium text-foreground/90">{copy.columns[columnKey]}</h3>
+        <h3 className="text-ui-lg font-medium text-foreground/90">
+          {t(KANBAN_COLUMN_LABEL_KEYS[columnKey])}
+        </h3>
         <span className="text-ui leading-snug text-muted-foreground/70">{cards.length}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
           {dispatchTarget ? (
-            <span className="text-[11px] text-sky-600 dark:text-sky-300/90">{copy.dropToSend}</span>
+            <span className="text-ui-sm leading-snug text-sky-600 dark:text-sky-300/90">
+              {t("common:columnUi_dropToSend")}
+            </span>
           ) : null}
           {onNewCard ? (
             <Button
               size="icon-xs"
               variant="ghost"
               className="shrink-0 text-muted-foreground/70 hover:text-foreground"
-              aria-label={copy.newTask}
-              title={copy.newTask}
+              aria-label={t("common:kanban_newTask")}
+              title={t("common:kanban_newTask")}
               onClick={onNewCard}
             >
               <PlusIcon className="size-3.5" />
@@ -207,8 +216,8 @@ function KanbanColumnComponent({
           cardElements
         )}
         {cards.length === 0 ? (
-          <li className="list-none rounded-lg border border-dashed border-border/60 px-3 py-4 text-center text-xs text-muted-foreground/60">
-            {copy.noCards}
+          <li className="list-none rounded-lg border border-dashed border-border/60 px-3 py-4 text-center text-ui leading-snug text-muted-foreground/60">
+            {t("common:columnUi_noCards")}
           </li>
         ) : null}
         {hiddenCount > 0 ? (
@@ -218,7 +227,7 @@ function KanbanColumnComponent({
               onClick={() => setShowAll(true)}
               className="w-full rounded-lg px-3 py-1.5 text-center text-ui leading-snug text-muted-foreground/80 transition-colors hover:bg-muted/40 hover:text-foreground"
             >
-              {copy.showMore(hiddenCount)}
+              {t("chat:showMore", { value0: hiddenCount })}
             </button>
           </li>
         ) : null}

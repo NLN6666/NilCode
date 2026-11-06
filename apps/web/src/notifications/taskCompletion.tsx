@@ -10,7 +10,6 @@ import { toastManager } from "../components/ui/toast";
 import { resolveVisibleToastThreadIds } from "../components/ui/toastRouteVisibility";
 import { useAppSettings } from "../appSettings";
 import { isElectron } from "../env";
-import type { Messages } from "../i18n/locales/en";
 import { useDiffRouteSearch } from "../hooks/useDiffRouteSearch";
 import { selectSplitView, useSplitViewStore } from "../splitViewStore";
 import { selectRightDockState, useRightDockStore } from "../rightDockStore";
@@ -38,6 +37,7 @@ import {
   shouldShowThreadNotificationToast,
 } from "./taskCompletion.logic";
 import { claimSnoozeReminder } from "./snoozeReminderReceipts";
+import { t } from "~/i18n";
 
 export type BrowserNotificationPermissionState =
   | NotificationPermission
@@ -149,8 +149,8 @@ function showThreadToast(
       dismissAfterVisibleMs: 8000,
     },
     actionProps: {
-      "aria-label": `Open ${title}`,
-      children: "Open",
+      "aria-label": t("common:open", { title }),
+      children: t("onboarding:notification_open"),
       onClick: () => focusThread(threadId, navigate),
     },
   });
@@ -242,8 +242,8 @@ export function TaskCompletionNotifications() {
         notifiedSnoozeKeysRef.current.add(key);
         if (!claimSnoozeReminder(reminder.threadId, reminder.reminderAt, storage)) continue;
         const copy = {
-          title: reminder.title.trim() || "Untitled thread",
-          body: "Ready to pick this thread back up.",
+          title: reminder.title.trim() || t("workspace:searchPalette_untitledThread"),
+          body: t("common:readyToPickThisThreadBackUp"),
         };
         if (settings.enableTaskCompletionToasts) {
           showThreadToast(copy, reminder.threadId, "success", navigate);
@@ -390,6 +390,7 @@ export function TaskCompletionNotifications() {
     settings.enableSystemTaskCompletionNotifications,
     settings.enableTaskCompletionToasts,
     settings.notifyAfterSubagentsFinish,
+    runtimeStartedAtMs,
     terminalStateByThreadId,
     snoozedThreadIds,
     threads,
@@ -400,13 +401,23 @@ export function TaskCompletionNotifications() {
   return null;
 }
 
-/**
- * Explains why system notifications are (un)available. Takes the copy rather than owning it so
- * the same permission states read correctly in every locale — pass `m.settings.notifications.support`.
- */
+/** Explains system-notification availability in the active interface language. */
 export function buildNotificationSettingsSupportText(
   permissionState: BrowserNotificationPermissionState,
-  support: Messages["settings"]["notifications"]["support"],
 ): string {
-  return isElectron ? support.electron : support[permissionState];
+  if (isElectron) {
+    return t("common:desktopAppNotificationsUseYourOperatingSystemNotificationCenter");
+  }
+  switch (permissionState) {
+    case "granted":
+      return t("common:browserNotificationsAreEnabledForThisApp");
+    case "denied":
+      return t("common:browserNotificationsAreBlockedReEnableThemInYour");
+    case "insecure":
+      return t("common:browserNotificationsNeedASecureContextLocalhostWorksPlain");
+    case "unsupported":
+      return t("common:thisBrowserDoesNotSupportDesktopNotifications");
+    case "default":
+      return t("common:allowBrowserNotificationsToGetAlertsWhenChatsOr");
+  }
 }

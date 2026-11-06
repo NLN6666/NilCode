@@ -284,6 +284,8 @@ describe("diff panel view source helpers", () => {
 
   it("resolves the compare-ref picker value and label from the active ref", () => {
     const latestTurnId = TurnId.makeUnsafe("turn-latest");
+    const translate = (message: string, values?: Record<string, unknown>) =>
+      message === "workspace:vs" ? `vs ${values?.value0}` : message;
 
     expect(
       resolveDiffPanelScopePickerValue({
@@ -300,13 +302,19 @@ describe("diff panel view source helpers", () => {
       }),
     ).toBeNull();
     expect(
-      resolveDiffPanelPickerLabel({ kind: "repo", scope: "ref" }, undefined, "release/1.2"),
+      resolveDiffPanelPickerLabel(
+        { kind: "repo", scope: "ref" },
+        undefined,
+        "release/1.2",
+        translate,
+      ),
     ).toBe("vs release/1.2");
     expect(
       resolveDiffPanelPickerLabel(
         { kind: "repo", scope: "ref" },
         undefined,
         "0123456789abcdef0123456789abcdef01234567",
+        translate,
       ),
     ).toBe("vs 0123456");
   });

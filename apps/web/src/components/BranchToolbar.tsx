@@ -19,11 +19,7 @@ import { readNativeApi } from "../nativeApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useProviderUsageSummary } from "../hooks/useProviderUsageSummary";
 import { resolveThreadEnvironmentPresentation } from "../lib/threadEnvironment";
-import {
-  RUNTIME_MODE_PRESENTATION,
-  runtimeModePresentation,
-  providerModelSupportsAutoRuntimeMode,
-} from "../lib/runtimeMode";
+import { runtimeModePresentation, providerModelSupportsAutoRuntimeMode } from "../lib/runtimeMode";
 import { useStore } from "../store";
 import {
   createAccountRateLimitThreadsSelector,
@@ -66,7 +62,7 @@ import {
   MenuTrigger,
 } from "./ui/menu";
 import type { ThreadWorkspacePatch } from "../types";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 function WorktreeGlyph({ className }: { className?: string }) {
   return <WorktreeIcon className={className} />;
@@ -83,7 +79,8 @@ function RuntimeModeMenuItem({
   icon: ReactNode;
   accent?: boolean;
 }) {
-  const presentation = useMessages().git.toolbar.runtimeModes[mode];
+  const { t } = useTranslation();
+  const presentation = runtimeModePresentation(mode, provider, t);
   return (
     <MenuRadioItem
       value={mode}
@@ -164,14 +161,21 @@ export function RuntimeUsageControls({
   className,
   hideLabel: hideLabelProp,
 }: RuntimeUsageControlsProps) {
-  const copy = useMessages().git.toolbar;
+  const { t } = useTranslation();
+
   const autoModeAvailable =
     provider !== undefined &&
     providerModelSupportsAutoRuntimeMode(provider, runtimeModel, providerStatus);
-  const runtimePresentation = copy.runtimeModes[runtimeMode ?? "approval-required"];
+  const runtimePresentation = runtimeModePresentation(
+    runtimeMode ?? "approval-required",
+    provider,
+    t,
+  );
   const runtimeModePending = activeRuntimeMode !== undefined && activeRuntimeMode !== runtimeMode;
   const pendingDescription = runtimeModePending
-    ? copy.pendingRuntimeModeHint(copy.runtimeModes[activeRuntimeMode].label)
+    ? t("common:appliesNextTurnThisTurnStillUses", {
+        value0: runtimeModePresentation(activeRuntimeMode, provider, t).label,
+      })
     : "";
   const hideLabel = hideLabelProp ?? false;
   return (
@@ -193,7 +197,11 @@ export function RuntimeUsageControls({
                   COMPOSER_PICKER_TRIGGER_TEXT_CLASS_NAME,
                   runtimeMode === "full-access" && RUNTIME_FULL_ACCESS_ACCENT_CLASS_NAME,
                 )}
-                title={`${runtimePresentation.label}: ${runtimePresentation.description} ${copy.runtimeModeHintSuffix}${pendingDescription}`}
+                title={t("common:clickToChangePermissions", {
+                  value0: runtimePresentation.label,
+                  value1: runtimePresentation.description,
+                  value2: pendingDescription,
+                })}
               />
             }
           >
@@ -207,7 +215,7 @@ export function RuntimeUsageControls({
               )}
               <span className={cn("truncate", hideLabel ? "sr-only" : "@max-[480px]:sr-only")}>
                 {runtimePresentation.label}
-                {runtimeModePending ? " (next turn)" : ""}
+                {runtimeModePending ? t("common:nextTurn") : ""}
               </span>
               <ChevronDownIcon
                 className={cn(
@@ -279,7 +287,8 @@ export default function BranchToolbar({
   showEnvironmentPicker: showEnvironmentPickerProp,
   fixedLocalWorkspaceCwd,
 }: BranchToolbarProps) {
-  const toolbarCopy = useMessages().git.toolbar;
+  const { t } = useTranslation();
+
   const handoffBusy = handoffBusyProp ?? false;
   const variant = variantProp ?? "toolbar";
   const showBranchSelector = showBranchSelectorProp ?? true;
@@ -514,7 +523,9 @@ export default function BranchToolbar({
                 <Collapsible open={rateLimitsOpen} onOpenChange={setRateLimitsOpen}>
                   <MenuItem closeOnClick={false} onClick={() => setRateLimitsOpen((open) => !open)}>
                     <CentralIcon name="clock" className="size-3.5 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate">Rate limits remaining</span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {t("common:rateLimitsRemaining")}
+                    </span>
                     <DisclosureChevron
                       open={rateLimitsOpen}
                       className="text-[var(--color-text-foreground-secondary)]"

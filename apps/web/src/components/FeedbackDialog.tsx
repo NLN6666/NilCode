@@ -16,8 +16,16 @@ import { Dialog, DialogHeader, DialogPopup, DialogTitle } from "./ui/dialog";
 import { Spinner } from "./ui/spinner";
 import { Textarea } from "./ui/textarea";
 import { toastManager } from "./ui/toast";
-import { useMessages } from "~/i18n/context";
-import { dialogs as defaultDialogCopy } from "~/i18n/locales/en/dialogs";
+import { useTranslation } from "~/i18n";
+
+const FEEDBACK_CATEGORY_LABEL_KEYS: Record<FeedbackCategory, string> = {
+  bug: "common:feedbackCategory_bug",
+  session: "common:feedbackCategory_session",
+  ui: "common:feedbackCategory_ui",
+  performance: "common:feedbackCategory_performance",
+  idea: "common:idea",
+  other: "common:feedbackCategory_other",
+};
 
 export interface FeedbackDialogProps {
   open: boolean;
@@ -26,7 +34,8 @@ export interface FeedbackDialogProps {
 }
 
 export function FeedbackDialog({ open, context, onOpenChange }: FeedbackDialogProps) {
-  const copy = useMessages().dialogs.feedback;
+  const { t } = useTranslation();
+
   const [isSending, setIsSending] = useState(false);
 
   const handleSubmit = async (category: FeedbackCategory | null, details: string) => {
@@ -37,15 +46,16 @@ export function FeedbackDialog({ open, context, onOpenChange }: FeedbackDialogPr
       onOpenChange(false);
       toastManager.add({
         type: "success",
-        title: defaultDialogCopy.feedback.sent,
-        description: defaultDialogCopy.feedback.sentHint,
+        title: t("common:feedbackSent"),
+        description: t("common:thanksForHelpingMakeSynaraBetter"),
       });
     } catch (error) {
       setIsSending(false);
       toastManager.add({
         type: "error",
-        title: defaultDialogCopy.feedback.failed,
-        description: error instanceof Error ? error.message : defaultDialogCopy.feedback.failedHint,
+        title: t("common:couldNotSendFeedback"),
+        description:
+          error instanceof Error ? error.message : t("common:anUnexpectedDeliveryErrorOccurred"),
       });
     }
   };
@@ -59,7 +69,9 @@ export function FeedbackDialog({ open, context, onOpenChange }: FeedbackDialogPr
     >
       <DialogPopup className="max-w-xl" showCloseButton={!isSending}>
         <DialogHeader className="gap-0 px-5 pt-5 pb-3">
-          <DialogTitle className="text-xl tracking-[-0.01em]">{copy.title}</DialogTitle>
+          <DialogTitle className="text-xl tracking-[-0.01em]">
+            {t("common:shareFeedback")}
+          </DialogTitle>
         </DialogHeader>
         {/* The form state lives below DialogPopup, which unmounts its children
             once the close transition ends — every open starts from a blank
@@ -77,7 +89,8 @@ function FeedbackDialogForm({
   isSending: boolean;
   onSubmit: (category: FeedbackCategory | null, details: string) => Promise<void>;
 }) {
-  const formCopy = useMessages().dialogs.feedback;
+  const { t } = useTranslation();
+
   const [category, setCategory] = useState<FeedbackCategory | null>(null);
   const [details, setDetails] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -102,7 +115,7 @@ function FeedbackDialogForm({
         void handleSubmit();
       }}
     >
-      <div className="flex flex-wrap gap-1.5" aria-label={formCopy.category}>
+      <div className="flex flex-wrap gap-1.5" aria-label={t("common:feedbackCategory")}>
         {FEEDBACK_CATEGORIES.map((option) => {
           const selected = category === option.value;
           return (
@@ -122,7 +135,7 @@ function FeedbackDialogForm({
               onClick={() => setCategory(selected ? null : option.value)}
             >
               <span aria-hidden="true">{selected ? "−" : "+"}</span>
-              {option.label}
+              {t(FEEDBACK_CATEGORY_LABEL_KEYS[option.value])}
             </Button>
           );
         })}
@@ -132,23 +145,25 @@ function FeedbackDialogForm({
         ref={textareaRef}
         value={details}
         maxLength={5_000}
-        placeholder={formCopy.detailsPlaceholder}
-        aria-label={formCopy.detailsLabel}
+        placeholder={t("common:shareDetailsRequired")}
+        aria-label={t("common:feedbackDetails")}
         disabled={isSending}
         className="[&_[data-slot=textarea]]:min-h-32 [&_[data-slot=textarea]]:resize-y"
         onChange={(event) => setDetails(event.target.value)}
       />
 
-      <p className="text-xs leading-relaxed text-muted-foreground">{formCopy.diagnosticsHint}</p>
+      <p className="text-ui leading-relaxed text-muted-foreground">
+        {t("common:diagnosticsIncludeAppVersionOSProviderModelModesAnd")}
+      </p>
 
       <Button type="submit" className="w-full" disabled={!canSubmit}>
         {isSending ? (
           <>
             <Spinner />
-            {formCopy.sending}
+            {t("common:sending")}
           </>
         ) : (
-          formCopy.submit
+          t("common:submit")
         )}
       </Button>
     </form>

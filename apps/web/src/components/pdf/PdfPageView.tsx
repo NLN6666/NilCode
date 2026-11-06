@@ -17,7 +17,7 @@ import type { PdfLink } from "~/lib/pdf/pdfLinks";
 import { usePdfPageRender } from "~/lib/pdf/usePdfPageRender";
 import type { PdfPageIntrinsicSize } from "~/lib/pdf/pdfZoom";
 import { openExternalLink } from "~/lib/linkChips";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 // Prerender pages within roughly one viewport above/below so scrolling reveals
 // already-painted pages instead of blank boxes.
@@ -44,7 +44,7 @@ export const PdfPageView = function PdfPageView({
   registerElement,
   onJumpToPage,
 }: PdfPageViewProps) {
-  const copy = useMessages().editor.pdf;
+  const { t } = useTranslation();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -102,7 +102,7 @@ export const PdfPageView = function PdfPageView({
       <canvas
         ref={canvasRef}
         className="pdf-viewer-page__canvas"
-        aria-label={`Page ${pageNumber}`}
+        aria-label={t("common:page2", { value0: pageNumber })}
       />
       <div
         ref={textLayerRef}
@@ -118,7 +118,9 @@ export const PdfPageView = function PdfPageView({
       ) : null}
       {error ? (
         <div className="pdf-viewer-page__error" role="alert">
-          <span>{copy.renderFailed(pageNumber)}</span>
+          <span>
+            {t("common:couldNotRenderPage")} {pageNumber}
+          </span>
           <span className="pdf-viewer-page__error-detail">{error}</span>
         </div>
       ) : null}
@@ -133,6 +135,8 @@ function PdfLinkAnchor({
   link: PdfLink;
   onJumpToPage: (pageNumber: number) => void;
 }) {
+  const { t } = useTranslation();
+
   const style = {
     left: `${link.left}px`,
     top: `${link.top}px`,
@@ -163,7 +167,7 @@ function PdfLinkAnchor({
       type="button"
       className="pdf-viewer-page__link"
       style={style}
-      aria-label={`Go to page ${link.targetPageNumber}`}
+      aria-label={t("common:goToPage", { value0: link.targetPageNumber })}
       onClick={() => {
         if (link.targetPageNumber != null) {
           onJumpToPage(link.targetPageNumber);

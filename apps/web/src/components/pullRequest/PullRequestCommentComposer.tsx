@@ -15,7 +15,7 @@ import { toastManager } from "~/components/ui/toast";
 import { ArrowUpIcon, GitHubIcon } from "~/lib/icons";
 import { PR_BODY_TEXT_CLASS_NAME } from "./pullRequestText";
 import { cn } from "~/lib/utils";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 /** The item a comment goes to. Pull requests and issues share one number space per repository. */
 export type GitHubCommentTarget = Pick<
@@ -36,7 +36,8 @@ export function PullRequestCommentComposer({
   target: GitHubCommentTarget;
   mutation: GitHubCommentMutation;
 }) {
-  const copy = useMessages().pullRequests;
+  const { t } = useTranslation();
+
   const [body, setBody] = useState("");
   // Synchronous re-entrancy lock: mutation.isPending updates on React's schedule, which is
   // too late to stop a rapid double Enter from posting the comment twice.
@@ -63,8 +64,8 @@ export function PullRequestCommentComposer({
         // The draft stays in the field on failure — nothing to re-type.
         toastManager.add({
           type: "error",
-          title: copy.composer.postFailedTitle,
-          description: error instanceof Error ? error.message : copy.composer.postFailedDescription,
+          title: t("git:couldNotPostComment"),
+          description: error instanceof Error ? error.message : t("git:gitHubCLICommentFailed"),
         });
       })
       .finally(() => {
@@ -78,7 +79,7 @@ export function PullRequestCommentComposer({
     >
       <span
         className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-background-elevated-secondary)] text-muted-foreground"
-        title={copy.composer.accountHint}
+        title={t("git:commentingAsYourGitHubAccount")}
       >
         <GitHubIcon className="size-3" />
       </span>
@@ -86,8 +87,8 @@ export function PullRequestCommentComposer({
         rows={Math.min(6, body.split("\n").length)}
         value={body}
         disabled={mutation.isPending}
-        placeholder={copy.composer.placeholder}
-        aria-label={copy.composer.placeholder}
+        placeholder={t("git:leaveAComment")}
+        aria-label={t("git:leaveAComment")}
         onChange={(event) => setBody(event.target.value)}
         onKeyDown={(event) => {
           // Enter during IME composition confirms the composition, not the comment.
@@ -106,8 +107,8 @@ export function PullRequestCommentComposer({
       <button
         type="button"
         disabled={!canSubmit}
-        aria-label={copy.composer.post}
-        title={copy.composer.post}
+        aria-label={t("git:postComment")}
+        title={t("git:postComment")}
         onClick={() => void submit()}
         className="flex size-7 shrink-0 items-center justify-center self-end rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-35"
       >

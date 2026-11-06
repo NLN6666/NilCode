@@ -4,12 +4,12 @@ import {
   formatContextWindowTokens,
   formatCostUsd,
 } from "~/lib/contextWindow";
-import { useMessages } from "~/i18n/context";
 import { useState } from "react";
 import { useNowMs } from "~/hooks/useNowMs";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { ClaudeCacheDetails } from "./ClaudeCacheDetails";
 import { Button } from "../ui/button";
+import { useTranslation } from "~/i18n";
 
 export function ContextWindowMeter(props: {
   usage: ContextWindowSnapshot;
@@ -24,7 +24,7 @@ export function ContextWindowMeter(props: {
     onCompact: () => Promise<boolean>;
   };
 }) {
-  const m = useMessages();
+  const { t } = useTranslation();
   const { usage, cumulativeCostUsd, activeWindowLabel, pendingWindowLabel } = props;
   const [open, setOpen] = useState(false);
   const nowMs = useNowMs(open && usage.claudeCache != null, 10_000);
@@ -92,14 +92,13 @@ export function ContextWindowMeter(props: {
       />
       <PopoverPopup tooltipStyle side="top" align="end" className="w-max max-w-none px-3 py-2">
         <div className="space-y-1.5 leading-tight">
-          <div className="text-[11px] font-medium text-muted-foreground">
-            {m.chat.contextWindow.title}
+          <div className="text-ui-sm font-medium text-muted-foreground">
+            {t("chat:sessionStatus_contextWindow")}
           </div>
           {pendingWindowLabel ? (
-            <div className="text-xs text-muted-foreground">
-              {m.chat.contextWindow.currentSession(
-                activeWindowLabel ?? m.chat.contextWindow.unknown,
-              )}
+            <div className="text-ui leading-snug text-muted-foreground">
+              {t("chat:sessionStatus_currentSessionLabel")}{" "}
+              {activeWindowLabel ?? t("common:common_unknown")}
             </div>
           ) : null}
           {display.usedPercentageLabel ? (
@@ -111,59 +110,64 @@ export function ContextWindowMeter(props: {
                   <span>{display.tokenUsageLabel}</span>
                   <span>/</span>
                   <span>
-                    {formatContextWindowTokens(usage.maxTokens)} {m.chat.contextWindow.contextUsed}
+                    {formatContextWindowTokens(usage.maxTokens)} {t("chat:contextUsed")}
                   </span>
                 </>
               ) : (
-                <span className="ml-1">{m.chat.contextWindow.contextUsed}</span>
+                <span className="ml-1">{t("chat:contextUsed")}</span>
               )}
             </div>
           ) : (
-            <div className="text-sm text-foreground">
-              {display.tokenUsageLabel} {m.chat.contextWindow.tokensUsedSoFar}
+            <div className="text-ui leading-snug text-foreground">
+              {display.tokenUsageLabel} {t("chat:tokensUsedSoFar")}
             </div>
           )}
-          {/*
-            `maxTokens` is the budget the bar fills toward, which providers may
-            set below the model's capacity (Claude compacts at 200k by default,
-            even on a 1M model). Name the model window only when the runtime
-            reported it; where it did not, `maxTokens` *is* the model window —
-            Codex reads its own `model_context_window` straight from the
-            app-server — so the original line stays correct for those providers.
-          */}
-          {modelWindowTokens !== null ? (
-            <div className="text-xs text-muted-foreground">
-              {m.chat.contextWindow.modelWindow(formatContextWindowTokens(modelWindowTokens))}
+          {usage.maxTokens !== null ? (
+            <div className="text-ui leading-snug text-muted-foreground">
+              {t("chat:activeContextLimit")} {formatContextWindowTokens(usage.maxTokens)}{" "}
+              {t("chat:tokens")}
             </div>
-          ) : usage.maxTokens !== null ? (
-            <div className="text-xs text-muted-foreground">
-              {m.chat.contextWindow.modelWindow(formatContextWindowTokens(usage.maxTokens))}
+          ) : null}
+          {modelWindowTokens !== null ? (
+            <div className="text-ui leading-snug text-muted-foreground">
+              {t("chat:modelWindow", { value0: formatContextWindowTokens(modelWindowTokens) })}
             </div>
           ) : null}
           {showsCompactionBudget ? (
-            <div className="text-xs text-muted-foreground">
-              {m.chat.contextWindow.compactsAt(formatContextWindowTokens(usage.maxTokens))}
+            <div className="text-ui leading-snug text-muted-foreground">
+              {t("chat:compactsAt", { value0: formatContextWindowTokens(usage.maxTokens) })}
+            </div>
+          ) : null}
+          {props.showClaudeCache && activeWindowLabel ? (
+            <div className="max-w-72 space-y-1 text-ui leading-snug text-muted-foreground">
+              <div>
+                {t("chat:autoCompactTarget")} {activeWindowLabel}
+              </div>
+              <p className="leading-relaxed">{t("chat:theSessionSAutoCompactTargetCanBeLower")}</p>
             </div>
           ) : null}
           {pendingWindowLabel ? (
-            <div className="text-xs text-muted-foreground">
-              {m.chat.contextWindow.nextTurn(pendingWindowLabel)}
+            <div className="text-ui leading-snug text-muted-foreground">
+              {t("chat:sessionStatus_nextTurn")} {pendingWindowLabel}
             </div>
           ) : null}
           {(usage.totalProcessedTokens ?? null) !== null &&
           (usage.totalProcessedTokens ?? 0) > usage.usedTokens ? (
-            <div className="text-xs text-muted-foreground">
-              {m.chat.contextWindow.totalProcessed(
-                formatContextWindowTokens(usage.totalProcessedTokens ?? null),
-              )}
+            <div className="text-ui leading-snug text-muted-foreground">
+              {usage.tokenAccountingVersion === 1
+                ? t("chat:estimatedTotalProcessed")
+                : t("chat:totalProcessed")}
+              : {formatContextWindowTokens(usage.totalProcessedTokens ?? null)} {t("chat:tokens")}
             </div>
           ) : null}
           {usage.compactsAutomatically ? (
-            <div className="text-xs text-muted-foreground">{m.chat.contextWindow.autoCompacts}</div>
+            <div className="text-ui leading-snug text-muted-foreground">
+              {t("chat:automaticallyCompactsItsContextWhenNeeded")}
+            </div>
           ) : null}
           {cumulativeCostUsd !== null && cumulativeCostUsd !== undefined ? (
-            <div className="text-xs text-muted-foreground">
-              {m.chat.contextWindow.sessionCost(formatCostUsd(cumulativeCostUsd))}
+            <div className="text-ui leading-snug text-muted-foreground">
+              {t("chat:sessionCost")} {formatCostUsd(cumulativeCostUsd)}
             </div>
           ) : null}
           {usage.claudeCache || props.showClaudeCache ? (
@@ -183,12 +187,12 @@ export function ContextWindowMeter(props: {
                 }}
               >
                 {props.compactAction.isSubmitting
-                  ? m.chat.contextWindow.compactStarting
-                  : m.chat.contextWindow.compactNow}
+                  ? t("chat:startingCompaction")
+                  : t("chat:compactNow")}
               </Button>
               <p className="text-ui leading-relaxed text-muted-foreground">
                 {props.compactAction.disabledReason ??
-                  m.chat.contextWindow.compactCaveat}
+                  t("chat:compactionProcessesThisConversationAndConsumesUsageLaterTurns")}
               </p>
             </div>
           ) : null}

@@ -9,7 +9,7 @@ import { computerToolInstructions } from "./computerGuidance.ts";
 import { AUTOMATION_AUTHORING_GUIDANCE } from "./automationAuthoringGuidance.ts";
 
 /** Canonical, versioned host policy delivered to every supported provider. */
-export const SYNARA_HARNESS_POLICY_VERSION = "2026-10-28.1";
+export const SYNARA_HARNESS_POLICY_VERSION = "2026-11-06.1";
 export const SYNARA_HARNESS_POLICY_MARKER = `[Synara harness policy ${SYNARA_HARNESS_POLICY_VERSION}]`;
 
 export interface SynaraHarnessCapabilities {
@@ -32,10 +32,11 @@ export function renderSynaraHarnessPolicy(capabilities: SynaraHarnessCapabilitie
   const controlPolicy = capabilities.gatewayControlAvailable
     ? [
         "Use the synara_* tools for Synara threads, projects, automations, and coordination.",
-        "Report outcome, checks and limits. Inspect browser_screenshot({kind:'proof'}); embed artifactPath as ![Result description](/absolute/path.png), including generated images. No secrets, invented proof or open-only proof.",
-        "When explicitly asked for E2E/end-to-end tests, call synara_e2e_review. Do not load it for unrelated work.",
+        "Report outcome, checks and limitations. Inspect browser_screenshot({kind:'proof'}); embed artifactPath as ![Result description](/absolute/path.png), including generated images. No secrets, invented proof or open-only proof.",
+        "For explicit E2E/end-to-end tests, call synara_e2e_review; otherwise do not load it.",
         "For any-language requests involving Synara's integrated, embedded, or in-app browser, use browser_* autonomously as its canonical, complete control surface; never substitute Chrome, Computer Use, Playwright, OS-automation tools/skills, or change the user's active chat. Detailed rules live in each tool description.",
         "For any-language iOS app or simulator request, call device_* directly and autonomously as the canonical, complete control surface; never use xcrun simctl, AppleScript, Appium, idb, open Simulator.app, or substitute mobile/OS-automation tools/skills, because the user watches the streamed pane. Detailed rules live in each tool description.",
+        "Other computers: call synara_list_connections.",
         "For thread discovery and diagnosis, use synara_list_threads, synara_read_thread, synara_read_thread_activity, synara_read_thread_events, synara_read_thread_runtime_events, and synara_diagnose_thread before SQLite or process logs. Use host storage only when tool coverage says required evidence is unavailable.",
         "After successfully creating a pull request for the current thread's own deliverable, call synara_set_thread_pull_request with its URL. Never associate a pull request that the thread only reviews, references, or discusses.",
         "Use synara_*_daemon for long-lived processes; shell children die with the session. Declare ready at start; send input for graceful stop. Use detached: true only to survive Synara exit.",
@@ -72,7 +73,7 @@ export function renderSynaraHarnessPolicy(capabilities: SynaraHarnessCapabilitie
 
   return [
     SYNARA_HARNESS_POLICY_MARKER,
-    "Synara is your host and harness.",
+    "Synara is your host and harness for this session.",
     "For known local files in user-facing Markdown, use readable labels and absolute file URLs, such as [config.ts](file:///absolute/path/config.ts). Relative links are only for the session working directory; otherwise use plain text and never invent a path.",
     'Synara collapses progress and tools under "Worked for...". Final responses must restate every needed scope, plan, decision, result, caveat, instruction, or question. Never request approval using "this", "the above", or another referent available only in collapsed content.',
     "When a structured user-input tool is available for a genuine decision, prefer it and include all decision context in its question or card.",

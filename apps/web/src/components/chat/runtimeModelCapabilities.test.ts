@@ -5,8 +5,14 @@ import {
   getRuntimeAwareModelCapabilities,
   resolveRuntimeModelDescriptor,
 } from "./runtimeModelCapabilities";
-import { mergeDynamicModelOptions, withCloudModelDescriptors } from "~/providerModelOptions";
+import {
+  mergeDynamicModelOptions,
+  withCloudModelDescriptors,
+  type ProviderOptions,
+} from "~/providerModelOptions";
 import { providerModelSupportsAutoRuntimeMode } from "~/lib/runtimeMode";
+import { getComposerProviderState } from "./composerProviderRegistry";
+import { getComposerTraitSelection } from "./composerTraits";
 
 const efforts = (input: Parameters<typeof getRuntimeAwareModelCapabilities>[0]) =>
   getRuntimeAwareModelCapabilities(input).reasoningEffortLevels.map((level) => level.value);
@@ -186,5 +192,44 @@ describe("resolveRuntimeModelDescriptor", () => {
         runtimeModels: [{ slug: "claude-opus-6", name: "Opus", supportsAutoMode: true }],
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("Claude runtime effort default", () => {
+  // Hosts before the adapter fix published CLI effort ladders without a default.
+  const runtimeModel: ProviderModelDescriptor = {
+    slug: "claude-fable-5-1",
+    name: "Claude Fable 5.1",
+    optionDescriptors: [
+      {
+        id: "effort",
+        label: "Reasoning",
+        type: "select",
+        options: ["low", "medium", "high", "xhigh", "max"].map((id) => ({ id, label: id })),
+      },
+    ],
+    supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"].map((value) => ({
+      value,
+      label: value,
+    })),
+  };
+  const selection = (options: ProviderOptions | undefined) =>
+    getComposerTraitSelection("claudeAgent", "claude-fable-5-1", "", options, runtimeModel);
+
+  it("shows an unset effort as the default instead of the first level", () => {
+    expect(selection(undefined)).toMatchObject({ effort: "high", defaultEffort: "high" });
+  });
+
+  it("keeps High selected after the composer drops the default level", () => {
+    const { modelOptionsForDispatch } = getComposerProviderState({
+      provider: "claudeAgent",
+      model: "claude-fable-5-1",
+      runtimeModel,
+      prompt: "",
+      modelOptions: { claudeAgent: { effort: "high" } },
+    });
+    expect(modelOptionsForDispatch).toBeUndefined();
+    expect(selection(modelOptionsForDispatch).effort).toBe("high");
+    expect(selection({ effort: "medium" }).effort).toBe("medium");
   });
 });

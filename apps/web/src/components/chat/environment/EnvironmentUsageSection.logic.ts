@@ -1,9 +1,10 @@
 // FILE: EnvironmentUsageSection.logic.ts
 // Purpose: Pure compact-summary decisions for provider rows in the Environment panel.
 
+import { t } from "~/i18n";
+import { rateLimitWindowDisplayLabel } from "~/lib/rateLimits";
 import type { ServerProviderUsageSnapshot } from "@synara/contracts";
 import type { ProviderUsageDisplayRow } from "~/lib/providerUsageDisplay";
-import type { Messages } from "~/i18n/locales/en";
 
 export interface EnvironmentProviderUsageSummary {
   readonly rows: ReadonlyArray<ProviderUsageDisplayRow>;
@@ -14,36 +15,46 @@ export interface EnvironmentProviderUsageSummary {
 function providerUsageStatusLabel(
   snapshot: ServerProviderUsageSnapshot | undefined,
   hasUsageLines: boolean,
-  copy: Messages["chat"]["usageStatus"],
+  translate: typeof t,
 ): string {
   switch (snapshot?.status) {
     case "needs-auth":
-      return copy.signIn;
+      return translate("chat:providerModelPicker_signIn");
     case "unsupported":
-      return copy.unsupported;
+      return translate("chat:providerUsage_unsupported");
     case "error":
-      return copy.unavailable;
+      return translate("chat:providerModelPicker_unavailable");
     default:
-      return hasUsageLines ? copy.connected : copy.noData;
+      return hasUsageLines ? translate("chat:connected") : translate("settings:usageNoData");
   }
 }
 
-export function resolveEnvironmentProviderUsageSummary(input: {
-  readonly copy: Messages["chat"]["usageStatus"];
-  readonly providerName: string;
-  readonly rows: ReadonlyArray<ProviderUsageDisplayRow>;
-  /** Live batch snapshot when available; the row renders without one (local/thread fallbacks). */
-  readonly snapshot: ServerProviderUsageSnapshot | undefined;
-  readonly hasUsageLines: boolean;
-}): EnvironmentProviderUsageSummary {
-  const statusLabel = providerUsageStatusLabel(input.snapshot, input.hasUsageLines, input.copy);
+export function resolveEnvironmentProviderUsageSummary(
+  input: {
+    readonly providerName: string;
+    readonly rows: ReadonlyArray<ProviderUsageDisplayRow>;
+    /** Live batch snapshot when available; the row renders without one (local/thread fallbacks). */
+    readonly snapshot: ServerProviderUsageSnapshot | undefined;
+    readonly hasUsageLines: boolean;
+  },
+  translate: typeof t,
+): EnvironmentProviderUsageSummary {
+  const statusLabel = providerUsageStatusLabel(input.snapshot, input.hasUsageLines, translate);
   const rowSummary = input.rows
-    .map((row) => input.copy.remaining(row.label, row.remainingLabel))
+    .map((row) =>
+      translate("settings:usageWindowRemaining", {
+        window: rateLimitWindowDisplayLabel(row.label, translate),
+        amount: row.remainingLabel,
+      }),
+    )
     .join(", ");
 
   return {
     rows: input.rows,
     statusLabel,
-    ariaLabel: input.copy.summary(input.providerName, rowSummary || statusLabel),
+    ariaLabel: translate("settings:usageProviderSummary", {
+      provider: input.providerName,
+      summary: rowSummary || statusLabel,
+    }),
   };
 }

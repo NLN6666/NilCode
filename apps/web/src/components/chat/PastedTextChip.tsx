@@ -9,7 +9,7 @@ import { type ButtonHTMLAttributes, type ReactNode, useState } from "react";
 import { ChevronRightIcon, FileIcon } from "~/lib/icons";
 import { formatPastedTextCountLabel, pastedTextTitle } from "~/lib/composerPastedText";
 import { AttachmentCard } from "./AttachmentCard";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 interface PastedTextCardMetrics {
   lineCount: number;
@@ -43,15 +43,18 @@ function PastedTextCardShell({
   onRemove?: () => void;
   className?: string;
 }) {
+  const { t, formatLocale } = useTranslation();
   return (
     <AttachmentCard
       size="sm"
       className={className}
       icon={<FileIcon className="size-3" />}
-      title={pastedTextTitle(text)}
+      title={pastedTextTitle(text, t("chat:pastedText"))}
       subtitle={action}
       onRemove={onRemove}
-      removeLabel={`Remove pasted text (${formatPastedTextCountLabel(metrics)})`}
+      removeLabel={t("chat:removePastedText", {
+        countLabel: formatPastedTextCountLabel(metrics, t, formatLocale),
+      })}
     />
   );
 }
@@ -71,7 +74,8 @@ export function ComposerPastedTextCard({
   onShowInTextField,
   onRemove,
 }: ComposerPastedTextCardProps) {
-  const copy = useMessages().chat.message;
+  const { t } = useTranslation();
+
   return (
     <PastedTextCardShell
       text={text}
@@ -82,7 +86,7 @@ export function ComposerPastedTextCard({
           onMouseDown={(event) => event.preventDefault()}
           onClick={onShowInTextField}
         >
-          {copy.showInTextField}
+          {t("chat:showInTextField")}
           <ChevronRightIcon className="size-2.5" />
         </PastedTextCardAction>
       }
@@ -98,7 +102,8 @@ interface UserMessagePastedTextCardProps {
 // Transcript echo: the same card, but the action expands the full pasted content
 // in place (read-only) instead of editing.
 export function UserMessagePastedTextCard({ text, metrics }: UserMessagePastedTextCardProps) {
-  const copy = useMessages().composer.attachments;
+  const { t, formatLocale } = useTranslation();
+
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -111,8 +116,10 @@ export function UserMessagePastedTextCard({ text, metrics }: UserMessagePastedTe
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
           >
-            {expanded ? copy.hideText : copy.showText}
-            <span className="opacity-65">· {formatPastedTextCountLabel(metrics)}</span>
+            {expanded ? t("chat:hideText") : t("chat:showText")}
+            <span className="opacity-65">
+              · {formatPastedTextCountLabel(metrics, t, formatLocale)}
+            </span>
           </PastedTextCardAction>
         }
       />

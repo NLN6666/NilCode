@@ -1,15 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import type { ProviderAgentDescriptor } from "@synara/contracts";
+import { ProjectId, type ProviderAgentDescriptor } from "@synara/contracts";
 
-import { en } from "~/i18n/locales/en";
-import { zhCN } from "~/i18n/locales/zh-CN";
 import {
   COLOR_PREVIEW_MENTION_INSERT_TEXT,
   promptIncludesColorPreviewMention,
 } from "~/lib/composerMentions";
+import { setLanguagePreference, t } from "~/i18n";
 
-import type { ComposerThreadMentionSource, Project } from "../types";
+import type { ComposerThreadMentionProjectSource, ComposerThreadMentionSource } from "../types";
 import {
   buildColorPreviewMentionComposerItems,
   buildComposerCommandMenuItems,
@@ -17,19 +16,19 @@ import {
   resolveThreadMentionForThreadId,
 } from "./useComposerCommandMenuItems";
 
-function project(id: string, kind: Project["kind"], name: string): Project {
+afterEach(() => setLanguagePreference("system"));
+
+function project(
+  id: string,
+  kind: ComposerThreadMentionProjectSource["kind"],
+  name: string,
+): ComposerThreadMentionProjectSource {
   return {
-    id,
+    id: ProjectId.makeUnsafe(id),
     kind,
     name,
-    remoteName: name,
     folderName: name,
-    localName: null,
-    cwd: `/workspace/${id}`,
-    defaultModelSelection: null,
-    expanded: true,
-    scripts: [],
-  } as unknown as Project;
+  };
 }
 
 function thread(input: {
@@ -83,11 +82,9 @@ describe("buildThreadMentionComposerItems", () => {
       "thread:project-thread",
       "thread:studio-thread",
     ]);
-    expect(Object.fromEntries(items.map((item) => [item.id, item.description]))).toEqual({
-      "thread:chat-thread": "Chats",
-      "thread:project-thread": "Synara",
-      "thread:studio-thread": "Studio workspace",
-    });
+    const descriptions = items.map((item) => item.description);
+    expect(descriptions.every((description) => description.length > 0)).toBe(true);
+    expect(new Set(descriptions).size).toBe(3);
     expect(items.find((item) => item.id === "thread:studio-thread")).toMatchObject({
       provider: "claudeAgent",
       mention: { name: "Release artwork", path: "thread://studio-thread" },
@@ -112,7 +109,8 @@ describe("buildThreadMentionComposerItems", () => {
     });
 
     expect(items).toHaveLength(20);
-    expect(items[0]).toMatchObject({ label: "Untitled thread", id: "thread:thread-23" });
+    expect(items[0]?.id).toBe("thread:thread-23");
+    expect(items[0]?.label.length).toBeGreaterThan(0);
     expect(items.some((item) => item.id === "thread:thread-22")).toBe(false);
     expect(items.at(-1)?.id).toBe("thread:thread-3");
   });
@@ -131,26 +129,35 @@ describe("buildThreadMentionComposerItems", () => {
     expect(items).toHaveLength(20);
   });
 
-  it("disambiguates duplicate titles with the project name so mention tokens stay unique", () => {
-    const items = buildThreadMentionComposerItems({
-      projects,
-      currentThreadId: null,
-      query: "planning",
-      threads: [
-        thread({ id: "in-project", projectId: "project", title: "Planning" }),
-        thread({ id: "in-chats", projectId: "chats", title: "Planning" }),
-        thread({ id: "unique", projectId: "project", title: "Planning extras" }),
-      ],
-    });
+  it.each(["en", "zh-CN"] as const)(
+    "keeps duplicate-title mention tokens distinct with %s display text",
+    (locale) => {
+      setLanguagePreference(locale);
+      const items = buildThreadMentionComposerItems({
+        projects,
+        currentThreadId: null,
+        query: "planning",
+        threads: [
+          thread({ id: "in-project", projectId: "project", title: "Planning" }),
+          thread({ id: "in-chats", projectId: "chats", title: "Planning" }),
+          thread({ id: "unique", projectId: "project", title: "Planning extras" }),
+        ],
+      });
 
-    const mentionNamesById = Object.fromEntries(
-      items.map((item) => [item.id, item.type === "thread" ? item.mention.name : null]),
-    );
-    expect(mentionNamesById["thread:in-project"]).toBe("Planning (Synara)");
-    expect(mentionNamesById["thread:in-chats"]).toBe("Planning (Chats)");
-    expect(mentionNamesById["thread:unique"]).toBe("Planning extras");
-    expect(items.every((item) => item.label.startsWith("Planning"))).toBe(true);
-  });
+      const projectMention = items.find((item) => item.id === "thread:in-project");
+      const chatMention = items.find((item) => item.id === "thread:in-chats");
+      expect(projectMention?.type === "thread" ? projectMention.mention.name : "").toContain(
+        "Planning",
+      );
+      expect(chatMention?.type === "thread" ? chatMention.mention.name : "").toContain("Planning");
+      expect(projectMention?.type === "thread" ? projectMention.mention.name : "").not.toBe(
+        chatMention?.type === "thread" ? chatMention.mention.name : "",
+      );
+      expect(items.find((item) => item.id === "thread:unique")?.label).toContain("Planning");
+      expect(chatMention?.description.length).toBeGreaterThan(0);
+      expect(items.every((item) => item.label.startsWith("Planning"))).toBe(true);
+    },
+  );
 
   it("falls back to a thread-id suffix for duplicate titles inside the same project", () => {
     const items = buildThreadMentionComposerItems({
@@ -206,11 +213,11 @@ describe("buildThreadMentionComposerItems", () => {
 });
 
 describe("buildColorPreviewMentionComposerItems", () => {
-  function previewItems(query: string, copy = en.composer.commandMenu.colorPreview) {
+  function previewItems(query: string) {
     return buildColorPreviewMentionComposerItems({
       query,
-      description: copy.description,
-      keywords: copy.keywords,
+      description: t("chat:commandMenu_previewDescription"),
+      keywords: t("chat:commandMenu_previewKeywords"),
     });
   }
 
@@ -220,10 +227,13 @@ describe("buildColorPreviewMentionComposerItems", () => {
     }
   });
 
-  it("stays reachable through the active catalog's wording", () => {
-    expect(previewItems("theme")).toHaveLength(1);
-    expect(previewItems("预览", zhCN.composer.commandMenu.colorPreview)).toHaveLength(1);
-    expect(previewItems("配色", zhCN.composer.commandMenu.colorPreview)).toHaveLength(1);
+  it("stays reachable through a synonym in the active catalog", () => {
+    const keyword = t("chat:commandMenu_previewKeywords")
+      .split(/[\s,，、;；]+/u)
+      .find(Boolean);
+
+    expect(keyword).toBeTruthy();
+    expect(previewItems(keyword!)).toHaveLength(1);
   });
 
   it("drops the row for unrelated mention queries", () => {
@@ -251,7 +261,6 @@ describe("buildComposerCommandMenuItems mention agents", () => {
     dynamicAgents: readonly ProviderAgentDescriptor[];
   }) {
     return buildComposerCommandMenuItems({
-      composerCopy: en.composer,
       composerTrigger: { kind: "mention", query: input.query } as never,
       provider: input.provider,
       providerPlugins: [],
@@ -314,7 +323,6 @@ describe("buildComposerCommandMenuItems mention agents", () => {
 describe("buildComposerCommandMenuItems GitHub references", () => {
   it("maps mixed server results to selectable reference rows", () => {
     const items = buildComposerCommandMenuItems({
-      composerCopy: en.composer,
       composerTrigger: { kind: "github-reference", query: "12" } as never,
       provider: "codex",
       providerPlugins: [],

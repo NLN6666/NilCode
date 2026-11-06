@@ -7,7 +7,7 @@ import type { EditorId, ResolvedKeybindingsConfig } from "@synara/contracts";
 import type { CSSProperties } from "react";
 
 import { useCopyPathToClipboard } from "~/hooks/useCopyToClipboard";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 import { CopyIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 
@@ -42,7 +42,8 @@ const EDITED_FILE_EDITOR_ORDER: ReadonlyArray<EditorId> = [
 ];
 
 export function EditedFileRow(props: EditedFileRowProps) {
-  const copy = useMessages().chat.openIn;
+  const { t } = useTranslation();
+
   const copyPathToClipboard = useCopyPathToClipboard();
   const { absolutePath, relativePath } = resolveEditedFilePathTargets(
     props.filePath,
@@ -62,7 +63,7 @@ export function EditedFileRow(props: EditedFileRowProps) {
     >
       <button
         type="button"
-        aria-label={copy.reviewChanges(props.filePath)}
+        aria-label={t("chat:reviewChangesTo", { value0: props.filePath })}
         className="group/file-row flex min-w-0 flex-1 items-center gap-2 self-stretch bg-transparent py-1 pl-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
         onClick={props.onReview}
       >
@@ -99,8 +100,8 @@ export function EditedFileRow(props: EditedFileRowProps) {
         {...(props.availableEditors ? { availableEditors: props.availableEditors } : {})}
         openInTarget={launcherTarget}
         menuEditorOrder={EDITED_FILE_EDITOR_ORDER}
-        groupLabel={copy.openFile(props.filePath)}
-        menuLabel={copy.fileOptions(props.filePath)}
+        groupLabel={t("workspace:openFileNamed", { file: props.filePath })}
+        menuLabel={t("workspace:openFileOptions", { file: props.filePath })}
         additionalMenuItems={
           <>
             <MenuItem
@@ -110,7 +111,7 @@ export function EditedFileRow(props: EditedFileRowProps) {
               }}
             >
               <CopyIcon className={MENU_ICON_CLASS_NAME} />
-              <span>{copy.copyAbsolutePath}</span>
+              <span>{t("chat:copyAbsolutePath")}</span>
             </MenuItem>
             <MenuItem
               disabled={relativePath === null}
@@ -119,7 +120,7 @@ export function EditedFileRow(props: EditedFileRowProps) {
               }}
             >
               <CopyIcon className={MENU_ICON_CLASS_NAME} />
-              <span>{copy.copyRelativePath}</span>
+              <span>{t("chat:copyRelativePath")}</span>
             </MenuItem>
           </>
         }

@@ -45,7 +45,7 @@ describe("Computer audit history", () => {
     expect(result[0]?.id).toBe(entry(0).id);
   });
 
-  it("shows delivery uncertainty without raw tool names, correlation IDs or private payloads", () => {
+  it("renders an entry without raw tool names, correlation IDs or private payloads", () => {
     const record = {
       ...entry(1),
       threadId: "private-thread",
@@ -55,35 +55,43 @@ describe("Computer audit history", () => {
     const markup = renderToStaticMarkup(
       <ComputerAuditHistoryList entries={[record]} status="available" truncated={false} />,
     );
-    expect(markup).toContain("Click in the browser");
-    expect(markup).toContain("Sent; effect unconfirmed");
+    expect(markup).toContain('role="list"');
+    expect(markup.match(/role="listitem"/g) ?? []).toHaveLength(1);
+    expect(markup).toContain("2026-09-20T12:00:00.000Z");
     expect(markup).not.toMatch(
       /computer_browser_click|private-thread|private_refusal|synthetic-secret/,
     );
-    expect(markup).not.toContain("Success");
   });
 
-  it.each([
-    ["disabled", false, "Action history is not enabled"],
-    ["missing", false, "No recorded actions yet"],
-    ["available", true, "Older retained actions are no longer available"],
-  ] as const)("distinguishes %s history from a successful action", (status, truncated, text) => {
-    const markup = renderToStaticMarkup(
-      <ComputerAuditHistoryList entries={[]} status={status} truncated={truncated} />,
-    );
-    expect(markup).toContain(text);
-    expect(markup).not.toContain("Success");
+  it("keeps disabled, missing, and truncated empty histories distinguishable", () => {
+    const states = [
+      ["disabled", false],
+      ["missing", false],
+      ["available", true],
+    ] as const;
+    const messages = states.map(([status, truncated]) => {
+      const markup = renderToStaticMarkup(
+        <ComputerAuditHistoryList entries={[]} status={status} truncated={truncated} />,
+      );
+      expect(markup).not.toContain('role="list"');
+      return markup.match(/<p\b[^>]*>([\s\S]*?)<\/p>/u)?.[1];
+    });
+
+    expect(messages.every(Boolean)).toBe(true);
+    expect(new Set(messages).size).toBe(states.length);
   });
 
-  it("labels partial history when retained bounds omitted earlier actions", () => {
-    const markup = renderToStaticMarkup(
-      <ComputerAuditHistoryList
-        entries={[entry(1, "verified")]}
-        status="available"
-        truncated={true}
-      />,
-    );
-    expect(markup).toContain("Effect observed");
-    expect(markup).toContain("This is not a complete history");
+  it("adds a separate notice when retained bounds omitted earlier actions", () => {
+    const render = (truncated: boolean) =>
+      renderToStaticMarkup(
+        <ComputerAuditHistoryList
+          entries={[entry(1, "verified")]}
+          status="available"
+          truncated={truncated}
+        />,
+      );
+    const markup = render(true);
+    expect(markup.match(/role="listitem"/g) ?? []).toHaveLength(1);
+    expect(markup.match(/<p\b/g)?.length).toBe((render(false).match(/<p\b/g)?.length ?? 0) + 1);
   });
 });

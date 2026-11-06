@@ -9,10 +9,10 @@ import { useEffect, useState, type KeyboardEvent } from "react";
 
 import { XIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
-import { SynaraLogo } from "~/components/SynaraLogo";
+import { SynaraLogo } from "@synara/profile-ui/logo";
 
 import type { WhatsNewEntry } from "./logic";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 // The card anchors bottom-left over the thread sidebar, so it must fit inside
 // the sidebar's live width (user-resizable via --sidebar-width) rather than
@@ -75,9 +75,10 @@ export function WhatsNewPopoutCard({
   onDismiss,
   className,
 }: WhatsNewPopoutCardProps) {
-  const copy = useMessages().dialogs.whatsNew;
+  const { t } = useTranslation();
+
   const cardWidth = useSidebarFittedWidth();
-  const heroAlt = entry.heroImageAlt ?? copy.popoutTitle(currentVersion);
+  const heroAlt = entry.heroImageAlt ?? t("common:whatSNewInV", { value0: currentVersion });
   const primaryFeature = entry.features[0];
   const primaryFeatureTitle = primaryFeature?.title;
   const primaryFeatureDescription = primaryFeature?.description;
@@ -110,7 +111,7 @@ export function WhatsNewPopoutCard({
       <div
         role="button"
         tabIndex={0}
-        aria-label={copy.popoutOpen(currentVersion)}
+        aria-label={t("common:openWhatSNewInV", { value0: currentVersion })}
         onClick={onOpen}
         onKeyDown={onKeyDown}
         className={cn(
@@ -125,7 +126,7 @@ export function WhatsNewPopoutCard({
             the card's onOpen handler. */}
         <button
           type="button"
-          aria-label={copy.dismiss}
+          aria-label={t("common:dismissWhatSNew")}
           onClick={(event) => {
             event.stopPropagation();
             onDismiss();
@@ -168,17 +169,20 @@ export function WhatsNewPopoutCard({
         </div>
 
         <div className="flex flex-col px-4 pb-4 pt-2.5">
-          <p className="text-xs font-medium text-primary">{copy.popoutBadge(currentVersion)}</p>
-          <p className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-foreground">
-            {primaryFeatureTitle ?? copy.popoutTitle(currentVersion)}
+          <p className="text-ui leading-snug font-medium text-primary">
+            {t("common:newV")}
+            {currentVersion}
+          </p>
+          <p className="mt-1 line-clamp-2 text-ui-lg font-semibold leading-snug text-foreground">
+            {primaryFeatureTitle ?? t("common:whatSNewInV", { value0: currentVersion })}
           </p>
           {primaryFeatureDescription !== undefined && (
             <p className="mt-1.5 line-clamp-2 text-ui leading-relaxed text-muted-foreground/90">
               {primaryFeatureDescription}
             </p>
           )}
-          <p className="mt-2.5 text-xs font-medium text-muted-foreground transition-colors group-hover:text-foreground">
-            {copy.popoutHint} <span aria-hidden="true">→</span>
+          <p className="mt-2.5 text-ui leading-snug font-medium text-muted-foreground transition-colors group-hover:text-foreground">
+            {t("common:findOutWhatSNew")} <span aria-hidden="true">→</span>
           </p>
         </div>
       </div>

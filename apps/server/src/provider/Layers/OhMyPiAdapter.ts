@@ -48,6 +48,7 @@ import {
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
 } from "../Errors.ts";
+import * as AcpErrors from "../acp/AcpErrors.ts";
 import {
   classifyAcpPromptTurnCompletion,
   mapAcpToAdapterError,
@@ -604,6 +605,8 @@ export function makeOhMyPiAdapter(
 
           const selection =
             input.modelSelection?.provider === PROVIDER ? input.modelSelection : undefined;
+          const model = selection?.model;
+          const thinkingLevel = selection?.options?.thinkingLevel;
           const accountSettings: OhMyPiAcpRuntimeSettings = {
             ...settings,
             ...input.providerOptions?.omp,
@@ -960,8 +963,8 @@ export function makeOhMyPiAdapter(
           yield* applyOhMyPiAcpSessionConfiguration({
             runtime: acp,
             interactionMode: "default",
-            model: selection?.model,
-            thinkingLevel: selection?.options?.thinkingLevel,
+            ...(model !== undefined ? { model } : {}),
+            ...(thinkingLevel !== undefined ? { thinkingLevel } : {}),
             mapError: ({ cause, method }) =>
               mapAcpToAdapterError(PROVIDER, input.threadId, method, cause),
           }).pipe(
@@ -1031,11 +1034,13 @@ export function makeOhMyPiAdapter(
           const interactionMode = resolveAcpTurnInteractionMode(input.interactionMode);
           const selection =
             input.modelSelection?.provider === PROVIDER ? input.modelSelection : undefined;
+          const model = selection?.model;
+          const thinkingLevel = selection?.options?.thinkingLevel;
           yield* applyOhMyPiAcpSessionConfiguration({
             runtime: ctx.acp,
             interactionMode,
-            model: selection?.model,
-            thinkingLevel: selection?.options?.thinkingLevel,
+            ...(model !== undefined ? { model } : {}),
+            ...(thinkingLevel !== undefined ? { thinkingLevel } : {}),
             mapError: ({ cause, method }) =>
               mapAcpToAdapterError(PROVIDER, input.threadId, method, cause),
           });
@@ -1379,7 +1384,7 @@ export function makeOhMyPiAdapter(
       });
     const stopLaunchService: OhMyPiAdapterShape["stopLaunchService"] = (input) =>
       runLaunchControl(input.owner, input.name, OMP_EXTENSION_METHODS.launchStop, {
-        timeoutMs: input.timeoutSeconds * 1_000,
+        timeoutMs: (input.timeoutSeconds ?? 5) * 1_000,
       });
     const restartLaunchService: OhMyPiAdapterShape["restartLaunchService"] = (input) =>
       runLaunchControl(input.owner, input.name, OMP_EXTENSION_METHODS.launchRestart, {});
@@ -1399,8 +1404,11 @@ export function makeOhMyPiAdapter(
         const ctx = sessions.get(threadId);
         return ctx !== undefined && !ctx.stopped;
       });
-    const stopAll: OhMyPiAdapterShape["stopAll"] = () =>
-      Effect.forEach(Array.from(sessions.values()), stopSessionInternal, { discard: true });
+    const stopAllSessions = () =>
+      Effect.forEach(Array.from(sessions.values()), (ctx) => stopSessionInternal(ctx), {
+        discard: true,
+      });
+    const stopAll: OhMyPiAdapterShape["stopAll"] = stopAllSessions;
 
     const getComposerCapabilities: NonNullable<
       OhMyPiAdapterShape["getComposerCapabilities"]
@@ -1419,7 +1427,7 @@ export function makeOhMyPiAdapter(
 
     const withDiscoveryRuntime = <A>(
       input: OhMyPiDiscoveryInput,
-      use: (runtime: AcpSessionRuntimeShape) => Effect.Effect<A, unknown>,
+      use: (runtime: AcpSessionRuntimeShape) => Effect.Effect<A, AcpErrors.AcpError>,
     ) =>
       Effect.gen(function* () {
         const cwd = resolveSessionCwd(input.cwd, serverConfig);
@@ -1443,6 +1451,16 @@ export function makeOhMyPiAdapter(
         const controlPlane = yield* prepareControlPlane(
           agentDir,
           buildOmpProcessEnv(accountSettings),
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ProviderAdapterRequestError({
+                provider: PROVIDER,
+                method: "provider/discovery",
+                detail: `Failed to prepare the Oh My Pi process overlay: ${cause.message}`,
+                cause,
+              }),
+          ),
         );
         const runtime = yield* runtimeFactory({
           ohMyPiSettings: {
@@ -1463,7 +1481,8 @@ export function makeOhMyPiAdapter(
       }).pipe(
         Effect.scoped,
         Effect.mapError((cause) =>
-          cause instanceof ProviderAdapterValidationError
+          cause instanceof ProviderAdapterValidationError ||
+          cause instanceof ProviderAdapterRequestError
             ? cause
             : mapAcpToAdapterError(
                 PROVIDER,
@@ -1574,7 +1593,9 @@ export function makeOhMyPiAdapter(
         }),
       );
 
-    yield* Effect.addFinalizer(() => stopAll().pipe(Effect.tap(() => PubSub.shutdown(events))));
+    yield* Effect.addFinalizer(() =>
+      stopAllSessions().pipe(Effect.tap(() => PubSub.shutdown(events))),
+    );
 
     return {
       provider: PROVIDER,

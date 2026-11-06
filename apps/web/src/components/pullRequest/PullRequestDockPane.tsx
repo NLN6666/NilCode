@@ -17,8 +17,8 @@ import {
   pullRequestDetailInputKey,
 } from "./pullRequestDetail.logic";
 import { PullRequestDetailPanel } from "./PullRequestDetailPanel";
-import { useMessages } from "~/i18n/context";
 import { useHostThreadSidechatAsk } from "./useHostThreadSidechatAsk";
+import { useTranslation } from "~/i18n";
 
 export function PullRequestDockPane({
   pane,
@@ -34,12 +34,13 @@ export function PullRequestDockPane({
   onSelectPullRequest?: ((number: number) => void) | undefined;
   pollingEnabled?: boolean;
 }) {
-  const copy = useMessages().pullRequests;
+  const { t } = useTranslation();
+
   const pollingEnabled = pollingEnabledProp ?? true;
   const hostSidechat = useHostThreadSidechatAsk(hostThreadId ?? null);
   const input = pullRequestDetailInputFromPane(pane);
   if (!input) {
-    return <PanelStateMessage>{copy.selectOne}</PanelStateMessage>;
+    return <PanelStateMessage>{t("git:selectAPullRequestToOpenItHere")}</PanelStateMessage>;
   }
   return (
     <PullRequestDetailPanel

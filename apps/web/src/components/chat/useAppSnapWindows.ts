@@ -1,3 +1,4 @@
+import { readExecutionContext } from "~/lib/hosts/executionContext";
 // FILE: useAppSnapWindows.ts
 // Purpose: Subscribes to AppSnap desktop state and lists capturable windows while a picker is open.
 // Layer: Chat composer state
@@ -7,19 +8,20 @@ import type { DesktopAppSnapState, DesktopAppSnapWindowEntry, ThreadId } from "@
 import { useEffect, useRef, useState } from "react";
 
 import { attachAppSnapCapture } from "~/appSnapAttach";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 import { toastManager } from "../ui/toast";
 
 const APP_SNAP_WINDOW_LIST_ATTEMPT_LIMIT = 2;
+type ChatTranslator = ReturnType<typeof useTranslation>["t"];
 
 export function appSnapUnavailableMessage(
   state: DesktopAppSnapState,
-  copy: ReturnType<typeof useMessages>["composer"]["extras"]["appSnap"],
+  translate: ChatTranslator,
 ): string {
-  if (!state.enabled || state.status === "disabled") return copy.disabled;
-  if (state.status === "permission-required") return copy.permissionRequired;
-  if (state.status === "starting") return copy.starting;
-  return state.message?.trim() || copy.unavailable;
+  if (!state.enabled || state.status === "disabled") return translate("chat:appSnap_disabled");
+  if (state.status === "permission-required") return translate("chat:appSnap_permissionRequired");
+  if (state.status === "starting") return translate("chat:appSnap_starting");
+  return state.message?.trim() || translate("chat:appSnap_unavailable");
 }
 
 export type AppSnapWindowPicker = {
@@ -42,7 +44,7 @@ export function useAppSnapWindows(input: {
   open: boolean;
   threadId?: ThreadId;
 }): AppSnapWindowPicker {
-  const copy = useMessages().composer.extras.appSnap;
+  const { t } = useTranslation();
   const requestIdRef = useRef(0);
   const mountedRef = useRef(false);
   const [windows, setWindows] = useState<DesktopAppSnapWindowEntry[] | null>(null);
@@ -50,7 +52,7 @@ export function useAppSnapWindows(input: {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const bridge = window.desktopBridge?.appSnap;
+  const bridge = readExecutionContext()?.remote ? undefined : window.desktopBridge?.appSnap;
   const threadId = input.threadId;
   const available = Boolean(threadId && bridge);
 
@@ -104,7 +106,7 @@ export function useAppSnapWindows(input: {
         .catch((listError) => {
           if (!disposed && requestIdRef.current === requestId) {
             listedForReadyState = false;
-            setError(listError instanceof Error ? listError.message : copy.listFailed);
+            setError(listError instanceof Error ? listError.message : t("chat:appSnap_listFailed"));
           }
         });
     };
@@ -118,7 +120,7 @@ export function useAppSnapWindows(input: {
       })
       .catch((stateError) => {
         if (!disposed && requestIdRef.current === requestId) {
-          setError(stateError instanceof Error ? stateError.message : copy.listFailed);
+          setError(stateError instanceof Error ? stateError.message : t("chat:appSnap_listFailed"));
         }
       });
 
@@ -127,25 +129,25 @@ export function useAppSnapWindows(input: {
       requestIdRef.current += 1;
       unsubscribe();
     };
-  }, [bridge, copy, input.open]);
+  }, [bridge, input.open, t]);
 
   const captureWindow = (windowId: number) => {
-    const activeBridge = window.desktopBridge?.appSnap;
+    const activeBridge = readExecutionContext()?.remote ? undefined : window.desktopBridge?.appSnap;
     if (!activeBridge || !threadId || busy) return;
     setBusy(true);
     void activeBridge
       .captureWindow({ windowId })
       .then(async (capture) => {
-        await attachAppSnapCapture(threadId, capture, copy, () =>
+        await attachAppSnapCapture(threadId, capture, t, () =>
           activeBridge.acknowledgeCapture(capture.id),
         );
       })
       .catch((captureError) => {
         toastManager.add({
           type: "error",
-          title: copy.failed,
+          title: t("chat:appSnap_failed"),
           description:
-            captureError instanceof Error ? captureError.message : copy.captureFailed,
+            captureError instanceof Error ? captureError.message : t("chat:appSnap_captureFailed"),
           data: { allowCrossThreadVisibility: true },
         });
       })
@@ -155,7 +157,7 @@ export function useAppSnapWindows(input: {
   };
 
   const unavailableMessage =
-    error ?? (state && state.status !== "ready" ? appSnapUnavailableMessage(state, copy) : null);
+    error ?? (state && state.status !== "ready" ? appSnapUnavailableMessage(state, t) : null);
 
   return { available, windows, unavailableMessage, busy, captureWindow };
 }

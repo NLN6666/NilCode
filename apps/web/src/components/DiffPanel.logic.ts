@@ -8,7 +8,6 @@ import type { FileDiffMetadata } from "@pierre/diffs/react";
 
 import type { DraftThreadState } from "../composerDraftStore";
 import { formatCompareRefLabel, type RepoDiffScope } from "../repoDiffScopeStore";
-import { diff as defaultDiffCopy } from "../i18n/locales/en/diff";
 import { hasLiveTurnTailWork, isLatestTurnSettled } from "../session-logic";
 import { buildLocalDraftThread } from "./ChatView.logic";
 import { buildFileDiffRenderKey, resolveFileDiffPath } from "../lib/diffRendering";
@@ -177,24 +176,41 @@ export function resolveDiffPanelViewSource(input: {
   return { kind: "repo", scope: input.repoDiffScope };
 }
 
-/** The `diff` catalog group; defaults to English so this resolver's tests stay copy-free. */
-export type DiffCopy = typeof defaultDiffCopy;
+export type DiffPanelTranslate = (message: string, values?: Record<string, unknown>) => string;
+
+const DIFF_PANEL_SCOPE_MESSAGE_BY_SCOPE: Record<DiffPanelRepoScopeOption, string> = {
+  workingTree: "common:diff_scopeWorkingTree",
+  unstaged: "common:diff_scopeUnstaged",
+  staged: "common:diff_scopeStaged",
+  branch: "common:diff_scopeBranch",
+};
+
+export function resolveDiffPanelScopeLabel(
+  scope: RepoDiffScope,
+  compareRef: string | null | undefined,
+  translate: DiffPanelTranslate,
+): string {
+  if (scope === "ref") {
+    return translate("workspace:vs", {
+      value0: formatCompareRefLabel(compareRef ?? null),
+    });
+  }
+  return translate(DIFF_PANEL_SCOPE_MESSAGE_BY_SCOPE[scope]);
+}
 
 export function resolveDiffPanelPickerLabel(
   source: DiffPanelViewSource,
-  turnScopeIntent?: DiffPanelTurnScopeIntent,
-  compareRef?: string | null,
-  copy: DiffCopy = defaultDiffCopy,
+  turnScopeIntent: DiffPanelTurnScopeIntent | undefined,
+  compareRef: string | null | undefined,
+  translate: DiffPanelTranslate,
 ): string {
   if (source.kind === "turn") {
     if (source.turnId !== null) {
-      return copy.turnDiff;
+      return translate("common:diff_turnDiff");
     }
-    return turnScopeIntent === "last" ? copy.turns.last : copy.turns.all;
+    return translate(turnScopeIntent === "last" ? "common:diff_lastTurn" : "common:diff_allTurns");
   }
-  return source.scope === "ref"
-    ? copy.scopes.compareRef(formatCompareRefLabel(compareRef ?? null))
-    : copy.scopes[source.scope];
+  return resolveDiffPanelScopeLabel(source.scope, compareRef, translate);
 }
 
 export function resolveSelectedTurnSummary<T extends { turnId: TurnId }>(

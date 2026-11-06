@@ -22,6 +22,7 @@ import {
   isFormSubmittable,
   type AutomationFormState,
 } from "./automationForm";
+import type { AutomationTranslator } from "./automationFailurePolicy";
 import { stopWhenFromCompletionPolicy } from "@synara/shared/automationCompletionPolicy";
 import { automationRequiresTargetThread } from "@synara/shared/automationMode";
 import {
@@ -101,6 +102,7 @@ function stripTrailingAutomationFiller(message: string): string {
 // generator could not report what was missing.
 export function automationClarificationPrompt(
   missingFields: readonly ServerAutomationIntentMissingField[],
+  translate: AutomationTranslator,
 ): string {
   // When the generator could not say what was missing (timeout/failure on a bare
   // request), ask for both task and schedule so setup can still recover instead of
@@ -110,17 +112,17 @@ export function automationClarificationPrompt(
   const needsTask = fields.includes("taskPrompt");
   const needsSchedule = fields.includes("schedule");
   if (needsTask && needsSchedule) {
-    return 'Sure, what should this automation do, and how often should it run? For example: "every weekday at 9am, summarize my open PRs."';
+    return translate("automation:clarifyTaskSchedule");
   }
   if (needsTask) {
     // Cadence is already known, so asking for it again risks the user repeating it and
     // leaving a duplicate schedule phrase in the saved task.
-    return "What should this automation do? For example: summarize my open PRs, or check the build.";
+    return translate("automation:clarifyTask");
   }
   if (needsSchedule) {
-    return "How often should this automation run? For example: every 6 hours, weekdays at 9am, or daily at 18:00.";
+    return translate("automation:clarifySchedule");
   }
-  return "A couple more details: what should this automation do, and how often should it run?";
+  return translate("automation:clarifyDetails");
 }
 
 // ─── ENTRY POINT ─────────────────────────────────────────────
@@ -266,6 +268,8 @@ export function buildComposerAutomationDraft(input: {
   readonly selectedModelSelection: ModelSelection;
   readonly targetThreadId: ThreadId | null;
   readonly hasEphemeralContext: boolean;
+  readonly formatLocale: string;
+  readonly translate: AutomationTranslator;
 }): ComposerAutomationDraftDecision {
   const { intent: automationIntent, mode: automationMode } = input.resolution;
   const automationStopWhen = stopWhenFromCompletionPolicy(automationIntent.completionPolicy);
@@ -317,7 +321,7 @@ export function buildComposerAutomationDraft(input: {
   const needsDraftReview =
     input.resolution.requiresReview ||
     input.resolution.generatedNeedsConfirmation ||
-    !isFormSubmittable(nextForm) ||
+    !isFormSubmittable(nextForm, input.formatLocale, input.translate) ||
     hasBlockingAutomationDraftWarnings(warnings, acknowledgedWarningIds);
 
   return {

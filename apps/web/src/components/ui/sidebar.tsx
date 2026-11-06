@@ -20,7 +20,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { Schema } from "effect";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "calc(100vw - var(--spacing(3)))";
@@ -45,7 +45,7 @@ const SIDEBAR_OFFCANVAS_MOTION_CLASS = "duration-300 ease-[cubic-bezier(0.32,0.7
  */
 const SIDEBAR_OFFCANVAS_MOTION_SUPPRESSED_CLASS = "transition-none! duration-0!";
 
-type SidebarContextProps = {
+export type SidebarContextProps = {
   state: "expanded" | "collapsed";
   open: boolean;
   setOpen: (open: boolean) => void;
@@ -106,6 +106,7 @@ function SidebarProvider({
   defaultOpen: defaultOpenProp,
   open: openProp,
   onOpenChange: setOpenProp,
+  controls,
   className,
   style,
   children,
@@ -114,6 +115,8 @@ function SidebarProvider({
   defaultOpen?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Embedded workspace panes share their controller's sidebar, including mobile controls. */
+  controls?: SidebarContextProps | null;
 }) {
   const defaultOpen = defaultOpenProp ?? true;
   const isMobile = useIsMobile();
@@ -158,7 +161,7 @@ function SidebarProvider({
   );
 
   return (
-    <SidebarContext.Provider value={contextValue}>
+    <SidebarContext.Provider value={controls ?? contextValue}>
       <div
         className={cn(
           "group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
@@ -254,7 +257,8 @@ function Sidebar({
   /** Desktop rail belongs to the outer shell, outside the clipped content surface. */
   rail?: React.ReactNode;
 }) {
-  const copy = useMessages().app.ui;
+  const { t } = useTranslation();
+
   const side = sideProp ?? "left";
   const variant = variantProp ?? "sidebar";
   const collapsible = collapsibleProp ?? "offcanvas";
@@ -309,8 +313,8 @@ function Sidebar({
             }
           >
             <SheetHeader className="sr-only">
-              <SheetTitle>{copy.sidebar}</SheetTitle>
-              <SheetDescription>{copy.sidebarDescription}</SheetDescription>
+              <SheetTitle>{t("workspace:sidebar")}</SheetTitle>
+              <SheetDescription>{t("workspace:displaysTheMobileSidebar")}</SheetDescription>
             </SheetHeader>
             <div className={cn("flex h-full w-full flex-col", innerClassName)}>{children}</div>
           </SheetPopup>
@@ -319,10 +323,12 @@ function Sidebar({
     );
   }
 
+  // The mobile branch already follows the controller viewport. CSS breakpoints here
+  // would hide a desktop dock when its embedded workspace is narrower than the window.
   return (
     <SidebarInstanceContext.Provider value={instanceContextValue}>
       <div
-        className="group peer hidden text-sidebar-foreground md:block"
+        className="group peer text-sidebar-foreground"
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-side={side}
         data-slot="sidebar"
@@ -349,7 +355,7 @@ function Sidebar({
             // (layout): a fixed panel relayouts its whole subtree per frame otherwise,
             // which read as a janky close on heavy sidebar content. The gap still
             // animates width — reserving layout is its job — but its subtree is empty.
-            "fixed inset-y-0 z-0 hidden h-svh w-(--sidebar-width) transition-[left,right,width,translate] duration-200 ease-linear motion-reduce:transition-none md:flex",
+            "fixed inset-y-0 z-0 flex h-svh w-(--sidebar-width) transition-[left,right,width,translate] duration-200 ease-linear motion-reduce:transition-none",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:-translate-x-full"
               : "right-0 group-data-[collapsible=offcanvas]:translate-x-full",
@@ -388,7 +394,8 @@ function Sidebar({
 }
 
 function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
-  const triggerCopy = useMessages().app.ui;
+  const { t } = useTranslation();
+
   const { toggleSidebar, isMobile, open, openMobile } = useSidebar();
   // The glyph shows the sidebar's current state: a full left column while it is open, a
   // slim handle once it is collapsed.
@@ -408,7 +415,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
       {...props}
     >
       <SidebarStateIcon aria-hidden className="size-4" />
-      <span className="sr-only">{triggerCopy.toggleSidebar}</span>
+      <span className="sr-only">{t("workspace:toggleSidebar")}</span>
     </Button>
   );
 }
@@ -436,6 +443,21 @@ function clampSidebarWidth(width: number, options: SidebarResolvedResizableOptio
   return Math.max(options.minWidth, Math.min(width, options.maxWidth));
 }
 
+// Measure proposed widths without the layout gap's open/close animation masking overflow.
+// The host probe resets its proposed width before returning; settle that reset before restoring motion.
+function probeSidebarWidth(wrapper: HTMLElement, probe: () => boolean): boolean {
+  const gap = wrapper.querySelector<HTMLElement>("[data-slot='sidebar-gap']");
+  if (!gap) return probe();
+  const previousDuration = gap.style.transitionDuration;
+  gap.style.transitionDuration = "0ms";
+  try {
+    return probe();
+  } finally {
+    gap.getBoundingClientRect();
+    gap.style.transitionDuration = previousDuration;
+  }
+}
+
 function SidebarRail({
   placement: placementProp,
   className,
@@ -449,6 +471,8 @@ function SidebarRail({
   /** `content-seam` sits on the chat column edge above the card; `sidebar-shell` stays on the sidebar container. */
   placement?: "sidebar-shell" | "content-seam";
 }) {
+  const { t } = useTranslation();
+
   const placement = placementProp ?? "sidebar-shell";
   const { open, toggleSidebar } = useSidebar();
   const sidebarInstance = React.useContext(SidebarInstanceContext);
@@ -472,8 +496,8 @@ function SidebarRail({
   } | null>(null);
   const resolvedResizable = sidebarInstance?.resizable ?? null;
   const canResize = resolvedResizable !== null && open;
-  const railLabel = canResize ? "Resize Sidebar" : "Toggle Sidebar";
-  const railTitle = canResize ? "Drag to resize sidebar" : "Toggle Sidebar";
+  const railLabel = canResize ? t("workspace:resizeSidebar") : t("workspace:toggleSidebar");
+  const railTitle = canResize ? t("workspace:dragToResizeSidebar") : t("workspace:toggleSidebar");
 
   const stopResize = React.useCallback(
     (pointerId: number) => {
@@ -655,9 +679,33 @@ function SidebarRail({
     const storedWidth = getLocalStorageItem(resolvedResizable.storageKey, Schema.Finite);
     if (storedWidth === null) return;
     const clampedWidth = clampSidebarWidth(storedWidth, resolvedResizable);
+    const sidebarRoot =
+      rail.closest<HTMLElement>("[data-slot='sidebar']") ??
+      wrapper.querySelector<HTMLElement>("[data-slot='sidebar']");
+    if (!sidebarRoot) return;
+    const currentWidth =
+      sidebarRoot
+        .querySelector<HTMLElement>("[data-slot='sidebar-container']")
+        ?.getBoundingClientRect().width ?? clampedWidth;
+    // Restoring a persisted resize obeys the same host bounds as dragging it.
+    if (
+      !probeSidebarWidth(
+        wrapper,
+        () =>
+          resolvedResizable.shouldAcceptWidth?.({
+            currentWidth,
+            nextWidth: clampedWidth,
+            rail,
+            side,
+            sidebarRoot,
+            wrapper,
+          }) ?? true,
+      )
+    )
+      return;
     wrapper.style.setProperty("--sidebar-width", `${clampedWidth}px`);
     resolvedResizable.onResize?.(clampedWidth);
-  }, [resolvedResizable]);
+  }, [resolvedResizable, side]);
 
   React.useEffect(() => {
     return () => {
@@ -1092,6 +1140,7 @@ function SidebarMenuSubButton({
 }
 
 export {
+  probeSidebarWidth,
   Sidebar,
   SidebarContent,
   SidebarFooter,

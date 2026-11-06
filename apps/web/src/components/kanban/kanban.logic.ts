@@ -13,7 +13,6 @@ import type {
 } from "@synara/contracts";
 import { buildPromptThreadTitleFallback } from "@synara/shared/chatThreads";
 import {
-  KANBAN_COLUMN_V2_LABELS,
   deriveKanbanAttention as deriveKanbanAttentionShared,
   deriveKanbanColumnV2 as deriveKanbanColumnV2Shared,
   hasKanbanLiveWork as hasKanbanLiveWorkShared,
@@ -31,8 +30,6 @@ import {
 } from "../../session-logic";
 import type { Project, SidebarThreadSummary } from "../../types";
 
-import { workspace as defaultWorkspaceCopy } from "~/i18n/locales/en/workspace";
-
 /**
  * Web column vocabulary. The classic path speaks draft/inProgress/done; the v2
  * path (S1-P5) additionally renders `awaitingYou`. Classic derivation and label
@@ -44,15 +41,20 @@ export type KanbanColumnKey = KanbanClassicColumnKey | "awaitingYou";
 /** Classic 3-column vocabulary — kept for legacy board builds. */
 export type KanbanClassicColumnKey = "draft" | "inProgress" | "done";
 
-export type KanbanCopy = typeof defaultWorkspaceCopy.kanban;
+export const KANBAN_COLUMN_LABEL_KEYS: Readonly<Record<KanbanColumnKey, string>> = {
+  draft: "git:column_draft",
+  inProgress: "workspace:kanban_columnInProgress",
+  awaitingYou: "workspace:kanban_columnAwaitingYou",
+  done: "git:detail_done",
+};
 
-export function kanbanColumnLabels(
-  copy: KanbanCopy = defaultWorkspaceCopy.kanban,
-): Record<KanbanColumnKey, string> {
-  return copy.columns;
-}
-
-export const KANBAN_FALLBACK_DRAFT_TITLE = defaultWorkspaceCopy.kanban.fallbackDraftTitle;
+export const KANBAN_ATTENTION_LABEL_KEYS: Readonly<Record<KanbanAttentionFlag, string>> = {
+  failed: "workspace:kanban_attentionFailed",
+  stuck: "workspace:kanban_attentionStuck",
+  "awaiting-approval": "workspace:pendingApproval",
+  "awaiting-input": "workspace:awaitingInput",
+  "needs-review": "common:list_needsReview",
+};
 
 /** Pending composer content for one thread, projected from the composer draft store. */
 export interface KanbanComposerDraftSnapshot {
@@ -165,6 +167,8 @@ export interface KanbanCard {
   projectId: ProjectId;
   column: KanbanColumnKey;
   title: string;
+  /** Key for synthesized, non-prompt titles; resolved by the localized UI. */
+  titleKey?: string | undefined;
   provider: ProviderKind | null;
   providerInstanceId: ProviderInstanceId | null;
   /** Terminal-first thread — renders the terminal glyph instead of a provider icon. */
@@ -190,11 +194,18 @@ export interface KanbanCard {
   /**
    * v2-path attention flags (failed / stuck / awaiting-approval / awaiting-input /
    * needs-review). Present only for v2 boards; classic cards never set it. Display
-   * copy maps through `KANBAN_ATTENTION_LABELS` at render time.
+   * copy maps through `KANBAN_ATTENTION_LABEL_KEYS` at render time.
    */
   attention?: KanbanAttentionFlag[] | undefined;
   /** needs-review (open PR per the live PR view) — set on v2-path thread cards. */
   needsReview?: boolean | undefined;
+}
+
+export function resolveKanbanCardTitle(
+  card: Pick<KanbanCard, "title" | "titleKey">,
+  translate: (key: string) => string,
+): string {
+  return card.titleKey ? translate(card.titleKey) : card.title;
 }
 
 export interface KanbanProjectBoard {
@@ -553,7 +564,7 @@ function buildUnsentPromptCard(
   if (composerDraft.prompt.length === 0 && !composerDraft.hasAttachments) {
     return null;
   }
-  const titleSeed = composerDraft.prompt.length > 0 ? composerDraft.prompt : "Attached references";
+  const titleSeed = composerDraft.prompt;
   const threadProvider = isTerminal
     ? null
     : (thread.session?.provider ?? thread.modelSelection.provider);
@@ -562,7 +573,10 @@ function buildUnsentPromptCard(
     threadId: thread.id,
     projectId: thread.projectId,
     column: "draft",
-    title: buildPromptThreadTitleFallback(titleSeed),
+    title: titleSeed.length > 0 ? buildPromptThreadTitleFallback(titleSeed) : "",
+    ...(titleSeed.length === 0 && composerDraft.hasAttachments
+      ? { titleKey: "common:attachedReferences" }
+      : {}),
     provider: composerDraft.provider ?? threadProvider,
     providerInstanceId:
       composerDraft.providerInstanceId ??
@@ -596,11 +610,14 @@ function buildLocalDraftCard(
     projectId: draftThread.projectId,
     column: "draft",
     title:
-      composerDraft.prompt.length > 0
-        ? buildPromptThreadTitleFallback(composerDraft.prompt)
-        : composerDraft.hasAttachments
-          ? "Attached references"
-          : KANBAN_FALLBACK_DRAFT_TITLE,
+      composerDraft.prompt.length > 0 ? buildPromptThreadTitleFallback(composerDraft.prompt) : "",
+    ...(composerDraft.prompt.length === 0
+      ? {
+          titleKey: composerDraft.hasAttachments
+            ? "common:attachedReferences"
+            : "common:kanban_newTask",
+        }
+      : {}),
     provider: composerDraft.provider,
     providerInstanceId: composerDraft.providerInstanceId,
     isTerminal: false,
@@ -630,10 +647,8 @@ function forceOptimisticInProgressCard(
     ...card,
     column: "inProgress",
     isOptimisticDispatch: true,
-    title:
-      card.title === KANBAN_FALLBACK_DRAFT_TITLE && entry.title.length > 0
-        ? entry.title
-        : card.title,
+    title: card.titleKey && entry.title.length > 0 ? entry.title : card.title,
+    titleKey: card.titleKey && entry.title.length > 0 ? undefined : card.titleKey,
     draftPrompt: "",
     draftHasAttachments: false,
     provider: entry.provider ?? card.provider,
@@ -1009,8 +1024,14 @@ export function shouldShowReviewFoldToggle(hasRevealed: boolean, hiddenCount: nu
  * Button copy for the needs-review reveal: "Show N more" while there is a fold,
  * "Show fewer" once the tail is revealed.
  */
-export function resolveReviewFoldToggleLabel(hasRevealed: boolean, hiddenCount: number): string {
-  return hasRevealed ? "Show fewer" : `Show ${hiddenCount} more`;
+export function resolveReviewFoldToggleLabel(
+  hasRevealed: boolean,
+  hiddenCount: number,
+  translate: (key: string, values?: Record<string, unknown>) => string,
+): string {
+  return hasRevealed
+    ? translate("common:showFewer")
+    : translate("chat:showMore", { value0: hiddenCount });
 }
 
 const OVERVIEW_RENDER_CAP = 20;

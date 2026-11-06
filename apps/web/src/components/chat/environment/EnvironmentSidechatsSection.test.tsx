@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { EnvironmentSidechatsSection } from "./EnvironmentSidechatsSection";
 
 describe("EnvironmentSidechatsSection", () => {
-  it("keeps creation discoverable and marks expired conversations", () => {
+  it("renders create, open, and delete actions while marking expired conversations", () => {
     const markup = renderToStaticMarkup(
       <EnvironmentSidechatsSection
         sidechats={[
@@ -21,11 +21,9 @@ describe("EnvironmentSidechatsSection", () => {
       />,
     );
 
-    expect(markup).toContain("Side chats");
-    expect(markup).toContain("Start side chat");
     expect(markup).toContain("Old investigation");
-    expect(markup).toContain("Expired");
-    expect(markup).toContain("Delete side chat Old investigation");
+    expect(markup).toContain("opacity-60");
+    expect(markup.match(/<button\b/g) ?? []).toHaveLength(3);
   });
 
   it("renders nothing when there are no side chats yet", () => {

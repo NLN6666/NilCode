@@ -33,7 +33,7 @@ describe("ReviewFileTreePanel", () => {
       />,
     );
 
-    expect(markup).toContain('placeholder="Filter files..."');
+    expect(markup).toMatch(/<input\b(?=[^>]*\baria-label="[^"]+")(?=[^>]*\btype="text")[^>]*>/);
     // Top-level directory plus the compressed single-child chains.
     expect(markup).toContain("apps");
     expect(markup).toContain("server/src");
@@ -69,7 +69,9 @@ describe("ReviewFileTreePanel", () => {
       />,
     );
 
-    expect(markup).toContain("No files in this diff.");
+    expect(markup).toContain('class="flex w-full items-center justify-center text-center');
+    expect(markup).toContain("<p>");
+    expect(markup).not.toContain('role="status"');
   });
 
   it("shows a loading state while the diff is loading with no files yet", () => {
@@ -83,7 +85,7 @@ describe("ReviewFileTreePanel", () => {
       />,
     );
 
-    expect(markup).toContain("Loading changed files...");
-    expect(markup).not.toContain("No files in this diff.");
+    expect(markup).toContain('role="status"');
+    expect(markup).not.toContain('type="button"');
   });
 });

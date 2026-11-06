@@ -7,7 +7,7 @@ import { runningSubagentRosterItem, subagentRosterItem } from "./subagentRosterF
 const noop = () => undefined;
 
 describe("EnvironmentSubagentsSection", () => {
-  it("summarizes running and done subagents in one row that opens the list", () => {
+  it("shows live agents ahead of completed avatars in the list-opening row", () => {
     const markup = renderToStaticMarkup(
       <EnvironmentSubagentsSection
         roster={{
@@ -18,13 +18,13 @@ describe("EnvironmentSubagentsSection", () => {
       />,
     );
 
-    expect(markup).toContain("Subagents");
-    expect(markup).toContain("Open subagents: 2 running, 3 done");
-    // Only the live agents' avatars lead the summary.
+    expect(markup).toContain('data-testid="environment-subagents-section"');
+    expect(markup.match(/<button\b/g) ?? []).toHaveLength(1);
+    // Only the live agents' avatars lead the summary when both groups exist.
     expect(markup.match(/<svg/g)).toHaveLength(2);
   });
 
-  it("distinguishes queued agents from running ones", () => {
+  it("includes queued agents in the active avatar stack", () => {
     const markup = renderToStaticMarkup(
       <EnvironmentSubagentsSection
         roster={{
@@ -37,10 +37,12 @@ describe("EnvironmentSubagentsSection", () => {
         onOpenList={noop}
       />,
     );
-    expect(markup).toContain("Open subagents: 1 running, 1 queued");
+    expect(markup).toContain('data-testid="environment-subagents-section"');
+    expect(markup.match(/<button\b/g) ?? []).toHaveLength(1);
+    expect(markup.match(/<svg/g)).toHaveLength(2);
   });
 
-  it("counts every subagent once none is running", () => {
+  it("uses a capped completed-avatar stack when no agent is active", () => {
     const markup = renderToStaticMarkup(
       <EnvironmentSubagentsSection
         roster={{
@@ -51,8 +53,8 @@ describe("EnvironmentSubagentsSection", () => {
       />,
     );
 
-    expect(markup).toContain("4 subagents");
-    expect(markup).not.toContain("done");
+    expect(markup).toContain('data-testid="environment-subagents-section"');
+    expect(markup.match(/<button\b/g) ?? []).toHaveLength(1);
     expect(markup.match(/<svg/g)).toHaveLength(3);
   });
 

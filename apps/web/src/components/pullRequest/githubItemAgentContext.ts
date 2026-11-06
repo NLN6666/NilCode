@@ -13,6 +13,7 @@ import type {
 } from "@synara/contracts";
 
 import type { GitHubItemCardSource } from "~/components/chat/environment/environmentPullRequest.logic";
+import { t } from "~/i18n";
 import { pullRequestStateLabel } from "./PullRequestStateGlyph";
 import { resolveIssueStatePresentation } from "./pullRequestStatePresentation";
 
@@ -24,6 +25,7 @@ export interface GitHubItemAgentTarget {
 
 export function githubItemCardSourceFromPullRequest(
   detail: PullRequestDetail,
+  translate: typeof t = t,
 ): GitHubItemCardSource {
   return {
     itemKind: "pullRequest",
@@ -31,7 +33,7 @@ export function githubItemCardSourceFromPullRequest(
     title: detail.title,
     url: detail.url,
     repository: detail.repository,
-    stateLabel: pullRequestStateLabel(detail.state, detail.isDraft, detail.mergeability),
+    stateLabel: pullRequestStateLabel(detail.state, detail.isDraft, detail.mergeability, translate),
     author: detail.author?.login ?? null,
     labels: detail.labels.map((label) => label.name),
     body: detail.body,

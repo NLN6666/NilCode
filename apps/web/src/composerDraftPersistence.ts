@@ -420,6 +420,8 @@ const PersistedComposerDraftStoreState = Schema.Struct({
     Schema.Record(Schema.String, Schema.optional(ModelSelection)),
   ),
   stickyActiveProvider: Schema.optionalKey(Schema.NullOr(ProviderInstanceId)),
+  // A cache of the server's shared new-chat access mode.
+  stickyRuntimeMode: Schema.optionalKey(Schema.NullOr(RuntimeMode)),
 });
 
 export type PersistedComposerDraftStoreState = typeof PersistedComposerDraftStoreState.Type;
@@ -430,6 +432,7 @@ const EMPTY_PERSISTED_DRAFT_STORE_STATE = Object.freeze<PersistedComposerDraftSt
   projectDraftThreadIdByProjectId: {},
   stickyModelSelectionByProvider: {},
   stickyActiveProvider: null,
+  stickyRuntimeMode: null,
 });
 
 function normalizePersistedPromptHistorySavedDraft(
@@ -1660,6 +1663,7 @@ export function partializeComposerDraftStoreState(
     projectDraftThreadIdByProjectId: state.projectDraftThreadIdByProjectId,
     stickyModelSelectionByProvider: state.stickyModelSelectionByProvider,
     stickyActiveProvider: state.stickyActiveProvider,
+    stickyRuntimeMode: state.stickyRuntimeMode,
   };
 }
 
@@ -1725,6 +1729,9 @@ export function normalizeCurrentPersistedComposerDraftStoreState(
     projectDraftThreadIdByProjectId,
     stickyModelSelectionByProvider,
     stickyActiveProvider,
+    stickyRuntimeMode: Schema.is(RuntimeMode)(normalizedPersistedState.stickyRuntimeMode)
+      ? normalizedPersistedState.stickyRuntimeMode
+      : null,
   };
 }
 

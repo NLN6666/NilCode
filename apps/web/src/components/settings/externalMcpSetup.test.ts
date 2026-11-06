@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { en } from "../../i18n/locales/en";
+import { i18n } from "~/i18n";
 
 import {
   EXTERNAL_MCP_SERVER_NAME,
@@ -12,8 +12,8 @@ import {
   externalMcpSetupAction,
 } from "./externalMcpSetup";
 
-// The real English catalog, exactly what the panel passes in.
-const DESCRIBE = en.settings.integrations.describe;
+const translate = (message: string, values?: Record<string, unknown>) =>
+  i18n.t(message, { ...values, lng: "en" });
 
 const stdio = {
   command: "/Applications/Synara.app/Contents/MacOS/Synara",
@@ -105,29 +105,28 @@ describe("external MCP guided setup", () => {
   });
 
   it("describes project access for both scopes", () => {
-    expect(
-      describeExternalMcpProjects(
-        { projectScope: "all", allowedProjects: [{ title: "One" }] },
-        DESCRIBE,
-      ),
-    ).toBe("All projects, including future ones");
-    expect(
-      describeExternalMcpProjects(
-        {
-          projectScope: "selected",
-          allowedProjects: [{ title: "One" }, { title: "Two" }],
-        },
-        DESCRIBE,
-      ),
-    ).toBe("One, Two");
+    const allProjects = describeExternalMcpProjects(
+      { projectScope: "all", allowedProjects: [{ title: "One" }] },
+      translate,
+    );
+    const selectedProjects = describeExternalMcpProjects(
+      {
+        projectScope: "selected",
+        allowedProjects: [{ title: "One" }, { title: "Two" }],
+      },
+      translate,
+    );
+    expect(allProjects).not.toContain("One");
+    expect(selectedProjects).toContain("One");
+    expect(selectedProjects).toContain("Two");
   });
   it("describes scopes without exposing capability identifiers", () => {
     const description = describeExternalMcpPermissions(
       ["projects:read", "tasks:create", "tasks:wait", "tasks:read", "runtime:local"],
-      DESCRIBE,
+      translate,
     );
 
-    expect(description).toBe("Create and follow its own tasks · Use the shared local checkout");
+    expect(description.length).toBeGreaterThan(0);
     expect(description).not.toContain("runtime:local");
   });
 

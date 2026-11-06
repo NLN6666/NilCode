@@ -21,6 +21,11 @@ import {
   DEFAULT_MODEL_BY_PROVIDER,
 } from "./model";
 import { ProviderInstanceId } from "./providerInstance";
+import {
+  UsageLimitRecovery,
+  UsageLimitRecoveryFields,
+  UsageLimitRecoverySource,
+} from "./usageLimit";
 import { ProviderMentionReference, ProviderSkillReference } from "./providerDiscovery";
 import { AsyncUserInput, AsyncUserInputQuestions, AsyncUserInputResponse } from "./asyncUserInput";
 import { AdvisorThreadOverride } from "./baseSchemas";
@@ -1124,6 +1129,7 @@ export const PendingClaudeCacheReview = Schema.Struct({
 export type PendingClaudeCacheReview = typeof PendingClaudeCacheReview.Type;
 
 export const OrchestrationThread = Schema.Struct({
+  ...UsageLimitRecoveryFields,
   /** Durable project-import provenance; ordinary chats never request imported history. */
   isProjectImport: Schema.optional(Schema.Boolean),
   claudeCacheReview: Schema.optional(Schema.NullOr(PendingClaudeCacheReview)),
@@ -1235,6 +1241,7 @@ export const OrchestrationThread = Schema.Struct({
 export type OrchestrationThread = typeof OrchestrationThread.Type;
 
 export const OrchestrationThreadShell = Schema.Struct({
+  ...UsageLimitRecoveryFields,
   /** Durable project-import provenance; ordinary chats never request imported history. */
   isProjectImport: Schema.optional(Schema.Boolean),
   claudeCacheReview: Schema.optional(Schema.NullOr(PendingClaudeCacheReview)),
@@ -1841,6 +1848,7 @@ const ThreadClaudeCacheCompactedCommand = Schema.Struct({
 const TurnInterruptRequestedBy = Schema.Literals(["user", "agent", "system"]);
 
 const ThreadTurnInterruptCommand = Schema.Struct({
+  usageLimitRecoveryId: Schema.optional(TrimmedNonEmptyString),
   type: Schema.Literal("thread.turn.interrupt"),
   commandId: CommandId,
   threadId: ThreadId,
@@ -2036,6 +2044,7 @@ export const ClientOrchestrationCommand = Schema.Union([
 export type ClientOrchestrationCommand = typeof ClientOrchestrationCommand.Type;
 
 const ThreadSessionSetCommand = Schema.Struct({
+  usageLimitRecovery: Schema.optional(UsageLimitRecovery),
   type: Schema.Literal("thread.session.set"),
   commandId: CommandId,
   threadId: ThreadId,
@@ -2171,7 +2180,88 @@ const ThreadSidechatExpireCommand = Schema.Struct({
   expiredAt: IsoDateTime,
 });
 
+const ThreadUsageLimitAdmitCommand = Schema.Struct({
+  recoveryId: Schema.optional(TrimmedNonEmptyString),
+  type: Schema.Literal("thread.usage-limit.admit"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  admissionSequence: NonNegativeInt,
+  policyEpoch: NonNegativeInt,
+  createdAt: IsoDateTime,
+});
+const ThreadUsageLimitSourceCommand = Schema.Struct({
+  expectedBindingKey: Schema.optional(Schema.String),
+  type: Schema.Literal("thread.usage-limit.source"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  source: UsageLimitRecoverySource,
+  createdAt: IsoDateTime,
+});
+const ThreadUsageLimitScheduleCommand = Schema.Struct({
+  type: Schema.Literal("thread.usage-limit.schedule"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  recovery: UsageLimitRecovery,
+  createdAt: IsoDateTime,
+});
+const ThreadUsageLimitResumeCommand = Schema.Struct({
+  type: Schema.Literal("thread.usage-limit.resume"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  recoveryId: TrimmedNonEmptyString,
+  policyEpoch: NonNegativeInt,
+  createdAt: IsoDateTime,
+});
+const ThreadUsageLimitDeferCommand = Schema.Struct({
+  type: Schema.Literal("thread.usage-limit.defer"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  recoveryId: TrimmedNonEmptyString,
+  createdAt: IsoDateTime,
+});
+const ThreadUsageLimitStartedCommand = Schema.Struct({
+  type: Schema.Literal("thread.usage-limit.started"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  recoveryId: TrimmedNonEmptyString,
+  turnId: TurnId,
+  createdAt: IsoDateTime,
+});
+const ThreadUsageLimitFinishCommand = Schema.Struct({
+  type: Schema.Literal("thread.usage-limit.finish"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  recoveryId: TrimmedNonEmptyString,
+  turnId: TurnId,
+  createdAt: IsoDateTime,
+});
+const ThreadUsageLimitCancelTurnCommand = Schema.Struct({
+  type: Schema.Literal("thread.usage-limit.cancel-turn"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  recoveryId: TrimmedNonEmptyString,
+  sourceTurnId: TurnId,
+  turnId: TurnId,
+  createdAt: IsoDateTime,
+});
+const ThreadUsageLimitCancelCommand = Schema.Struct({
+  type: Schema.Literal("thread.usage-limit.cancel"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  recoveryId: Schema.optional(TrimmedNonEmptyString),
+  createdAt: IsoDateTime,
+});
+
 const InternalOrchestrationCommand = Schema.Union([
+  ThreadUsageLimitAdmitCommand,
+  ThreadUsageLimitSourceCommand,
+  ThreadUsageLimitScheduleCommand,
+  ThreadUsageLimitDeferCommand,
+  ThreadUsageLimitStartedCommand,
+  ThreadUsageLimitFinishCommand,
+  ThreadUsageLimitResumeCommand,
+  ThreadUsageLimitCancelCommand,
+  ThreadUsageLimitCancelTurnCommand,
   ThreadClaudeCacheCompactedCommand,
   ThreadClaudeCacheSetCommand,
   ThreadSessionSetCommand,
@@ -2415,6 +2505,7 @@ export const ThreadProviderHandoff = Schema.Struct({
 export type ThreadProviderHandoff = typeof ThreadProviderHandoff.Type;
 
 export const ThreadMetaUpdatedPayload = Schema.Struct({
+  ...UsageLimitRecoveryFields,
   threadId: ThreadId,
   title: Schema.optional(TrimmedNonEmptyString),
   modelSelection: Schema.optional(ModelSelection),
@@ -2535,6 +2626,7 @@ export const ThreadClaudeCacheResponseRequestedPayload = Schema.Struct({
 });
 
 export const ThreadTurnStartRequestedPayload = Schema.Struct({
+  usageLimitRecovery: Schema.optional(UsageLimitRecovery),
   threadId: ThreadId,
   messageId: MessageId,
   // Server-owned pursuit identity for the visible first goal turn, retained by queue replay.
@@ -2559,6 +2651,7 @@ export const ThreadTurnStartRequestedPayload = Schema.Struct({
 export const ThreadTurnQueuedPayload = ThreadTurnStartRequestedPayload;
 
 export const ThreadGoalContinuationRequestedPayload = Schema.Struct({
+  usageLimitRecovery: Schema.optional(UsageLimitRecovery),
   threadId: ThreadId,
   goalStartedAt: Schema.NullOr(IsoDateTime),
   trigger: ThreadGoalContinuationTrigger,
@@ -2567,6 +2660,9 @@ export const ThreadGoalContinuationRequestedPayload = Schema.Struct({
 });
 
 export const ThreadTurnInterruptRequestedPayload = Schema.Struct({
+  usageLimitRecoveryCancelledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  usageLimitRecoveryCancelledTurnId: Schema.optional(Schema.NullOr(TurnId)),
+  usageLimitRecoveryId: Schema.optional(TrimmedNonEmptyString),
   threadId: ThreadId,
   turnId: Schema.optional(TurnId),
   requestedBy: Schema.optional(TurnInterruptRequestedBy),
@@ -2648,6 +2744,8 @@ export const ThreadMessageEditResendRequestedPayload = Schema.Struct({
 });
 
 export const ThreadSessionStopRequestedPayload = Schema.Struct({
+  usageLimitRecoveryCancelledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  usageLimitRecoveryCancelledTurnId: Schema.optional(Schema.NullOr(TurnId)),
   threadId: ThreadId,
   createdAt: IsoDateTime,
 });

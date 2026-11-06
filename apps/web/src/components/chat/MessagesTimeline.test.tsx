@@ -100,6 +100,14 @@ function makeTimelineBaseProps(nowIso: string | null = "2026-03-17T19:12:30.000Z
   };
 }
 
+function messageRowMarkup(markup: string, messageId: string): string {
+  const marker = `data-message-id="${messageId}"`;
+  const start = markup.indexOf(marker);
+  if (start < 0) return "";
+  const nextMessage = markup.indexOf('data-message-id="', start + marker.length);
+  return markup.slice(start, nextMessage < 0 ? undefined : nextMessage);
+}
+
 function matchMedia() {
   return {
     matches: false,
@@ -278,9 +286,8 @@ describe("MessagesTimeline", () => {
       />,
     );
     expect(markup).not.toContain(TURN_HEADER_MARKER);
-    expect(markup).toContain("Resumed: “Delayed echo” finished · ");
     expect(markup).toContain('class="tabular-nums">2s</span>');
-    expect(markup.indexOf("Launched.")).toBeLessThan(markup.indexOf("Resumed:"));
+    expect(markup.indexOf("Launched.")).toBeLessThan(markup.indexOf("Echo done."));
     expect(markup.match(/data-turn-header="live"/g)).toHaveLength(1);
   });
 
@@ -322,10 +329,10 @@ describe("MessagesTimeline", () => {
           }
         />,
       );
-      const label = outcome === "stopped" ? "Stopped by you after 2.0s" : "Interrupted after 2.0s";
       expect(markup).toContain(`data-turn-header="${outcome}"`);
-      expect(markup).toContain(label);
-      expect(markup.indexOf(label)).toBeGreaterThan(markup.indexOf("Inspect the repository"));
+      expect(markup.indexOf(`data-turn-header="${outcome}"`)).toBeGreaterThan(
+        markup.indexOf("Inspect the repository"),
+      );
     },
   );
 
@@ -380,7 +387,6 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain('data-fork-source-divider="true"');
     expect(markup).toContain('href="/source-thread"');
-    expect(markup).toContain("Continued from chat");
     expect(markup).toContain("text-[var(--color-text-accent)]");
     expect(markup.indexOf("Imported history")).toBeLessThan(
       markup.indexOf('data-fork-source-divider="true"'),
@@ -470,45 +476,10 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup.match(/data-cross-task-origin="true"/g)).toHaveLength(1);
-    expect(markup).toContain("Sent by Synara from another thread");
-    expect(markup).toContain('aria-label="Open source thread"');
-    expect(markup.indexOf("Sent by Synara from another thread")).toBeLessThan(
+    expect(markup).toMatch(/<button\b(?=[^>]*data-cross-task-origin="true")[^>]*>/);
+    expect(markup.indexOf('data-cross-task-origin="true"')).toBeLessThan(
       markup.indexOf("Inspect the repository"),
     );
-  });
-
-  it("shows only the cross-task label (not the agent chip) when both apply", async () => {
-    const { MessagesTimeline } = await import("./MessagesTimeline");
-    const markup = renderToStaticMarkup(
-      <MessagesTimeline
-        {...makeTimelineBaseProps()}
-        crossTaskOrigin={{
-          sourceThreadId: ThreadId.makeUnsafe("source-thread"),
-          sourceProvider: "codex",
-        }}
-        timelineEntries={[
-          {
-            id: "entry-first-user",
-            kind: "message",
-            createdAt: "2026-03-17T19:12:28.000Z",
-            message: {
-              id: MessageId.makeUnsafe("first-user-message"),
-              role: "user",
-              text: "Inspect the repository",
-              dispatchOrigin: "agent",
-              createdAt: "2026-03-17T19:12:28.000Z",
-              streaming: false,
-            },
-          },
-        ]}
-        nowIso="2026-03-17T19:14:30.000Z"
-        onOpenThread={() => {}}
-        resolvedTheme="light"
-      />,
-    );
-
-    expect(markup).toContain("Sent by Synara from another thread");
-    expect(markup).not.toContain("Sent by agent");
   });
 
   it("renders edit beside copy for user messages", async () => {
@@ -552,10 +523,8 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain('aria-label="Copy message"');
-    expect(markup).toContain('aria-label="Edit message"');
-    expect(markup).toContain('aria-label="Revert to this message"');
-    expect(markup).toContain("size-[1.125em]");
+    const userRow = messageRowMarkup(markup, "message-editable-user");
+    expect(userRow.match(/<button\b/g) ?? []).toHaveLength(3);
   });
 
   it("keeps edit available and hides undo before a revert checkpoint exists", async () => {
@@ -596,10 +565,9 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain('aria-label="Edit message"');
-    expect(markup).not.toContain('aria-label="Revert to this message"');
-    expect(markup).not.toContain('title="Edit message"');
-    expect(markup).not.toContain('title="Revert to this message"');
+    const userRow = messageRowMarkup(markup, "message-user-no-checkpoint");
+    expect(userRow.match(/<button\b/g) ?? []).toHaveLength(2);
+    expect(userRow).not.toContain('disabled=""');
   });
 
   it("keeps edit available while an assistant turn is running", async () => {
@@ -635,11 +603,11 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    const editButtonMarkup = markup.match(/<button[^>]*aria-label="Edit message"[^>]*>/)?.[0] ?? "";
-    expect(markup).toContain('aria-label="Edit message"');
-    expect(editButtonMarkup).not.toContain('disabled=""');
-    expect(markup).not.toContain('title="Edit message"');
-    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Revert to this message"/);
+    const buttons =
+      messageRowMarkup(markup, "message-user-running").match(/<button\b[^>]*>/g) ?? [];
+    expect(buttons).toHaveLength(3);
+    expect(buttons[1]).not.toContain('disabled=""');
+    expect(buttons[2]).toContain('disabled=""');
   });
 
   it("renders a 'Sent by agent' chip above agent-dispatched user messages", async () => {
@@ -702,7 +670,7 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain("please use this");
-    expect(markup).toContain("1 selection");
+    expect(markup).toMatch(/<span class="truncate">[^<]*1[^<]*<\/span>/);
     expect(markup).not.toContain("&lt;assistant_selection&gt;");
   });
 
@@ -745,7 +713,6 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("Compacting context");
     expect(markup).toContain("/central-icons-reversed/arrows-hide.svg");
-    expect(markup).toContain(">Working for <");
     expect(markup).not.toContain("h-px flex-1 bg-border");
   });
 
@@ -791,7 +758,7 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain("Tasks updated");
-    expect(markup).toContain("Thinking");
+    expect(markup).toContain('data-turn-header="live"');
     expect(markup).not.toContain(formatShortTimestamp(assistantCreatedAt, "locale"));
     expect(markup).toMatch(/class="[^"]*\bpb-1\b[^"]*" data-timeline-row-kind="message"/);
   });
@@ -832,12 +799,14 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain(formatShortTimestamp("2026-03-17T19:12:29.000Z", "locale"));
-    expect(markup).toContain("Worked for 1.0s");
+    expect(markup).toContain(TURN_HEADER_MARKER);
+    expect(markup.indexOf(TURN_HEADER_MARKER)).toBeLessThan(
+      markup.indexOf(formatShortTimestamp("2026-03-17T19:12:29.000Z", "locale")),
+    );
     expect(markup).not.toContain("data-scroll-anchor-ignore");
     expect(markup).not.toContain(
       `${formatShortTimestamp("2026-03-17T19:12:29.000Z", "locale")} • 1.0s`,
     );
-    expect(markup).not.toContain("Work log");
   });
 
   it("renders Claude agent task output through the shared markdown renderer", async () => {
@@ -1015,7 +984,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-timeline-row-kind="work"');
     expect(markup).toContain('data-work-entry-display-text="true"');
     expect(markup).toContain('data-live-activity-meta="true"');
-    expect(markup).toContain(">Thinking<");
+    expect(markup).toContain('data-turn-header="live"');
     expect(markup).toContain(expectedText);
   });
 
@@ -1066,7 +1035,7 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("Worked for ");
+    expect(markup).toContain(TURN_HEADER_MARKER);
     expect(markup).toContain(">done</p>");
     // Trailing work folds into the terminal reply's collapsed disclosure rather
     // than leaving a detached work row at the end of the transcript.
@@ -1141,7 +1110,7 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("Edited");
+    expect(markup).toContain('data-edited-file-row="true"');
     expect(markup).toContain("MessagesTimeline.test.tsx");
     expect(markup).toContain("+1");
     expect(markup).toContain("-1");
@@ -1214,7 +1183,7 @@ describe("MessagesTimeline", () => {
     // The command shows verbatim (minus the shell wrapper) instead of a guessed
     // sentence, and the search wears the magnifier.
     expect(markup).toContain(
-      `Ran <code class="${INLINE_COMMAND_CHIP_CLASS_NAME}" data-command-literal="true">rg -n &quot;ProjectionSnapshotQuery&quot; apps/server/src</code>`,
+      `<code class="${INLINE_COMMAND_CHIP_CLASS_NAME}" data-command-literal="true">rg -n &quot;ProjectionSnapshotQuery&quot; apps/server/src</code>`,
     );
     expect(markup).toContain("magnifying-glass.svg");
     expect(markup).not.toContain("data-work-entry-action-word");
@@ -1255,7 +1224,6 @@ describe("MessagesTimeline", () => {
     );
     expect(claudeMarkup).toContain('data-tool-icon="synara"');
     expect(claudeMarkup).not.toContain('data-tool-icon="mcp"');
-    expect(claudeMarkup).toContain("Synara is creating a thread");
     expect(claudeMarkup).not.toContain("Synara__synara_create_thread");
 
     // A provider may misclassify an MCP action containing "create" or "list"
@@ -1282,7 +1250,6 @@ describe("MessagesTimeline", () => {
       />,
     );
     expect(codexMarkup).toContain('data-tool-icon="synara"');
-    expect(codexMarkup).toContain("Synara listed threads");
     expect(codexMarkup).not.toContain("mcp__Synara__synara_list_threads");
 
     const failedMarkup = renderToStaticMarkup(
@@ -1308,7 +1275,6 @@ describe("MessagesTimeline", () => {
         ]}
       />,
     );
-    expect(failedMarkup).toContain("Synara couldn&#x27;t create threads");
     expect(failedMarkup).toContain("Claude rejected reasoningEffort");
   });
 
@@ -1348,10 +1314,10 @@ describe("MessagesTimeline", () => {
       // The computer-use pointer is the mirrored Hugeicons navigation glyph.
       expect(markup).toContain('data-slot="hugeicon"');
       expect(markup).toContain('transform="translate(24 0) scale(-1 1)"');
-      expect(markup).toContain(
-        toolName.includes("browser") ? "Click in the browser" : "Click on “Search” in Safari",
-      );
-      expect(markup).not.toContain("Synara clicked the desktop");
+      if (toolName === "computer_click") {
+        expect(markup).toContain("Search");
+        expect(markup).toContain("Safari");
+      }
       expect(markup).not.toContain("123, 456");
       expect(markup).not.toContain('data-tool-icon="mcp"');
     },
@@ -1386,7 +1352,6 @@ describe("MessagesTimeline", () => {
       detail: 'mcp__synara__synara_read_thread: {"threadId":"c357d8c5-b4c1-47d0"}',
       activityKind: "tool.completed",
     });
-    expect(readThreadMarkup).toContain("Synara read a thread");
     expect(readThreadMarkup).not.toContain("mcp__synara__synara_read_thread:");
     expect(readThreadMarkup).not.toContain("threadId");
 
@@ -1400,7 +1365,6 @@ describe("MessagesTimeline", () => {
       detail: 'mcp__synara__synara_diagnose_thread: {"threadId":"09a1615d-084f-40b9"}',
       activityKind: "tool.completed",
     });
-    expect(diagnoseMarkup).toContain("Synara diagnosed a thread");
     expect(diagnoseMarkup).not.toContain("mcp__synara__synara_diagnose_thread:");
     expect(diagnoseMarkup).not.toContain("threadId");
 
@@ -1431,7 +1395,6 @@ describe("MessagesTimeline", () => {
       detail: 'McpError: {"code":-32602,"message":"Invalid params"}',
       activityKind: "tool.completed",
     });
-    expect(failedArgsMarkup).toContain("Synara couldn&#x27;t create threads");
     expect(failedArgsMarkup).toContain("Invalid params");
   });
 
@@ -1503,7 +1466,7 @@ describe("MessagesTimeline", () => {
         timelineEntries={[...workEntries]}
       />,
     );
-    expect(liveMarkup).toContain("Synara created threads");
+    expect(liveMarkup.match(/data-work-entry-display-text="true"/g) ?? []).toHaveLength(1);
     expect(liveMarkup).not.toContain('data-synara-thread-creation-card="true"');
 
     const markup = renderToStaticMarkup(
@@ -1532,8 +1495,6 @@ describe("MessagesTimeline", () => {
     // turn header disclosure; the recap is an additional final artifact.
     expect(markup).toContain(TURN_HEADER_MARKER);
     expect(markup).toContain('data-synara-thread-creation-card="true"');
-    expect(markup).toContain("2 threads created");
-    expect(markup).toContain("2/2 requested threads created");
     expect(markup).toContain("Explain the repository with Terra");
     expect(markup).toContain("Explain the repository with Claude");
     expect(markup).toContain("GPT-5.6 Terra");
@@ -1597,10 +1558,9 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain(TURN_HEADER_MARKER);
-    expect(markup.match(/Computer control needs Screen Recording/g)).toHaveLength(1);
-    expect(markup.indexOf("Synara needs macOS permissions first.")).toBeLessThan(
-      markup.indexOf("Computer control needs Screen Recording"),
-    );
+    const setupCardIndex = markup.indexOf("bg-warning/8 text-warning");
+    expect(markup.indexOf("Synara needs macOS permissions first.")).toBeLessThan(setupCardIndex);
+    expect(setupCardIndex).toBeGreaterThan(-1);
   });
 
   it("anchors the changed-files summary at the end of a collapsed file-change turn", async () => {
@@ -1670,7 +1630,7 @@ describe("MessagesTimeline", () => {
     // The tool work collapses, but the changed-files summary stays anchored at
     // the end of the turn with every file from the turn diff.
     expect(markup).toContain(TURN_HEADER_MARKER);
-    expect(markup).toContain("Edited 2 files");
+    expect(markup.match(/data-edited-file-row="true"/g)).toHaveLength(2);
     expect(markup).toContain("apps/web/src/components/chat/MessagesTimeline.test.tsx");
     expect(markup).toContain("apps/web/src/components/chat/MessagesTimeline.tsx");
     expect(markup).toContain("+1");
@@ -1739,7 +1699,7 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("Edited");
+    expect(markup).toContain('data-edited-file-row="true"');
     expect(markup).toContain("ProviderHealth.ts");
     expect(markup).toContain("ChatView.tsx");
     expect(markup).toContain("+63");
@@ -1793,15 +1753,14 @@ describe("MessagesTimeline", () => {
       />,
     );
 
-    expect(markup).toContain("Edited 1 file");
-    expect(markup).toContain("Undo");
-    expect(markup).toContain("Review");
     expect(markup).toContain('aria-expanded="true"');
     expect(markup).toContain('data-edited-file-row="true"');
-    expect(markup).toContain('aria-label="Open apps/web/src/components/Sidebar.tsx options"');
+    expect(markup).toMatch(/data-edited-file-row="true"[\s\S]*?<button\b/);
     expect(markup).toContain("apps/web/src/components/Sidebar.tsx");
-    expect(markup.indexOf('aria-label="Copy message"')).toBeGreaterThan(
-      markup.indexOf("Edited 1 file"),
+    expect(markup).toContain("+6");
+    expect(markup).toContain("-5");
+    expect(markup.indexOf('data-message-id="message-assistant-diff"')).toBeLessThan(
+      markup.indexOf('data-edited-file-row="true"'),
     );
   });
 

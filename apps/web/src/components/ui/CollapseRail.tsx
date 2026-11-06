@@ -12,7 +12,7 @@
 
 import { ChevronUpIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 /** Rail widths, matched to the indent each caller previously carried as a margin. */
 export const COLLAPSE_RAIL_WIDTH_CLASS = {
@@ -32,13 +32,13 @@ export function CollapseRail(props: {
   /** Overrides the default "collapse details" label for non-detail regions. */
   label?: string;
 }) {
-  const copy = useMessages().chat.work;
+  const { t } = useTranslation();
   const width = props.width ?? "compact";
 
   return (
     <button
       type="button"
-      aria-label={props.label ?? copy.collapseDetails}
+      aria-label={props.label ?? t("chat:collapseDetails")}
       data-collapse-rail="true"
       // Opt out of the transcript's click anchoring: collapsing from down here should
       // leave the viewport exactly where it is.

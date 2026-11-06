@@ -6,10 +6,10 @@ import { useDesktopCustomTitleBarActive } from "~/hooks/useDesktopCustomTitleBar
 import { isElectron } from "~/env";
 import { Maximize2, Minimize2, MinusIcon, XIcon } from "~/lib/icons";
 import { cn, getNavigatorPlatform, isWindowsPlatform } from "~/lib/utils";
-import { useMessages } from "~/i18n/context";
 
 import { CHAT_SURFACE_HEADER_HEIGHT_CLASS } from "./chat/chatHeaderControls";
 import { toastManager } from "./ui/toast";
+import { t, useTranslation } from "~/i18n";
 
 const DEFAULT_WINDOW_STATE: DesktopWindowState = {
   isMaximized: false,
@@ -40,7 +40,7 @@ function reportWindowControlError(title: string, error: unknown): void {
   toastManager.add({
     type: "error",
     title,
-    description: error instanceof Error ? error.message : "Please try again.",
+    description: error instanceof Error ? error.message : t("common:pleaseTryAgain"),
   });
 }
 
@@ -65,7 +65,7 @@ function CaptionSvg({ children }: { children: ReactNode }) {
 }
 
 export function DesktopWindowControls({ className }: { className?: string }) {
-  const copy = useMessages().app.window;
+  const { t } = useTranslation();
   const [windowState, setWindowState] = useState<DesktopWindowState>(DEFAULT_WINDOW_STATE);
   const customTitleBarActive = useDesktopCustomTitleBarActive();
   const platform = getNavigatorPlatform();
@@ -108,8 +108,8 @@ export function DesktopWindowControls({ className }: { className?: string }) {
     >
       <button
         type="button"
-        aria-label={copy.minimize}
-        title={copy.minimize}
+        aria-label={t("common:app_minimize")}
+        title={t("common:app_minimize")}
         className={CAPTION_BUTTON_CLASS}
         onClick={() => {
           void controls.minimize().catch((error: unknown) => {
@@ -127,8 +127,8 @@ export function DesktopWindowControls({ className }: { className?: string }) {
       </button>
       <button
         type="button"
-        aria-label={isMaximized ? "Restore" : "Maximize"}
-        title={isMaximized ? "Restore" : "Maximize"}
+        aria-label={isMaximized ? t("common:app_restore") : t("common:app_maximize")}
+        title={isMaximized ? t("common:app_restore") : t("common:app_maximize")}
         className={CAPTION_BUTTON_CLASS}
         onClick={() => {
           void controls
@@ -149,8 +149,8 @@ export function DesktopWindowControls({ className }: { className?: string }) {
       </button>
       <button
         type="button"
-        aria-label={copy.close}
-        title={copy.close}
+        aria-label={t("common:app_close")}
+        title={t("common:app_close")}
         className={cn(CAPTION_BUTTON_CLASS, CLOSE_BUTTON_CLASS)}
         onClick={() => {
           void controls.close().catch((error: unknown) => {

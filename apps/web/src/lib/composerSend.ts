@@ -14,11 +14,7 @@ import {
   type ProviderKind,
   type UploadChatAttachment,
 } from "@synara/contracts";
-import { composer as defaultComposerCopy } from "~/i18n/locales/en/composer";
-import {
-  ATTACHMENT_CANCEL_ROUTE_PATH,
-  ATTACHMENT_UPLOAD_ROUTE_PATH,
-} from "@synara/shared/binaryTransfer";
+import { t } from "~/i18n";
 import { applyClaudePromptEffortPrefix, getModelCapabilities } from "@synara/shared/model";
 import { parseComputerInvocation } from "@synara/shared/computerInvocation";
 
@@ -38,7 +34,8 @@ import {
 } from "./composerImagePreparation";
 import { appSnapUploadName, normalizeComposerImageSource } from "./composerImageSource";
 import { randomUUID } from "./utils";
-import { resolveWsHttpUrl } from "./wsHttpUrl";
+import { captureExecutionResourceRequester } from "./wsHttpUrl";
+import type { WorkspaceResourceRequester } from "./hosts/workspaceResources";
 
 const EMPTY_MCP_TOOLS: ReadonlyArray<McpToolCandidate> = [];
 const ATTACHMENT_CANCEL_CONCURRENCY = 2;
@@ -168,18 +165,12 @@ export function buildComposerFileAttachmentsFromFiles(input: {
 
 // Draft persistence and previews still need a local data URL. Network sends use
 // the bounded binary upload path below and never place this value on RPC.
-/** The `composer.attachments` catalog group; defaults to English for non-React callers. */
-type AttachmentCopy = (typeof defaultComposerCopy)["attachments"];
-
-export function readFileAsDataUrl(
-  file: File,
-  copy: AttachmentCopy = defaultComposerCopy.attachments,
-): Promise<string> {
+export function readFileAsDataUrl(file: File, translate: typeof t = t): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.addEventListener("load", () => {
       if (typeof reader.result === "string") resolve(reader.result);
-      else reject(new Error(copy.readFailed));
+      else reject(new Error(translate("chat:attachment_readFailed")));
     });
     reader.addEventListener("error", () => {
       const nativeMessage =
@@ -190,10 +181,16 @@ export function readFileAsDataUrl(
         nativeMessage &&
         /could not be found at the time an operation was processed/i.test(nativeMessage)
       ) {
-        reject(new Error(copy.pathProblem(file.name || copy.unnamedItem)));
+        reject(
+          new Error(
+            translate("chat:attachment_pathProblem", {
+              name: file.name || translate("chat:attachment_unnamedItem"),
+            }),
+          ),
+        );
         return;
       }
-      reject(reader.error ?? new Error(copy.readError));
+      reject(reader.error ?? new Error(translate("chat:attachment_readError")));
     });
     reader.readAsDataURL(file);
   });
@@ -279,7 +276,10 @@ function isManagedAttachmentId(value: unknown): value is string {
   );
 }
 
-async function cancelManagedAttachments(attachmentIds: readonly string[]): Promise<void> {
+async function cancelManagedAttachments(
+  attachmentIds: readonly string[],
+  requestResource: WorkspaceResourceRequester,
+): Promise<void> {
   let nextIndex = 0;
   const worker = async () => {
     while (nextIndex < attachmentIds.length) {
@@ -289,12 +289,12 @@ async function cancelManagedAttachments(attachmentIds: readonly string[]): Promi
       const body = JSON.stringify({ attachmentId });
       if (new TextEncoder().encode(body).byteLength > ATTACHMENT_CANCEL_BODY_MAX_BYTES) continue;
       try {
-        await fetch(resolveWsHttpUrl(ATTACHMENT_CANCEL_ROUTE_PATH, { requireBackend: true }), {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body,
-        });
+        await requestResource(
+          { kind: "attachment-cancel" },
+          {
+            body,
+          },
+        );
       } catch {
         // Staged attachments also have a server-owned expiry. Compensation is
         // deliberately best-effort and must never replace the dispatch/upload error.
@@ -315,6 +315,7 @@ export async function stageUploadComposerAttachments(input: {
   files?: ReadonlyArray<ComposerFileAttachment>;
   assistantSelections: ReadonlyArray<ComposerAssistantSelectionAttachment>;
 }): Promise<StagedComposerAttachments> {
+  const requestResource = captureExecutionResourceRequester();
   const attachments: UploadChatAttachment[] = input.assistantSelections.map((selection) => ({
     type: "assistant-selection" as const,
     assistantMessageId: MessageId.makeUnsafe(selection.assistantMessageId),
@@ -331,19 +332,15 @@ export async function stageUploadComposerAttachments(input: {
       const uploadFile = appSnapSource
         ? await prepareModelScreenImage(attachment.file)
         : attachment.file;
-      const params = new URLSearchParams({
-        threadId: input.threadId,
-        type: attachment.type,
-        name: appSnapSource ? appSnapUploadName(appSnapSource, uploadFile.name) : attachment.name,
-        mimeType: appSnapSource ? uploadFile.type : attachment.mimeType,
-      });
-      const response = await fetch(
-        resolveWsHttpUrl(`${ATTACHMENT_UPLOAD_ROUTE_PATH}?${params.toString()}`, {
-          requireBackend: true,
-        }),
+      const response = await requestResource(
         {
-          method: "POST",
-          credentials: "include",
+          kind: "attachment-upload",
+          threadId: input.threadId,
+          type: attachment.type,
+          name: appSnapSource ? appSnapUploadName(appSnapSource, uploadFile.name) : attachment.name,
+          mimeType: appSnapSource ? uploadFile.type : attachment.mimeType,
+        },
+        {
           body: uploadFile,
         },
       );
@@ -375,7 +372,7 @@ export async function stageUploadComposerAttachments(input: {
       attachments.push(payload);
     }
   } catch (error) {
-    await cancelManagedAttachments(managedAttachmentIds);
+    await cancelManagedAttachments(managedAttachmentIds, requestResource);
     throw error;
   }
 
@@ -383,7 +380,7 @@ export async function stageUploadComposerAttachments(input: {
   const cleanup = async () => {
     if (disposition !== "pending") return;
     disposition = "cleaned";
-    await cancelManagedAttachments(managedAttachmentIds);
+    await cancelManagedAttachments(managedAttachmentIds, requestResource);
   };
   const commit = () => {
     if (disposition === "pending") disposition = "committed";

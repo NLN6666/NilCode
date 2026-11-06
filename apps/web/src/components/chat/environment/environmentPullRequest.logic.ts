@@ -16,6 +16,7 @@ import {
 } from "@synara/contracts";
 import { pluralize } from "@synara/shared/text";
 
+import { t } from "~/i18n";
 import {
   type PullRequestContextDraft,
   type PullRequestContextScope,
@@ -41,29 +42,40 @@ export const PULL_REQUEST_CHECKS_TONE_TEXT_CLASS: Record<PullRequestChecksTone, 
 // Failure outranks pending so a red state never hides behind "N pending checks".
 export function summarizePullRequestChecks(
   checks: ReadonlyArray<GitPullRequestCheck>,
+  translate: typeof t,
 ): PullRequestChecksSummary {
   const failing = checks.filter((check) => check.status === "failure").length;
   if (failing > 0) {
-    return { label: `${failing} ${pluralize(failing, "failing check")}`, tone: "failure" };
+    return {
+      label: translate("git:checksSummary_failing", { count: failing }),
+      tone: "failure",
+    };
   }
   const cancelled = checks.filter((check) => check.status === "cancelled").length;
   if (cancelled > 0) {
-    return { label: `${cancelled} ${pluralize(cancelled, "cancelled check")}`, tone: "failure" };
+    return {
+      label: translate("git:checksSummary_cancelled", { count: cancelled }),
+      tone: "failure",
+    };
   }
   const pending = checks.filter((check) => check.status === "pending").length;
   if (pending > 0) {
-    return { label: `${pending} ${pluralize(pending, "pending check")}`, tone: "pending" };
+    return {
+      label: translate("git:checksSummary_pending", { count: pending }),
+      tone: "pending",
+    };
   }
   if (checks.length === 0) {
-    return { label: "No checks", tone: "none" };
+    return { label: translate("git:noChecks"), tone: "none" };
   }
   const successful = checks.filter((check) => check.status === "success").length;
   if (successful === 0) {
-    return { label: "No required checks", tone: "none" };
+    return { label: translate("git:checksSummary_noRequired"), tone: "none" };
   }
-  return { label: "All checks passed", tone: "success" };
+  return { label: translate("git:checksSummary_allPassed"), tone: "success" };
 }
 
+/** Keep agent context in English; the menu uses translatePullRequestCheckStatus below. */
 export const PULL_REQUEST_CHECK_STATUS_LABELS: Record<GitPullRequestCheck["status"], string> = {
   pending: "Running",
   success: "Succeeded",
@@ -72,6 +84,22 @@ export const PULL_REQUEST_CHECK_STATUS_LABELS: Record<GitPullRequestCheck["statu
   neutral: "Neutral",
   cancelled: "Cancelled",
 };
+
+const PULL_REQUEST_CHECK_STATUS_LABEL_KEYS = {
+  pending: "git:prCheckStatus_running",
+  success: "git:prCheckStatus_succeeded",
+  failure: "git:prCheckStatus_failed",
+  skipped: "git:prCheckStatus_skipped",
+  neutral: "git:prCheckStatus_neutral",
+  cancelled: "git:prCheckStatus_cancelled",
+} as const satisfies Record<GitPullRequestCheck["status"], string>;
+
+export function translatePullRequestCheckStatus(
+  status: GitPullRequestCheck["status"],
+  translate: typeof t,
+): string {
+  return translate(PULL_REQUEST_CHECK_STATUS_LABEL_KEYS[status]);
+}
 
 // Check names alone can collide (matrix jobs, re-runs, a check run named like an old commit
 // status), so list keys combine name + url and disambiguate exact duplicates by occurrence.
@@ -112,10 +140,18 @@ export function summarizePullRequestDiffStat(pr: {
   };
 }
 
-export function summarizePullRequestComments(count: number, truncated = false): string {
-  if (count === 0) return truncated ? "Comments may exist" : "No comments";
-  const noun = pluralize(count, "comment");
-  return truncated ? `${count}+ ${noun}` : `${count} ${noun}`;
+export function summarizePullRequestComments(
+  count: number,
+  truncated: boolean,
+  translate: typeof t,
+): string {
+  if (count === 0) {
+    return truncated
+      ? translate("git:prEnvironment_commentsMayExist")
+      : translate("git:noComments");
+  }
+  const noun = translate("common:countUnitComment", { count });
+  return `${count}${truncated ? "+" : ""} ${noun}`;
 }
 
 export interface PullRequestCommentDisplay {

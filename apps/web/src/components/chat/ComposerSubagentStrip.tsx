@@ -46,7 +46,7 @@ import {
   COMPOSER_STACKED_PANEL_ICON_CLASS_NAME,
   COMPOSER_STACKED_PANEL_SCROLL_REGION_CLASS_NAME,
 } from "./composerStackedPanelStyles";
-import { useMessages } from "~/i18n/context";
+import { useTranslation } from "~/i18n";
 
 const STRIP_ROW_CLASS_NAME =
   "group -mx-1 flex w-[calc(100%+0.5rem)] min-w-0 items-center gap-1 rounded-md px-1 py-1 transition-colors hover:bg-[var(--color-background-button-secondary-hover)]";
@@ -77,7 +77,7 @@ function SubagentStripRow({
   onBackgroundItem?: ((item: ComposerSubagentStripItem) => void) | undefined;
   onStopItem?: ((item: ComposerSubagentStripItem) => void) | undefined;
 }) {
-  const copy = useMessages().composer.subagents;
+  const { t } = useTranslation();
   return (
     <div
       data-testid="composer-subagent-row"
@@ -121,7 +121,7 @@ function SubagentStripRow({
           ) : null}
           {item.isBackground ? (
             <span className="ml-1.5 text-[11px] font-normal text-muted-foreground/45">
-              {copy.background}
+              {t("chat:background")}
             </span>
           ) : null}
         </span>
@@ -150,8 +150,8 @@ function SubagentStripRow({
             COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME,
           )}
           onClick={() => onBackgroundItem(item)}
-          aria-label={copy.runInBackground}
-          title={copy.runInBackground}
+          aria-label={t("chat:runInBackground")}
+          title={t("chat:runInBackground")}
         >
           <BackgroundTrayIcon className="size-3" />
         </Button>
@@ -166,8 +166,8 @@ function SubagentStripRow({
             COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME,
           )}
           onClick={() => onStopItem(item)}
-          aria-label={copy.stop}
-          title={copy.stop}
+          aria-label={t("chat:stopSubagent")}
+          title={t("chat:stopSubagent")}
         >
           <StopIcon className="size-3" />
         </Button>
@@ -186,13 +186,15 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
   onStopItem,
   onStopAll,
 }: ComposerSubagentStripProps) {
-  const copy = useMessages().composer.subagents;
+  const { t } = useTranslation();
   const [settledExpanded, setSettledExpanded] = useState(false);
   const { parentRow, liveRows, settledRows } = partitionComposerSubagentStripRows(items);
   const subagentCount = liveRows.length + settledRows.length;
   const runningCount = liveRows.filter((item) => item.isActive).length;
   const openSubagentThread = onOpenSubagentThread ?? onOpenThread;
-  const settledDisclosureLabel = settledExpanded ? copy.hideSettled : copy.showSettled;
+  const settledDisclosureLabel = settledExpanded
+    ? t("chat:hideSubagents")
+    : t("chat:showSubagents");
 
   return (
     <ComposerStackedPanel data-testid="composer-subagent-strip">
@@ -205,8 +207,11 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
           )}
           <ComposerStackedPanelRowLabel tone="meta">
             {runningCount > 0
-              ? copy.runningSummary(runningCount, subagentCount)
-              : copy.totalSummary(subagentCount)}
+              ? t("chat:composerSubagentStrip_runningSummary", {
+                  running: runningCount,
+                  total: subagentCount,
+                })
+              : t("chat:composerSubagentStrip_totalSummary", { count: subagentCount })}
           </ComposerStackedPanelRowLabel>
         </ComposerStackedPanelRowMain>
         {onStopAll && runningCount > 1 ? (
@@ -216,8 +221,8 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
             size="icon-xs"
             className={cn("shrink-0", COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME)}
             onClick={onStopAll}
-            aria-label={copy.stopAll}
-            title={copy.stopAllTitle}
+            aria-label={t("chat:stopAll")}
+            title={t("chat:stopAll")}
           >
             <StopIcon className="size-3" />
           </Button>
@@ -228,8 +233,8 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
           size="icon-xs"
           className={cn("shrink-0", COMPOSER_STACKED_PANEL_ICON_BUTTON_CLASS_NAME)}
           onClick={() => onCompactChange(!compact)}
-          aria-label={compact ? copy.expandStrip : copy.collapseStrip}
-          title={compact ? copy.expandStrip : copy.collapseStrip}
+          aria-label={compact ? t("chat:showSubagents") : t("chat:hideSubagents")}
+          title={compact ? t("chat:showSubagents") : t("chat:hideSubagents")}
         >
           {compact ? (
             <PanelExpandIcon className="size-3" />
@@ -289,7 +294,9 @@ export const ComposerSubagentStrip = function ComposerSubagentStrip({
                 >
                   <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground/25" />
                   <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-muted-foreground/55">
-                    {copy.settledGroup(settledRows.length)}
+                    {t("chat:composerSubagentStrip_settledGroup", {
+                      count: settledRows.length,
+                    })}
                   </span>
                   <DisclosureChevron
                     open={settledExpanded}

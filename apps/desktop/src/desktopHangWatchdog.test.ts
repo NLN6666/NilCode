@@ -8,6 +8,12 @@ import {
   HangWatchdogPolicy,
 } from "./desktopHangWatchdog";
 
+function makeInactiveTimer() {
+  const timer = setTimeout(() => undefined, 0);
+  clearTimeout(timer);
+  return timer;
+}
+
 describe("HangWatchdogPolicy", () => {
   it("uses Electron's OS renderer process identifier for dump targets", () => {
     expect(getRendererOsProcessId({ getOSProcessId: () => 9_001 })).toBe(9_001);
@@ -106,11 +112,11 @@ describe("DesktopHangWatchdogController", () => {
         return child as never;
       },
       env: { SystemRoot: "D:\\Windows", TEMP: "D:\\Temp", SYNARA_AUTH_TOKEN: "secret" },
-      setInterval: ((callback: () => void) => {
+      setInterval: (callback) => {
         interval = callback;
-        return { unref: () => undefined } as never;
-      }) as typeof setInterval,
-      clearInterval: (() => undefined) as typeof clearInterval,
+        return makeInactiveTimer();
+      },
+      clearInterval: () => undefined,
       log: () => undefined,
     });
 
@@ -156,10 +162,10 @@ describe("DesktopHangWatchdogController", () => {
         starts += 1;
         throw new Error("fork unavailable");
       },
-      setTimeout: ((callback: () => void) => {
+      setTimeout: (callback) => {
         restart = callback;
-        return { unref: () => undefined } as never;
-      }) as typeof setTimeout,
+        return makeInactiveTimer();
+      },
       log: () => undefined,
     });
 
@@ -206,7 +212,7 @@ describe("DesktopHangWatchdogController", () => {
         executablePath: "C:\\Synara\\Synara.exe",
       },
       fork: () => child as never,
-      setInterval: (() => ({ unref: () => undefined }) as never) as typeof setInterval,
+      setInterval: () => makeInactiveTimer(),
       log: () => undefined,
     });
 
@@ -258,7 +264,7 @@ describe("DesktopHangWatchdogController", () => {
         executablePath: "C:\\\\Synara\\\\Synara.exe",
       },
       fork: () => child as never,
-      setInterval: (() => ({ unref: () => undefined }) as never) as typeof setInterval,
+      setInterval: () => makeInactiveTimer(),
       log: () => undefined,
     });
 
@@ -312,8 +318,8 @@ describe("DesktopHangWatchdogController", () => {
         executablePath: "C:\\\\Synara\\\\Synara.exe",
       },
       fork: () => child as never,
-      setInterval: (() => ({ unref: () => undefined }) as never) as typeof setInterval,
-      setTimeout: (() => ({ unref: () => undefined }) as never) as typeof setTimeout,
+      setInterval: () => makeInactiveTimer(),
+      setTimeout: () => makeInactiveTimer(),
       log: () => undefined,
     });
 
@@ -377,11 +383,11 @@ describe("DesktopHangWatchdogController", () => {
         executablePath: "C:\\Synara\\Synara.exe",
       },
       fork: () => child as never,
-      setInterval: (() => ({ unref: () => undefined }) as never) as typeof setInterval,
-      clearInterval: (() => {
+      setInterval: () => makeInactiveTimer(),
+      clearInterval: () => {
         clears += 1;
-      }) as typeof clearInterval,
-      setTimeout: (() => ({ unref: () => undefined }) as never) as typeof setTimeout,
+      },
+      setTimeout: () => makeInactiveTimer(),
       log: () => undefined,
     });
 
@@ -421,14 +427,14 @@ describe("DesktopHangWatchdogController", () => {
         executablePath: "C:\\Synara\\Synara.exe",
       },
       fork: () => child as never,
-      setInterval: (() => ({ unref: () => undefined }) as never) as typeof setInterval,
-      clearInterval: (() => {
+      setInterval: () => makeInactiveTimer(),
+      clearInterval: () => {
         intervalClears += 1;
-      }) as typeof clearInterval,
-      setTimeout: (() => ({ unref: () => undefined }) as never) as typeof setTimeout,
-      clearTimeout: (() => {
+      },
+      setTimeout: () => makeInactiveTimer(),
+      clearTimeout: () => {
         timeoutClears += 1;
-      }) as typeof clearTimeout,
+      },
       log: () => undefined,
     });
 
