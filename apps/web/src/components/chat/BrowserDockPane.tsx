@@ -16,11 +16,12 @@
 //     page's title and URL from the shared cached state, and any interaction takes over.
 
 import { DEFAULT_PROJECT_BROWSER_SHARING, type ThreadId } from "@synara/contracts";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 
 import { resolveBrowserSurfaceId } from "@synara/shared/browserSurface";
 
 import { useBrowserSurfaceClaim } from "~/browserSurfaceClaimStore";
+import { randomUUID } from "~/lib/utils";
 import { setProjectBrowserSharing } from "~/lib/projectBrowserSharing";
 import type { DockPaneRuntimeMode } from "~/lib/dockPaneActivation";
 import { useStore } from "~/store";
@@ -33,7 +34,7 @@ import { PanelStateMessage } from "./PanelStateMessage";
 export function BrowserDockPane(props: {
   threadId: ThreadId;
   mode?: "sidebar" | "floating";
-  /** Distinguishes two panes on the same thread; any id stable for the pane's lifetime works. */
+  /** Distinguishes two mounted panes on the same surface. */
   paneId: string;
   onClosePanel: () => void;
   runtimeMode?: DockPaneRuntimeMode;
@@ -70,7 +71,10 @@ export function BrowserDockPane(props: {
     };
   }, [projectId, sharing, t]);
 
-  const ownerKey = `${props.threadId}\u0000${props.paneId}`;
+  // A shared surface can move between host threads while this keyed pane stays mounted.
+  // Give each mounted pane its own stable claim identity rather than deriving it from
+  // host-thread/pane ids that can collide with another split pane after a host switch.
+  const [ownerKey] = useState(() => randomUUID());
   const { isOwner, takeOver } = useBrowserSurfaceClaim({ surfaceId: browserSurfaceId, ownerKey });
 
   // A pane that does not own the surface must issue no browser IPC at all, which `preview`

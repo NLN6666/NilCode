@@ -15,6 +15,7 @@ import {
   TerminalResizeInput,
   TerminalRestartInput,
   TerminalWriteInput,
+  ThreadId,
   type TerminalEvent,
   type TerminalSessionSnapshot,
 } from "@synara/contracts";
@@ -24,6 +25,8 @@ import {
   terminalCliKindFromValue,
   SYNARA_TERMINAL_HOOK_OSC_PREFIX,
   SYNARA_TERMINAL_CLI_KIND_ENV_KEY,
+  DOCK_TERMINAL_SCOPE_PREFIX,
+  PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX,
   type TerminalActivityState,
   type TerminalAgentHookEventType,
   type TerminalCliKind,
@@ -31,6 +34,7 @@ import {
 import { Effect, Encoding, Layer, Schema } from "effect";
 
 import { createLogger } from "../../logger";
+import { registerLocalProcessOwner } from "../../localProcessOwnership";
 import { PtyAdapter, PtyAdapterShape, type PtyExitEvent, type PtyProcess } from "../Services/PTY";
 import { ServerConfig } from "../../config";
 import { ServerSettingsService } from "../../serverSettings";
@@ -166,6 +170,28 @@ const TERMINAL_SPAWN_TERM =
   globalThis.process.platform === "win32" ? "xterm-color" : "xterm-256color";
 const MANAGED_TERMINAL_WRAPPER_DIRNAME = "_managed-bin";
 const MANAGED_TERMINAL_ZSH_DIRNAME = "_managed-zsh";
+const PROJECT_DEV_SERVER_THREAD_PREFIX = "dev-server:";
+
+function terminalOwnerThreadId(threadId: string): ThreadId | undefined {
+  if (
+    threadId.startsWith(PROJECT_DEV_SERVER_THREAD_PREFIX) ||
+    threadId.startsWith(PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX)
+  ) {
+    return undefined;
+  }
+  const hostThreadId = threadId.startsWith(DOCK_TERMINAL_SCOPE_PREFIX)
+    ? threadId.slice(DOCK_TERMINAL_SCOPE_PREFIX.length)
+    : threadId;
+  if (
+    hostThreadId.length === 0 ||
+    hostThreadId.startsWith(PROJECT_DEV_SERVER_THREAD_PREFIX) ||
+    hostThreadId.startsWith(PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX) ||
+    hostThreadId.startsWith(DOCK_TERMINAL_SCOPE_PREFIX)
+  ) {
+    return undefined;
+  }
+  return ThreadId.makeUnsafe(hostThreadId);
+}
 
 const decodeTerminalOpenInput = Schema.decodeUnknownSync(TerminalOpenInput);
 const decodeTerminalRestartInput = Schema.decodeUnknownSync(TerminalRestartInput);
@@ -1474,6 +1500,16 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
 
       session.process = ptyProcess;
       session.pid = ptyProcess.pid;
+      const ownerThreadId = session.providerAuthInstanceId
+        ? undefined
+        : terminalOwnerThreadId(session.threadId);
+      if (ownerThreadId !== undefined) {
+        session.releaseLocalProcessOwner?.();
+        session.releaseLocalProcessOwner = registerLocalProcessOwner(
+          ptyProcess.pid,
+          ownerThreadId,
+        );
+      }
       session.status = "running";
       session.updatedAt = new Date().toISOString();
       this.ensureModeReplayTracker(session);
@@ -1496,6 +1532,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
       }
     } catch (error) {
       if (ptyProcess) {
+        this.releaseLocalProcessOwner(session);
         this.killProcessWithEscalation(ptyProcess, session.threadId, session.terminalId);
       }
       session.status = "error";
@@ -1776,6 +1813,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     // Drain any remaining batched output before emitting the exit event.
     this.flushOutputBuffer(session);
     this.clearKillEscalationTimer(session.process, { force: false });
+    this.releaseLocalProcessOwner(session);
     this.cleanupProcessHandles(session);
     session.process = null;
     session.pid = null;
@@ -1812,6 +1850,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     this.flushOutputBuffer(session);
     const process = session.process;
     if (!process) return;
+    this.releaseLocalProcessOwner(session);
     this.cleanupProcessHandles(session);
     session.process = null;
     session.pid = null;
@@ -1832,6 +1871,11 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     this.killProcessWithEscalation(process, session.threadId, session.terminalId);
     this.evictInactiveSessionsIfNeeded();
     this.updateSubprocessPollingState();
+  }
+
+  private releaseLocalProcessOwner(session: TerminalSessionState): void {
+    session.releaseLocalProcessOwner?.();
+    delete session.releaseLocalProcessOwner;
   }
 
   private cleanupProcessHandles(session: TerminalSessionState): void {

@@ -57,6 +57,7 @@ import {
   listAgentGatewayMcpTools,
   type AgentGatewayMcpFetch,
 } from "../../agentGateway/mcpInjection.ts";
+import { registerLocalProcessOwner } from "../../localProcessOwnership.ts";
 import {
   AgentGatewayCredentials,
   type AgentGatewayMcpConnection,
@@ -218,6 +219,7 @@ type PiShellConfig = ReturnType<PiCodingAgentModule["getShellConfig"]>;
 
 interface PiActiveProcess {
   readonly child: ChildProcess;
+  readonly releaseLocalProcessOwner?: () => void;
   teardown: Promise<void> | undefined;
   teardownRequested: boolean;
   teardownProven: boolean;
@@ -230,6 +232,7 @@ export interface PiBashProcessSupervisor {
 }
 
 export interface PiBashProcessSupervisorOptions {
+  readonly threadId?: ThreadId;
   readonly lowerPriority?: boolean;
   readonly getShellConfig: (shellPath?: string) => PiShellConfig;
   readonly environment?: Readonly<Record<string, string>>;
@@ -264,6 +267,7 @@ export function makePiBashProcessSupervisor(
     active.teardown ??= teardownChildProcessTree(active.child, teardownProcessTree).then(
       () => {
         active.teardownProven = true;
+        active.releaseLocalProcessOwner?.();
       },
       (cause) => {
         active.teardown = undefined;
@@ -314,11 +318,22 @@ export function makePiBashProcessSupervisor(
       );
       const active: PiActiveProcess = {
         child,
+        ...(options.threadId !== undefined
+          ? {
+              releaseLocalProcessOwner: registerLocalProcessOwner(
+                child.pid ?? 0,
+                options.threadId,
+              ),
+            }
+          : {}),
         teardown: undefined,
         teardownRequested: false,
         teardownProven: false,
       };
       activeProcesses.add(active);
+      if (active.releaseLocalProcessOwner) {
+        child.once("exit", active.releaseLocalProcessOwner);
+      }
 
       if (commandFromStdin) {
         child.stdin?.on("error", () => undefined);
@@ -3359,6 +3374,7 @@ const makePiAdapter = (options?: PiAdapterLiveOptions) =>
         }
         const piSdk = yield* loadPiSdk("session/start");
         const processSupervisor = makePiBashProcessSupervisor({
+          threadId: input.threadId,
           lowerPriority: yield* providerProcessPriorityEnabled,
           getShellConfig: () => piSdk.getShellConfig(),
           ...(piEnvironment !== undefined ? { environment: piEnvironment } : {}),

@@ -5,6 +5,7 @@
 
 export const GENERIC_TERMINAL_THREAD_TITLE = "New terminal";
 export const DOCK_TERMINAL_SCOPE_PREFIX = "dock-terminal:";
+export const PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX = "project-service:";
 
 export function dockTerminalScopeId(hostThreadId: string): string {
   return `${DOCK_TERMINAL_SCOPE_PREFIX}${hostThreadId}`;

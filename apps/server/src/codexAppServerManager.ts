@@ -104,6 +104,7 @@ import {
 } from "./provider/supervisedProcessTeardown.ts";
 import { ensureIsolatedScratchWorkspace, resolveScratchWorkspaceCwd } from "./scratchWorkspaces.ts";
 import { createLogger } from "./logger";
+import { registerLocalProcessOwner } from "./localProcessOwnership.ts";
 import {
   classifyCodexStderr,
   normalizeCodexProcessLine,
@@ -229,6 +230,7 @@ interface CodexSessionContext {
   lifecycleGeneration?: string;
   account: CodexAccountSnapshot;
   child: ChildProcessWithoutNullStreams;
+  releaseLocalProcessOwner?: () => void;
   stdoutFramer: CodexJsonlFramer;
   stdinWriter: CodexJsonlWriter;
   detachStdout?: () => void;
@@ -3019,6 +3021,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
   private async teardownContextProcess(context: CodexSessionContext): Promise<void> {
     try {
       const result = await teardownChildProcessTree(context.child, this.teardownProcessTree);
+      context.releaseLocalProcessOwner?.();
       context.teardownCapturedBeforeExit = result.capturedBeforeRootExit === true;
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
@@ -4169,6 +4172,14 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
   private attachProcessListeners(context: CodexSessionContext): void {
     this.requestRegistry(context).processStarted();
+    if (!context.discovery) {
+      const releaseLocalProcessOwner = registerLocalProcessOwner(
+        context.child.pid ?? 0,
+        context.session.threadId,
+      );
+      context.releaseLocalProcessOwner = releaseLocalProcessOwner;
+      context.child.once("exit", releaseLocalProcessOwner);
+    }
     const onStdoutData = (chunk: Buffer) => {
       if (context.stopping) return;
       try {

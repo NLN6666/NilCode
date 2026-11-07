@@ -4,7 +4,9 @@
 // Depends on: Vitest and exported local server monitor helpers.
 
 import { describe, expect, it, vi } from "vitest";
+import { ThreadId } from "@synara/contracts";
 
+import { registerLocalProcessOwner } from "./localProcessOwnership";
 import {
   buildLocalServerProcesses,
   enrichLocalServerProcessesWithPageTitles,
@@ -491,5 +493,155 @@ describe("localServerMonitor", () => {
 
     expect(servers).toHaveLength(1);
     expect(servers[0]?.cwd).toBe("/Users/dev/monorepo");
+  });
+
+  it("attributes same-cwd listeners to their nearest managed process owner", () => {
+    const listeners = parseLsofTcpListenOutput(
+      [
+        "p101",
+        "cnode",
+        "PTCP",
+        "n127.0.0.1:6101",
+        "p102",
+        "cnode",
+        "PTCP",
+        "n127.0.0.1:6102",
+        "p103",
+        "cnode",
+        "PTCP",
+        "n127.0.0.1:6103",
+      ].join("\n"),
+    );
+    const processInfo = new Map<number, LocalServerProcessInfo>([
+      [101, { ppid: 201, commandLine: "node ./node_modules/.bin/vite" }],
+      [201, { ppid: 301, commandLine: "npm run dev" }],
+      [301, { ppid: 1, commandLine: "node npm" }],
+      [102, { ppid: 202, commandLine: "node ./node_modules/.bin/vite" }],
+      [202, { ppid: 302, commandLine: "npm run dev" }],
+      [302, { ppid: 1, commandLine: "node npm" }],
+      [103, { ppid: 203, commandLine: "node ./node_modules/.bin/vite" }],
+      [203, { ppid: 1, commandLine: "npm run dev" }],
+    ]);
+    const sharedCwd = "/Users/dev/monorepo";
+    const servers = buildLocalServerProcesses(
+      listeners,
+      processInfo,
+      new Map([
+        [101, sharedCwd],
+        [102, sharedCwd],
+        [103, sharedCwd],
+      ]),
+      [
+        { pid: 301, threadId: ThreadId.makeUnsafe("thread-a") },
+        { pid: 302, threadId: ThreadId.makeUnsafe("thread-b") },
+      ],
+    );
+
+    expect(servers.map(({ pid, cwd, threadId }) => ({ pid, cwd, threadId }))).toEqual([
+      { pid: 101, cwd: sharedCwd, threadId: "thread-a" },
+      { pid: 102, cwd: sharedCwd, threadId: "thread-b" },
+      { pid: 103, cwd: sharedCwd, threadId: undefined },
+    ]);
+  });
+
+  it("uses the nearest live owner across deep ancestry and leaves unknown chains unassigned", () => {
+    const listeners = parseLsofTcpListenOutput(
+      [
+        "p501",
+        "cnode",
+        "PTCP",
+        "n127.0.0.1:6201",
+        "p601",
+        "cnode",
+        "PTCP",
+        "n127.0.0.1:6202",
+        "p701",
+        "cnode",
+        "PTCP",
+        "n127.0.0.1:6203",
+        "p801",
+        "cnode",
+        "PTCP",
+        "n127.0.0.1:6204",
+      ].join("\n"),
+    );
+    const processInfo = new Map<number, LocalServerProcessInfo>([
+      [501, { ppid: 502, commandLine: "node ./node_modules/.bin/vite" }],
+      [502, { ppid: 503, commandLine: "shell" }],
+      [503, { ppid: 504, commandLine: "npm" }],
+      [504, { ppid: 505, commandLine: "node" }],
+      [505, { ppid: 506, commandLine: "shell" }],
+      [506, { ppid: 507, commandLine: "provider" }],
+      [507, { ppid: 1, commandLine: "node provider" }],
+      [601, { ppid: 602, commandLine: "node ./node_modules/.bin/vite" }],
+      [602, { ppid: 603, commandLine: "shell" }],
+      [603, { ppid: 604, commandLine: "npm" }],
+      [604, { ppid: 605, commandLine: "node" }],
+      [605, { ppid: 606, commandLine: "shell" }],
+      [606, { ppid: 607, commandLine: "provider" }],
+      [607, { ppid: 1, commandLine: "node provider" }],
+      [701, { ppid: 702, commandLine: "node ./node_modules/.bin/vite" }],
+      [702, { ppid: 703, commandLine: "unknown parent" }],
+      [703, { ppid: 702, commandLine: "cycle" }],
+      [801, { ppid: 802, commandLine: "node ./node_modules/.bin/vite" }],
+    ]);
+    const servers = buildLocalServerProcesses(
+      listeners,
+      processInfo,
+      new Map(),
+      [
+        { pid: 507, threadId: ThreadId.makeUnsafe("deep-owner") },
+        { pid: 606, threadId: ThreadId.makeUnsafe("far-owner") },
+        { pid: 604, threadId: ThreadId.makeUnsafe("nearest-owner") },
+        { pid: 802, threadId: ThreadId.makeUnsafe("exited-owner") },
+      ],
+    );
+
+    expect(servers.map(({ pid, threadId }) => ({ pid, threadId }))).toEqual([
+      { pid: 501, threadId: "deep-owner" },
+      { pid: 601, threadId: "nearest-owner" },
+      { pid: 701, threadId: undefined },
+      { pid: 801, threadId: undefined },
+    ]);
+  });
+
+  it("keeps shared process ownership ambiguous until only one conversation retains it", () => {
+    const listeners = parseLsofTcpListenOutput(
+      ["p901", "cnode", "PTCP", "n127.0.0.1:6301"].join("\n"),
+    );
+    const processes = new Map([[901, { ppid: 1, commandLine: "vite" }]]);
+    const owner = () => buildLocalServerProcesses(listeners, processes)[0]?.threadId;
+    const releaseA = registerLocalProcessOwner(901, ThreadId.makeUnsafe("thread-a"));
+    const releaseDuplicateA = registerLocalProcessOwner(901, ThreadId.makeUnsafe("thread-a"));
+    const releaseB = registerLocalProcessOwner(901, ThreadId.makeUnsafe("thread-b"));
+    try {
+      expect(owner()).toBeUndefined();
+      releaseB();
+      expect(owner()).toBe("thread-a");
+      releaseA();
+      expect(owner()).toBe("thread-a");
+      releaseDuplicateA();
+      expect(owner()).toBeUndefined();
+    } finally {
+      releaseA();
+      releaseDuplicateA();
+      releaseB();
+    }
+  });
+
+  it("does not let repeated cleanup erase a later owner of a reused process id", () => {
+    const listeners = parseLsofTcpListenOutput(
+      ["p902", "cnode", "PTCP", "n127.0.0.1:6302"].join("\n"),
+    );
+    const processes = new Map([[902, { ppid: 1, commandLine: "vite" }]]);
+    const releaseOld = registerLocalProcessOwner(902, ThreadId.makeUnsafe("thread-old"));
+    releaseOld();
+    const releaseNew = registerLocalProcessOwner(902, ThreadId.makeUnsafe("thread-new"));
+    try {
+      releaseOld();
+      expect(buildLocalServerProcesses(listeners, processes)[0]?.threadId).toBe("thread-new");
+    } finally {
+      releaseNew();
+    }
   });
 });

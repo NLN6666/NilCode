@@ -1,4 +1,5 @@
 import type { FileDiffMetadata } from "@pierre/diffs/react";
+import { resolveBrowserSurfaceId } from "@synara/shared/browserSurface";
 import { isWorkspaceRelativePathSafe } from "@synara/shared/path";
 import type { ProjectId, ResolvedKeybindingsConfig, ThreadId, TurnId } from "@synara/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -67,6 +68,7 @@ import {
 import {
   resolveActivePane,
   resolveBrowserVisibilityForDockOpenChange,
+  resolveProjectSharedBrowserDockState,
   type RightDockPane,
   type RightDockPaneKind,
 } from "../../rightDockStore.logic";
@@ -228,9 +230,27 @@ export function SingleChatSurface(props: {
   );
   const sharedBrowserProjectId =
     activeProject?.browserSharing === "shared" ? activeProject.id : null;
+  const browserSurfaceId = resolveBrowserSurfaceId({
+    threadId: props.threadId,
+    projectId: activeProject?.id ?? props.projectId,
+    sharing: activeProject?.browserSharing,
+  });
   const sharedBrowserVisible = useRightDockStore(
     useMemo(() => selectSharedBrowserVisibility(sharedBrowserProjectId), [sharedBrowserProjectId]),
   );
+  const renderDockState = useMemo(() => {
+    if (sharedBrowserProjectId === null || sharedBrowserVisible === undefined) {
+      return dockState;
+    }
+    return resolveProjectSharedBrowserDockState({
+      threadState: dockState,
+      projectBrowserVisible: sharedBrowserVisible,
+      // The state is only projected for this render; the store reconciliation below
+      // persists its own pane id. This stable temporary id keeps the browser pane present
+      // while a newly selected thread is being reconciled.
+      createPaneId: () => `shared-browser:${browserSurfaceId}`,
+    });
+  }, [browserSurfaceId, dockState, sharedBrowserProjectId, sharedBrowserVisible]);
   const threadWorkspaceMetadata = useStore(
     useMemo(() => createThreadWorkspaceMetadataSelector(props.threadId), [props.threadId]),
   );
@@ -351,7 +371,7 @@ export function SingleChatSurface(props: {
     dismissFloatingBrowserForThread(props.threadId);
   }, [dismissFloatingBrowserForThread, props.threadId]);
 
-  const activePane = resolveActivePane(dockState);
+  const activePane = resolveActivePane(renderDockState);
   const browserVisibleInCurrentThread = activePane?.kind === "browser";
 
   useEffect(() => {
@@ -383,28 +403,28 @@ export function SingleChatSurface(props: {
 
   const syncSharedBrowserVisibilityForDockOpenChange = useCallback(
     (open: boolean) => {
-      const browserVisible = resolveBrowserVisibilityForDockOpenChange(dockState, open);
+      const browserVisible = resolveBrowserVisibilityForDockOpenChange(renderDockState, open);
       if (browserVisible !== null) {
         syncSharedBrowserVisibility(browserVisible);
       }
     },
-    [dockState, syncSharedBrowserVisibility],
+    [renderDockState, syncSharedBrowserVisibility],
   );
 
   const closeDockPane = useCallback(
     (paneId: string) => {
-      const pane = dockState.panes.find((candidate) => candidate.id === paneId);
+      const pane = renderDockState.panes.find((candidate) => candidate.id === paneId);
       if (pane?.kind === "browser") {
         syncSharedBrowserVisibility(false);
       }
       closePane(props.threadId, paneId);
     },
-    [closePane, dockState.panes, props.threadId, syncSharedBrowserVisibility],
+    [closePane, props.threadId, renderDockState.panes, syncSharedBrowserVisibility],
   );
   const floatingBrowserVisible = shouldRenderFloatingBrowserPanel({
     hostThreadId: props.threadId,
     floatingThreadId: floatingBrowserRequested ? props.threadId : null,
-    dockBrowserVisible: dockState.open && activePane?.kind === "browser",
+    dockBrowserVisible: renderDockState.open && activePane?.kind === "browser",
   });
   const {
     activePaneRuntimeMode,
@@ -413,6 +433,7 @@ export function SingleChatSurface(props: {
   } = useDockPaneRuntimeActivation({
     threadId: props.threadId,
     activePane,
+    browserSurfaceId,
   });
 
   // Bridge the dock's active browser/diff pane back into the panelState shape the
@@ -424,7 +445,7 @@ export function SingleChatSurface(props: {
         : null,
     diffTurnId: activePane?.kind === "diff" ? activePane.diffTurnId : null,
     diffFilePath: activePane?.kind === "diff" ? activePane.diffFilePath : null,
-    hasOpenedPanel: dockState.panes.length > 0,
+    hasOpenedPanel: renderDockState.panes.length > 0,
     lastOpenPanel: "browser",
   };
 
@@ -444,7 +465,7 @@ export function SingleChatSurface(props: {
     toggleSingletonPane(props.threadId, { kind: "device" });
   };
   const handleToggleRightDock = () => {
-    const nextOpen = !dockState.open;
+    const nextOpen = !renderDockState.open;
     syncSharedBrowserVisibilityForDockOpenChange(nextOpen);
     setDockOpen(props.threadId, nextOpen);
   };
@@ -1145,7 +1166,7 @@ export function SingleChatSurface(props: {
   };
 
   const handleSelectDockPane = (paneId: string) => {
-    const paneKind = dockState.panes.find((pane) => pane.id === paneId)?.kind;
+    const paneKind = renderDockState.panes.find((pane) => pane.id === paneId)?.kind;
     requestImmediateDockHydration(paneKind);
     syncSharedBrowserVisibility(paneKind === "browser");
     setActivePane(props.threadId, paneId);
@@ -1333,7 +1354,7 @@ export function SingleChatSurface(props: {
             />
             {floatingBrowserVisible ? (
               <FloatingBrowserPanel
-                key={props.threadId}
+                key={browserSurfaceId}
                 threadId={props.threadId}
                 onClose={dismissFloatingBrowser}
                 onPopToSidebar={() => {
@@ -1346,7 +1367,7 @@ export function SingleChatSurface(props: {
           </ChatPaneBody>
         </KeptChatPane>
         <RightDock
-          state={dockState}
+          state={renderDockState}
           minWidth={SINGLE_PANEL_MIN_WIDTH}
           defaultWidth={DIFF_INLINE_DEFAULT_WIDTH}
           widthStorageKey={`chat_right_dock_width:${props.threadId}`}
@@ -1354,17 +1375,28 @@ export function SingleChatSurface(props: {
           addMenuKinds={availableDockPaneKinds}
           launcherItems={dockLauncherItems}
           motionKey={props.threadId}
+          getPaneRenderKey={(pane) => (pane.kind === "browser" ? browserSurfaceId : pane.id)}
           activePaneRuntimeMode={
             floatingBrowserVisible && activePane?.kind === "browser"
               ? "preview"
               : activePaneRuntimeMode
           }
-          browserRuntimeMode={floatingBrowserVisible ? "preview" : "live"}
+          browserRuntimeMode={
+            floatingBrowserVisible && activePane?.kind === "browser"
+              ? "preview"
+              : activePaneRuntimeMode
+          }
           {...(paneLabelOverrides ? { paneLabelOverrides } : {})}
           {...(paneIconOverrides ? { paneIconOverrides } : {})}
           onSelectPane={handleSelectDockPane}
           onClosePane={(paneId) => {
-            if (dockState.panes.find((pane) => pane.id === paneId)?.kind === "terminal") {
+            const pane = renderDockState.panes.find((candidate) => candidate.id === paneId);
+            if (pane?.kind === "browser") {
+              syncSharedBrowserVisibility(false);
+              closePane(props.threadId, paneId);
+              return;
+            }
+            if (pane?.kind === "terminal") {
               void closeDockTerminalPane({
                 hostThreadId: props.threadId,
                 paneId,
@@ -1372,7 +1404,7 @@ export function SingleChatSurface(props: {
               });
               return;
             }
-            if (dockState.panes.find((pane) => pane.id === paneId)?.kind !== "explorer") {
+            if (pane?.kind !== "explorer") {
               closePane(props.threadId, paneId);
               return;
             }

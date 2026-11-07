@@ -446,6 +446,8 @@
   "goalAchieved": "Objetivo alcanzado",
   "lastActivity": "Última actividad",
   "localServers_label": "Servidores locales",
+  "localServers_conversation": "Conversación: {{title}}",
+  "localServers_unknownConversation": "Conversación desconocida",
   "fileLineComment_localComment": "Comentario local",
   "modelSources": "Fuentes de modelos",
   "composerPendingUserInputPanel_nextQuestion": "Siguiente pregunta",

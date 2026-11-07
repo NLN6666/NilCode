@@ -28,6 +28,7 @@ const BROWSER_PANE: RightDockPane = {
 interface RuntimeActivationProps {
   readonly threadId: ThreadId;
   readonly activePane: RightDockPane | null;
+  readonly browserSurfaceId?: ThreadId | null;
 }
 
 describe("useDockPaneRuntimeActivation", () => {
@@ -49,6 +50,7 @@ describe("useDockPaneRuntimeActivation", () => {
         useDockPaneRuntimeActivation({
           threadId: props?.threadId ?? THREAD_A,
           activePane: props ? props.activePane : BROWSER_PANE,
+          browserSurfaceId: props?.browserSurfaceId,
         }),
       {
         initialProps,
@@ -63,6 +65,53 @@ describe("useDockPaneRuntimeActivation", () => {
     await hook.rerender({ threadId: THREAD_B, activePane: null });
     await hook.rerender({ threadId: THREAD_A, activePane: { ...BROWSER_PANE } });
 
+    expect(hook.result.current.activePaneRuntimeMode).toBe("preview");
+    await expect
+      .poll(() => hook.result.current.activePaneRuntimeMode, { timeout: 1_000 })
+      .toBe("live");
+
+    await hook.unmount();
+  });
+
+  it("reuses hydrated runtime for the same browser surface across host threads", async () => {
+    const sharedSurface = ThreadId.makeUnsafe("project-browser:project-1");
+    const initialProps: RuntimeActivationProps = {
+      threadId: THREAD_A,
+      activePane: { ...BROWSER_PANE, id: "browser-a" },
+      browserSurfaceId: sharedSurface,
+    };
+    const hook = await renderHook(
+      (props?: RuntimeActivationProps) =>
+        useDockPaneRuntimeActivation({
+          threadId: props?.threadId ?? THREAD_A,
+          activePane: props ? props.activePane : BROWSER_PANE,
+          browserSurfaceId: props?.browserSurfaceId,
+        }),
+      { initialProps },
+    );
+
+    await expect
+      .poll(() => hook.result.current.activePaneRuntimeMode, { timeout: 1_000 })
+      .toBe("live");
+    await hook.rerender({
+      threadId: THREAD_B,
+      activePane: { ...BROWSER_PANE, id: "browser-b" },
+      browserSurfaceId: sharedSurface,
+    });
+    expect(hook.result.current.activePaneRuntimeMode).toBe("live");
+
+    await hook.rerender({
+      threadId: THREAD_A,
+      activePane: { ...BROWSER_PANE, id: "browser-a" },
+      browserSurfaceId: sharedSurface,
+    });
+    expect(hook.result.current.activePaneRuntimeMode).toBe("live");
+
+    await hook.rerender({
+      threadId: THREAD_B,
+      activePane: { ...BROWSER_PANE, id: "browser-b" },
+      browserSurfaceId: ThreadId.makeUnsafe("thread-b"),
+    });
     expect(hook.result.current.activePaneRuntimeMode).toBe("preview");
     await expect
       .poll(() => hook.result.current.activePaneRuntimeMode, { timeout: 1_000 })

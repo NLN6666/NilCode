@@ -2,6 +2,8 @@
 
 ## Unreleased — dev integration
 
+- Show owning conversation names in the browser home and Environment local-server list when managed process ancestry proves ownership; leave external, detached, or ambiguous servers explicitly unassigned instead of guessing from their directory.
+- Keep project-shared browser panes and their live pages mounted when switching conversations, avoiding hidden/starting frames while preserving per-thread attachments and isolated browsers.
 - Keep classic-sidebar navigation controls aligned after collapse instead of covering thread titles, and size the labeled Hand off control to its text while retaining the compact icon-only button.
 - Merge `main` through `7c81757e8` (Synara 1.1.0), retaining Stable OMP, Beta ACP OMP, Advisor, Chinese localization, the classic sidebar, and project-service controls.
 - Integrate main's account and remote-connection surfaces, Pro entry points, immersive onboarding, crash recovery, opt-in quota continuation, Pi 1.4 compatibility, safer attachments, and Electron 43.8.7.

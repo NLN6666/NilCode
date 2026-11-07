@@ -1,5 +1,5 @@
 // FILE: LocalServerIdentity.tsx
-// Purpose: Shared name + "address · folder" identity column for a detected local dev server.
+// Purpose: Shared name, address/folder, and conversation identity for a local dev server.
 // Layer: Web UI primitive (shared between the Environment menu and the in-app browser home).
 // Depends on: shared local-server presentation helpers.
 
@@ -10,12 +10,14 @@ import {
   localServerPrimaryLabel,
 } from "@synara/shared/localServers";
 
+import { useTranslation } from "~/i18n";
 import { cn } from "~/lib/utils";
+import { useStore } from "~/store";
 
 /**
  * Visual context the identity column renders into. Both surfaces share an
- * identical structure — a truncating primary label above a horizontal
- * "address · folder" meta line — and differ only in typography/color tokens:
+ * identical structure — a primary label, address/folder, and owning conversation —
+ * and differ only in typography/color tokens:
  * - "menu": the Environment panel's Local Servers popup (app font tokens, muted foreground).
  * - "browser": the in-app browser's local-servers home (larger white-on-dark cards).
  */
@@ -47,7 +49,7 @@ const IDENTITY_TONE: Record<LocalServerIdentityTone, LocalServerIdentityToneToke
 };
 
 /**
- * Name + "address · folder" identity column for a detected local dev server.
+ * Name, address/folder, and owning conversation for a detected local dev server.
  * The folder (cwd basename) disambiguates servers whose live page titles collide
  * — e.g. two apps both titled "Synara" started from different directories.
  */
@@ -58,10 +60,20 @@ export function LocalServerIdentity({
   server: ServerLocalServerProcess;
   tone: LocalServerIdentityTone;
 }) {
+  const { t } = useTranslation();
+  const threadTitle = useStore((state) =>
+    server.threadId
+      ? (state.threadShellById?.[server.threadId]?.title ??
+        state.sidebarThreadSummaryById[server.threadId]?.title)
+      : undefined,
+  );
   const tokens = IDENTITY_TONE[tone];
   const primaryLabel = localServerPrimaryLabel(server);
   const addressLabel = localServerAddressLabel(server);
   const folderLabel = localServerFolderLabel(server);
+  const conversationLabel = server.threadId
+    ? t("chat:localServers_conversation", { title: threadTitle || server.threadId })
+    : t("chat:localServers_unknownConversation");
 
   return (
     <span className="min-w-0">
@@ -80,6 +92,12 @@ export function LocalServerIdentity({
             </span>
           </>
         ) : null}
+      </span>
+      <span
+        className={cn("mt-0.5 block truncate leading-tight", tokens.meta)}
+        title={server.threadId ? `${conversationLabel}\n${server.threadId}` : conversationLabel}
+      >
+        {conversationLabel}
       </span>
     </span>
   );

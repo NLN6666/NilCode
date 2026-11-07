@@ -17,6 +17,7 @@ import {
   TerminalSessionSnapshot,
   TerminalSessionStatus,
   TerminalWriteInput,
+  ThreadId,
 } from "@synara/contracts";
 import type { TerminalActivityState, TerminalCliKind } from "@synara/shared/terminalThreads";
 import { PtyProcess } from "./PTY";
@@ -46,6 +47,8 @@ export interface TerminalSessionState {
   cols: number;
   rows: number;
   process: PtyProcess | null;
+  /** Lease tying this live PTY root to its chat thread, when it is conversation-owned. */
+  releaseLocalProcessOwner?: () => void;
   unsubscribeData: (() => void) | null;
   unsubscribeExit: (() => void) | null;
   hasRunningSubprocess: boolean;

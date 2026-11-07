@@ -3,9 +3,13 @@ import "../../index.css";
 import { expect, it } from "vitest";
 import { render } from "vitest-browser-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { RightDock } from "./RightDock";
-import type { RightDockThreadState } from "../../rightDockStore.logic";
+import {
+  createDefaultRightDockState,
+  openPaneInState,
+  type RightDockThreadState,
+} from "../../rightDockStore.logic";
 
 const dockTabs = () => [
   ...document.querySelectorAll<HTMLElement>('nav[aria-label="Open panels"] [data-surface-tab]'),
@@ -148,6 +152,77 @@ it.each(["browser", "terminal"] as const)(
     }
   },
 );
+
+it("keeps a shared browser pane mounted across host threads, but not across surfaces", async () => {
+  await page.viewport(1280, 800);
+
+  function BrowserProbe() {
+    const [count, setCount] = useState(0);
+    return (
+      <button
+        className="m-8 p-4"
+        data-testid="browser-pane-state"
+        onClick={() => setCount((value) => value + 1)}
+      >
+        {count}
+      </button>
+    );
+  }
+
+  function Harness() {
+    const [thread, setThread] = useState("a");
+    const [surface, setSurface] = useState("project-browser:one");
+    const state = openPaneInState(createDefaultRightDockState(), {
+      paneId: `browser-${thread}`,
+      kind: "browser",
+    });
+    return (
+      <>
+        <button onClick={() => setThread(thread === "a" ? "b" : "a")}>Switch thread</button>
+        <button
+          onClick={() =>
+            setSurface((current) =>
+              current === "project-browser:one" ? "project-browser:two" : "project-browser:one",
+            )
+          }
+        >
+          Switch project
+        </button>
+        <div style={{ display: "flex", width: 1000, height: 600 }}>
+          <div style={{ flex: 1 }} />
+          <RightDock
+            state={state}
+            minWidth={300}
+            defaultWidth="500px"
+            shouldAcceptWidth={() => true}
+            addMenuKinds={[]}
+            getPaneRenderKey={(pane) => (pane.kind === "browser" ? surface : pane.id)}
+            onClosePane={() => {}}
+            onCollapse={() => {}}
+            onOpenChange={() => {}}
+            onAddPane={() => {}}
+            renderPane={() => <BrowserProbe />}
+          />
+        </div>
+      </>
+    );
+  }
+
+  const screen = await renderDock(<Harness />);
+  try {
+    const browserState = screen.getByTestId("browser-pane-state");
+    await browserState.click();
+    await expect.element(browserState).toHaveTextContent("1");
+
+    await screen.getByRole("button", { name: "Switch thread" }).click();
+    await expect.element(screen.getByTestId("browser-pane-state")).toHaveTextContent("1");
+
+    await screen.getByRole("button", { name: "Switch project" }).click();
+    await expect.element(screen.getByTestId("browser-pane-state")).toHaveTextContent("0");
+  } finally {
+    await screen.unmount();
+  }
+});
 
 // Saved sizes must still leave room for the host's real composer after a window change.
 it("restores a saved width only while the narrower shell can fit its composer", async () => {

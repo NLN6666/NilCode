@@ -2674,6 +2674,7 @@ export function makeDevinAdapter(
             devinSettings: effectiveDevinSettings,
             childProcessSpawner,
             cwd,
+            ownerThreadId: input.threadId,
             runtimeMode: input.runtimeMode,
             clientInfo: { name: "Synara", version: "0.0.0" },
             clientCapabilities: {

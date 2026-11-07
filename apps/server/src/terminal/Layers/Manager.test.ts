@@ -10,6 +10,7 @@ import {
 } from "@synara/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { buildLocalServerProcesses } from "../../localServerMonitor";
 import {
   PtySpawnError,
   type PtyAdapterShape,
@@ -260,7 +261,10 @@ describe("TerminalManager", () => {
       ...(options.processSnapshotObserver
         ? { processSnapshotObserver: options.processSnapshotObserver }
         : {}),
-      ...(options.processTreeKiller ? { processTreeKiller: options.processTreeKiller } : {}),
+      processTreeKiller: options.processTreeKiller ?? {
+        capture: () => ({ descendants: [] }),
+        signal: () => {},
+      },
       ...(options.subprocessPollIntervalMs
         ? { subprocessPollIntervalMs: options.subprocessPollIntervalMs }
         : {}),
@@ -277,6 +281,38 @@ describe("TerminalManager", () => {
     });
     return { logsDir, ptyAdapter, manager };
   }
+
+  it.each([
+    ["thread-owner", "thread-owner"],
+    ["dock-terminal:thread-owner", "thread-owner"],
+    ["project-service:project-owner", undefined],
+    ["dev-server:project-owner", undefined],
+    ["dock-terminal:project-service:project-owner", undefined],
+  ] as const)(
+    "attributes servers from terminal scope %s without inventing a conversation",
+    async (scope, owner) => {
+      const { manager } = makeManager(5, {
+        subprocessChecker: async () => false,
+        processTreeKiller: { capture: () => ({ descendants: [] }), signal: () => {} },
+      });
+      try {
+        const opened = await manager.open(openInput({ threadId: scope }));
+        const pid = opened.pid as number;
+        const servers = () =>
+          buildLocalServerProcesses(
+            [
+              { pid, command: "node", protocol: "tcp", host: "127.0.0.1", port: 6300, family: "tcp4" },
+            ],
+            new Map([[pid, { ppid: 1, commandLine: "vite" }]]),
+          );
+        expect(servers()[0]?.threadId).toBe(owner);
+        await manager.close({ threadId: scope });
+        expect(servers()[0]?.threadId).toBeUndefined();
+      } finally {
+        manager.dispose();
+      }
+    },
+  );
 
   it("closes an authentication attempt cancelled while its account is still being prepared", async () => {
     let finish!: (launch: import("../providerAuthentication").ProviderAuthenticationLaunch) => void;

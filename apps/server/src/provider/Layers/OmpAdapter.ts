@@ -907,6 +907,7 @@ export function makeOmpAdapter(
             ompSettings: effectiveOmpSettings,
             childProcessSpawner,
             cwd,
+            ownerThreadId: input.threadId,
             ...(resumeSessionId ? { resumeSessionId } : {}),
             clientCapabilities: { elicitation: { form: {} } },
             clientInfo: { name: "Synara", version: "0.0.0" },

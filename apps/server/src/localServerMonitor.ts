@@ -16,6 +16,7 @@ import type {
   ServerStopLocalServerResult,
 } from "@synara/contracts";
 
+import { snapshotLocalProcessOwners, type LocalProcessOwner } from "./localProcessOwnership";
 import { readWindowsLocalServerSnapshot } from "./localServerMonitorWindows";
 import { redactSensitiveProcessArgs } from "./processArgumentRedaction";
 
@@ -23,6 +24,7 @@ const PROCESS_OUTPUT_MAX_BUFFER_BYTES = 2 * 1024 * 1024;
 const STOP_SIGNAL_SETTLE_MS = 450;
 const MAX_PROCESS_ARGS_CHARS = 1_000;
 const PROCESS_LINEAGE_MAX_DEPTH = 4;
+const PROCESS_OWNERSHIP_LINEAGE_MAX_DEPTH = 32;
 const PAGE_TITLE_MAX_CHARS = 200;
 const PAGE_TITLE_FETCH_TIMEOUT_MS = 650;
 const PAGE_TITLE_MAX_BYTES = 128 * 1024;
@@ -32,6 +34,8 @@ const PAGE_TITLE_FETCH_CONCURRENCY = 4;
 const PAGE_TITLE_MAX_URLS_PER_SERVER = 3;
 const PAGE_TITLE_REDIRECT_LIMIT = 3;
 const PAGE_TITLE_CACHE_MAX = 250;
+
+type ProcessOwnerMap = ReadonlyMap<number, ReadonlySet<LocalProcessOwner["threadId"]>>;
 
 export interface ParsedLsofListener {
   readonly pid: number;
@@ -810,6 +814,7 @@ function toServerProcess(
   listeners: readonly ParsedLsofListener[],
   processInfoByPid: ReadonlyMap<number, LocalServerProcessInfo>,
   cwdByPid: ReadonlyMap<number, string>,
+  ownerThreadIdByPid: ProcessOwnerMap,
 ): ServerLocalServerProcess | null {
   if (pid === process.pid) {
     return null;
@@ -834,12 +839,14 @@ function toServerProcess(
 
   const isStoppable = isProcessSignalable(pid);
   const cwd = resolveProcessCwd(pid, processInfoByPid, cwdByPid);
+  const threadId = resolveOwnerThreadId(pid, processInfoByPid, ownerThreadIdByPid);
   const server: ServerLocalServerProcess = {
     id: `${pid}:${ports.join(",")}`,
     pid,
     ...(typeof processInfo?.ppid === "number" && processInfo.ppid > 0
       ? { ppid: processInfo.ppid }
       : {}),
+    ...(threadId ? { threadId } : {}),
     command,
     displayName,
     ...(cwd ? { cwd } : {}),
@@ -851,6 +858,50 @@ function toServerProcess(
   };
   pageTitleProbeArgs.set(server, detectionArgs);
   return server;
+}
+
+function ownerThreadIdMap(owners: readonly LocalProcessOwner[]): ProcessOwnerMap {
+  const mutable = new Map<number, Set<LocalProcessOwner["threadId"]>>();
+  for (const owner of owners) {
+    const threadIds = mutable.get(owner.pid) ?? new Set();
+    threadIds.add(owner.threadId);
+    mutable.set(owner.pid, threadIds);
+  }
+  return mutable;
+}
+
+// The nearest managed process ancestor is the only reliable conversation signal.
+// A shared/reused pid with multiple active conversation leases is deliberately
+// ambiguous instead of falling through to a more distant ancestor.
+function resolveOwnerThreadId(
+  pid: number,
+  processInfoByPid: ReadonlyMap<number, LocalServerProcessInfo>,
+  ownerThreadIdByPid: ProcessOwnerMap,
+): LocalProcessOwner["threadId"] | undefined {
+  const seen = new Set<number>();
+  let currentPid = pid;
+  for (let depth = 0; depth < PROCESS_OWNERSHIP_LINEAGE_MAX_DEPTH; depth++) {
+    if (seen.has(currentPid)) {
+      return undefined;
+    }
+    seen.add(currentPid);
+    // The listener PID itself is live by virtue of the listener snapshot. Every
+    // ancestor must also be present in the process snapshot; a stale lease alone
+    // is not proof that a process still owns this descendant.
+    if (currentPid !== pid && !processInfoByPid.has(currentPid)) {
+      return undefined;
+    }
+    const threadIds = ownerThreadIdByPid.get(currentPid);
+    if (threadIds !== undefined) {
+      return threadIds.size === 1 ? threadIds.values().next().value : undefined;
+    }
+    const ppid = processInfoByPid.get(currentPid)?.ppid;
+    if (typeof ppid !== "number" || ppid <= 1) {
+      return undefined;
+    }
+    currentPid = ppid;
+  }
+  return undefined;
 }
 
 // Resolves the working directory for a listener, walking up the process lineage
@@ -934,16 +985,23 @@ async function readProcessCwdBatch(pids: readonly number[]): Promise<Map<number,
 
 async function readProcessInfoWithAncestors(
   pids: readonly number[],
+  ownerPids: ReadonlySet<number> = new Set(),
 ): Promise<Map<number, LocalServerProcessInfo>> {
   const allProcessInfo = new Map<number, LocalServerProcessInfo>();
   let pendingPids = [...new Set(pids)].filter((pid) => pid > 1);
+  const maxDepth =
+    ownerPids.size > 0 ? PROCESS_OWNERSHIP_LINEAGE_MAX_DEPTH : PROCESS_LINEAGE_MAX_DEPTH;
 
-  for (let depth = 0; depth < PROCESS_LINEAGE_MAX_DEPTH && pendingPids.length > 0; depth++) {
+  for (let depth = 0; depth < maxDepth && pendingPids.length > 0; depth++) {
     const batch = await readProcessInfoBatch(pendingPids);
     const nextPids: number[] = [];
     for (const [pid, processInfo] of batch) {
       allProcessInfo.set(pid, processInfo);
-      if (processInfo.ppid > 1 && !allProcessInfo.has(processInfo.ppid)) {
+      if (
+        !ownerPids.has(pid) &&
+        processInfo.ppid > 1 &&
+        !allProcessInfo.has(processInfo.ppid)
+      ) {
         nextPids.push(processInfo.ppid);
       }
     }
@@ -958,11 +1016,19 @@ export function buildLocalServerProcesses(
   listeners: readonly ParsedLsofListener[],
   processInfoByPid: ReadonlyMap<number, LocalServerProcessInfo> = new Map(),
   cwdByPid: ReadonlyMap<number, string> = new Map(),
+  localProcessOwners: readonly LocalProcessOwner[] = snapshotLocalProcessOwners(),
 ): ServerLocalServerProcess[] {
   const grouped = groupListenersByPid(listeners);
+  const ownerThreadIdByPid = ownerThreadIdMap(localProcessOwners);
   const processes: ServerLocalServerProcess[] = [];
   for (const [pid, group] of grouped) {
-    const processRow = toServerProcess(pid, group, processInfoByPid, cwdByPid);
+    const processRow = toServerProcess(
+      pid,
+      group,
+      processInfoByPid,
+      cwdByPid,
+      ownerThreadIdByPid,
+    );
     if (processRow) {
       processes.push(processRow);
     }
@@ -976,31 +1042,41 @@ interface LocalServerSources {
   readonly listeners: readonly ParsedLsofListener[];
   readonly processInfoByPid: ReadonlyMap<number, LocalServerProcessInfo>;
   readonly cwdByPid: ReadonlyMap<number, string>;
+  readonly localProcessOwners: readonly LocalProcessOwner[];
 }
 
 // The one place the platforms differ. Unix reads lsof and ps; Windows has neither,
 // so a PowerShell snapshot returns both tables in a single round-trip.
-async function readLocalServerSources(): Promise<LocalServerSources> {
+async function readLocalServerSources(
+  localProcessOwners: readonly LocalProcessOwner[] = snapshotLocalProcessOwners(),
+): Promise<LocalServerSources> {
   if (process.platform === "win32") {
     // The CIM process table already spans every pid, so the ancestor walk that
     // batches ps calls has nothing left to fetch. Windows exposes no per-process
     // working directory, so attributing a listener to a tracked project run falls
     // back to the pid/ppid branch of localServerMatchesRun.
     const snapshot = await readWindowsLocalServerSnapshot();
-    return { ...snapshot, cwdByPid: new Map() };
+    return { ...snapshot, cwdByPid: new Map(), localProcessOwners };
   }
   const listeners = await readLsofListeners();
   const pids = [...new Set(listeners.map((listener) => listener.pid))];
-  const processInfoByPid = await readProcessInfoWithAncestors(pids);
+  const ownerPids = new Set(localProcessOwners.map((owner) => owner.pid));
+  const processInfoByPid = await readProcessInfoWithAncestors(pids, ownerPids);
   // Resolve cwd across the full lineage so a generic port-holding child can fall
   // back to its dev-tool parent's directory (cwd is inherited across fork/exec).
   const cwdByPid = await readProcessCwdBatch([...new Set([...pids, ...processInfoByPid.keys()])]);
-  return { listeners, processInfoByPid, cwdByPid };
+  return { listeners, processInfoByPid, cwdByPid, localProcessOwners };
 }
 
 export async function listLocalServers(): Promise<ServerListLocalServersResult> {
-  const { listeners, processInfoByPid, cwdByPid } = await readLocalServerSources();
-  const servers = buildLocalServerProcesses(listeners, processInfoByPid, cwdByPid);
+  const { listeners, processInfoByPid, cwdByPid, localProcessOwners } =
+    await readLocalServerSources();
+  const servers = buildLocalServerProcesses(
+    listeners,
+    processInfoByPid,
+    cwdByPid,
+    localProcessOwners,
+  );
   return {
     generatedAt: new Date().toISOString(),
     servers: await enrichLocalServerProcessesWithPageTitles(servers),

@@ -25,23 +25,31 @@ const browserDockPaneHydrationScheduler: DeferredDockPaneHydrationScheduler = {
 export function useDockPaneRuntimeActivation(input: {
   threadId: ThreadId;
   activePane: RightDockPane | null;
+  /** Stable identity for a browser surface shared across multiple host threads. */
+  browserSurfaceId?: ThreadId | null | undefined;
 }) {
   const immediateHydrationKindRef = useRef<RightDockPaneKind | "any" | null>(null);
   const [hydratedPaneKey, setHydratedPaneKey] = useState<string | null>(null);
   const activePaneId = input.activePane?.id ?? null;
   const activePaneKind = input.activePane?.kind ?? null;
 
-  const activePaneKey = useMemo(
-    () =>
-      activePaneId !== null && activePaneKind !== null
-        ? dockPaneActivationKey({
-            threadId: input.threadId,
-            paneId: activePaneId,
-            kind: activePaneKind,
-          })
-        : null,
-    [activePaneId, activePaneKind, input.threadId],
-  );
+  const activePaneKey = useMemo(() => {
+    if (activePaneId === null || activePaneKind === null) {
+      return null;
+    }
+    if (activePaneKind === "browser" && input.browserSurfaceId) {
+      return dockPaneActivationKey({
+        threadId: input.browserSurfaceId,
+        paneId: input.browserSurfaceId,
+        kind: activePaneKind,
+      });
+    }
+    return dockPaneActivationKey({
+      threadId: input.threadId,
+      paneId: activePaneId,
+      kind: activePaneKind,
+    });
+  }, [activePaneId, activePaneKind, input.browserSurfaceId, input.threadId]);
 
   const activePaneRuntimeMode: DockPaneRuntimeMode =
     activePaneKind !== null && activePaneKey !== null

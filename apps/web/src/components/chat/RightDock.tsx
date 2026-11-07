@@ -92,6 +92,8 @@ interface RightDockProps {
   // Single-pane hosts omit selection so their lone tab label is static; multi-pane chat hosts
   // provide the callback and keep the normal selectable-tab behavior.
   onSelectPane?: ((paneId: string) => void) | undefined;
+  /** Lets a host preserve pane content when its logical identity outlives a per-thread pane id. */
+  getPaneRenderKey?: (pane: RightDockPane) => string;
   onClosePane: (paneId: string) => void;
   /** Drops a dragged tab onto another tab's slot. Hosts that omit it get fixed tabs. */
   onMovePane?: ((paneId: string, overPaneId: string) => void) | undefined;
@@ -481,7 +483,7 @@ export function RightDock(props: RightDockProps) {
                     : "live";
               return (
                 <div
-                  key={pane.id}
+                  key={props.getPaneRenderKey?.(pane) ?? pane.id}
                   className={cn(
                     "absolute inset-0 flex min-h-0 w-full",
                     isActive ? undefined : "invisible pointer-events-none",

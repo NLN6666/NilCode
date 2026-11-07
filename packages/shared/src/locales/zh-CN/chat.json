@@ -174,6 +174,8 @@
   "workingFor": "工作了",
   "threadError_dismissError": "关闭错误",
   "localServers_label": "本地服务器",
+  "localServers_conversation": "所属对话：{{title}}",
+  "localServers_unknownConversation": "所属对话未知",
   "fileLineComment_localComment": "本地评论",
   "composerPendingUserInputPanel_nextQuestion": "下一个问题",
   "proposedPlan_exportedToast": "计划已导出",

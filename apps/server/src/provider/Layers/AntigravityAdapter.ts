@@ -77,6 +77,7 @@ import {
 } from "../providerRuntimeEventIngress.ts";
 import { teardownChildProcessTree } from "../supervisedProcessTeardown.ts";
 import { capHistoryBytes } from "../../terminal/terminalHistory.ts";
+import { registerLocalProcessOwner } from "../../localProcessOwnership.ts";
 
 const PROVIDER = "antigravity" as const;
 const DEFAULT_MODEL = "Gemini 3.5 Flash";
@@ -164,6 +165,7 @@ type AntigravitySessionContext = ToolSurfaceCounters & {
   readonly turns: StoredTurn[];
   activeTurnId?: TurnId | undefined;
   activeProcess?: ChildProcess | undefined;
+  releaseActiveProcessOwner?: (() => void) | undefined;
   activePrompt?: string | undefined;
   eventFile?: string | undefined;
   transcriptPath?: string | undefined;
@@ -1289,6 +1291,7 @@ const makeAntigravityAdapter = (dependencies: AntigravityAdapterDependencies = {
     ): Effect.Effect<void, ProviderAdapterRequestError> => {
       const child = context.activeProcess;
       if (!child) return Effect.void;
+      const releaseActiveProcessOwner = context.releaseActiveProcessOwner;
       return Effect.tryPromise({
         try: () => teardownProcessTree(child),
         catch: (cause) =>
@@ -1298,7 +1301,17 @@ const makeAntigravityAdapter = (dependencies: AntigravityAdapterDependencies = {
             detail: messageFromCause(cause, "Failed to stop the Antigravity process tree."),
             cause,
           }),
-      }).pipe(Effect.asVoid);
+      }).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            releaseActiveProcessOwner?.();
+            if (context.releaseActiveProcessOwner === releaseActiveProcessOwner) {
+              delete context.releaseActiveProcessOwner;
+            }
+          }),
+        ),
+        Effect.asVoid,
+      );
     };
 
     /**
@@ -1496,8 +1509,15 @@ const makeAntigravityAdapter = (dependencies: AntigravityAdapterDependencies = {
         return;
       }
       const child = context.activeProcess;
+      const releaseActiveProcessOwner = context.releaseActiveProcessOwner;
       context.stopTeardownRequested = true;
-      context.stopTeardownPromise = teardownProcessTree(child);
+      context.stopTeardownPromise = teardownProcessTree(child).then((result) => {
+        releaseActiveProcessOwner?.();
+        if (context.releaseActiveProcessOwner === releaseActiveProcessOwner) {
+          delete context.releaseActiveProcessOwner;
+        }
+        return result;
+      });
       void context.stopTeardownPromise.catch(() => {
         try {
           child.kill("SIGKILL");
@@ -2642,6 +2662,17 @@ const makeAntigravityAdapter = (dependencies: AntigravityAdapterDependencies = {
           });
         }
         context.activeProcess = child;
+        const releaseActiveProcessOwner = registerLocalProcessOwner(
+          child.pid ?? 0,
+          input.threadId,
+        );
+        context.releaseActiveProcessOwner = releaseActiveProcessOwner;
+        child.once("exit", () => {
+          releaseActiveProcessOwner();
+          if (context.releaseActiveProcessOwner === releaseActiveProcessOwner) {
+            delete context.releaseActiveProcessOwner;
+          }
+        });
         const ownsTurn = () =>
           sessions.get(input.threadId) === context &&
           context.activeProcess === child &&

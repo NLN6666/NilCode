@@ -374,6 +374,8 @@
   "goalAchieved": "Goal achieved",
   "lastActivity": "Last activity",
   "localServers_label": "Local Servers",
+  "localServers_conversation": "Conversation: {{title}}",
+  "localServers_unknownConversation": "Conversation unknown",
   "fileLineComment_localComment": "Local comment",
   "modelSources": "Model sources",
   "composerPendingUserInputPanel_nextQuestion": "Next question",

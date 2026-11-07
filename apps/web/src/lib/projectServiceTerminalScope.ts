@@ -1,7 +1,7 @@
 // FILE: projectServiceTerminalScope.ts
 // Purpose: Derive the project-wide terminal scope that long-running services run in.
 // Layer: Terminal scope helpers
-// Exports: project service scope prefix, the id factory, and the one rule deciding which
+// Exports: the id factory and the one rule deciding which
 //          terminal scope a project action runs in.
 //
 // A service declares a port, and a port is a project-level singleton: two chats in the
@@ -12,8 +12,7 @@
 // every existing `threadId` slot (store, runtime registry, server session) unchanged.
 
 import type { ProjectId, ThreadId } from "@synara/contracts";
-
-export const PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX = "project-service:";
+import { PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX } from "@synara/shared/terminalThreads";
 
 export function projectServiceTerminalThreadId(projectId: ProjectId): ThreadId {
   return `${PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX}${projectId}` as ThreadId;

@@ -854,6 +854,7 @@ export function makeDroidAdapter(
             droidSettings: effectiveDroidSettings,
             childProcessSpawner,
             cwd,
+            ownerThreadId: input.threadId,
             ...(resumeSessionId ? { resumeSessionId } : {}),
             clientCapabilities: { elicitation: { form: {} } },
             clientInfo: { name: "Synara", version: "0.0.0" },
@@ -1973,6 +1974,7 @@ export function makeDroidAdapter(
                 },
                 childProcessSpawner,
                 cwd: sourceCwd,
+                ownerThreadId: input.threadId,
                 resumeSessionId: sourceSessionId,
                 clientInfo: { name: "Synara Fork", version: "0.0.0" },
               });

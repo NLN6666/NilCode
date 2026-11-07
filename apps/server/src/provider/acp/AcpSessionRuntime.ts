@@ -5,6 +5,7 @@
 
 import { randomUUID } from "node:crypto";
 import type * as Acp from "@agentclientprotocol/sdk";
+import type { ThreadId } from "@synara/contracts";
 import { resolveExecutionWorkingDirectory } from "@synara/shared/wslBridge";
 import {
   Cause,
@@ -22,6 +23,7 @@ import {
 } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { spawnProviderProcess } from "../../platform/effectProcessRuntime.ts";
+import { registerLocalProcessOwner } from "../../localProcessOwnership.ts";
 import * as AcpErrors from "./AcpErrors.ts";
 import { makeAcpLoadReplayGate, type AcpLoadReplayGate } from "./AcpLoadReplayGate.ts";
 import { loadAcpSdk, type AcpSdkModule } from "./AcpSdk.ts";
@@ -371,6 +373,8 @@ export function runAcpFreshSessionSetup<A>(
 }
 
 export interface AcpSessionRuntimeOptions {
+  /** Conversation owner for this locally spawned provider root; omitted for discovery runtimes. */
+  readonly ownerThreadId?: ThreadId;
   /** Adapter-owned identity for separating concurrent assistant streams. */
   readonly assistantItemScope?: (
     metadata: Record<string, unknown> | undefined,
@@ -1513,7 +1517,22 @@ const makeAcpSessionRuntime = (
       ),
     );
 
-    yield* Effect.addFinalizer(() => teardownAcpChildProcess(child, options.teardownProcessTree));
+    const releaseProcessOwner = options.ownerThreadId
+      ? registerLocalProcessOwner(child.pid, options.ownerThreadId)
+      : undefined;
+    if (releaseProcessOwner) {
+      yield* child.exitCode.pipe(
+        Effect.tap(() => Effect.sync(releaseProcessOwner)),
+        Effect.forkIn(runtimeScope),
+      );
+    }
+    yield* Effect.addFinalizer(() =>
+      teardownAcpChildProcess(child, options.teardownProcessTree).pipe(
+        Effect.tap(() =>
+          releaseProcessOwner ? Effect.sync(releaseProcessOwner) : Effect.void,
+        ),
+      ),
+    );
     // Registered after child teardown so LIFO scope closure releases any first
     // prompt/fork waiter before waiting for the child process to exit.
     yield* Effect.addFinalizer(() => loadReplayGate?.release ?? Effect.void);

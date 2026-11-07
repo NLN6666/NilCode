@@ -650,6 +650,7 @@ export function makeOhMyPiAdapter(
             ohMyPiSettings: providerSettings,
             childProcessSpawner,
             cwd,
+            ownerThreadId: input.threadId,
             ...(resumeSessionId ? { resumeSessionId } : {}),
             clientInfo: { name: "Synara", version: "0.0.0" },
             protocolLogging: {

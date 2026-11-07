@@ -6,6 +6,7 @@ import {
   type UsageLimitWindows,
 } from "../usageLimit.ts";
 import { restoreClaudeImportedCopyDates } from "../claudeImportedCopyDates.ts";
+import { registerLocalProcessOwner } from "../../localProcessOwnership.ts";
 /**
  * ClaudeAdapterLive - Scoped live implementation for the Claude Agent provider adapter.
  *
@@ -702,6 +703,8 @@ export type ClaudeOwnedProcess = ClaudeSpawnedProcess & ProcessExitHandle;
 
 interface ClaudeProcessOwner {
   process?: ClaudeOwnedProcess;
+  readonly threadId?: ThreadId;
+  releaseLocalProcessOwner?: () => void;
 }
 
 function spawnOwnedClaudeCodeProcess(
@@ -2667,6 +2670,18 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           ? options.spawnClaudeCodeProcess(spawnOptions)
           : spawnOwnedClaudeCodeProcess(spawnOptions, lowerPriority);
         owner.process = process;
+        if (owner.threadId !== undefined) {
+          const releaseLocalProcessOwner = registerLocalProcessOwner(
+            process.pid ?? 0,
+            owner.threadId,
+          );
+          owner.releaseLocalProcessOwner = releaseLocalProcessOwner;
+          if (process.exitCode !== null || process.signalCode !== null) {
+            releaseLocalProcessOwner();
+          } else {
+            process.once("exit", releaseLocalProcessOwner);
+          }
+        }
         return process;
       };
 
@@ -2678,6 +2693,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
       if (!process) {
         return Effect.void;
       }
+      const releaseLocalProcessOwner = owner.releaseLocalProcessOwner;
       return Effect.tryPromise({
         try: () => teardownChildProcessTree(process, teardownProcessTree),
         catch: (cause) =>
@@ -2692,6 +2708,10 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           Effect.sync(() => {
             if (owner.process === process) {
               delete owner.process;
+            }
+            releaseLocalProcessOwner?.();
+            if (owner.releaseLocalProcessOwner === releaseLocalProcessOwner) {
+              delete owner.releaseLocalProcessOwner;
             }
           }),
         ),
@@ -7576,7 +7596,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           // A replacement spawn failure is truthfully a stopped session, never two runtimes.
           yield* stopSessionInternal(existing, { emitExitEvent: false });
         }
-        const processOwner: ClaudeProcessOwner = {};
+        const processOwner: ClaudeProcessOwner = { threadId };
 
         const gatewaySessionLease = acquireAgentGatewaySessionLease(
           agentGatewayCredentials,

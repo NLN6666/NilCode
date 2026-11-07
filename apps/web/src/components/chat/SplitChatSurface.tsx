@@ -1,4 +1,5 @@
 import { type ProjectId, type ProviderKind, type ThreadId, type TurnId } from "@synara/contracts";
+import { resolveBrowserSurfaceId } from "@synara/shared/browserSurface";
 import { useNavigate } from "@tanstack/react-router";
 import {
   type CSSProperties,
@@ -95,6 +96,7 @@ function SplitPaneEmbeddedPanel(props: {
   panelOpen: boolean;
   panel: ChatRightPanel | null | undefined;
   threadId: ThreadId | null;
+  browserSurfaceId: ThreadId | null;
   projectId: ProjectId | null;
   onClosePanel: () => void;
   onOpenThread: (threadId: ThreadId) => void;
@@ -240,6 +242,7 @@ function SplitPaneEmbeddedPanel(props: {
         </div>
       ) : panel === "browser" ? (
         <BrowserDockPane
+          key={props.browserSurfaceId ?? props.threadId}
           threadId={props.threadId}
           paneId={props.paneId}
           onClosePanel={props.onClosePanel}
@@ -329,6 +332,7 @@ function SplitPaneSurface(props: {
   splitView: SplitView;
   paneId: PaneId;
   threadId: ThreadId | null;
+  browserSurfaceId: ThreadId | null;
   panelState: SplitViewPanePanelState;
   isFocused: boolean;
   deferChatMount: boolean;
@@ -451,7 +455,7 @@ function SplitPaneSurface(props: {
           )}
           {props.threadId && props.showFloatingBrowser ? (
             <FloatingBrowserPanel
-              key={props.threadId}
+              key={props.browserSurfaceId ?? props.threadId}
               threadId={props.threadId}
               onClose={props.onCloseFloatingBrowser}
               onPopToSidebar={props.onPopFloatingBrowser}
@@ -466,6 +470,7 @@ function SplitPaneSurface(props: {
         panelOpen={panelOpen && shouldRenderPanelContent}
         panel={props.panelState.panel}
         threadId={props.threadId}
+        browserSurfaceId={props.browserSurfaceId}
         projectId={
           props.threads.find((thread) => thread.id === props.threadId)?.projectId ??
           props.splitView.ownerProjectId
@@ -891,12 +896,24 @@ export function SplitChatSurface(props: { splitViewId: SplitViewId; routeThreadI
   const renderLeaf = ({ leaf }: { leaf: LeafPane }): ReactNode => {
     const isFocused = leaf.id === activeSplitView.focusedPaneId;
     const excluded = new Set<ThreadId>(splitThreadIds);
+    const projectId =
+      threads.find((thread) => thread.id === leaf.threadId)?.projectId ??
+      activeSplitView.ownerProjectId;
+    const browserSurfaceId =
+      leaf.threadId === null
+        ? null
+        : resolveBrowserSurfaceId({
+            threadId: leaf.threadId,
+            projectId,
+            sharing: projects.find((project) => project.id === projectId)?.browserSharing,
+          });
     return (
       <SplitPaneSurface
         key={leaf.id}
         splitView={activeSplitView}
         paneId={leaf.id}
         threadId={leaf.threadId}
+        browserSurfaceId={browserSurfaceId}
         panelState={leaf.panel}
         isFocused={isFocused}
         deferChatMount={false}
