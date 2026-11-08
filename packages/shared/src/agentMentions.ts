@@ -256,3 +256,30 @@ export function buildCodexSubagentPrompt(
     invocations,
   };
 }
+
+export function buildOmpSubagentPrompt(
+  text: string,
+  options: AgentMentionParseOptions,
+): {
+  readonly prompt: string;
+  readonly invocations: ReadonlyArray<ParsedAgentMentionInvocation>;
+} {
+  const invocations = subagentInvocations(text, "omp", options);
+  if (invocations.length === 0) return { prompt: text, invocations };
+  return {
+    prompt: [
+      "The user included inline subagent directives in the form @alias(task).",
+      "Delegate each directive using Oh My Pi's native task tool with the named agent and the task below. Collect the delegated results before synthesizing your answer.",
+      "These are OMP agent names, not Codex agent types, model aliases, or callable functions.",
+      "",
+      ...invocations.map(
+        (invocation, index) =>
+          `${index + 1}. agent: ${JSON.stringify(invocation.agentName)}\ntask:\n${invocation.task}`,
+      ),
+      "",
+      "Original user prompt:",
+      text,
+    ].join("\n"),
+    invocations,
+  };
+}

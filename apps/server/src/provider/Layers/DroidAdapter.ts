@@ -2187,6 +2187,9 @@ export function makeDroidAdapter(
       listAgentsFromFileSystem({
         provider: PROVIDER,
         homeDir: serverConfig.homeDir,
+        isolationRootDir: serverConfig.stateDir,
+        environment: input.environment,
+        instanceId: input.instanceId,
         cwd: input.cwd,
       });
 

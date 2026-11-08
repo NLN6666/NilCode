@@ -402,6 +402,31 @@ Capabilities vary. Do not assume a control available for one provider exists for
 
 ### Provider-native subagents
 
+The composer's `@` menu discovers subagents for the selected provider account and
+workspace only. Switching providers, accounts, or configured directories clears
+the previous catalog while the new one loads; an unsupported provider has no
+subagent suggestions rather than inheriting Codex's list.
+
+| Provider               | File-defined subagent discovery                                                                                                                                         |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code            | Project `.claude/agents` directories, the selected account's `.claude/agents` (or `CLAUDE_CONFIG_DIR/agents`), enabled plugins, and SDK inventory                       |
+| Codex                  | `agents/*.toml` under the selected Codex home (`homePath` or `CODEX_HOME`)                                                                                              |
+| Cursor                 | Project and user `.cursor/agents/*.md`                                                                                                                                  |
+| Factory Droid          | Project and user `.factory/droids/*.md`                                                                                                                                 |
+| Grok Build             | Project and user `.grok/agents/*.md`, plus bundled definitions                                                                                                          |
+| Oh My Pi               | The nearest project `.omp/agents/*.md` and the selected account's `.omp/agent/agents/*.md`; `PI_CONFIG_DIR` and named OMP profiles select the native configuration root |
+| OpenCode               | The runtime's authoritative agent inventory                                                                                                                             |
+| Pi, Devin, Antigravity | No file-agent discovery contract is exposed; no other provider's catalog is substituted                                                                                 |
+
+OMP file definitions require `name` and `description`; reserved `main`/`sub`
+names and `task.disabledAgents` are excluded. OMP's native task discovery uses
+its configuration/profile root, not an arbitrary `PI_CODING_AGENT_DIR` override.
+The file catalog does not synthesize OMP's bundled or extension-package agents.
+Use `@agent(nonempty task)` to delegate to a discovered agent. Claude and Codex
+receive their own delegation instructions; OMP receives instructions for its
+native `task` tool. These are model-mediated directives, not a guarantee that a
+provider has executed a tool call.
+
 Each subagent a Claude or Codex agent launches gets its own child thread under the task. Its
 brief, and any later message its launcher sends it on resume, opens the child thread as a
 message marked as sent by the agent. A resumed Claude subagent continues on the same child

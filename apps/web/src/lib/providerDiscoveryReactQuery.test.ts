@@ -458,8 +458,6 @@ describe("providerModelsQueryOptions", () => {
     },
   );
 
-  ;
-
   it("keeps OMP catalogs isolated by provider instance and agent directory", () => {
     const key = (instanceId: string, agentDir: string) =>
       providerModelsQueryOptions({ provider: "omp", instanceId, agentDir }).queryKey;
@@ -493,6 +491,46 @@ describe("providerCommandsQueryOptions", () => {
 });
 
 describe("providerAgentsQueryOptions", () => {
+  it("never reuses agents across a provider, account, or configuration-root switch", async () => {
+    const listAgents = vi.fn(({ provider, instanceId, agentDir }) =>
+      provider === "codex"
+        ? Promise.resolve({ agents: [{ name: "astra_worker", displayName: "astra_worker" }] })
+        : instanceId === "omp" && agentDir === "/old"
+          ? Promise.resolve({ agents: [{ name: "old_omp", displayName: "old_omp" }] })
+          : // Web's ES2023 lib does not expose Promise.withResolvers().
+            new Promise<ProviderListAgentsResult>(() => {}),
+    );
+    vi.spyOn(nativeApi, "ensureNativeApi").mockReturnValue({
+      provider: { listAgents },
+    } as unknown as NativeApi);
+    const client = new QueryClient();
+    const observer = new QueryObserver(client, providerAgentsQueryOptions({ provider: "codex" }));
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      await vi.waitFor(() =>
+        expect(observer.getCurrentResult().data?.agents[0]?.name).toBe("astra_worker"),
+      );
+      observer.setOptions(
+        providerAgentsQueryOptions({ provider: "omp", instanceId: "omp", agentDir: "/old" }),
+      );
+      expect(observer.getCurrentResult().data?.agents).toEqual([]);
+      await vi.waitFor(() =>
+        expect(observer.getCurrentResult().data?.agents[0]?.name).toBe("old_omp"),
+      );
+      observer.setOptions(
+        providerAgentsQueryOptions({ provider: "omp", instanceId: "omp", agentDir: "/new" }),
+      );
+      expect(observer.getCurrentResult().data?.agents).toEqual([]);
+      observer.setOptions(
+        providerAgentsQueryOptions({ provider: "omp", instanceId: "omp-other", agentDir: "/old" }),
+      );
+      expect(observer.getCurrentResult().data?.agents).toEqual([]);
+    } finally {
+      unsubscribe();
+      client.clear();
+    }
+  });
+
   it("recovers from pending discovery while retaining completed catalogs", async () => {
     const baseTime = Date.now();
     const now = vi.spyOn(Date, "now").mockReturnValue(baseTime);

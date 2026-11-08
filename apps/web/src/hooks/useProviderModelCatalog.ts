@@ -79,7 +79,7 @@ export interface ProviderModelCatalog {
   >;
   /** The runtime descriptor matching `selectedProvider` + its selected-model hint. */
   selectedRuntimeModel: ProviderModelDescriptor | undefined;
-  /** Runtime-discovered agents/modes for the selected provider (opencode/claude/codex). */
+  /** Runtime-discovered agents/modes for the selected provider instance. */
   selectedRuntimeAgents: ReadonlyArray<ProviderAgentDescriptor>;
   /** Loading state used by the selected provider's bootstrap skeleton. */
   selectedProviderModelsLoading: boolean;
@@ -224,13 +224,6 @@ export function useProviderModelCatalog(input: {
     () => new Set<ProviderKind>(settings.hiddenProviders),
     [settings.hiddenProviders],
   );
-  const selectedInstanceQueryOption = (
-    provider: ProviderKind,
-  ): { readonly instanceId: ProviderInstanceId } => {
-    const instanceId =
-      selectedProvider === provider ? selectedProviderInstanceId?.trim() : undefined;
-    return { instanceId: instanceId || provider };
-  };
   const prefetchProviderSet = useMemo(
     () =>
       input.prefetchProviders === undefined ? null : new Set<ProviderKind>(input.prefetchProviders),
@@ -392,35 +385,40 @@ export function useProviderModelCatalog(input: {
     return prioritizeProviderModelDiscovery(selectedProviderModelsQueryKey);
   }, [selectedProviderModelsQueryKey, selectedProviderModelsEnabled]);
 
-  // Agent/mode discovery (opencode "Agent" picker, claude/codex subagents).
-  // cwd matters here: project-level `.claude/agents` / `.codex/agents` definitions
-  // take precedence over the user's home ones.
+  // Agent catalogs belong to one provider instance and workspace. Unsupported
+  // providers return an empty catalog, never another provider's agents.
+  const agentQueryOptions = (provider: ProviderKind, enabled: boolean) => {
+    const instanceId = provider === selectedProvider ? effectiveSelectedInstanceId : provider;
+    const options = getProviderStartOptions(settings, instanceId)?.[provider];
+    return providerAgentsQueryOptions({
+      provider,
+      instanceId,
+      binaryPath: readProviderOptionString(options, "binaryPath"),
+      homePath: readProviderOptionString(options, "homePath"),
+      agentDir: readProviderOptionString(options, "agentDir"),
+      cwd: discoveryCwd,
+      enabled,
+    });
+  };
   const claudeDynamicAgentsQuery = useQuery(
-    providerAgentsQueryOptions({
-      provider: "claudeAgent",
-      ...selectedInstanceQueryOption("claudeAgent"),
-      enabled: shouldDiscoverProvider("claudeAgent", agentDiscoveryPolicy === "eager-core"),
-    }),
+    agentQueryOptions(
+      "claudeAgent",
+      shouldDiscoverProvider("claudeAgent", agentDiscoveryPolicy === "eager-core"),
+    ),
   );
   const codexDynamicAgentsQuery = useQuery(
-    providerAgentsQueryOptions({
-      provider: "codex",
-      ...selectedInstanceQueryOption("codex"),
-      enabled: shouldDiscoverProvider("codex", agentDiscoveryPolicy === "eager-core"),
-    }),
+    agentQueryOptions(
+      "codex",
+      shouldDiscoverProvider("codex", agentDiscoveryPolicy === "eager-core"),
+    ),
   );
-  const openCodeDynamicAgentsQuery = useQuery(
-    providerAgentsQueryOptions({
-      provider: "opencode",
-      ...selectedInstanceQueryOption("opencode"),
-      binaryPath: readProviderOptionString(
-        getProviderStartOptions(settings, selectedInstanceQueryOption("opencode").instanceId)
-          ?.opencode,
-        "binaryPath",
-      ),
-      cwd: discoveryCwd,
-      enabled: openCodeModelDiscoveryEnabled,
-    }),
+  const selectedDynamicAgentsQuery = useQuery(
+    agentQueryOptions(
+      selectedProvider,
+      selectedProvider !== "claudeAgent" &&
+        selectedProvider !== "codex" &&
+        shouldDiscoverProvider(selectedProvider),
+    ),
   );
 
   // Only the providers the server maps onto the cloud catalog are queried;
@@ -835,18 +833,10 @@ export function useProviderModelCatalog(input: {
   const selectedDynamicAgents =
     selectedProvider === "claudeAgent"
       ? (claudeDynamicAgentsQuery.data?.agents ?? EMPTY_PROVIDER_AGENTS)
-      : selectedProvider === "opencode"
-        ? (openCodeDynamicAgentsQuery.data?.agents ?? EMPTY_PROVIDER_AGENTS)
-        : (codexDynamicAgentsQuery.data?.agents ?? EMPTY_PROVIDER_AGENTS);
-  const selectedRuntimeAgents = useMemo<ReadonlyArray<ProviderAgentDescriptor>>(
-    () =>
-      selectedDynamicAgents.map((agent) =>
-        agent.description
-          ? { name: agent.name, displayName: agent.displayName, description: agent.description }
-          : { name: agent.name, displayName: agent.displayName },
-      ),
-    [selectedDynamicAgents],
-  );
+      : selectedProvider === "codex"
+        ? (codexDynamicAgentsQuery.data?.agents ?? EMPTY_PROVIDER_AGENTS)
+        : (selectedDynamicAgentsQuery.data?.agents ?? EMPTY_PROVIDER_AGENTS);
+  const selectedRuntimeAgents = selectedDynamicAgents;
 
   // Prompt tokenizing has to know which subagents exist before it can draw an
   // `@alias(...)` chip, and it runs from places with no React context (cursor
@@ -854,8 +844,8 @@ export function useProviderModelCatalog(input: {
   // call site — keeps the composer, the caret, and the sent-message echo from
   // ever disagreeing about where an agent token starts and ends.
   useEffect(() => {
-    setComposerAgentMentionCatalog(selectedRuntimeAgents);
-  }, [selectedRuntimeAgents]);
+    setComposerAgentMentionCatalog(selectedRuntimeAgents, selectedProvider);
+  }, [selectedRuntimeAgents, selectedProvider]);
 
   // Discovery failures per provider, surfaced as a subtle inline note by the
   // model pickers.

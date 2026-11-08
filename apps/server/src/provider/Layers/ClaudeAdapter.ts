@@ -92,6 +92,7 @@ import {
   trimOrNull,
 } from "@synara/shared/model";
 import { buildClaudeSubagentPrompt } from "@synara/shared/agentMentions";
+import { join } from "node:path";
 import { discoverAgentCatalog, mergeAgentDescriptors } from "../agentCatalog.ts";
 import { assessClaudeCache } from "@synara/shared/claudeCache";
 import { approvalSessionGrantWidensSessionPolicy } from "@synara/shared/approvalSessionGrant";
@@ -442,6 +443,7 @@ interface ClaudeSessionContext {
   initToolNames?: ReadonlySet<string>;
   readonly commandDiscoveryKey: string;
   readonly accountDiscoveryKey: string;
+  readonly agentCatalogPaths: { readonly homeDir: string; readonly configDir: string };
   readonly messageStream?: AsyncIterable<SDKMessage>;
   readonly processOwner: ClaudeProcessOwner;
   readonly stoppedSignal: Deferred.Deferred<void>;
@@ -4175,6 +4177,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           session: context.session,
           commandDiscoveryKey: context.commandDiscoveryKey,
           accountDiscoveryKey: context.accountDiscoveryKey,
+          agentCatalogPaths: context.agentCatalogPaths,
           ...(context.lifecycleGeneration === undefined
             ? {}
             : { lifecycleGeneration: context.lifecycleGeneration }),
@@ -7816,6 +7819,12 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             query: queryRuntime,
             commandDiscoveryKey,
             accountDiscoveryKey,
+            agentCatalogPaths: {
+              homeDir: claudeSdkEnv.HOME || serverConfig.homeDir,
+              configDir:
+                claudeSdkEnv.CLAUDE_CONFIG_DIR ||
+                join(claudeSdkEnv.HOME || serverConfig.homeDir, ".claude"),
+            },
             messageStream,
             processOwner,
             cacheProcessId,
@@ -8458,7 +8467,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           agents: isCompaction
             ? []
             : mergeAgentDescriptors([
-                yield* claudeAgentCatalog(context.session.cwd),
+                yield* claudeAgentCatalog(context.session.cwd, context.agentCatalogPaths),
                 cachedAgentsByKey.get(context.accountDiscoveryKey)?.agents ?? [],
               ]),
 
@@ -8655,7 +8664,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
               fileSystem,
               attachmentsDir: serverConfig.attachmentsDir,
               agents: mergeAgentDescriptors([
-                yield* claudeAgentCatalog(context.session.cwd),
+                yield* claudeAgentCatalog(context.session.cwd, context.agentCatalogPaths),
                 cachedAgentsByKey.get(context.accountDiscoveryKey)?.agents ?? [],
               ]),
               nativeCommandNames: yield* resolveNativeCommandNames(context, input.input),
@@ -9414,11 +9423,14 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
         });
       });
 
-    const claudeAgentCatalog = (cwd: string | undefined) =>
+    const claudeAgentCatalog = (
+      cwd: string | undefined,
+      paths: { readonly homeDir: string; readonly configDir: string },
+    ) =>
       Effect.tryPromise(() =>
         discoverAgentCatalog({
           provider: PROVIDER,
-          homeDir: serverConfig.homeDir,
+          ...paths,
           ...(cwd ? { cwd } : {}),
         }),
       ).pipe(
@@ -9431,7 +9443,12 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
 
     const listAgents: NonNullable<ClaudeAdapterShape["listAgents"]> = (input) =>
       Effect.gen(function* () {
-        const scanned = yield* claudeAgentCatalog(input.cwd);
+        const env = yield* resolveClaudeSdkEnv(input.homePath, input.environment, input.instanceId);
+        const homeDir = env.HOME || serverConfig.homeDir;
+        const scanned = yield* claudeAgentCatalog(input.cwd, {
+          homeDir,
+          configDir: env.CLAUDE_CONFIG_DIR || join(homeDir, ".claude"),
+        });
         const discoveryKey = claudeDiscoveryKey({ ...input, includeCwd: false });
         const sdkAgents = cachedAgentsByKey.get(discoveryKey)?.agents;
         if (!sdkAgents) {

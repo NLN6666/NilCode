@@ -7,7 +7,7 @@
 // Exports: AGENT_MENTION_COLORS, AgentMentionColor, resolveComposerAgentMention,
 //          setComposerAgentMentionCatalog, clearComposerAgentMentionCatalogForTests
 
-import { resolveAgentAlias } from "@synara/contracts";
+import { resolveAgentAlias, type ProviderKind } from "@synara/contracts";
 
 /**
  * Chip palette. Order is load-bearing: `hashedAgentMentionColor` indexes into
@@ -42,6 +42,7 @@ export interface ResolvedComposerAgentMention {
  * ambient answer to "which agents exist here" keeps every path in lockstep.
  */
 let discoveredAgentNames: ReadonlySet<string> = new Set<string>();
+let catalogProvider: ProviderKind | null = null;
 
 function normalizeAgentName(name: string): string {
   return name.trim().toLowerCase();
@@ -54,6 +55,7 @@ function normalizeAgentName(name: string): string {
  */
 export function setComposerAgentMentionCatalog(
   agents: ReadonlyArray<{ readonly name: string }>,
+  provider: ProviderKind,
 ): void {
   const names = new Set<string>();
   for (const { name } of agents) {
@@ -63,10 +65,12 @@ export function setComposerAgentMentionCatalog(
     }
   }
   discoveredAgentNames = names;
+  catalogProvider = provider;
 }
 
 export function clearComposerAgentMentionCatalogForTests(): void {
   discoveredAgentNames = new Set<string>();
+  catalogProvider = null;
 }
 
 /**
@@ -106,7 +110,7 @@ export function resolveComposerAgentMention(alias: string): ResolvedComposerAgen
   if (normalized.length === 0) {
     return null;
   }
-  const definition = resolveAgentAlias(normalized);
+  const definition = catalogProvider ? resolveAgentAlias(normalized, catalogProvider) : null;
   if (!definition && !discoveredAgentNames.has(normalized)) {
     return null;
   }

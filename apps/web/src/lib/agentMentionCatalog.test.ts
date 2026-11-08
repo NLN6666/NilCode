@@ -16,7 +16,7 @@ describe("resolveComposerAgentMention", () => {
   it("resolves a discovered subagent that the static alias table has never heard of", () => {
     expect(resolveComposerAgentMention("fable-advisor:grok-implementer")).toBeNull();
 
-    setComposerAgentMentionCatalog([{ name: "fable-advisor:grok-implementer" }]);
+    setComposerAgentMentionCatalog([{ name: "fable-advisor:grok-implementer" }], "claudeAgent");
 
     expect(resolveComposerAgentMention("fable-advisor:grok-implementer")).toEqual({
       alias: "fable-advisor:grok-implementer",
@@ -25,33 +25,39 @@ describe("resolveComposerAgentMention", () => {
   });
 
   it("matches case-insensitively and preserves the alias as the user typed it", () => {
-    setComposerAgentMentionCatalog([{ name: "Coder" }]);
+    setComposerAgentMentionCatalog([{ name: "Coder" }], "claudeAgent");
 
     expect(resolveComposerAgentMention("cOdEr")?.alias).toBe("cOdEr");
   });
 
-  it("keeps a static alias resolvable without any discovery having run", () => {
+  it("resolves built-in aliases only for their selected provider", () => {
+    setComposerAgentMentionCatalog([], "claudeAgent");
     expect(resolveComposerAgentMention("explore")).toEqual({ alias: "explore", color: "cyan" });
+    setComposerAgentMentionCatalog([], "omp");
+    expect(resolveComposerAgentMention("explore")).toBeNull();
+    expect(resolveComposerAgentMention("spark")).toBeNull();
+    setComposerAgentMentionCatalog([], "codex");
+    expect(resolveComposerAgentMention("spark")?.alias).toBe("spark");
   });
 
   it("keeps the declared color when discovery also reports a built-in alias", () => {
     // Built-ins arrive through discovery too (`source: "builtin"`). Hashing them
     // would silently repaint `@explore` the first time discovery succeeds.
-    setComposerAgentMentionCatalog([{ name: "explore" }, { name: "review" }]);
+    setComposerAgentMentionCatalog([{ name: "explore" }, { name: "review" }], "claudeAgent");
 
     expect(resolveComposerAgentMention("explore")?.color).toBe("cyan");
     expect(resolveComposerAgentMention("review")?.color).toBe("amber");
   });
 
   it("returns null for an unknown alias so it stays ordinary prompt text", () => {
-    setComposerAgentMentionCatalog([{ name: "coder" }]);
+    setComposerAgentMentionCatalog([{ name: "coder" }], "claudeAgent");
 
     expect(resolveComposerAgentMention("not-an-agent")).toBeNull();
     expect(resolveComposerAgentMention("")).toBeNull();
   });
 
   it("drops blank names instead of matching a bare @(", () => {
-    setComposerAgentMentionCatalog([{ name: "   " }]);
+    setComposerAgentMentionCatalog([{ name: "   " }], "claudeAgent");
 
     expect(resolveComposerAgentMention("   ")).toBeNull();
   });

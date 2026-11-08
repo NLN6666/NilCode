@@ -9,11 +9,16 @@ import type { ProviderAgentDescriptor, ProviderListAgentsResult } from "@synara/
 import { Effect } from "effect";
 
 import { type AgentCatalogProvider, discoverAgentCatalog } from "./agentCatalog.ts";
+import { buildProviderProcessEnv } from "./providerProcessEnv.ts";
 
 export interface FileSystemAgentCatalogInput {
   readonly provider: AgentCatalogProvider;
   readonly homeDir: string;
+  readonly configDir?: string | undefined;
   readonly cwd?: string | undefined;
+  readonly environment?: Readonly<Record<string, string>> | undefined;
+  readonly instanceId?: string | undefined;
+  readonly isolationRootDir?: string | undefined;
 }
 
 /**
@@ -24,13 +29,31 @@ export interface FileSystemAgentCatalogInput {
 export const fileSystemAgentCatalog = (
   input: FileSystemAgentCatalogInput,
 ): Effect.Effect<ProviderAgentDescriptor[]> =>
-  Effect.tryPromise(() =>
-    discoverAgentCatalog({
+  Effect.tryPromise(() => {
+    let homeDir = input.homeDir;
+    if (
+      (input.provider === "cursor" || input.provider === "grok" || input.provider === "omp") &&
+      (input.environment !== undefined ||
+        (input.instanceId !== undefined && input.instanceId !== input.provider))
+    ) {
+      const env = buildProviderProcessEnv({
+        driver: input.provider,
+        homeDir: input.homeDir,
+        isolationRootDir: input.isolationRootDir,
+        environment: input.environment,
+        instanceId: input.instanceId,
+      });
+      homeDir = env.HOME || env.USERPROFILE || input.homeDir;
+    } else if (input.environment) {
+      homeDir = input.environment.HOME || input.environment.USERPROFILE || input.homeDir;
+    }
+    return discoverAgentCatalog({
       provider: input.provider,
-      homeDir: input.homeDir,
+      homeDir,
+      ...(input.configDir ? { configDir: input.configDir } : {}),
       ...(input.cwd ? { cwd: input.cwd } : {}),
-    }),
-  ).pipe(
+    });
+  }).pipe(
     Effect.catchCause((cause) =>
       Effect.logWarning("subagent catalog discovery failed", {
         provider: input.provider,

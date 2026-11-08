@@ -178,6 +178,7 @@ describe("splitPromptIntoComposerSegments", () => {
   });
 
   it("converts an agent alias into a chip once the task parentheses begin", () => {
+    setComposerAgentMentionCatalog([], "codex");
     expect(splitPromptIntoComposerSegments("Ask @spark()")).toEqual([
       { type: "text", text: "Ask " },
       { type: "agent-mention", alias: "spark", color: "cyan" },
@@ -192,7 +193,7 @@ describe("splitPromptIntoComposerSegments", () => {
       { type: "text", text: "Ask @fable-advisor:grok-implementer()" },
     ]);
 
-    setComposerAgentMentionCatalog([{ name: "fable-advisor:grok-implementer" }]);
+    setComposerAgentMentionCatalog([{ name: "fable-advisor:grok-implementer" }], "claudeAgent");
 
     expect(splitPromptIntoComposerSegments("Ask @fable-advisor:grok-implementer()")).toEqual([
       { type: "text", text: "Ask " },

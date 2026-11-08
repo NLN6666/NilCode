@@ -574,6 +574,43 @@ describe("useProviderModelCatalog", () => {
     expect(readAgentQueryEnabled("codex")).toBe(true);
   });
 
+  it.each(["omp", "cursor", "droid", "grok", "pi", "devin", "antigravity"] as const)(
+    "never offers Codex agents while %s is selected",
+    (provider) => {
+      agentQueries.set("codex", {
+        ...EMPTY_QUERY,
+        data: { agents: [{ name: "astra_worker", displayName: "astra_worker" }] },
+      });
+      agentQueries.set(provider, {
+        ...EMPTY_QUERY,
+        data: { agents: [{ name: `${provider}-worker`, displayName: `${provider} worker` }] },
+      });
+
+      const [catalog] = readCatalogRenders({
+        selectedProvider: provider,
+        discoveryEnabled: false,
+      });
+
+      expect(catalog?.selectedRuntimeAgents.map((agent) => agent.name)).toEqual([
+        `${provider}-worker`,
+      ]);
+    },
+  );
+
+  it("clears the previous provider's agents while the selected catalog is unavailable", () => {
+    agentQueries.set("codex", {
+      ...EMPTY_QUERY,
+      data: { agents: [{ name: "astra_worker", displayName: "astra_worker" }] },
+    });
+    const [before, after] = readCatalogRenders(
+      { selectedProvider: "codex", discoveryEnabled: false },
+      { selectedProvider: "omp", discoveryEnabled: false },
+    );
+
+    expect(before?.selectedRuntimeAgents.map((agent) => agent.name)).toEqual(["astra_worker"]);
+    expect(after?.selectedRuntimeAgents).toEqual([]);
+  });
+
   it("does not prefetch providers hidden from picker surfaces", () => {
     mocks.useAppSettings.mockReturnValue({
       settings: { ...SETTINGS, hiddenProviders: ["cursor"] },

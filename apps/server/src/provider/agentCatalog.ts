@@ -5,7 +5,7 @@
 //          adapters via `mergeAgentDescriptors`.
 //
 //          Providers served here are exactly the ones that define subagents as files:
-//          Claude Code, Codex, Cursor, Factory Droid and Grok. OpenCode and Kilo are
+//          Claude Code, Codex, Cursor, Factory Droid, Grok and Oh My Pi. OpenCode and Kilo are
 //          absent on purpose — their runtimes report agents over the SDK inventory
 //          (`OpenCodeAdapter.listAgents`), which is authoritative and already covers
 //          both config-declared and file-declared agents. Antigravity has no on-disk
@@ -26,7 +26,7 @@ import { parseScalarFrontmatter, readFrontmatterString, readdirOrEmpty } from ".
 import { ancestorsFromDeepest } from "./skillsCatalog.ts";
 
 /** Providers whose subagents are defined as files on disk. */
-export type AgentCatalogProvider = "claudeAgent" | "codex" | "cursor" | "droid" | "grok";
+export type AgentCatalogProvider = "claudeAgent" | "codex" | "cursor" | "droid" | "grok" | "omp";
 
 export interface AgentRoot {
   readonly path: string;
@@ -200,6 +200,13 @@ const AGENT_ROOT_SPECS = {
     walkMaxDepth: 0,
     bundledHomeRoot: [".grok", "bundled", "agents"],
   },
+  omp: {
+    dirName: ".omp",
+    subDir: "agents",
+    supportsProjectRoots: true,
+    format: "markdown",
+    walkMaxDepth: 0,
+  },
 } as const satisfies Record<AgentCatalogProvider, AgentRootSpec>;
 
 export const AGENT_CATALOG_PROVIDERS = Object.keys(AGENT_ROOT_SPECS) as ReadonlyArray<
@@ -209,6 +216,8 @@ export const AGENT_CATALOG_PROVIDERS = Object.keys(AGENT_ROOT_SPECS) as Readonly
 export interface AgentCatalogInput {
   readonly provider: AgentCatalogProvider;
   readonly homeDir: string;
+  /** Effective provider configuration root, not the operating-system home. */
+  readonly configDir?: string | undefined;
   /** Workspace cwd; every ancestor contributes a project-level root, deepest first. */
   readonly cwd?: string | null;
   readonly forceReload?: boolean;
@@ -221,7 +230,10 @@ export interface AgentCatalogInput {
 // same name overrides the shipped one, which is what every CLI here does.
 export function agentCatalogRoots(input: AgentCatalogInput): AgentRoot[] {
   const spec: AgentRootSpec = AGENT_ROOT_SPECS[input.provider];
-  const homeRoot = nodePath.join(input.homeDir, spec.dirName, spec.subDir);
+  const configDir =
+    input.configDir ??
+    nodePath.join(input.homeDir, spec.dirName, ...(input.provider === "omp" ? ["agent"] : []));
+  const homeRoot = nodePath.join(configDir, spec.subDir);
   const resolvedHomeRoot = nodePath.resolve(homeRoot);
 
   const projectRoots: AgentRoot[] = [];
@@ -259,6 +271,7 @@ async function readMarkdownAgentDescriptor(input: {
   readonly agentPath: string;
   readonly source: AgentRoot["source"];
   readonly namePrefix?: string | undefined;
+  readonly provider: AgentCatalogProvider;
 }): Promise<ProviderAgentDescriptor | null> {
   let raw: string;
   try {
@@ -274,6 +287,12 @@ async function readMarkdownAgentDescriptor(input: {
     return null;
   }
   const description = readFrontmatterString(frontmatter, ["description"]);
+  if (
+    input.provider === "omp" &&
+    (!description || name.toLowerCase() === "main" || name.toLowerCase() === "sub")
+  ) {
+    return null;
+  }
   const model = readFrontmatterString(frontmatter, ["model"]);
   const qualifiedName = input.namePrefix ? `${input.namePrefix}:${name}` : name;
 
@@ -425,6 +444,7 @@ export async function collectAgentsFromRoots(input: {
                 agentPath,
                 source: root.source,
                 namePrefix: root.namePrefix,
+                provider: input.provider,
               })
             : readCodexAgentDescriptor({ agentPath, source: root.source }),
         ),
@@ -497,13 +517,18 @@ async function readEnabledPlugins(settingsPath: string): Promise<Record<string, 
  */
 export async function resolveEnabledClaudePlugins(input: {
   readonly homeDir: string;
+  readonly configDir?: string | undefined;
   readonly cwd?: string | null;
 }): Promise<ReadonlyMap<string, boolean> | null> {
   // `.local.json` overrides its sibling, so it follows it in every dir.
-  const settingsPaths = claudeSettingsDirs(input).flatMap((dir) => [
-    nodePath.join(dir, ".claude", "settings.json"),
-    nodePath.join(dir, ".claude", "settings.local.json"),
-  ]);
+  const settingsPaths = claudeSettingsDirs(input).flatMap((dir, index) => {
+    const configDir =
+      index === 0 && input.configDir ? input.configDir : nodePath.join(dir, ".claude");
+    return [
+      nodePath.join(configDir, "settings.json"),
+      nodePath.join(configDir, "settings.local.json"),
+    ];
+  });
   const files = await Promise.all(settingsPaths.map(readEnabledPlugins));
 
   let merged: Map<string, boolean> | null = null;
@@ -537,9 +562,14 @@ export async function resolveEnabledClaudePlugins(input: {
  */
 export async function claudePluginAgentRoots(input: {
   readonly homeDir: string;
+  readonly configDir?: string | undefined;
   readonly cwd?: string | null;
 }): Promise<AgentRoot[]> {
-  const manifestPath = nodePath.join(input.homeDir, ".claude", "plugins", "installed_plugins.json");
+  const manifestPath = nodePath.join(
+    input.configDir ?? nodePath.join(input.homeDir, ".claude"),
+    "plugins",
+    "installed_plugins.json",
+  );
 
   let parsed: InstalledPluginsFile;
   try {
@@ -616,11 +646,36 @@ export async function discoverAgentCatalog(
   // Plugin roots come last so a project- or user-level definition of the same
   // name still wins, matching the locked precedence (project > user > sdk/plugin).
   // They also feed the fingerprint, so installing a plugin invalidates the cache.
-  const roots =
+  let roots =
     input.provider === "claudeAgent"
       ? [...agentCatalogRoots(input), ...(await claudePluginAgentRoots(input))]
       : agentCatalogRoots(input);
-  const cacheKey = [input.provider, input.homeDir, input.cwd?.trim() ?? ""].join(" ");
+  // An empty nearest OMP directory still shadows agents in parent projects.
+  if (input.provider === "omp") {
+    let projectFound = false;
+    const selectedRoots: AgentRoot[] = [];
+    for (const root of roots) {
+      if (root.source !== "project") {
+        selectedRoots.push(root);
+      } else if (!projectFound) {
+        const stat = await fs.stat(root.path).catch((cause: NodeJS.ErrnoException) => {
+          if (cause.code === "ENOENT" || cause.code === "ENOTDIR") return null;
+          throw cause;
+        });
+        if (stat?.isDirectory()) {
+          selectedRoots.push(root);
+          projectFound = true;
+        }
+      }
+    }
+    roots = selectedRoots;
+  }
+  const cacheKey = JSON.stringify([
+    input.provider,
+    input.homeDir,
+    input.configDir ?? null,
+    input.cwd?.trim() ?? "",
+  ]);
 
   if (!input.forceReload) {
     const entry = agentCatalogCache.get(cacheKey);

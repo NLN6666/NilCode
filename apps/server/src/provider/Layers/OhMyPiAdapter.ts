@@ -33,6 +33,7 @@ import {
   Stream,
 } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
+import { buildOmpSubagentPrompt } from "@synara/shared/agentMentions";
 
 import {
   type SynaraHarnessPolicyDeliveryState,
@@ -43,6 +44,7 @@ import { executableIdentity } from "../../executableLookup.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
 import { appendProviderReferencesPromptBlock } from "../promptReferenceProjection.ts";
 import { loadProviderPromptImageBlocks } from "../promptAttachments.ts";
+import { discoverOmpAgentCatalog } from "../omp/OmpAgentCatalog.ts";
 import {
   ProviderAdapterRequestError,
   ProviderAdapterSessionNotFoundError,
@@ -154,6 +156,7 @@ interface OhMyPiSessionContext extends SynaraHarnessPolicyDeliveryState {
   session: ProviderSession;
   readonly scope: Scope.Closeable;
   readonly acp: AcpSessionRuntimeShape;
+  readonly agentSettings: OhMyPiAcpRuntimeSettings;
   notificationFiber: Fiber.Fiber<void, never> | undefined;
   processExitFiber: Fiber.Fiber<void, never> | undefined;
   readonly pendingApprovals: Map<ApprovalRequestId, PendingApproval>;
@@ -719,6 +722,7 @@ export function makeOhMyPiAdapter(
           const now = yield* nowIso;
           let ctx: OhMyPiSessionContext = {
             threadId: input.threadId,
+            agentSettings: providerSettings,
             ...(input.lifecycleGeneration
               ? { lifecycleGeneration: input.lifecycleGeneration }
               : {}),
@@ -1047,9 +1051,24 @@ export function makeOhMyPiAdapter(
           });
 
           const prompt: Array<Acp.ContentBlock> = [];
+          const userText = input.input?.trim();
+          const agentText = userText?.includes("@")
+            ? buildOmpSubagentPrompt(userText, {
+                agents: yield* Effect.tryPromise({
+                  try: () => discoverOmpAgentCatalog(ctx.agentSettings, ctx.session.cwd),
+                  catch: (cause) =>
+                    new ProviderAdapterRequestError({
+                      provider: PROVIDER,
+                      method: "session/prompt",
+                      detail: "Failed to discover Oh My Pi subagents.",
+                      cause,
+                    }),
+                }),
+              }).prompt
+            : userText;
           const promptText = appendFileAttachmentsPromptBlock({
             text: appendProviderReferencesPromptBlock({
-              text: input.input?.trim(),
+              text: agentText,
               mentions: input.mentions,
             }),
             attachments: input.attachments,
@@ -1530,6 +1549,32 @@ export function makeOhMyPiAdapter(
         }),
       );
 
+    const listAgents: NonNullable<OhMyPiAdapterShape["listAgents"]> = (input) =>
+      Effect.tryPromise({
+        try: async () => ({
+          agents: await discoverOmpAgentCatalog(
+            {
+              ...settings,
+              ...(input.agentDir ? { agentDir: input.agentDir } : {}),
+              environment: input.environment,
+              instanceId: input.instanceId,
+              homeDir: serverConfig.homeDir,
+              isolationRootDir: serverConfig.stateDir,
+            },
+            input.cwd ?? serverConfig.cwd,
+          ),
+          source: "filesystem",
+          cached: false,
+        }),
+        catch: (cause) =>
+          new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "agents/list",
+            detail: "Failed to discover Oh My Pi subagents.",
+            cause,
+          }),
+      });
+
     const listModels: NonNullable<OhMyPiAdapterShape["listModels"]> = (input) =>
       discoveryLock.withPermits(1)(
         Effect.gen(function* () {
@@ -1635,6 +1680,7 @@ export function makeOhMyPiAdapter(
       stopAll,
       streamEvents: Stream.fromPubSub(events),
       getComposerCapabilities,
+      listAgents,
       listModels,
       listCommands,
     } satisfies OhMyPiAdapterShape;

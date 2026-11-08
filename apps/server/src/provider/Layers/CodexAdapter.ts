@@ -82,6 +82,7 @@ import {
   isNonFatalCodexErrorMessage,
 } from "../../codexErrorClassification.ts";
 import { ServerConfig } from "../../config.ts";
+import { resolveBaseCodexHomePath } from "../../codexHomePaths.ts";
 import { resolveCodexServiceTier } from "../../codexServiceTier.ts";
 import { makeRuntimeTaskListItem } from "../runtimeTaskList.ts";
 import {
@@ -2160,8 +2161,21 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
       (manager) => Effect.promise(() => manager.stopAll()),
     );
 
-    const codexAgentCatalog = (cwd: string | undefined) =>
-      fileSystemAgentCatalog({ provider: PROVIDER, homeDir: serverConfig.homeDir, cwd });
+    const codexAgentCatalog = (input: {
+      readonly cwd?: string | undefined;
+      readonly homePath?: string | undefined;
+      readonly environment?: Readonly<Record<string, string>> | undefined;
+    }) => {
+      const env = { ...process.env, ...input.environment };
+      return fileSystemAgentCatalog({
+        provider: PROVIDER,
+        homeDir: serverConfig.homeDir,
+        ...(input.homePath?.trim() || env.CODEX_HOME?.trim()
+          ? { configDir: resolveBaseCodexHomePath(env, input.homePath) }
+          : {}),
+        cwd: input.cwd,
+      });
+    };
     const runtimeEventQueue = yield* Queue.bounded<ProviderRuntimeEvent>(
       PROVIDER_ADAPTER_RUNTIME_EVENT_BUFFER_CAPACITY,
     );
@@ -2280,7 +2294,10 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
           input.input === undefined
             ? undefined
             : buildCodexSubagentPrompt(input.input, {
-                agents: yield* codexAgentCatalog(sessionCwd),
+                agents: yield* codexAgentCatalog({
+                  ...manager.getSessionEventOrigin(input.threadId).codexOptions,
+                  cwd: sessionCwd,
+                }),
               }).prompt;
         const composedInput = composeCodexInputWithFileAttachments({
           input: promptInput,
@@ -2670,7 +2687,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
     // so scanning the role files Codex itself loads is the only server-side path.
     const listAgents: NonNullable<CodexAdapterShape["listAgents"]> = (input) =>
       Effect.gen(function* () {
-        const agents = yield* codexAgentCatalog(input.cwd);
+        const agents = yield* codexAgentCatalog(input);
         return {
           agents,
           source: "filesystem",

@@ -342,11 +342,15 @@ export const providerDiscoveryQueryKeys = {
     instanceId: ProviderInstanceId | null,
     binaryPath: string | null,
     cwd: string | null,
+    homePath: string | null = null,
+    agentDir: string | null = null,
   ) =>
     [
       ...providerDiscoveryQueryKeys.agentsForProvider(provider, instanceId),
       binaryPath,
       cwd,
+      homePath,
+      agentDir,
     ] as const,
   cloudModelsAll: () => ["provider-discovery", "cloud-models"] as const,
   // The cloud catalog is machine- and workspace-independent, so the key carries
@@ -673,6 +677,8 @@ export function providerAgentsQueryOptions(input: {
   provider: ProviderKind;
   instanceId?: ProviderInstanceId | null;
   binaryPath?: string | null;
+  homePath?: string | null;
+  agentDir?: string | null;
   cwd?: string | null;
   enabled?: boolean;
 }) {
@@ -682,6 +688,8 @@ export function providerAgentsQueryOptions(input: {
       input.instanceId ?? null,
       input.binaryPath ?? null,
       input.cwd ?? null,
+      input.homePath ?? null,
+      input.agentDir ?? null,
     ),
     queryFn: async () => {
       const api = ensureNativeApi();
@@ -689,6 +697,8 @@ export function providerAgentsQueryOptions(input: {
         provider: input.provider,
         ...(input.instanceId ? { instanceId: input.instanceId } : {}),
         ...(input.binaryPath ? { binaryPath: input.binaryPath } : {}),
+        ...(input.homePath ? { homePath: input.homePath } : {}),
+        ...(input.agentDir ? { agentDir: input.agentDir } : {}),
         ...(input.cwd ? { cwd: input.cwd } : {}),
       });
     },
@@ -698,7 +708,7 @@ export function providerAgentsQueryOptions(input: {
     // only completed catalogs should keep the longer freshness window.
     staleTime: (query) => (query.state.data?.source === "pending" ? 0 : 15 * 60_000),
     refetchInterval: (query) => (query.state.data?.source === "pending" ? 30_000 : false),
-    placeholderData: (previous) => previous ?? EMPTY_AGENTS_RESULT,
+    placeholderData: EMPTY_AGENTS_RESULT,
   });
 }
 

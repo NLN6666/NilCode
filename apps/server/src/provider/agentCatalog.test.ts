@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as nodePath from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Effect } from "effect";
 
 import {
   agentCatalogRoots,
@@ -13,6 +14,8 @@ import {
   mergeAgentDescriptors,
   parseCodexAgentToml,
 } from "./agentCatalog.ts";
+import { discoverOmpAgentCatalog } from "./omp/OmpAgentCatalog.ts";
+import { fileSystemAgentCatalog } from "./fileSystemAgentCatalog.ts";
 
 let tempDir: string;
 
@@ -337,6 +340,118 @@ describe("mergeAgentDescriptors", () => {
 });
 
 describe("discoverAgentCatalog", () => {
+  it.each([
+    ["cursor", ".cursor/agents"],
+    ["droid", ".factory/droids"],
+    ["grok", ".grok/agents"],
+  ] as const)("uses %s's selected account home, not the ambient account", async (provider, dir) => {
+    await writeFile(`${dir}/ambient.md`, "---\nname: ambient\ndescription: Wrong account\n---\n");
+    await writeFile(
+      `account/${dir}/selected.md`,
+      "---\nname: selected\ndescription: Selected account\n---\n",
+    );
+    const accountHome = nodePath.join(tempDir, "account");
+    const agents = await Effect.runPromise(
+      fileSystemAgentCatalog({
+        provider,
+        homeDir: tempDir,
+        isolationRootDir: nodePath.join(tempDir, "runtime"),
+        instanceId: `${provider}-work`,
+        environment: { HOME: accountHome, USERPROFILE: accountHome },
+      }),
+    );
+    expect(agents.map((agent) => agent.name)).toEqual(["selected"]);
+  });
+
+  it("isolates providers and configuration roots even when names overlap", async () => {
+    await writeFile(".codex/agents/astra.toml", 'name = "astra_worker"');
+    await writeFile(
+      ".omp/agent/agents/local.md",
+      "---\nname: omp_local\ndescription: OMP worker\n---\n",
+    );
+    await writeFile("account-a/agents/shared.toml", 'name = "shared"\ndescription = "Account A"');
+    await writeFile("account-b/agents/shared.toml", 'name = "shared"\ndescription = "Account B"');
+
+    expect(
+      (await discoverAgentCatalog({ provider: "omp", homeDir: tempDir })).map((a) => a.name),
+    ).toEqual(["omp_local"]);
+    expect(
+      (await discoverAgentCatalog({ provider: "codex", homeDir: tempDir })).map((a) => a.name),
+    ).toEqual(["astra_worker"]);
+    const accountA = await discoverAgentCatalog({
+      provider: "codex",
+      homeDir: tempDir,
+      configDir: nodePath.join(tempDir, "account-a"),
+    });
+    const accountB = await discoverAgentCatalog({
+      provider: "codex",
+      homeDir: tempDir,
+      configDir: nodePath.join(tempDir, "account-b"),
+    });
+    expect(accountA.map((a) => [a.name, a.description])).toEqual([["shared", "Account A"]]);
+    expect(accountB.map((a) => [a.name, a.description])).toEqual([["shared", "Account B"]]);
+  });
+
+  it("loads only the nearest OMP project directory and native valid definitions", async () => {
+    await writeFile("repo/.omp/agents/parent.md", "---\nname: parent\ndescription: Parent\n---\n");
+    await writeFile(
+      "repo/nested/.omp/agents/worker.md",
+      "---\nname: worker\ndescription: Nearest\n---\n",
+    );
+    await writeFile(
+      "repo/nested/.omp/agents/main.md",
+      "---\nname: main\ndescription: Reserved\n---\n",
+    );
+    await writeFile("repo/nested/.omp/agents/no-description.md", "---\nname: malformed\n---\n");
+    await writeFile(
+      "repo/nested/.omp/agents/deeper/hidden.md",
+      "---\nname: hidden\ndescription: Nested\n---\n",
+    );
+    await writeFile(".omp/agent/agents/worker.md", "---\nname: worker\ndescription: User\n---\n");
+    const cwd = nodePath.join(tempDir, "repo/nested");
+    const input = { provider: "omp", homeDir: tempDir, cwd } as const;
+    expect((await discoverAgentCatalog(input)).map((a) => [a.name, a.description])).toEqual([
+      ["worker", "Nearest"],
+    ]);
+    await fs.rm(nodePath.join(cwd, ".omp/agents/worker.md"));
+    expect(
+      (await discoverAgentCatalog({ ...input, forceReload: true })).map((a) => [
+        a.name,
+        a.description,
+      ]),
+    ).toEqual([["worker", "User"]]);
+  });
+
+  it("uses the selected OMP environment/profile and excludes disabled agents", async () => {
+    await writeFile(
+      ".omp/agent/agents/ambient.md",
+      "---\nname: ambient\ndescription: Wrong profile\n---\n",
+    );
+    await writeFile(
+      "omp-config/profiles/work/agent/agents/worker.md",
+      "---\nname: worker\ndescription: Work profile\n---\n",
+    );
+    await writeFile(
+      "omp-config/profiles/work/agent/agents/blocked.md",
+      "---\nname: blocked\ndescription: Disabled\n---\n",
+    );
+    await writeFile(
+      "omp-config/profiles/work/agent/config.yml",
+      "task:\n  disabledAgents:\n    - blocked\n",
+    );
+    const agents = await discoverOmpAgentCatalog({
+      homeDir: tempDir,
+      environment: {
+        HOME: tempDir,
+        USERPROFILE: tempDir,
+        PI_CONFIG_DIR: "omp-config",
+        OMP_PROFILE: "work",
+      },
+      instanceId: "omp-work",
+    });
+    expect(agents.map((a) => [a.name, a.description])).toEqual([["worker", "Work profile"]]);
+  });
+
   it("discovers project and user agents together, project first", async () => {
     await writeFile(".claude/agents/user-only.md", "---\nname: user-only\n---\n");
     await writeFile("repo/.claude/agents/project-only.md", "---\nname: project-only\n---\n");
