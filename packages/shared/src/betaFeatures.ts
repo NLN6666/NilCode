@@ -26,9 +26,8 @@ export const GROUPS_BETA_FEATURE = "groups";
 export const INBOX_BETA_FEATURE = "inbox";
 
 /**
- * Account-saved Inbox history (Beta only): automatic private recap upload to
- * the account and the saved-recap RPCs. Separate from the local Inbox so its
- * Stable promotion stays an explicit decision.
+ * Account-saved Inbox history (Stable and Beta): automatic private recap upload
+ * to the account and the saved-recap RPCs.
  */
 export const ACCOUNT_INBOX_BETA_FEATURE = "accountInbox";
 
@@ -62,10 +61,7 @@ export const NATIVE_EDITOR_BETA_FEATURE = "native-editor";
 /** Simplified Chinese (Stable and Beta), including native menus and permission explanations. */
 export const CHINESE_UI_BETA_FEATURE = "chinese-ui";
 
-export const BETA_ONLY_FEATURES: readonly BetaOnlyFeature[] = [
-  "accountProfileSync",
-  ACCOUNT_INBOX_BETA_FEATURE,
-];
+export const BETA_ONLY_FEATURES: readonly BetaOnlyFeature[] = [];
 
 /**
  * Whether a Beta-only feature is on for this host. Only the Stable

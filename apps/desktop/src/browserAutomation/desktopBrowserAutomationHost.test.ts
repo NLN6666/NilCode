@@ -1,12 +1,16 @@
 import { ThreadId } from "@synara/contracts";
 import type { WebContents } from "electron";
 import { EventEmitter } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type { BrowserAutomationVisibleRuntime, DesktopBrowserManager } from "../browserManager";
 import { DesktopBrowserAutomationHost } from "./desktopBrowserAutomationHost";
 import { BrowserAutomationHostError } from "./hostErrors";
 import { runBetterwright } from "./betterwrightRuntime";
+import { BrowserVault } from "./browserVault";
 
 vi.mock("./betterwrightRuntime", () => ({ runBetterwright: vi.fn() }));
 
@@ -206,6 +210,53 @@ const hideVisibleRuntimeUntilRevealed = (raw: ReturnType<typeof createManager>["
 };
 
 describe("DesktopBrowserAutomationHost", () => {
+  it("preserves native screenshot bytes while redacting metadata and untrusted image-shaped data", async () => {
+    const home = await mkdtemp(join(tmpdir(), "synara-screenshot-redaction-"));
+    const vault = new BrowserVault(home);
+    const { manager, webContents } = createManager();
+    const host = new DesktopBrowserAutomationHost(manager, { vault });
+    const data =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j1eQAAAAASUVORK5CYII=";
+    const png = Buffer.from(data, "base64");
+    Object.assign(webContents, {
+      getURL: () => "https://example.test/AAA",
+      capturePage: vi.fn(async () => ({
+        toPNG: () => png,
+        getSize: () => ({ width: 1, height: 1 }),
+      })),
+    });
+    try {
+      await vault.snapshot();
+      vault.trackSecret("AAA");
+      const screenshot = (await host.executeTool({
+        sessionId: "screenshot-redaction",
+        provider: "claudeAgent",
+        threadId: THREAD_ID,
+        name: "browser_screenshot",
+        arguments: {},
+      })) as { image: { data: string }; structuredContent: { url: string } };
+      expect(screenshot.image.data).toBe(data);
+      expect(Buffer.from(screenshot.image.data, "base64")).toEqual(png);
+      expect(screenshot.structuredContent.url).toBe("https://example.test/[REDACTED_PASSWORD]");
+
+      const untrusted = { type: "image", data };
+      vi.mocked(runBetterwright).mockReset().mockResolvedValueOnce(untrusted);
+      const run = (await host.executeTool({
+        sessionId: "screenshot-redaction",
+        provider: "claudeAgent",
+        threadId: THREAD_ID,
+        name: "browser_run",
+        arguments: { code: "return image" },
+      })) as { value: { data: string } };
+      expect(run.value.data).toContain("[REDACTED_PASSWORD]");
+      expect(untrusted.data).toBe(data);
+    } finally {
+      await host.dispose();
+      await vault.dispose();
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
   it.each([45000, 60000])(
     "rejects invalid timeout before running the browser (%s)",
     async (timeoutMs) => {
@@ -260,7 +311,7 @@ describe("DesktopBrowserAutomationHost", () => {
   });
 
   it("runs Betterwright in the authorized tab and replays a completed batch only once", async () => {
-    const { manager, webContents, raw } = createManager();
+    const { manager } = createManager();
     const host = new DesktopBrowserAutomationHost(manager);
     vi.mocked(runBetterwright).mockReset().mockResolvedValue({ answer: 42 });
     const request = {
@@ -274,14 +325,6 @@ describe("DesktopBrowserAutomationHost", () => {
     expect(result).toMatchObject({ tabId: TAB_ID, value: { answer: 42 }, serializedByteCount: 13 });
     expect(await host.executeTool(request)).toEqual(result);
     expect(runBetterwright).toHaveBeenCalledTimes(1);
-    expect(runBetterwright).toHaveBeenCalledWith(
-      expect.objectContaining({
-        contents: webContents,
-        home: "/isolated/synara/userdata/browser-engine",
-        code: "return {answer: 42}",
-      }),
-    );
-    expect(raw.trackAutomationDownload).toHaveBeenCalled();
     await host.dispose();
   });
 

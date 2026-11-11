@@ -180,6 +180,10 @@ describe("createDesktopPlatformBuildConfig", () => {
         to: MAC_ICON_ASSETS_CAR_BUNDLE_PATH,
       },
       { from: "apps/desktop/resources/localizations/en.lproj", to: "Resources/en.lproj" },
+      {
+        from: "apps/desktop/resources/localizations/zh-Hans.lproj",
+        to: "Resources/zh-Hans.lproj",
+      },
       { from: "apps/desktop/resources/localizations/es.lproj", to: "Resources/es.lproj" },
     ]);
     assert.equal(MAC_ICON_ASSETS_CAR_STAGE_PATH, "apps/desktop/resources/Assets.car");

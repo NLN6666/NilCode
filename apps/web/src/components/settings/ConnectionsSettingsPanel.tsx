@@ -9,6 +9,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { useAccount } from "~/hooks/useAccount";
+import { Translation } from "~/i18n/Translation";
 import { accountBillingQueryOptions } from "~/lib/accountReactQuery";
 import { readExecutionContext } from "~/lib/hosts/executionContext";
 import { isMacNavigatorPlatform } from "~/lib/utils";
@@ -18,6 +19,7 @@ import { Button } from "../ui/button";
 import { ConnectionsOtherComputers } from "./ConnectionsOtherComputers";
 import { ConnectionsThisComputer } from "./ConnectionsThisComputer";
 import { SettingsListRow, SettingsSection } from "./SettingsPanelPrimitives";
+import { SYNARA_PLAN_SECTION_ID } from "./BillingSettingsPanel";
 
 type ConnectionsTab = "this" | "others" | "ssh";
 
@@ -101,7 +103,11 @@ export function ConnectionsSettingsPanel({
             onRefreshBilling={billingEnabled ? () => void billing.refetch() : undefined}
             onViewProPlans={
               canViewProPlans
-                ? () => void navigate({ to: "/settings", search: { section: "profile" } })
+                ? () =>
+                    void navigate({
+                      to: "/settings",
+                      search: { section: "usage", target: SYNARA_PLAN_SECTION_ID },
+                    })
                 : undefined
             }
           />
@@ -137,11 +143,10 @@ function ConnectionsSsh() {
       <SettingsListRow
         title="Port forwarding"
         description={
-          <>
-            Start Synara on the remote machine with{" "}
-            <code className="font-mono text-ui-sm text-foreground">--ssh-forward-port</code>, then
-            forward that port over SSH. Synara does not set up SSH keys or routes for you.
-          </>
+          <Translation
+            message="settings:connectionsSshForwardDescription"
+            components={{ command: <code className="font-mono text-ui-sm text-foreground" /> }}
+          />
         }
       />
     </SettingsSection>

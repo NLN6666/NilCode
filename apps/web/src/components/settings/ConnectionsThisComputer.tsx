@@ -14,6 +14,7 @@ import type {
 import { type ReactNode, useEffect, useState } from "react";
 
 import { useAccount } from "~/hooks/useAccount";
+import { useTranslation } from "~/i18n";
 import { reportRemoteAccessAllowed, useDesktopKeepAwake } from "~/hooks/useDesktopKeepAwake";
 import { useDevices, useHosts, useHostSessions } from "~/hooks/useHosts";
 import { useRemoteHostState } from "~/hooks/useRemoteHostState";
@@ -58,6 +59,9 @@ export function ConnectionsThisComputer({
   onRefreshBilling?: (() => void) | undefined;
   onViewProPlans?: (() => void) | undefined;
 }) {
+  const { t } = useTranslation();
+  const localizedComputerNoun =
+    computerNoun === "Mac" ? computerNoun : t("settings:connections_computerNoun");
   const { state, loadError, refresh } = useRemoteHostState();
   const keepAwake = useDesktopKeepAwake();
   const [busy, setBusy] = useState(false);
@@ -152,11 +156,13 @@ export function ConnectionsThisComputer({
         <SettingsCard>
           {onViewProPlans ? (
             <SettingsListRow
-              title="Synara Pro"
-              description={`Pro includes remote access to this ${computerNoun}. Local use stays free.`}
+              title="Synara Alto"
+              description={t("settings:connectionsAltoDescription", {
+                computer: localizedComputerNoun,
+              })}
               actions={
                 <Button size="xs" shape="capsule" variant="subtle" onClick={onViewProPlans}>
-                  View Pro plans
+                  {t("settings:viewAltoPlans")}
                 </Button>
               }
             />
@@ -205,7 +211,9 @@ export function ConnectionsThisComputer({
           {state !== null && devices.length === 0 ? (
             <SettingsListRow
               title={<span className="font-normal text-muted-foreground">No devices yet</span>}
-              description={`Add your iPhone or iPad to control this ${computerNoun} from anywhere.`}
+              description={t("settings:connectionsMobileDescription", {
+                computer: localizedComputerNoun,
+              })}
             />
           ) : null}
           {state?.rootNeedsRepair ? (
@@ -236,7 +244,7 @@ export function ConnectionsThisComputer({
       {keepAwake.state ? (
         <SettingsSection title="Other settings">
           <SettingsListRow
-            title={`Keep this ${computerNoun} awake`}
+            title={t("settings:connectionsKeepAwake", { computer: localizedComputerNoun })}
             description={
               keepAwake.state.enabled && keepAwake.state.onBattery
                 ? "Paused while on battery"
@@ -245,7 +253,9 @@ export function ConnectionsThisComputer({
             actions={
               <Switch
                 checked={keepAwake.state.enabled}
-                aria-label={`Keep this ${computerNoun} awake`}
+                aria-label={t("settings:connectionsKeepAwake", {
+                  computer: localizedComputerNoun,
+                })}
                 onCheckedChange={(next) =>
                   void keepAwake.setEnabled(next).catch((cause: unknown) =>
                     toastManager.add({

@@ -81,6 +81,7 @@ import {
 } from "../components/settings/KeyboardShortcutsSettingsPanel";
 import { ProfileSettingsPanel } from "../components/settings/ProfileSettingsPanel";
 import { BillingSettingsPanel } from "../components/settings/BillingSettingsPanel";
+import { ACCOUNT_BILLING_ENABLED } from "~/lib/accountBilling";
 import { ProviderUsageSettingsPanel } from "../components/settings/ProviderUsageSettingsPanel";
 import { ExternalMcpSettingsPanel } from "../components/settings/ExternalMcpSettingsPanel";
 import { AgentMcpSettingsPanel } from "../components/settings/AgentMcpSettingsPanel";
@@ -370,7 +371,7 @@ function SettingsRouteView() {
   const activeSectionItem = SETTINGS_NAV_ITEMS.find((item) => item.id === activeSection)!;
 
   const {
-    isDefaultActiveTheme,
+    isDefaultThemePack,
     resetAllThemes,
     resolvedTheme,
     theme,
@@ -489,9 +490,10 @@ function SettingsRouteView() {
   const changedSettingLabels = [
     ...(settings.language !== defaults.language ? ["common:general_languageAria"] : []),
     ...(theme !== "system" ? ["onboarding:changed_theme"] : []),
-    ...(!isDefaultActiveTheme
-      ? [resolvedTheme === "dark" ? "settings:darkThemePack" : "settings:lightThemePack"]
-      : []),
+    // resetAllThemes() restores both theme packs and the system-font preference.
+    ...(!isDefaultThemePack("dark") ? ["settings:darkThemePack"] : []),
+    ...(!isDefaultThemePack("light") ? ["settings:lightThemePack"] : []),
+    ...(!systemUiFont ? ["settings:useSystemUIFont"] : []),
     ...(settings.defaultProvider !== defaults.defaultProvider
       ? ["settings:changed_defaultProvider"]
       : []),
@@ -1878,9 +1880,7 @@ function SettingsRouteView() {
     </div>
   );
 
-  const billingEnabled =
-    (isElectron && import.meta.env.VITE_SYNARA_BILLING_ENABLED === "1") ||
-    import.meta.env.VITE_SYNARA_BILLING_SANDBOX === "1";
+  const billingEnabled = ACCOUNT_BILLING_ENABLED;
 
   const renderRouteOwnedPanel = () => {
     switch (activeSection) {
@@ -1893,16 +1893,18 @@ function SettingsRouteView() {
       case "shortcuts":
         return <KeyboardShortcutsSettingsPanel />;
       case "profile":
-        return (
-          <div className="flex flex-col gap-7">
-            {billingEnabled ? <BillingSettingsPanel /> : null}
-            <ProfileSettingsPanel />
-          </div>
-        );
+        return <ProfileSettingsPanel />;
       case "skills":
         return <SkillsSettingsPanel />;
       case "usage":
-        return <ProviderUsageSettingsPanel />;
+        // The plan lives with usage ("Usage and billing"), never above the profile.
+        // A fragment, not a wrapper: sections space themselves as siblings.
+        return (
+          <>
+            {billingEnabled ? <BillingSettingsPanel /> : null}
+            <ProviderUsageSettingsPanel />
+          </>
+        );
       default:
         return null;
     }

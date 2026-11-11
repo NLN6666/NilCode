@@ -20,6 +20,7 @@ import {
 } from "./accountAuth.ts";
 import { createAccountSession } from "./accountSession.ts";
 import type { AccountBillingStatus } from "@synara/contracts";
+import { SYNARA_PRODUCTION_BUNDLE_ID } from "@synara/shared/desktopIdentity";
 import { generateAndPersistHostIdentity, readHostIdentity } from "./hostIdentity";
 import { importSPKI, jwtVerify } from "jose";
 
@@ -1011,9 +1012,12 @@ describe("transient sign-in recovery", () => {
 });
 
 describe("account profile sync policy", () => {
-  it("updates an existing private profile when explicitly enabled", async () => {
-    vi.stubEnv("SYNARA_DESKTOP_BUNDLE_ID", undefined);
-    vi.stubEnv("SYNARA_ACCOUNT_PROFILE_SYNC", "1");
+  it.each([
+    { bundleId: undefined, configured: "1" },
+    { bundleId: SYNARA_PRODUCTION_BUNDLE_ID, configured: undefined },
+  ])("updates an existing private profile in $bundleId", async ({ bundleId, configured }) => {
+    vi.stubEnv("SYNARA_DESKTOP_BUNDLE_ID", bundleId);
+    vi.stubEnv("SYNARA_ACCOUNT_PROFILE_SYNC", configured);
     const baseDir = makeBaseDir();
     await writeAccountCredentials(baseDir, credentials());
     const profile = { handle: "ada", displayName: "Ada", avatarColor: "#22c55e", public: false };
@@ -1179,11 +1183,11 @@ describe("account cleanup", () => {
 });
 
 describe("private saved recaps", () => {
-  it("refuses Stable save, history and deletion before reading account credentials", async () => {
+  it("refuses save, history and deletion when the host gate is closed", async () => {
     vi.mocked(isServerBetaFeatureEnabled).mockReturnValue(false);
     const session = sessionFor(makeBaseDir(), makeClient({}));
     const denied = {
-      message: "Saved Inbox history is available in Synara Beta.",
+      message: "Saved Inbox history is unavailable on this host.",
       code: "FEATURE_UNAVAILABLE",
     };
     expect(() =>

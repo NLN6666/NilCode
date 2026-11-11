@@ -1,5 +1,9 @@
 import "./httpRuntime";
-import { attachDesktopUpdateControl, DESKTOP_UPDATE_IPC_ENV } from "./desktopUpdateControl";
+import {
+  attachDesktopUpdateControl,
+  DESKTOP_UPDATE_IPC_ENV,
+  supportsDesktopUpdateControl,
+} from "./desktopUpdateControl";
 import { registerRemoteResourceBroker, REMOTE_RESOURCE_SCHEME } from "./remoteResourceBroker";
 import { showDiagnosticStartupDialog } from "./startupDiagnosticDialog";
 import {
@@ -46,7 +50,6 @@ import {
   autoUpdater as nativeAutoUpdater,
   BrowserWindow,
   clipboard,
-  crashReporter,
   dialog,
   globalShortcut,
   ipcMain,
@@ -64,6 +67,7 @@ import {
   systemPreferences,
 } from "electron";
 import { configureElectronNetwork } from "betterwright/electron";
+import { getBetterwrightNetworkGuard } from "./browserAutomation/betterwrightNetworkGuard";
 import type {
   BrowserWindowConstructorOptions,
   FileFilter,
@@ -133,12 +137,7 @@ import {
 } from "./backendStartupReadiness";
 import { DesktopBetaChannel, readBetaImportResult, resolveBetaHomeDir } from "./betaChannel";
 import type { ExpectedTeamId } from "./betaInstaller";
-import {
-  BetaDiagnostics,
-  readLogTail,
-  resolveBetaDiagnosticsEndpoint,
-  type BetaDiagnosticsEventName,
-} from "./betaDiagnostics";
+import { BetaDiagnostics, type BetaDiagnosticsEventName } from "./betaDiagnostics";
 import { attachBetaRendererDiagnostics } from "./betaRendererDiagnostics";
 import { guardDesktopWindowClose, showDesktopConfirmDialog } from "./confirmDialog";
 import {
@@ -515,8 +514,8 @@ const productAnalytics = new ProductAnalytics({
 
 // Diagnostics are constructed only for the Beta and Remote build flavors, so
 // production binaries never run a collection path. The payload schema is an
-// allowlist; error text may still contain fragments of user data. Remote follows
-// the sharing switch and never uploads raw crash dumps (process memory).
+// allowlist that discards original error text, names and log excerpts. Remote
+// follows the sharing switch; no flavor uploads raw crash dumps (process memory).
 const betaDiagnostics =
   desktopFlavor === "beta" || desktopFlavor === "remote"
     ? new BetaDiagnostics({
@@ -555,20 +554,7 @@ productAnalytics.onChange((enabled) => {
   if (enabled) betaDiagnostics?.resumeSharing();
   else betaDiagnostics?.discardQueue();
 });
-if (betaDiagnostics && desktopFlavor === "beta") {
-  crashReporter.start({
-    productName: APP_DISPLAY_NAME,
-    companyName: "Synara",
-    submitURL: `${resolveBetaDiagnosticsEndpoint(process.env)}/v1/crash`,
-    uploadToServer: true,
-    compress: true,
-    globalExtra: {
-      installId: betaDiagnostics.installId,
-      flavor: "beta",
-      appVersion: app.getVersion(),
-    },
-  });
-}
+// Raw process dumps can contain work content; no flavor starts an upload-capable reporter.
 
 const trackBetaDiagnostics = (
   event: BetaDiagnosticsEventName,
@@ -586,6 +572,7 @@ process.stderr.on("error", handleDesktopStdioError);
 // Node's exit behavior — the POSIX EPIPE filter and the default crash path
 // stay exactly as before.
 process.on("uncaughtExceptionMonitor", (error: unknown) => {
+  if (!isBrokenPipeError(error)) productAnalytics.track({ event: "app.crash", outcome: "failed" });
   betaDiagnostics?.trackError("main", error);
 });
 
@@ -4960,8 +4947,9 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
       ELECTRON_RUN_AS_NODE: "1",
       SYNARA_SERVER_ENTRY: backendEntry,
       SYNARA_DESKTOP_PARENT_STDIN: "1",
-      [DESKTOP_UPDATE_IPC_ENV]:
-        app.isPackaged && desktopFlavor === "remote" && process.platform === "darwin" ? "1" : "0",
+      [DESKTOP_UPDATE_IPC_ENV]: supportsDesktopUpdateControl(app.isPackaged, process.platform)
+        ? "1"
+        : "0",
     },
     // Keep output piped in every environment so startup blockers and readiness
     // are observable even when packaged log setup is unavailable. The fourth
@@ -4989,12 +4977,10 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
   backendProcess = child;
   desktopHangWatchdog?.updateBackendPid(child.pid ?? null);
   attachDesktopUpdateControl(child, {
+    isPackaged: app.isPackaged,
+    platform: process.platform,
     isCurrentChild: () => backendProcess === child && !isQuitting,
-    supported: () =>
-      app.isPackaged &&
-      desktopFlavor === "remote" &&
-      process.platform === "darwin" &&
-      updaterConfigured,
+    supported: () => updaterConfigured,
     getState: () => updateState,
     getInstallBlockedReason: getUpdaterInstallBlockedReason,
     check: () => checkForUpdates("remote"),
@@ -5101,17 +5087,14 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
       }
       const reason = `code=${code ?? "null"} signal=${signal ?? "null"}`;
       lastBackendFailureDetail = outputTailDetector.read();
-      if (!expectedExit)
+      if (!expectedExit) {
+        productAnalytics.track({ event: "app.crash", outcome: "failed" });
         trackBetaDiagnostics("app.child-process-crash", {
           kind: "crash",
           processType: "backend",
           reason,
-          // Guarded explicitly: on stable builds betaDiagnostics is null and the
-          // log file must not be touched at all.
-          logTail: betaDiagnostics
-            ? readLogTail(Path.join(LOG_DIR, BACKEND_LOG_FILE_NAME))
-            : undefined,
         });
+      }
       scheduleBackendRestart(reason);
     });
   });
@@ -5237,12 +5220,18 @@ async function shutdownDesktopRuntime(reason: string): Promise<void> {
       cancelBackendReadinessWait();
       appSnapManager?.dispose();
       appSnapManager = null;
-      await shutdownBrowserServices({
-        revokeHost: () => disposeBrowserHostPipeServerForShutdown(reason),
-        closePages: () => browserManager.dispose(),
-        stopCapture: () => browserVaultCapture.dispose(),
-        clearKeys: () => browserVault.dispose(),
-      });
+      try {
+        await shutdownBrowserServices({
+          revokeHost: () => disposeBrowserHostPipeServerForShutdown(reason),
+          closePages: () => browserManager.dispose(),
+          stopCapture: () => browserVaultCapture.dispose(),
+          clearKeys: () => browserVault.dispose(),
+        });
+      } finally {
+        await getBetterwrightNetworkGuard(
+          session.fromPartition(BROWSER_SESSION_PARTITION),
+        ).dispose();
+      }
       await browserSessionRestore?.shutdown();
       writeDesktopLogHeader(`${reason} appsnap disposed`);
       writeDesktopLogHeader(`${reason} browser services disposed`);
@@ -6366,6 +6355,8 @@ function attachRendererCrashRecovery(window: BrowserWindow): void {
     // the pending ask and count it as quitting for the crash policy.
     const quitAskPending = runningChatsQuitGuard.hasPendingAsk();
     runningChatsQuitGuard.allowPending();
+    if (!isQuitting && ["crashed", "oom", "abnormal-exit"].includes(details.reason))
+      productAnalytics.track({ event: "app.crash", outcome: "failed" });
     // A pending quit ask has not started shutdown: an unexpected crash while
     // that ask is open still belongs in diagnostics, even though recovery quits.
     if (!isQuitting && details.reason !== "clean-exit")
@@ -6373,11 +6364,6 @@ function attachRendererCrashRecovery(window: BrowserWindow): void {
         kind: "crash",
         processType: "renderer",
         reason: details.reason,
-        // Guarded explicitly: on stable builds betaDiagnostics is null and the
-        // log file must not be touched at all.
-        logTail: betaDiagnostics
-          ? readLogTail(Path.join(LOG_DIR, DESKTOP_LOG_FILE_NAME))
-          : undefined,
       });
 
     const response = rendererCrashPolicy.respondToCrash({
@@ -6753,7 +6739,11 @@ app.on("before-quit", (event) => {
 if (hasSingleInstanceLock) {
   app
     .whenReady()
-    .then(() => {
+    .then(async () => {
+      // Install the session-owned proxy before bootstrap can create or navigate browser pages.
+      await getBetterwrightNetworkGuard(
+        session.fromPartition(BROWSER_SESSION_PARTITION),
+      ).initialize();
       writeDesktopLogHeader("app ready");
       productAnalytics.start();
       productAnalytics.track({ event: "app.open", outcome: "succeeded" });
@@ -6824,7 +6814,6 @@ if (hasSingleInstanceLock) {
             kind: "crash",
             processType: details.type,
             reason: details.reason,
-            logTail: readLogTail(Path.join(LOG_DIR, DESKTOP_LOG_FILE_NAME)),
           });
         });
       }

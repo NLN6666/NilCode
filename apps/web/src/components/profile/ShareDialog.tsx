@@ -39,8 +39,9 @@ interface ShareDialogProps {
   readonly handle: string;
   readonly avatarColor: string;
   readonly avatarImage: string | null;
-  /** The account profile, when signed in with one — a PUBLIC profile makes shares link to its page. */
+  /** Shares link to the account page only when publication and availability are confirmed. */
   readonly accountProfile: Pick<AccountProfile, "handle" | "public"> | null;
+  readonly publicProfileAvailable: boolean | undefined;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }
@@ -53,10 +54,12 @@ export function ShareDialog({
   avatarColor,
   avatarImage,
   accountProfile,
+  publicProfileAvailable,
   open,
   onOpenChange,
 }: ShareDialogProps) {
   const { t } = useTranslation();
+  const publicUrl = profileShareUrl(accountProfile, publicProfileAvailable);
   const cardRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState<ShareTarget | "copy" | "save" | null>(null);
@@ -124,7 +127,7 @@ export function ShareDialog({
     return copyCardToClipboard()
       .then((copyResult) => {
         openExternalUrl(
-          shareIntentUrl(target, shareLinkUrl(profileShareUrl(accountProfile)), {
+          shareIntentUrl(target, shareLinkUrl(publicUrl), {
             tweetText: t("common:share_tweetText"),
             redditTitle: t("common:share_mySynaraDevStats"),
           }),
@@ -170,7 +173,6 @@ export function ShareDialog({
 
   const previewScale = previewWidth / SHARE_CARD_WIDTH;
   const actionsDisabled = busy !== null;
-  const publicUrl = profileShareUrl(accountProfile);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

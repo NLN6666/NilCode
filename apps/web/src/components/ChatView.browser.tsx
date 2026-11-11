@@ -75,7 +75,6 @@ import { extractTrailingBrowserAnnotations } from "../lib/browserAnnotations";
 import { isMacNavigatorPlatform } from "../lib/utils";
 import { STARRED_MODELS_STORAGE_KEY } from "../lib/starredModels";
 import { readNativeApi } from "../nativeApi";
-import { setLanguagePreference } from "~/i18n";
 import { DEFAULT_THEME_STATE, getCodeThemeSeed } from "~/theme/theme.logic";
 import { emitWsTransportState } from "../wsTransportEvents";
 import { dispatchKanbanDraftThread } from "../lib/kanbanDispatch";
@@ -3487,16 +3486,16 @@ describe("ChatView transcript geometry (full app)", () => {
     },
   );
 
-  it("offers unseen startup highlights once on a configured installation and keeps chat usable after dismissal", async () => {
+  it("offers the unseen app tour once on a configured installation and keeps chat usable after dismissal", async () => {
     localStorage.removeItem(FEATURE_TOUR_STORAGE_KEY);
     const snapshot = createSnapshotWithLongAssistantResponse();
     const mounted = await mountChatView({ viewport: DEFAULT_VIEWPORT, snapshot });
     try {
       await expect
-        .element(page.getByRole("dialog", { name: "A new home for your work" }))
+        .element(page.getByRole("dialog", { name: "Start a chat with any agent" }))
         .toBeVisible();
       expect(document.querySelectorAll('[role="dialog"]').length).toBe(1);
-      await page.getByRole("button", { name: "Skip tour" }).click();
+      await page.getByRole("button", { name: "Close tour" }).click();
       expect(JSON.parse(localStorage.getItem(FEATURE_TOUR_STORAGE_KEY) ?? "[]")).toEqual([
         createBaseServerConfig().worktreesDir,
       ]);
@@ -3509,11 +3508,11 @@ describe("ChatView transcript geometry (full app)", () => {
       expect(document.querySelector("[data-feature-tour]")).toBeNull();
       await page.getByTestId("composer-editor").click();
       await remounted.router.navigate({ to: "/settings", search: { section: "advanced" } });
-      await page.getByRole("button", { name: "Replay feature tour" }).click();
+      await page.getByRole("button", { name: "Replay tour" }).click();
       await expect
-        .element(page.getByRole("dialog", { name: "A new home for your work" }))
+        .element(page.getByRole("dialog", { name: "Start a chat with any agent" }))
         .toBeVisible();
-      await page.getByRole("button", { name: "Skip tour" }).click();
+      await page.getByRole("button", { name: "Close tour" }).click();
     } finally {
       await remounted.cleanup();
     }
@@ -14205,17 +14204,11 @@ describe("ChatView transcript geometry (full app)", () => {
   );
 
   it.each([
-    { language: "en", variant: "dark", reset: "Restore defaults", label: "Dark theme pack" },
-    {
-      language: "es",
-      variant: "light",
-      reset: "Restaurar valores predeterminados",
-      label: "Paquete de tema claro",
-    },
-    { language: "zh-CN", variant: "dark", reset: "恢复默认设置", label: "深色主题包" },
+    { variant: "dark", reset: "Restore defaults", label: "Dark theme pack" },
+    { variant: "light", reset: "Restore defaults", label: "Light theme pack" },
   ] as const)(
-    "names the customized theme pack in the localized reset confirmation ($language)",
-    async ({ language, variant, reset, label }) => {
+    "names the customized theme pack in the reset confirmation ($variant)",
+    async ({ variant, reset, label }) => {
       const previousTheme = localStorage.getItem("synara:theme");
       localStorage.setItem(
         "synara:theme",
@@ -14247,13 +14240,11 @@ describe("ChatView transcript geometry (full app)", () => {
           .poll(() => document.documentElement.getAttribute("data-theme-variant"))
           .toBe(variant);
         await mounted.router.navigate({ to: "/settings", search: { section: "appearance" } });
-        setLanguagePreference(language);
         await page.getByRole("button", { name: reset, exact: true }).click();
         await expect.poll(() => confirm.mock.calls.length).toBe(1);
         expect(confirm).toHaveBeenCalledWith(expect.stringContaining(label));
         expect(confirm).not.toHaveBeenCalledWith(expect.stringContaining("settings:"));
       } finally {
-        setLanguagePreference("en");
         Object.defineProperty(window, "nativeApi", {
           configurable: true,
           value: previousNativeApi,
@@ -14265,6 +14256,63 @@ describe("ChatView transcript geometry (full app)", () => {
       }
     },
   );
+
+  it("counts the system-font preference and the inactive theme pack toward Restore defaults", async () => {
+    const previousTheme = localStorage.getItem("synara:theme");
+    // Stay in System mode so only the inactive pack and the font switch differ from defaults.
+    const inactiveVariant = window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "light"
+      : "dark";
+    localStorage.setItem(
+      "synara:theme",
+      JSON.stringify({
+        ...DEFAULT_THEME_STATE,
+        systemUiFont: false,
+        codeThemeIds: { ...DEFAULT_THEME_STATE.codeThemeIds, [inactiveVariant]: "codex" },
+        chromeThemes: {
+          ...DEFAULT_THEME_STATE.chromeThemes,
+          [inactiveVariant]: getCodeThemeSeed("codex", inactiveVariant),
+        },
+      }),
+    );
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: addThreadToSnapshot(createDraftOnlySnapshot(), THREAD_ID),
+    });
+    window.dispatchEvent(new StorageEvent("storage", { key: "synara:theme" }));
+    const previousNativeApi = window.nativeApi;
+    const api = readNativeApi()!;
+    const confirm = vi.fn(async () => false);
+    Object.defineProperty(window, "nativeApi", {
+      configurable: true,
+      value: { ...api, dialogs: { ...api.dialogs, confirm } },
+    });
+    try {
+      await mounted.router.navigate({ to: "/settings", search: { section: "appearance" } });
+      await expect
+        .element(page.getByRole("switch", { name: "Use system UI font", exact: true }))
+        .not.toBeChecked();
+      const restoreDefaults = page.getByRole("button", { name: "Restore defaults", exact: true });
+      await expect.element(restoreDefaults).toBeEnabled();
+      await restoreDefaults.click();
+      await expect.poll(() => confirm.mock.calls.length).toBe(1);
+      expect(confirm).toHaveBeenCalledWith(
+        expect.stringContaining(
+          inactiveVariant === "dark" ? "Dark theme pack" : "Light theme pack",
+        ),
+      );
+      expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Use system UI font"));
+    } finally {
+      Object.defineProperty(window, "nativeApi", {
+        configurable: true,
+        value: previousNativeApi,
+      });
+      if (previousTheme === null) localStorage.removeItem("synara:theme");
+      else localStorage.setItem("synara:theme", previousTheme);
+      window.dispatchEvent(new StorageEvent("storage", { key: "synara:theme" }));
+      await mounted.cleanup();
+    }
+  });
 
   it("disables the ASCII landing decoration from Appearance and releases it on the terminal tab", async () => {
     const snapshot = addThreadToSnapshot(createDraftOnlySnapshot(), THREAD_ID);

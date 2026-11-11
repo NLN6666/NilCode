@@ -42,6 +42,7 @@ import {
   IconListCheck,
   IconListDetails,
   IconLoader2,
+  IconMail,
   IconMaximize,
   IconMinimize,
   IconMinus,
@@ -250,6 +251,7 @@ export const ListTodoIcon = adaptIcon(IconListDetails);
 export const Loader2Icon = adaptIcon(IconLoader2);
 export const LoaderCircleIcon = adaptIcon(IconLoader2);
 export const LoaderIcon = adaptIcon(IconLoader2);
+export const MailIcon = adaptIcon(IconMail);
 export const Maximize2 = adaptIcon(IconMaximize);
 export const Minimize2 = adaptIcon(IconMinimize);
 export const MessageCircleIcon = adaptIcon(IconMessageCircle);

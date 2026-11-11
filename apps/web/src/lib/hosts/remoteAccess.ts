@@ -16,17 +16,21 @@ import type {
 
 import { getFormatLocale, t } from "~/i18n";
 import { formatRelativeTimeAgo } from "~/lib/relativeTime";
+import { trackProductAnalytics } from "~/lib/productAnalytics";
 import { readHostsApi } from "./api";
 
 export type RemoteHostState = Extract<RemoteAccessResult, { kind: "host-state" }>;
 export type RemotePairingCode = Extract<RemoteAccessResult, { kind: "pairing-code" }>;
 export type RemotePairingPreview = Extract<RemoteAccessResult, { kind: "pairing-preview" }>;
 
-export function callRemoteAccess(request: RemoteAccessRequest): Promise<RemoteAccessResult> {
+export async function callRemoteAccess(request: RemoteAccessRequest): Promise<RemoteAccessResult> {
   const access = readHostsApi()?.remoteAccess;
-  return access
-    ? access(request)
-    : Promise.reject(new Error("Update the local controller to manage device pairing."));
+  if (!access) throw new Error("Update the local controller to manage device pairing.");
+  const result = await access(request);
+  if (request.operation === "approve" && result.kind === "done") {
+    trackProductAnalytics({ event: "remote.pairing-approved", outcome: "succeeded" });
+  }
+  return result;
 }
 
 export function remoteAccessErrorMessage(cause: unknown, fallback: string): string {
