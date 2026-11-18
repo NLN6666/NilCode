@@ -168,6 +168,7 @@ import Migration0135 from "./Migrations/135_ProjectionMessageTurnActivityIndex.t
 // Slots 136–140 are already released in the Remote lineage; new common migrations follow them.
 import Migration0141 from "./Migrations/141_ProjectionThreadsUsageLimitRecovery.ts";
 import Migration0145 from "./Migrations/145_UsageAnalyticsDeletedTokens.ts";
+import Migration0146 from "./Migrations/146_ProjectionThreadsPullRequestLinks.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -329,6 +330,7 @@ export const migrationEntries = [
   [143, "ProjectionProjectsBrowserSharing", BrowserSharingMigration],
   [144, "ProjectionThreadsAdvisorEnabled", AdvisorEnabledMigration],
   [145, "UsageAnalyticsDeletedTokens", Migration0145],
+  [146, "ProjectionThreadsPullRequestLinks", Migration0146],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>
@@ -556,11 +558,18 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     historicalSlotRequiresRerun: true,
   },
   {
-    // Released main 1.5.2–1.5.3 used 143 for analytics. Keep fork 143/144
+    // Released main 1.5.2+ used 143 for analytics. Keep fork 143/144
     // stable and replay both fork migrations before the idempotent analytics DDL.
     historicalId: 143,
     historicalName: "UsageAnalyticsDeletedTokens",
     currentId: 145,
+    historicalSlotRequiresRerun: true,
+  },
+  {
+    // Released main 1.5.4+ used 144 for PR links. Fork 144 still needs to run.
+    historicalId: 144,
+    historicalName: "ProjectionThreadsPullRequestLinks",
+    currentId: 146,
     historicalSlotRequiresRerun: true,
   },
 ];

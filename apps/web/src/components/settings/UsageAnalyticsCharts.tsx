@@ -8,6 +8,7 @@
 import { type ReactNode, useState } from "react";
 
 import { useContainerSize } from "~/hooks/useContainerSize";
+import { useTranslation } from "~/i18n";
 import { cn } from "~/lib/utils";
 import {
   PROVIDER_SERIES_COLOR,
@@ -279,6 +280,7 @@ interface DayChartProps {
 }
 
 export function DailyBarChart(props: DayChartProps) {
+  const { t } = useTranslation();
   const { ref, width } = useChartWidth(props.width);
   const height = props.height ?? 220;
   const [hovered, setHovered] = useState<number | null>(null);
@@ -342,7 +344,10 @@ export function DailyBarChart(props: DayChartProps) {
           flip={hovered > props.days.length / 2}
           title={longDayLabel(hoveredDay.date)}
           rows={dayTooltipRows(hoveredDay, props.providers, props.metric, props.format)}
-          total={{ label: t("settings:analytics_total"), value: props.format(dayTotal(hoveredDay)) }}
+          total={{
+            label: t("settings:analytics_total"),
+            value: props.format(dayTotal(hoveredDay)),
+          }}
         />
       ) : null}
     </div>
@@ -493,6 +498,7 @@ export function RhythmChart(props: {
   rhythm: ReadonlyArray<ReadonlyArray<number>>;
   format: Format;
 }) {
+  const { t } = useTranslation();
   const [hovered, setHovered] = useState<{ weekday: number; hour: number } | null>(null);
   const max = Math.max(0, ...props.rhythm.flat());
   let peak = { weekday: -1, hour: -1 };
@@ -558,7 +564,13 @@ export function RhythmChart(props: {
           top={(hovered.weekday + 1) * RHYTHM_ROW_PX + 4}
           flip={hovered.hour >= 12}
           title={`${WEEKDAYS[hovered.weekday]} ${String(hovered.hour).padStart(2, "0")}:00–${String((hovered.hour + 1) % 24).padStart(2, "0")}:00`}
-          rows={[{ key: "tokens", label: t("settings:analytics_tokens"), value: props.format(hoveredValue) }]}
+          rows={[
+            {
+              key: "tokens",
+              label: t("settings:analytics_tokens"),
+              value: props.format(hoveredValue),
+            },
+          ]}
         />
       ) : null}
     </div>

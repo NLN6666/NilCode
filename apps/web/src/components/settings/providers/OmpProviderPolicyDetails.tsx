@@ -14,7 +14,9 @@ function formatOmpRuntimeDetail(value: unknown): string | undefined {
   }
 }
 
-export function OmpProviderPolicyDetails(props: { readonly status: ServerProviderStatus | undefined }) {
+export function OmpProviderPolicyDetails(props: {
+  readonly status: ServerProviderStatus | undefined;
+}) {
   const { t } = useTranslation();
   const projection = projectOmpProviderPolicy(props.status);
   if (!projection) return null;
@@ -169,4 +171,3 @@ export function OmpProviderPolicyDetails(props: { readonly status: ServerProvide
     </div>
   );
 }
-

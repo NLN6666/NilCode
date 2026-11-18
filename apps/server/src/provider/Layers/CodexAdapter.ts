@@ -36,7 +36,11 @@ import {
 } from "@synara/contracts";
 import { Cause, Effect, Layer, Option, Queue, Schema, ServiceMap, Stream } from "effect";
 import { sanitizeUserFacingErrorMessage } from "@synara/shared/errorMessages";
-import { isCodexUnstableFeaturesWarning } from "@synara/shared/codexStderr";
+import {
+  isCodexMultiAgentDeprecationWarning,
+  isCodexUnstableFeaturesWarning,
+  readCodexMcpSubscriptionError,
+} from "@synara/shared/codexStderr";
 
 import {
   ProviderAdapterProcessError,
@@ -88,12 +92,14 @@ import { resolveCodexServiceTier } from "../../codexServiceTier.ts";
 import { makeRuntimeTaskListItem } from "../runtimeTaskList.ts";
 import {
   codexErrorCode,
+  codexErrorHttpStatus,
   codexUsageLimitWindows,
   isCodexUsageLimitError,
   usageLimitResetAt,
   type UsageLimitWindows,
 } from "../usageLimit.ts";
 import { extractProposedPlanMarkdown } from "../planMode.ts";
+import { isProviderEdgeBlockedText, PROVIDER_EDGE_BLOCKED_ERROR_CODE } from "../edgeBlock.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
 import { synaraSkillsDir } from "../skillsCatalog.ts";
 import { fileSystemAgentCatalog } from "../fileSystemAgentCatalog.ts";
@@ -186,6 +192,14 @@ export interface CodexAdapterLiveOptions {
   readonly makeManager?: (services?: ServiceMap.ServiceMap<never>) => CodexAppServerManager;
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
+}
+
+// Codex reports a Cloudflare 403 page as a generic HTTP failure; name it as an
+// edge block so it is never read as a login problem.
+function codexTurnErrorCode(error: unknown, message: string | undefined): string | undefined {
+  return message !== undefined && isProviderEdgeBlockedText(message)
+    ? PROVIDER_EDGE_BLOCKED_ERROR_CODE
+    : codexErrorCode(error);
 }
 
 function toMessage(cause: unknown, fallback: string): string {
@@ -1209,7 +1223,12 @@ function mapUnmappedCodexEvent(
 interface CodexUsageLimitContext {
   activeTurnId?: string;
   windows?: UsageLimitWindows;
-  terminalError?: { readonly turnId: string; readonly code: string; readonly usageLimit: boolean };
+  terminalError?: {
+    readonly turnId: string;
+    readonly code: string;
+    readonly usageLimit: boolean;
+    readonly httpStatus?: number;
+  };
 }
 
 function mapToRuntimeEvents(
@@ -1496,7 +1515,8 @@ function mapToRuntimeEvents(
     const currentTurn =
       event.turnId !== undefined && usageLimitContext?.activeTurnId === event.turnId;
     const priorError = currentTurn ? usageLimitContext?.terminalError : undefined;
-    const errorCode = codexErrorCode(turn?.error) ?? priorError?.code;
+    const errorCode = codexTurnErrorCode(turn?.error, errorMessage) ?? priorError?.code;
+    const httpStatus = codexErrorHttpStatus(turn?.error) ?? priorError?.httpStatus;
     const isUsageLimit =
       codexErrorCode(turn?.error) !== undefined
         ? isCodexUsageLimitError(errorCode, turn?.error)
@@ -1529,6 +1549,7 @@ function mapToRuntimeEvents(
             : {}),
           ...(errorMessage ? { errorMessage } : {}),
           ...(errorCode ? { errorCode } : {}),
+          ...(httpStatus !== undefined ? { httpStatus } : {}),
           ...(usageLimit ? { usageLimit } : {}),
         },
       },
@@ -1872,8 +1893,14 @@ function mapToRuntimeEvents(
     ];
   }
 
-  if (CODEX_RUNTIME_WARNING_METHODS.has(event.method)) {
-    const message = asTrimmedString(payload?.message);
+  // The manager consolidates this issue as configWarning; history consumes runtime.warning.
+  const isMultiAgentConfigWarning =
+    event.method === "configWarning" &&
+    isCodexMultiAgentDeprecationWarning(asTrimmedString(payload?.summary) ?? "");
+  if (CODEX_RUNTIME_WARNING_METHODS.has(event.method) || isMultiAgentConfigWarning) {
+    const message = asTrimmedString(
+      isMultiAgentConfigWarning ? payload?.summary : payload?.message,
+    );
     if (event.method === "warning" && message && isCodexUnstableFeaturesWarning(message)) {
       return [];
     }
@@ -1895,6 +1922,28 @@ function mapToRuntimeEvents(
         },
       },
     ];
+  }
+
+  // The startup notification owns the server name; rmcp worker stderr does not carry it.
+  if (event.method === "mcpServer/startupStatus/updated") {
+    const name = asTrimmedString(payload?.name);
+    const error = asTrimmedString(payload?.error);
+    if (payload?.status === "failed" && name && error) {
+      const subscriptionError = readCodexMcpSubscriptionError(error);
+      return [
+        {
+          type: "runtime.warning",
+          ...withMinimalRawPayload(runtimeEventBase(event, canonicalThreadId), event),
+          payload: {
+            message: sanitizeUnmappedProviderDetail(
+              `MCP server "${name}" failed to start${subscriptionError ? " (HTTP 403)" : ""}: ${subscriptionError ?? error}`,
+              2_000,
+            )!,
+            detail: sanitizeUnmappedProviderData(event.payload),
+          },
+        },
+      ];
+    }
   }
 
   if (event.method === "configWarning") {
@@ -2029,7 +2078,8 @@ function mapToRuntimeEvents(
     const message =
       asString(asObject(payload?.error)?.message) ?? event.message ?? "Provider runtime error";
     const willRetry = payload?.willRetry === true;
-    const errorCode = codexErrorCode(payload?.error);
+    const errorCode = codexTurnErrorCode(payload?.error, message);
+    const httpStatus = codexErrorHttpStatus(payload?.error);
     const nonFatal = isNonFatalCodexErrorMessage(message);
     const quotaFailure = isCodexUsageLimitError(errorCode, payload?.error);
     // Only the terminal command settles quota failure and recovery together.
@@ -2048,6 +2098,7 @@ function mapToRuntimeEvents(
         turnId: event.turnId,
         code: errorCode,
         usageLimit: quotaFailure,
+        ...(httpStatus !== undefined ? { httpStatus } : {}),
       };
     }
     return [
@@ -2870,7 +2921,9 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
           const runtimeEvents = sizedRuntimeEvents.map((item) => item.event);
           trackTurnWatchdogActivity(stampedEvent.threadId, runtimeEvents);
           const nativeEvent = compactCodexNativeEventForIngress(
-            hasUnmappedEvent || CODEX_RUNTIME_WARNING_METHODS.has(stampedEvent.method)
+            hasUnmappedEvent ||
+              mappedRuntimeEvents.some((runtimeEvent) => runtimeEvent.type === "runtime.warning") ||
+              CODEX_RUNTIME_WARNING_METHODS.has(stampedEvent.method)
               ? sanitizeUnmappedProviderEvent(stampedEvent)
               : stampedEvent,
           );

@@ -23,6 +23,8 @@ import {
   isLegacyHomeChatContainerRow as isSharedLegacyHomeChatContainerRow,
   isOrdinaryProjectRow as isSharedOrdinaryProjectRow,
 } from "@synara/shared/projectContainers";
+import { isPendingInteractionAwaitingResponse } from "@synara/shared/pendingInteractions";
+import { findProjectFolderProblem } from "@synara/shared/projectFolders";
 import { normalizeWorkspaceRootForComparison } from "@synara/shared/threadWorkspace";
 import { Effect } from "effect";
 
@@ -321,6 +323,28 @@ export function requireProjectAbsent(input: {
   );
 }
 
+/**
+ * A project's folder set (primary plus extra folders) must stay distinct and un-nested, and
+ * only ordinary projects may span several folders. A single-folder set always passes.
+ */
+export function requireValidProjectFolders(input: {
+  readonly command: OrchestrationCommand;
+  readonly kind: ProjectKind;
+  readonly workspaceRoot: string;
+  readonly additionalFolders: ReadonlyArray<string>;
+}): Effect.Effect<void, OrchestrationCommandInvariantError> {
+  if (input.additionalFolders.length === 0) return Effect.void;
+  if (input.kind !== "project") {
+    return Effect.fail(
+      invariantError(input.command.type, "Only ordinary projects can have additional folders."),
+    );
+  }
+  const problem = findProjectFolderProblem([input.workspaceRoot, ...input.additionalFolders], {
+    platform: process.platform,
+  });
+  return problem === null ? Effect.void : Effect.fail(invariantError(input.command.type, problem));
+}
+
 export function requireProjectWorkspaceRootAvailable(input: {
   readonly readModel: OrchestrationReadModel;
   readonly command: OrchestrationCommand;
@@ -399,11 +423,7 @@ export function requireApprovalNotResponded(input: {
       (input.lifecycleGeneration === undefined ||
         entry.lifecycleGeneration === input.lifecycleGeneration),
   );
-  if (
-    interaction === undefined ||
-    interaction.status === "pending" ||
-    interaction.status === "retryable"
-  ) {
+  if (interaction === undefined || isPendingInteractionAwaitingResponse(interaction.status)) {
     return Effect.void;
   }
   return Effect.fail(

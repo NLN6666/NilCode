@@ -11,7 +11,7 @@
 // invalidate the on-disk/keychain login and force the user to re-authenticate.
 
 import { createHash } from "node:crypto";
-import { stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import nodePath from "node:path";
 import { promisify } from "node:util";
 
@@ -34,6 +34,7 @@ import {
 import {
   fetchJson,
   isAuthFailureStatus,
+  isEdgeBlockedResponse,
   isRateLimitStatus,
   parseRetryAfterMs,
   usageFetchFailureDetail,
@@ -220,6 +221,19 @@ async function recoveryFileExists(path: string): Promise<boolean> {
   );
 }
 
+// A profile home can only select credentials through something inside it. Claude Code
+// and other Anthropic tools create the directory ahead of use, so an empty one is common
+// and must not turn every turn on this computer into a manual-only recovery.
+async function recoveryProfileHomeInUse(path: string): Promise<boolean> {
+  const info = await stat(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") return null;
+    throw error;
+  });
+  if (info === null) return false;
+  if (!info.isDirectory()) return true;
+  return (await readdir(path)).length > 0;
+}
+
 function hasRecoveryAuthOverride(record: Record<string, unknown>): boolean {
   if (record.apiKeyHelper != null && record.apiKeyHelper !== "") return true;
   const environment = asRecord(record.env);
@@ -256,7 +270,7 @@ async function claudeRecoveryIdentity(ctx: ProviderUsageContext): Promise<string
     nodePath.join(ctx.homeDir, ".config", "anthropic"),
     ...(ctx.env.XDG_CONFIG_HOME ? [nodePath.join(ctx.env.XDG_CONFIG_HOME, "anthropic")] : []),
   ]);
-  for (const path of profileHomes) if (await recoveryFileExists(path)) return null;
+  for (const path of profileHomes) if (await recoveryProfileHomeInUse(path)) return null;
   const settingsPaths = new Set([
     nodePath.join(configHome, "settings.json"),
     nodePath.join(configHome, "settings.local.json"),
@@ -536,6 +550,11 @@ const claudeRateLimit = createRateLimitResilience({
     `Anthropic is rate-limiting usage checks — showing your last values, retrying in ~${retryMins}m. Manual refreshes only extend the limit.`,
 });
 
+// Cloudflare edge blocks usually clear within seconds, so back off briefly instead of the 429 default.
+const CLAUDE_EDGE_BLOCK_COOLDOWN_MS = 60 * 1000;
+const claudeEdgeBlockDetail = (retryMins: number) =>
+  `Anthropic's network edge temporarily blocked the usage check (HTTP 403) — showing your last values, retrying in ~${retryMins}m. Your Claude login is fine.`;
+
 /** Test-only: clear the cross-call last-good/cooldown memory so cases start from a cold state. */
 export function __resetClaudeUsageRateLimitState(): void {
   claudeRateLimit.reset();
@@ -621,7 +640,7 @@ export const claudeUsageFetcher: ProviderUsageFetcher = {
 
       try {
         let result = await fetchClaudeUsage(activeCreds.accessToken);
-        if (isAuthFailureStatus(result.status)) {
+        if (!isEdgeBlockedResponse(result) && isAuthFailureStatus(result.status)) {
           // The stored expiry can lag reality (revocation, clock skew). Let the CLI refresh its
           // credential, re-read, and retry once with a genuinely different token.
           const refreshed = await nudgeOnce();
@@ -630,6 +649,16 @@ export const claudeUsageFetcher: ProviderUsageFetcher = {
             activeCreds = updated;
             result = await fetchClaudeUsage(activeCreds.accessToken);
           }
+        }
+        if (isEdgeBlockedResponse(result)) {
+          // Not a token problem: no nudge, no next source; keep the last values and back off.
+          log.warn("claude usage request blocked by Cloudflare edge", { status: result.status });
+          return claudeRateLimit.enterCooldown(
+            claudeCredentialCacheKey(ctx, activeCreds),
+            ctx.nowMs,
+            parseRetryAfterMs(result.headers, ctx.nowMs) ?? CLAUDE_EDGE_BLOCK_COOLDOWN_MS,
+            claudeEdgeBlockDetail,
+          );
         }
         if (isAuthFailureStatus(result.status)) {
           log.warn("claude usage request unauthorized after CLI refresh; trying next source", {

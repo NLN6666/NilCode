@@ -156,7 +156,6 @@ function SettingsRouteView() {
     return () => window.cancelAnimationFrame(frame);
   }, [activeSection, settingsTarget]);
 
-
   const billingEnabled = ACCOUNT_BILLING_ENABLED;
 
   const renderRouteOwnedPanel = () => {

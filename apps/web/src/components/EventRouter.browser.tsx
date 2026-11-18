@@ -87,7 +87,10 @@ import {
 import { useWorkspacePathsStore } from "../workspacePathsStore";
 import { createWsNativeApi, resetWsNativeApiForTest } from "../wsNativeApi";
 import { registerTerminalRuntimeCleanup } from "../lib/terminalStateCleanup";
-import { requestShellSnapshotRefresh } from "../routeRestoreRefreshCoordinator";
+import {
+  requestEmptyRouteRestoreRefresh,
+  requestShellSnapshotRefresh,
+} from "../routeRestoreRefreshCoordinator";
 // Pre-transform the compiler-heavy component before the first hydration deadline.
 // This suite runs on its own CI shard, so ChatView's suite cannot warm it first.
 import "./ChatView";
@@ -452,15 +455,42 @@ const worker = setupWorker(
   http.get("*/api/project-favicon", () => new HttpResponse(null, { status: 204 })),
 );
 
+/**
+ * `vi.waitFor` for assertions that only turn true after a catch-up poll fires. Under fake
+ * Date/setInterval it advances the polling clock between checks instead of sleeping through the
+ * real 1.5 s poll interval; transport and render timers stay real so responses still land.
+ */
+async function waitForPolling(assertion: () => void, maxPollingMs = 120_000): Promise<void> {
+  let advancedMs = 0;
+  for (;;) {
+    try {
+      assertion();
+      return;
+    } catch (cause) {
+      if (!vi.isFakeTimers() || advancedMs >= maxPollingMs) throw cause;
+      await vi.advanceTimersByTimeAsync(250);
+      advancedMs += 250;
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 4));
+    }
+  }
+}
+
+function useFakePollingClock() {
+  vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+}
+
 async function mountApp(options?: {
   routeThreadId?: ThreadId;
+  initialPath?: string;
   waitForThreadId?: ThreadId | null;
   requireSyncedThread?: boolean;
 }): Promise<{ router: ReturnType<typeof getRouter>; cleanup: () => Promise<void> }> {
   const host = createFullscreenTestHost();
 
   const routeThreadId = options?.routeThreadId ?? THREAD_ID;
-  const router = getRouter(createMemoryHistory({ initialEntries: [`/${routeThreadId}`] }));
+  const router = getRouter(
+    createMemoryHistory({ initialEntries: [options?.initialPath ?? `/${routeThreadId}`] }),
+  );
   const screen = await render(<RouterProvider router={router} />, { container: host });
 
   try {
@@ -1039,6 +1069,40 @@ describe("EventRouter scoped orchestration sync", () => {
     }
   });
 
+  it("accepts a current empty-shell proof without overwriting hydrated collections", async () => {
+    fixture.snapshot = { ...fixture.snapshot, snapshotSequence: 3, threads: [] };
+    const mounted = await mountApp({ initialPath: "/settings", waitForThreadId: null });
+    const api = createWsNativeApi();
+    const proof = {
+      ...createShellSnapshotFromReadModel(fixture.snapshot),
+      emptyThreadShellVerified: true,
+      projects: fixture.snapshot.projects.map((project) => ({
+        ...project,
+        title: "Queried project metadata",
+      })),
+    };
+    const query = vi
+      .spyOn(api.orchestration, "getShellSnapshot")
+      .mockResolvedValueOnce({ ...proof, snapshotSequence: 2 })
+      .mockResolvedValue(proof);
+    const repairState = vi
+      .spyOn(api.orchestration, "repairState")
+      .mockResolvedValue(fixture.snapshot);
+    try {
+      expect(useStore.getState().threadIds).toEqual([]);
+      const refresh = requestEmptyRouteRestoreRefresh();
+      await expect(refresh).resolves.toBe("verified-empty");
+      // Revision 2 may not certify the empty route after the revision 3 stream.
+      expect(query).toHaveBeenCalledTimes(2);
+      expect(repairState).not.toHaveBeenCalled();
+      expect(useStore.getState().projects[0]?.name).toBe("Project");
+    } finally {
+      repairState.mockRestore();
+      query.mockRestore();
+      await mounted.cleanup();
+    }
+  });
+
   it("does not query a fallback after a streamed shell snapshot with no spaces", async () => {
     const mounted = await mountApp();
 
@@ -1356,17 +1420,15 @@ describe("EventRouter scoped orchestration sync", () => {
         },
       }),
     };
+    useFakePollingClock();
     const mounted = await mountApp();
 
     try {
       delayNextThreadDetailSnapshotResponse = true;
-      await vi.waitFor(
-        () => {
-          expect(getThreadDetailSnapshotRequestCount).toBeGreaterThan(0);
-          expect(pendingThreadDetailSnapshotResponse).not.toBeNull();
-        },
-        { timeout: 10_000, interval: 16 },
-      );
+      await waitForPolling(() => {
+        expect(getThreadDetailSnapshotRequestCount).toBeGreaterThan(0);
+        expect(pendingThreadDetailSnapshotResponse).not.toBeNull();
+      });
 
       const delayedResponse = pendingThreadDetailSnapshotResponse!;
       const staleThread = {
@@ -1406,16 +1468,13 @@ describe("EventRouter scoped orchestration sync", () => {
 
       sendPendingThreadDetailSnapshotResponse();
 
-      await vi.waitFor(
-        () => {
-          expect(getThreadDetailSnapshotRequestCount).toBeGreaterThan(requestCountBeforeApproval);
-          expect(document.body.textContent).toContain("Approve this command?");
-          expect(
-            getThreadFromState(useStore.getState(), THREAD_ID)?.pendingInteractions?.[0]?.requestId,
-          ).toBe(requestId);
-        },
-        { timeout: 4_000, interval: 16 },
-      );
+      await waitForPolling(() => {
+        expect(getThreadDetailSnapshotRequestCount).toBeGreaterThan(requestCountBeforeApproval);
+        expect(document.body.textContent).toContain("Approve this command?");
+        expect(
+          getThreadFromState(useStore.getState(), THREAD_ID)?.pendingInteractions?.[0]?.requestId,
+        ).toBe(requestId);
+      });
     } finally {
       fixture = buildFixture();
       await mounted.cleanup();
@@ -1605,37 +1664,30 @@ describe("EventRouter scoped orchestration sync", () => {
         },
       }),
     };
+    useFakePollingClock();
     const mounted = await mountApp();
-    // Advance only the scheduling clock; leave transport and browser timers real.
-    let now = Date.now() + 6_000;
-    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
 
     try {
-      await vi.waitFor(() => expect(getThreadDetailSnapshotRequestCount).toBe(1), {
-        timeout: 4_000,
-      });
+      await waitForPolling(() => expect(getThreadDetailSnapshotRequestCount).toBe(1));
       // Let the snapshot continuation record its successful reconciliation time.
       await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
-      const lastSnapshotAt = now;
+      const lastSnapshotAt = Date.now();
 
       for (const elapsedMs of [9_000, 27_000, 63_000]) {
         const previousReplayCount = replayRequestCursors.length;
-        now = lastSnapshotAt + elapsedMs;
-        await vi.waitFor(
-          () => expect(replayRequestCursors.length).toBeGreaterThan(previousReplayCount),
-          { timeout: 4_000 },
+        // Jump the clock without firing the intervening polls so skipped reconciles stay skipped.
+        vi.setSystemTime(lastSnapshotAt + elapsedMs);
+        await waitForPolling(() =>
+          expect(replayRequestCursors.length).toBeGreaterThan(previousReplayCount),
         );
         expect(getThreadDetailSnapshotRequestCount).toBe(1);
       }
 
       // Each replay was empty, but skipped reconciles must not move the real-fetch
       // deadline to 135 seconds by adding their backoff delays together.
-      now = lastSnapshotAt + 72_000;
-      await vi.waitFor(() => expect(getThreadDetailSnapshotRequestCount).toBe(2), {
-        timeout: 4_000,
-      });
+      vi.setSystemTime(lastSnapshotAt + 72_000);
+      await waitForPolling(() => expect(getThreadDetailSnapshotRequestCount).toBe(2), 4_000);
     } finally {
-      clock.mockRestore();
       fixture = buildFixture();
       await mounted.cleanup();
     }
@@ -1913,6 +1965,7 @@ describe("EventRouter scoped orchestration sync", () => {
         updatedAt: startedAt,
       }),
     };
+    useFakePollingClock();
     const mounted = await mountApp();
 
     try {
@@ -1985,13 +2038,10 @@ describe("EventRouter scoped orchestration sync", () => {
         expect(thread?.messages.some((message) => message.id === finalMessageId)).toBe(false);
       });
 
-      await vi.waitFor(
-        () => {
-          expect(getThreadDetailSnapshotRequestCount).toBeGreaterThan(0);
-          expect(pendingThreadDetailSnapshotResponse).not.toBeNull();
-        },
-        { timeout: 10_000, interval: 16 },
-      );
+      await waitForPolling(() => {
+        expect(getThreadDetailSnapshotRequestCount).toBeGreaterThan(0);
+        expect(pendingThreadDetailSnapshotResponse).not.toBeNull();
+      });
 
       sendPendingThreadDetailSnapshotResponse();
 
@@ -2028,16 +2078,13 @@ describe("EventRouter scoped orchestration sync", () => {
         },
       };
 
-      await vi.waitFor(
-        () => {
-          const thread = getThreadFromState(useStore.getState(), THREAD_ID);
-          expect(getThreadDetailSnapshotRequestCount).toBeGreaterThan(1);
-          expect(thread?.messages.find((message) => message.id === finalMessageId)?.text).toBe(
-            "Recovered without a reload.",
-          );
-        },
-        { timeout: 15_000, interval: 16 },
-      );
+      await waitForPolling(() => {
+        const thread = getThreadFromState(useStore.getState(), THREAD_ID);
+        expect(getThreadDetailSnapshotRequestCount).toBeGreaterThan(1);
+        expect(thread?.messages.find((message) => message.id === finalMessageId)?.text).toBe(
+          "Recovered without a reload.",
+        );
+      });
     } finally {
       fixture = buildFixture();
       await mounted.cleanup();
@@ -2257,17 +2304,15 @@ describe("EventRouter scoped orchestration sync", () => {
       }),
     };
 
+    useFakePollingClock();
     const mounted = await mountApp();
 
     try {
       delayNextThreadDetailSnapshotResponse = true;
-      await vi.waitFor(
-        () => {
-          expect(getThreadDetailSnapshotRequestCount).toBeGreaterThan(0);
-          expect(pendingThreadDetailSnapshotResponse).not.toBeNull();
-        },
-        { timeout: 10_000, interval: 16 },
-      );
+      await waitForPolling(() => {
+        expect(getThreadDetailSnapshotRequestCount).toBeGreaterThan(0);
+        expect(pendingThreadDetailSnapshotResponse).not.toBeNull();
+      });
 
       const completedAt = "2026-03-04T12:00:09.000Z";
       sendThreadEventPush({
@@ -2607,6 +2652,7 @@ describe("EventRouter scoped orchestration sync", () => {
         [PROJECT_ID]: draftThreadId,
       },
     });
+    useFakePollingClock();
     const mounted = await mountApp({ routeThreadId: draftThreadId, waitForThreadId: null });
 
     try {
@@ -2659,23 +2705,20 @@ describe("EventRouter scoped orchestration sync", () => {
 
       // Deliberately do not push either a shell upsert or a thread stream item.
       // The periodic direct projection read must promote the visible draft.
-      await vi.waitFor(
-        () => {
-          expect(getThreadDetailSnapshotRequestCount).toBeGreaterThan(
-            detailReadsBeforeMaterialization,
-          );
-          expect(subscribeThreadRequestCountById.get(draftThreadId)).toBe(
-            subscribeCountBeforeMaterialization,
-          );
-          expect(
-            getThreadFromState(useStore.getState(), draftThreadId)?.messages.at(-1)?.text,
-          ).toBe("recovered without a reload");
-          expect(
-            useComposerDraftStore.getState().draftThreadsByThreadId[draftThreadId],
-          ).toBeUndefined();
-        },
-        { timeout: 8_000, interval: 16 },
-      );
+      await waitForPolling(() => {
+        expect(getThreadDetailSnapshotRequestCount).toBeGreaterThan(
+          detailReadsBeforeMaterialization,
+        );
+        expect(subscribeThreadRequestCountById.get(draftThreadId)).toBe(
+          subscribeCountBeforeMaterialization,
+        );
+        expect(getThreadFromState(useStore.getState(), draftThreadId)?.messages.at(-1)?.text).toBe(
+          "recovered without a reload",
+        );
+        expect(
+          useComposerDraftStore.getState().draftThreadsByThreadId[draftThreadId],
+        ).toBeUndefined();
+      });
     } finally {
       await mounted.cleanup();
     }
@@ -3075,10 +3118,7 @@ describe("EventRouter scoped orchestration sync", () => {
 
     async function holdNextProjectionRead(): Promise<void> {
       delayNextThreadDetailSnapshotResponse = true;
-      await vi.waitFor(() => expect(pendingThreadDetailSnapshotResponse).not.toBeNull(), {
-        timeout: 15_000,
-        interval: 16,
-      });
+      await waitForPolling(() => expect(pendingThreadDetailSnapshotResponse).not.toBeNull());
     }
 
     // Queueing an event advances the resume cursor before the throttled flush
@@ -3112,6 +3152,7 @@ describe("EventRouter scoped orchestration sync", () => {
 
     it("does not re-apply queued assistant deltas that a projection snapshot already contains", async () => {
       fixture = { ...fixture, snapshot: createSnapshot(runningOrderingThread()) };
+      useFakePollingClock();
       const mounted = await mountApp();
       try {
         await holdNextProjectionRead();
@@ -3140,6 +3181,7 @@ describe("EventRouter scoped orchestration sync", () => {
 
     it("does not let a queued running session regress a newer settled projection", async () => {
       fixture = { ...fixture, snapshot: createSnapshot(runningOrderingThread()) };
+      useFakePollingClock();
       const mounted = await mountApp();
       try {
         await holdNextProjectionRead();

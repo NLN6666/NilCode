@@ -241,7 +241,6 @@ export function ConnectionsThisComputer({
         ) : null}
       </SettingsSectionShell>
 
-
       <section className="mt-6">
         <button
           type="button"

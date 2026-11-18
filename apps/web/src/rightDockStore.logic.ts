@@ -25,6 +25,7 @@ const RIGHT_DOCK_PANE_KINDS = [
   // shows is the machine's background services, identical in every chat.
   "services",
   "subagents",
+  "backgroundTasks",
 ] as const;
 
 export type RightDockPaneKind = (typeof RIGHT_DOCK_PANE_KINDS)[number];

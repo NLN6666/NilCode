@@ -1,7 +1,13 @@
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { OmpProviderPolicyStatus, ServerProviderStatus } from "./server";
+import {
+  COMPOSER_PREDICTION_MAX_CHARS,
+  ServerGenerateComposerPredictionResult,
+  ServerGetEnvironmentResult,
+  OmpProviderPolicyStatus,
+  ServerProviderStatus,
+} from "./server";
 
 describe("OMP provider policy status", () => {
   it("round-trips configured ownership without claiming typed feature state", () => {
@@ -98,6 +104,7 @@ describe("OMP provider policy status", () => {
 });
 
 const decodeServerProviderStatus = Schema.decodeUnknownSync(ServerProviderStatus);
+const decodeServerEnvironment = Schema.decodeUnknownSync(ServerGetEnvironmentResult);
 
 describe("ServerProviderStatus", () => {
   it("promotes legacy provider-only snapshots to the default provider instance", () => {
@@ -130,6 +137,62 @@ describe("ServerProviderStatus", () => {
     expect(parsed.driver).toBe("claudeAgent");
     expect(parsed.instanceId).toBe("claude_work");
     expect(parsed.displayName).toBe("Claude Work");
+  });
+});
+
+describe("ServerGetEnvironmentResult", () => {
+  it("decodes the composer predictions capability from older and newer servers", () => {
+    const descriptor = {
+      environmentId: "environment-1",
+      label: "Mini",
+      platform: { os: "darwin", arch: "arm64" },
+      serverVersion: "1.5.0",
+      capabilities: { repositoryIdentity: true },
+    };
+    const withCapability = (composerPredictions: boolean) =>
+      decodeServerEnvironment({
+        ...descriptor,
+        capabilities: { ...descriptor.capabilities, composerPredictions },
+      }).capabilities.composerPredictions;
+
+    expect(decodeServerEnvironment(descriptor).capabilities.composerPredictions).toBeUndefined();
+    expect(withCapability(true)).toBe(true);
+    expect(withCapability(false)).toBe(false);
+  });
+});
+
+describe("ServerGenerateComposerPredictionResult", () => {
+  const decode = Schema.decodeUnknownSync(ServerGenerateComposerPredictionResult);
+
+  it("accepts a suggestion of up to about three sentences and no longer", () => {
+    const longest = "a".repeat(COMPOSER_PREDICTION_MAX_CHARS);
+
+    expect(COMPOSER_PREDICTION_MAX_CHARS).toBe(320);
+    expect(decode({ suggestion: longest })).toEqual({ suggestion: longest });
+    expect(decode({ suggestion: null })).toEqual({ suggestion: null });
+    expect(() => decode({ suggestion: `${longest}a` })).toThrow();
+  });
+
+  it("carries an optional outcome and still reads results from servers without one", () => {
+    expect(decode({ suggestion: "Ship it", outcome: "suggested" })).toEqual({
+      suggestion: "Ship it",
+      outcome: "suggested",
+    });
+    expect(decode({ suggestion: null, outcome: "none" })).toEqual({
+      suggestion: null,
+      outcome: "none",
+    });
+    expect(decode({ suggestion: null, outcome: "unavailable" })).toEqual({
+      suggestion: null,
+      outcome: "unavailable",
+    });
+    expect(decode({ suggestion: null, outcome: "generation-unavailable" })).toEqual({
+      suggestion: null,
+      outcome: "generation-unavailable",
+    });
+    expect(decode({ suggestion: null })).toEqual({ suggestion: null });
+    expect("outcome" in decode({ suggestion: null })).toBe(false);
+    expect(() => decode({ suggestion: null, outcome: "maybe" })).toThrow();
   });
 });
 

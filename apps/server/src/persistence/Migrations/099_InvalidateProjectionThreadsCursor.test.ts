@@ -43,6 +43,7 @@ import projectSourceFoldersSchema from "./131_ProjectSourceFolders.ts";
 import projectionTurnsWorkspaceInitializationSchema from "./133_ProjectionTurnsWorkspaceInitialization.ts";
 import forkSourceMessageSchema from "./134_ProjectionThreadsForkSourceMessage.ts";
 import usageLimitRecoverySchema from "./141_ProjectionThreadsUsageLimitRecovery.ts";
+import pullRequestLinksSchema from "./146_ProjectionThreadsPullRequestLinks.ts";
 
 const testLayer = OrchestrationProjectionPipelineLive.pipe(
   Layer.provideMerge(OrchestrationEventStoreLive),
@@ -95,6 +96,7 @@ it.layer(Layer.fresh(testLayer))("099_InvalidateProjectionThreadsCursor", (it) =
         yield* projectionTurnsWorkspaceInitializationSchema;
         yield* forkSourceMessageSchema;
         yield* usageLimitRecoverySchema;
+        yield* pullRequestLinksSchema;
 
         const threadId = ThreadId.makeUnsafe("thread-099");
         const projectId = ProjectId.makeUnsafe("project-099");

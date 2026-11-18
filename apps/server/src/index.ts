@@ -8,7 +8,13 @@ import { version } from "../package.json" with { type: "json" };
 import { exitOnceDrained } from "./shutdownExit";
 import { consumeDesktopParentInput, withDesktopParentLifetime } from "./desktopParentLifetime";
 import { initializeDesktopUpdateBridge } from "./desktopUpdateBridge";
+import {
+  releaseBackendCompileCacheEnvironment,
+  scheduleBackendCompileCacheFlush,
+} from "./backendCompileCache";
 
+// First, before anything can start a child process.
+scheduleBackendCompileCacheFlush(releaseBackendCompileCacheEnvironment(process.env));
 const desktopParentInput = consumeDesktopParentInput(process.env, () => process.stdin);
 initializeDesktopUpdateBridge();
 

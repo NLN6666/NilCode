@@ -178,7 +178,7 @@ function KanbanColumnComponent({
         <h3 className="text-ui-lg font-medium text-foreground/90">
           {t(KANBAN_COLUMN_LABEL_KEYS[columnKey])}
         </h3>
-        <span className="text-ui leading-snug text-muted-foreground/70">{cards.length}</span>
+        <span className="text-ui leading-snug text-muted-foreground">{cards.length}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
           {dispatchTarget ? (
             <span className="text-ui-sm leading-snug text-sky-600 dark:text-sky-300/90">
@@ -189,7 +189,7 @@ function KanbanColumnComponent({
             <Button
               size="icon-xs"
               variant="ghost"
-              className="shrink-0 text-muted-foreground/70 hover:text-foreground"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
               aria-label={t("common:kanban_newTask")}
               title={t("common:kanban_newTask")}
               onClick={onNewCard}

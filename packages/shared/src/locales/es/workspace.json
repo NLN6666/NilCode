@@ -788,7 +788,6 @@
   "theFolderMovedOrIsMissingLinkItsNew": "La carpeta se ha movido o no existe. Vincula su nueva ubicación para continuar estas conversaciones, o importa solo el historial.",
   "projectsKeepTheirExistingFoldersAndConversationsAreCopied": "Los proyectos conservan sus carpetas actuales y las conversaciones se copian a Synara. Nada cambia en tus proyectos actuales.",
   "threadsContextAndMemoryForTheHubLiveIn": "Las conversaciones, el contexto y la memoria del Hub se guardan en esta carpeta después de configurar el coordinador. La configuración no inicia ningún modelo.",
-  "chatsInAMultiFolderProjectRunInLocal": "Los chats de un proyecto con varias carpetas se ejecutan en modo Local con Codex o Claude. Las acciones de Git y el deshacer de archivos solo abarcan la carpeta principal.",
   "enterTheRestoredFolderSPathOnTheSynara": "Introduce la ruta de la carpeta restaurada en el servidor de Synara. Tu proyecto y tus conversaciones actuales se conservan. Esto no recupera archivos perdidos ni mueve o repara los worktrees de Git vinculados. Finaliza primero los turnos activos.",
   "deletesTheHubItsCoordinatorContextAndAutomationsThe": "Elimina el Hub, su coordinador, contexto y automatizaciones. La Biblioteca se mueve a la papelera cuando es posible. La carpeta del Hub en ~/Documents/Synara/Groups solo se elimina si contiene únicamente archivos generados por Synara; si contiene archivos tuyos, se conserva y se te muestra su ruta. Los repositorios vinculados y sus conversaciones no se modifican.",
   "pushed_command": "Envió",
@@ -1084,5 +1083,11 @@
   "childThreadsWorking_one": "{{count}} en ejecución",
   "childThreadsWorking_other": "{{count}} en ejecución",
   "childThreadsDoneCount_one": "+{{count}} terminada",
-  "childThreadsDoneCount_other": "+{{count}} terminadas"
+  "childThreadsDoneCount_other": "+{{count}} terminadas",
+  "removeRemoteProject": "Quitar proyecto",
+  "remoteProjectRemovalKeepsFiles": "Esto quita el proyecto de Synara. Su carpeta y sus archivos permanecen en el disco.",
+  "multiFolderProjectHint": "Los chats de proyectos con varias carpetas usan Codex o Claude. Un árbol de trabajo (worktree) aísla solo la carpeta principal; las demás se editan directamente. Las acciones de Git y el deshacer de archivos solo cubren la carpeta principal.",
+  "introducingSynaraForIphone": "Te presentamos Synara para iPhone",
+  "iosBetaAnnouncementDescription": "Sigue y dirige a tus agentes desde el teléfono mientras tu equipo esté encendido. Ya en beta.",
+  "joinTheBeta": "Unirse a la beta"
 }

@@ -63,9 +63,8 @@
   "agentsReadyComputer_one": "一个已在这台电脑上就绪",
   "agentsReadyComputer_other": "{{amount}}个已在这台电脑上就绪",
   "agentsSetUp": "设置你常用的智能体",
-  "agentsDescription": "每个智能体都保留自己的登录、模型和限额。你可以关闭任意一个，或稍后在“设置”中配置其余的。",
+  "agentsDescription": "Synara 会运行此处安装的智能体，各自使用自己的登录、模型和限额。可登录需要登录的智能体，或稍后在设置中配置其余智能体。",
   "providerSummary": "{{connected}} 个已连接 · {{needsSignIn}} 个需要登录 · {{notInstalled}} 个未安装",
-  "signingInToProvider": "正在登录 {{provider}}",
   "tasksLead": "同时运行它们。",
   "tasksStatement": "每个任务都有自己的 worktree",
   "tasksDescription": "无需离开 {{app}}，即可审阅差异、运行测试并创建 PR。",
@@ -181,5 +180,10 @@
   "appTourClose": "关闭导览",
   "appTourDone": "完成",
   "appTourSteps": "导览步骤",
-  "safariHeroFullDiskAccess": "完全磁盘访问权限"
+  "safariHeroFullDiskAccess": "完全磁盘访问权限",
+  "providerSummaryUnavailable_one": "{{count}} 项需要处理",
+  "providerSummaryUnavailable_other": "{{count}} 项需要处理",
+  "providerUnavailableHint": "已安装，但 Synara 无法使用。请到设置中检查。",
+  "receiptAgentsNeedSignIn_one": "{{count}} 项需要登录",
+  "receiptAgentsNeedSignIn_other": "{{count}} 项需要登录"
 }

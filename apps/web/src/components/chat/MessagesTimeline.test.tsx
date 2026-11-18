@@ -373,7 +373,7 @@ describe("MessagesTimeline", () => {
   });
   // The first test pays the full dynamic-import cost of the MessagesTimeline
   // module graph, which can exceed 10s under CI thread contention.
-  it("renders an accent deep link to the immediate fork source", async () => {
+  it("renders a deep link to the immediate fork source", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -387,6 +387,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-fork-source-divider="true"');
     expect(markup).toContain('href="/source-thread"');
     expect(markup).toContain("text-[var(--color-text-accent)]");
+    expect(markup).toContain("Continued from chat");
     expect(markup.indexOf("Imported history")).toBeLessThan(
       markup.indexOf('data-fork-source-divider="true"'),
     );
@@ -481,49 +482,74 @@ describe("MessagesTimeline", () => {
     );
   });
 
-  it("renders edit beside copy for user messages", async () => {
+  it("shows only the cross-task label (not the agent chip) when both apply", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...makeTimelineBaseProps()}
+        crossTaskOrigin={{
+          sourceThreadId: ThreadId.makeUnsafe("source-thread"),
+          sourceProvider: "codex",
+        }}
         timelineEntries={[
           {
-            id: "entry-editable-user",
+            id: "entry-first-user",
             kind: "message",
             createdAt: "2026-03-17T19:12:28.000Z",
             message: {
-              id: MessageId.makeUnsafe("message-editable-user"),
+              id: MessageId.makeUnsafe("first-user-message"),
               role: "user",
-              text: "adjust this prompt",
+              text: "Inspect the repository",
+              dispatchOrigin: "agent",
               createdAt: "2026-03-17T19:12:28.000Z",
               streaming: false,
             },
           },
-          {
-            id: "entry-editable-assistant",
-            kind: "message",
-            createdAt: "2026-03-17T19:12:29.000Z",
-            message: {
-              id: MessageId.makeUnsafe("message-editable-assistant"),
-              role: "assistant",
-              text: "",
-              turnId: TurnId.makeUnsafe("turn-editable-user"),
-              createdAt: "2026-03-17T19:12:29.000Z",
-              streaming: false,
-            },
-          },
         ]}
-        revertTurnCountByUserMessageId={
-          new Map([[MessageId.makeUnsafe("message-editable-user"), 0]])
-        }
-        onEditUserMessage={() => true}
-        editableUserMessageId={MessageId.makeUnsafe("message-editable-user")}
+        nowIso="2026-03-17T19:14:30.000Z"
+        onOpenThread={() => {}}
         resolvedTheme="light"
       />,
     );
 
-    const userRow = messageRowMarkup(markup, "message-editable-user");
-    expect(userRow.match(/<button\b/g) ?? []).toHaveLength(3);
+    expect(markup).toContain("Sent by Synara from another thread");
+    expect(markup).not.toContain("Sent by agent");
+  });
+
+  it("names the group when a group coordinator started the thread", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...makeTimelineBaseProps()}
+        crossTaskOrigin={{
+          sourceThreadId: ThreadId.makeUnsafe("source-thread"),
+          sourceProvider: "codex",
+          coordinatorGroupName: "Release Synara",
+        }}
+        timelineEntries={[
+          {
+            id: "entry-first-user",
+            kind: "message",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            message: {
+              id: MessageId.makeUnsafe("first-user-message"),
+              role: "user",
+              text: "Inspect the repository",
+              dispatchOrigin: "agent",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              streaming: false,
+            },
+          },
+        ]}
+        nowIso="2026-03-17T19:14:30.000Z"
+        onOpenThread={() => {}}
+        resolvedTheme="light"
+      />,
+    );
+
+    expect(markup).toContain("Sent by the Release Synara coordinator");
+    expect(markup).toContain('aria-label="Open coordinator"');
+    expect(markup).not.toContain("Sent by Synara from another thread");
   });
 
   it("keeps edit available and hides undo before a revert checkpoint exists", async () => {
@@ -713,6 +739,7 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("Compacting context");
     expect(markup).toContain("/central-icons-reversed/arrows-hide.svg");
     expect(markup).not.toContain("h-px flex-1 bg-border");
+    expect(markup).toContain(">Working for <");
   });
 
   it("does not reserve a timestamp footer between live status updates and Thinking", async () => {
@@ -759,7 +786,6 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("Tasks updated");
     expect(markup).toContain('data-turn-header="live"');
     expect(markup).not.toContain(formatShortTimestamp(assistantCreatedAt, "locale"));
-    expect(markup).toMatch(/class="[^"]*\bpb-1\b[^"]*" data-timeline-row-kind="message"/);
   });
 
   it("folds work log summaries above the next assistant message footer", async () => {
@@ -982,8 +1008,9 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain('data-timeline-row-kind="work"');
     expect(markup).toContain('data-work-entry-display-text="true"');
-    expect(markup).toContain('data-live-activity-meta="true"');
-    expect(markup).toContain('data-turn-header="live"');
+    // A running tool call carries no timing tail; it reads like any tool call.
+    expect(markup).not.toContain('data-live-activity-meta="true"');
+    expect(markup).toContain(">Thinking<");
     expect(markup).toContain(expectedText);
   });
 
@@ -1150,49 +1177,6 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('data-tool-detail-trigger="true"');
     expect(markup).toContain(TOOLTIP_TRIGGER_MARKER);
     expect(markup).not.toContain('data-tool-details-inline="true"');
-    expect(markup).not.toContain("Diff");
-    expect(markup).not.toContain("Details");
-  });
-
-  it("renders command rows with the literal command and styled hover tooltip trigger", async () => {
-    const { MessagesTimeline } = await import("./MessagesTimeline");
-    const markup = renderToStaticMarkup(
-      <MessagesTimeline
-        {...makeTimelineBaseProps()}
-        timelineEntries={[
-          {
-            id: "entry-inline-command",
-            kind: "work",
-            createdAt: "2026-03-17T19:12:28.000Z",
-            entry: {
-              id: "work-inline-command",
-              createdAt: "2026-03-17T19:12:28.000Z",
-              label: "Ran command",
-              tone: "tool",
-              itemType: "command_execution",
-              toolTitle: "Searched",
-              command: `rg -n "ProjectionSnapshotQuery" apps/server/src`,
-              rawCommand: `/bin/zsh -lc 'rg -n "ProjectionSnapshotQuery" apps/server/src'`,
-            },
-          },
-        ]}
-      />,
-    );
-
-    // The command shows verbatim (minus the shell wrapper) instead of a guessed
-    // sentence, and the search wears the magnifier.
-    // One plain line: the command is part of the sentence, not a code chip.
-    expect(markup).toContain(
-      `Ran <span data-command-literal="true">rg -n &quot;ProjectionSnapshotQuery&quot; apps/server/src</span>`,
-    );
-    expect(markup).not.toContain("<code");
-    expect(markup).toContain("magnifying-glass.svg");
-    expect(markup).not.toContain("data-work-entry-action-word");
-    expect(markup).toContain(TOOLTIP_TRIGGER_MARKER);
-    expect(markup).not.toContain(
-      `title="/bin/zsh -lc &#x27;rg -n &quot;ProjectionSnapshotQuery&quot; apps/server/src&#x27;"`,
-    );
-    expect(markup).not.toContain("&gt;/bin/zsh -lc");
   });
 
   it("shows the Synara mark for every provider-specific tool row shape", async () => {
@@ -1319,6 +1303,10 @@ describe("MessagesTimeline", () => {
         expect(markup).toContain("Search");
         expect(markup).toContain("Safari");
       }
+      expect(markup).toContain(
+        toolName.includes("browser") ? "Click in the browser" : "Click on “Search” in Safari",
+      );
+      expect(markup).not.toContain("Synara clicked the desktop");
       expect(markup).not.toContain("123, 456");
       expect(markup).not.toContain('data-tool-icon="mcp"');
     },
@@ -1823,7 +1811,6 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).not.toContain("Coordinator check-in");
-    expect(markup).toContain("--app-user-message-background");
     expect(markup).toContain("Sent via Automation");
   });
 

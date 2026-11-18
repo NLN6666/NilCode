@@ -188,7 +188,8 @@ export function UsageAnalyticsPanel() {
             title={t("settings:analytics_loadFailed")}
             actions={
               <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
-                {t("settings:analytics_retry")}</Button>
+                {t("settings:analytics_retry")}
+              </Button>
             }
           />
         </SettingsCard>
@@ -314,7 +315,9 @@ function UsageAnalyticsBody(props: {
         <div className="flex flex-col gap-8 @3xl:flex-row @3xl:gap-10">
           <div className="flex flex-col gap-1.5 @3xl:w-60 @3xl:shrink-0">
             <span className="text-ui-sm tracking-wide text-muted-foreground uppercase">
-              {metric === "cost" ? t("settings:analytics_apiCost") : t("settings:analytics_processedTokens")}
+              {metric === "cost"
+                ? t("settings:analytics_apiCost")
+                : t("settings:analytics_processedTokens")}
             </span>
             <span className="text-3xl font-semibold tracking-tight text-foreground tabular-nums">
               {metric === "cost" ? formatUsd(total) : formatNumber(total)}
@@ -341,7 +344,9 @@ function UsageAnalyticsBody(props: {
                   key={provider.provider}
                   icon={<ProviderMark provider={provider.provider} />}
                   model={providerLabel(provider.provider)}
-                  detail={t("settings:analytics_turnCount", { turns: formatNumber(provider.turns) })}
+                  detail={t("settings:analytics_turnCount", {
+                    turns: formatNumber(provider.turns),
+                  })}
                   percent={percentOf(valueOf(provider), total)}
                   stat={`${format(valueOf(provider))} · ${percentOf(valueOf(provider), total)}%`}
                   barColor={PROVIDER_SERIES_COLOR[provider.provider]}
@@ -352,7 +357,9 @@ function UsageAnalyticsBody(props: {
           <div className="@container/daily flex min-w-0 flex-1 flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-ui font-semibold text-foreground">
-                {metric === "cost" ? t("settings:analytics_dailyCost") : t("settings:analytics_dailyTokens")}
+                {metric === "cost"
+                  ? t("settings:analytics_dailyCost")
+                  : t("settings:analytics_dailyTokens")}
               </span>
               {legend}
             </div>
@@ -373,7 +380,10 @@ function UsageAnalyticsBody(props: {
                     : "—"
                 }
               />
-              <InsightRow label={t("settings:analytics_weekdayAverage")} value={format(weekdayAverage)} />
+              <InsightRow
+                label={t("settings:analytics_weekdayAverage")}
+                value={format(weekdayAverage)}
+              />
               <InsightRow
                 label={t("settings:analytics_activeDays")}
                 value={t("settings:analytics_daysOf", {
@@ -429,7 +439,11 @@ function UsageAnalyticsBody(props: {
 
       <section className="flex flex-col gap-4">
         <SectionTitle
-          title={metric === "cost" ? t("settings:analytics_costByProvider") : t("settings:analytics_tokensByProvider")}
+          title={
+            metric === "cost"
+              ? t("settings:analytics_costByProvider")
+              : t("settings:analytics_tokensByProvider")
+          }
           detail={t("settings:analytics_providerChartDetail")}
           action={legend}
         />
@@ -493,7 +507,10 @@ function UsageAnalyticsBody(props: {
 
       <section className="grid gap-10 @3xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-4">
-          <SectionTitle title={t("settings:analytics_projects")} detail={t("settings:analytics_projectDetail")} />
+          <SectionTitle
+            title={t("settings:analytics_projects")}
+            detail={t("settings:analytics_projectDetail")}
+          />
           <ul className="flex flex-col gap-3.5">
             {projects.slice(0, 8).map((project) => (
               <ModelUsageRow
@@ -539,14 +556,16 @@ function UsageAnalyticsBody(props: {
 
       <section className="grid gap-10 @3xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-4">
-          <SectionTitle title={t("settings:analytics_rhythm")} detail={t("settings:analytics_rhythmDetail")} />
+          <SectionTitle
+            title={t("settings:analytics_rhythm")}
+            detail={t("settings:analytics_rhythmDetail")}
+          />
           <RhythmChart rhythm={view.rhythm} format={formatTokens} />
         </div>
         <div className="flex flex-col gap-4">
           <SectionTitle title={t("settings:analytics_about")} />
           <ul className="flex list-disc flex-col gap-2 pl-4 text-ui text-muted-foreground marker:text-foreground/30">
-            <li>
-              {t("settings:analytics_costExplanation")}</li>
+            <li>{t("settings:analytics_costExplanation")}</li>
             {reportedNames ? (
               <li>{t("settings:analytics_reportedCost", { providers: reportedNames })}</li>
             ) : null}
@@ -586,23 +605,25 @@ function UsageAnalyticsBody(props: {
             {view.unavailableProviders.length > 0 ? (
               <li>
                 {t("settings:analytics_usageUnavailable", {
-                  providers: view.unavailableProviders.map((provider) => providerLabel(provider)).join(", "),
+                  providers: view.unavailableProviders
+                    .map((provider) => providerLabel(provider))
+                    .join(", "),
                 })}
               </li>
             ) : null}
             {view.scope === "mac" && view.sessionFileProviders.length > 0 ? (
               <li>
                 {t("settings:analytics_sessionSources", {
-                  providers: view.sessionFileProviders.map((provider) => providerLabel(provider)).join(", "),
+                  providers: view.sessionFileProviders
+                    .map((provider) => providerLabel(provider))
+                    .join(", "),
                 })}
               </li>
             ) : (
-              <li>
-                {t("settings:analytics_synaraSources")}</li>
+              <li>{t("settings:analytics_synaraSources")}</li>
             )}
             {view.scope === "mac" && view.sessionFileProviders.includes("claudeAgent") ? (
-              <li>
-                {t("settings:analytics_claudeRetention")}</li>
+              <li>{t("settings:analytics_claudeRetention")}</li>
             ) : null}
           </ul>
         </div>

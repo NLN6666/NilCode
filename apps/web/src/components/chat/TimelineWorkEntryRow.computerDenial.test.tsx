@@ -9,9 +9,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { CircleAlertIcon } from "~/lib/icons";
 import type { WorkLogEntry } from "../../workLog";
 import { TimelineWorkEntryRow, workEntryLeftIcon } from "./TimelineWorkEntryRow";
-import { CircleAlertIcon } from "~/lib/icons";
 
 function denialEntry(): WorkLogEntry {
   return {

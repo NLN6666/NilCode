@@ -10,6 +10,7 @@ import { inspectMigrationBackupPlan } from "./MigrationBackup.ts";
 import { assert, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { describe } from "vitest";
 
 import { LATEST_MIGRATION_ID, migrationEntries, runMigrations } from "./Migrations.ts";
 import { MigrationSchemaTooNewError } from "./Errors.ts";
@@ -25,6 +26,8 @@ import SpacesMigration from "./Migrations/079_Spaces.ts";
 import BrowserSharingMigration from "./Migrations/143_ProjectionProjectsBrowserSharing.ts";
 import AdvisorEnabledMigration from "./Migrations/144_ProjectionThreadsAdvisorEnabled.ts";
 import UsageAnalyticsDeletedTokensMigration from "./Migrations/145_UsageAnalyticsDeletedTokens.ts";
+import PullRequestLinksMigration from "./Migrations/146_ProjectionThreadsPullRequestLinks.ts";
+import { SqlitePersistenceMemory } from "./Layers/Sqlite.ts";
 
 const layer = it.layer(Layer.mergeAll(NodeSqliteClient.layerMemory()));
 
@@ -32,6 +35,38 @@ const trackerRows = (sql: SqlClient.SqlClient) =>
   sql<{ readonly migration_id: number; readonly name: string }>`
     SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id ASC
   `;
+
+it.effect("gives warmed in-memory clients the migrated schema and independent state", () =>
+  Effect.gen(function* () {
+    const readSchema = Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return {
+        schema: yield* sql.unsafe("SELECT type, name, sql FROM sqlite_schema ORDER BY type, name"),
+        migrations: yield* trackerRows(sql),
+        foreignKeys: yield* sql.unsafe("PRAGMA foreign_keys"),
+        sequences: yield* sql.unsafe("SELECT name, seq FROM sqlite_sequence ORDER BY name, seq"),
+        commandCursors: yield* sql.unsafe(
+          "SELECT consumer_name, last_acked_sequence FROM orchestration_consumer_state ORDER BY consumer_name",
+        ),
+        runtimeCursors: yield* sql.unsafe(
+          "SELECT consumer_name, last_acked_sequence FROM provider_runtime_event_consumers ORDER BY consumer_name",
+        ),
+      };
+    });
+    const migrated = yield* Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql.unsafe("PRAGMA foreign_keys = ON");
+      yield* runMigrations();
+      return yield* readSchema;
+    }).pipe(Effect.provide(NodeSqliteClient.layerMemory()));
+    yield* Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql.unsafe("CREATE TABLE snapshot_isolation_probe (id INTEGER PRIMARY KEY)");
+    }).pipe(Effect.provide(Layer.fresh(SqlitePersistenceMemory)));
+    const replayed = yield* readSchema.pipe(Effect.provide(Layer.fresh(SqlitePersistenceMemory)));
+    assert.deepStrictEqual(replayed, migrated);
+  }),
+);
 
 const projectionThreadsColumnNames = (sql: SqlClient.SqlClient) =>
   sql<{ readonly name: string }>`
@@ -161,7 +196,7 @@ layer("reconcileMigrationLineage", (it) => {
       const executed = yield* runMigrations();
       assert.deepStrictEqual(
         executed.map(([id]) => id),
-        [136, 137, 138, 139, 140, 141, 142, 143, 144, 145],
+        [136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146],
       );
       assert.deepStrictEqual(yield* read(), before);
       assert.deepStrictEqual(
@@ -740,6 +775,7 @@ managedAttachmentsLegacyLayer("managed attachment migration after private migrat
         [143, "ProjectionProjectsBrowserSharing"],
         [144, "ProjectionThreadsAdvisorEnabled"],
         [145, "UsageAnalyticsDeletedTokens"],
+        [146, "ProjectionThreadsPullRequestLinks"],
       ]);
 
       const tracker = yield* trackerRows(sql);
@@ -837,6 +873,7 @@ managedAttachmentsLegacyLayer("managed attachment migration after private migrat
           { migration_id: 143, name: "ProjectionProjectsBrowserSharing" },
           { migration_id: 144, name: "ProjectionThreadsAdvisorEnabled" },
           { migration_id: 145, name: "UsageAnalyticsDeletedTokens" },
+          { migration_id: 146, name: "ProjectionThreadsPullRequestLinks" },
         ],
       );
       const groupConfigColumns = yield* sql<{ readonly name: string }>`
@@ -1014,6 +1051,7 @@ agentGatewayRetentionLegacyLayer(
           [143, "ProjectionProjectsBrowserSharing"],
           [144, "ProjectionThreadsAdvisorEnabled"],
           [145, "UsageAnalyticsDeletedTokens"],
+          [146, "ProjectionThreadsPullRequestLinks"],
         ]);
 
         const columns = yield* sql<{ readonly name: string }>`
@@ -1154,6 +1192,7 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
         [143, "ProjectionProjectsBrowserSharing"],
         [144, "ProjectionThreadsAdvisorEnabled"],
         [145, "UsageAnalyticsDeletedTokens"],
+        [146, "ProjectionThreadsPullRequestLinks"],
       ]);
 
       const tracker = yield* trackerRows(sql);
@@ -1235,6 +1274,7 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
           [143, "ProjectionProjectsBrowserSharing"],
           [144, "ProjectionThreadsAdvisorEnabled"],
           [145, "UsageAnalyticsDeletedTokens"],
+          [146, "ProjectionThreadsPullRequestLinks"],
         ],
       );
 
@@ -1370,6 +1410,7 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
         [143, "ProjectionProjectsBrowserSharing"],
         [144, "ProjectionThreadsAdvisorEnabled"],
         [145, "UsageAnalyticsDeletedTokens"],
+        [146, "ProjectionThreadsPullRequestLinks"],
       ]);
 
       const tracker = yield* trackerRows(sql);
@@ -1447,6 +1488,7 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
           [143, "ProjectionProjectsBrowserSharing"],
           [144, "ProjectionThreadsAdvisorEnabled"],
           [145, "UsageAnalyticsDeletedTokens"],
+          [146, "ProjectionThreadsPullRequestLinks"],
         ],
       );
       const preservedSpaces = yield* sql<{ readonly spaceId: string }>`
@@ -2018,7 +2060,7 @@ forkUpgradeLayer("released v1.0.9 migration upgrade", (it) => {
 
 // The fixture was extracted from the actual private builds, not migrationEntries.
 // Canonical migration implementations remain the schema owner for every private prefix.
-layer("released analytics migration upgrades", (it) => {
+describe("released analytics migration upgrades", () => {
   it.effect("upgrades dev 144 without changing browser or advisor state", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -2045,8 +2087,12 @@ layer("released analytics migration upgrades", (it) => {
           )
         `;
       }
-      const before = yield* sql`SELECT thread_id, advisor_enabled FROM projection_threads ORDER BY thread_id`;
-      assert.deepStrictEqual(yield* runMigrations(), [[145, "UsageAnalyticsDeletedTokens"]]);
+      const before =
+        yield* sql`SELECT thread_id, advisor_enabled FROM projection_threads ORDER BY thread_id`;
+      assert.deepStrictEqual(yield* runMigrations(), [
+        [145, "UsageAnalyticsDeletedTokens"],
+        [146, "ProjectionThreadsPullRequestLinks"],
+      ]);
       assert.deepStrictEqual(
         yield* sql`SELECT thread_id, advisor_enabled FROM projection_threads ORDER BY thread_id`,
         before,
@@ -2056,12 +2102,12 @@ layer("released analytics migration upgrades", (it) => {
         [{ browser_sharing: "shared" }],
       );
       assert.deepStrictEqual(yield* runMigrations(), []);
-    }),
+    }).pipe(Effect.provide(NodeSqliteClient.layerMemory())),
   );
 
-  for (const recordedAnalytics of [true, false]) {
+  for (const releasedMainVersion of [143, 144, null]) {
     it.effect(
-      `preserves archived analytics through ${recordedAnalytics ? "released main 143" : "interrupted analytics DDL"} upgrade`,
+      `preserves archived analytics through ${releasedMainVersion === null ? "interrupted analytics DDL" : `released main ${releasedMainVersion}`} upgrade`,
       () =>
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
@@ -2075,11 +2121,34 @@ layer("released analytics migration upgrades", (it) => {
               'agent', 'codex', 'gpt-5.4', 12345
             )
           `;
-          if (recordedAnalytics) {
+          if (releasedMainVersion !== null) {
             // Actual released main identity, never inferred from the relocated registry.
             yield* sql`
               INSERT INTO effect_sql_migrations (migration_id, name)
               VALUES (143, 'UsageAnalyticsDeletedTokens')
+            `;
+          }
+          if (releasedMainVersion === 144) {
+            yield* PullRequestLinksMigration;
+            yield* sql`
+              INSERT INTO effect_sql_migrations (migration_id, name)
+              VALUES (144, 'ProjectionThreadsPullRequestLinks')
+            `;
+            yield* sql`
+              INSERT INTO projection_projects (
+                project_id, title, workspace_root, scripts_json, created_at, updated_at
+              ) VALUES (
+                'keep-project', 'Keep project', '/repo', '[]',
+                '2026-11-12T00:00:00Z', '2026-11-12T00:00:00Z'
+              )
+            `;
+            yield* sql`
+              INSERT INTO projection_threads (
+                thread_id, project_id, title, created_at, updated_at, pull_requests_json
+              ) VALUES (
+                'unlinked-thread', 'keep-project', 'Unlinked',
+                '2026-11-12T00:00:00Z', '2026-11-12T00:00:00Z', '[]'
+              )
             `;
           }
           const archive = yield* sql`SELECT * FROM usage_analytics_deleted_tokens`;
@@ -2091,6 +2160,7 @@ layer("released analytics migration upgrades", (it) => {
             [143, "ProjectionProjectsBrowserSharing"],
             [144, "ProjectionThreadsAdvisorEnabled"],
             [145, "UsageAnalyticsDeletedTokens"],
+            [146, "ProjectionThreadsPullRequestLinks"],
           ]);
           assert.deepStrictEqual(yield* sql`SELECT * FROM usage_analytics_deleted_tokens`, archive);
           assert.include(yield* tableColumnNames(sql, "projection_projects"), "browser_sharing");
@@ -2099,9 +2169,15 @@ layer("released analytics migration upgrades", (it) => {
             (yield* trackerRows(sql)).filter((row) => row.migration_id <= 142),
             prefix.filter((row) => row.migration_id <= 142),
           );
+          if (releasedMainVersion === 144) {
+            assert.deepStrictEqual(
+              yield* sql`SELECT pull_requests_json FROM projection_threads WHERE thread_id = 'unlinked-thread'`,
+              [{ pull_requests_json: "[]" }],
+            );
+          }
           assert.deepStrictEqual(yield* runMigrations(), []);
           assert.deepStrictEqual(yield* sql`SELECT * FROM usage_analytics_deleted_tokens`, archive);
-        }),
+        }).pipe(Effect.provide(NodeSqliteClient.layerMemory())),
     );
   }
 });

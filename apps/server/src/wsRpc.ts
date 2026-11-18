@@ -23,6 +23,11 @@ import { EditorLanguageService } from "./editor/languageService";
 import { requireNativeEditor } from "./editor/nativeEditorGate";
 import { readEventLoopStatus } from "./eventLoopMonitor";
 import { makeGitActionRunner } from "./git/gitActionRunner";
+import { makeDetachedWorktreeSetupStream } from "./git/worktreeSetupStream";
+import {
+  pullRequestFromGitActionResult,
+  refreshReopenedThreadPullRequest,
+} from "./git/gitActionPullRequest";
 import { AgentGatewaySessionRegistry } from "./agentGateway/Services/AgentGatewaySessionRegistry";
 import { execFile } from "node:child_process";
 
@@ -52,8 +57,8 @@ import {
   type DeviceEvent,
   type ComputerEvent,
   type GitRemoveWorktreeInput,
+  type GitRunStackedActionResult,
   type GitHubProjectProvisionProgressEvent,
-  type GitWorktreeSetupProgressEvent,
   type ModelSelection,
   type OrchestrationCommand,
   type OrchestrationEvent,
@@ -65,6 +70,7 @@ import {
   type OrchestrationShellStreamItem,
   type ProjectId,
   type OrchestrationThreadDetailSnapshot,
+  type OrchestrationThreadPullRequest,
   type OrchestrationThreadStreamItem,
   type ServerConfigStreamEvent,
   type ServerDiagnosticsResult,
@@ -72,7 +78,18 @@ import {
   type ServerSettings,
 } from "@synara/contracts";
 import { clamp } from "effect/Number";
-import { Effect, FileSystem, Layer, Option, Path, Queue, Schema, Scope, Stream } from "effect";
+import {
+  Cause,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Path,
+  Queue,
+  Schema,
+  Scope,
+  Stream,
+} from "effect";
 import * as Arr from "effect/Array";
 import { Headers, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
@@ -133,7 +150,6 @@ import { resolveThreadWorkspaceCwd } from "./checkpointing/Utils";
 import { ServerConfig, type ServerConfigShape } from "./config";
 import { realpathNearestExisting } from "./realpathNearestExisting";
 import { isGroupContainerKind } from "@synara/shared/projectContainers";
-import { PROJECT_FOLDERS_WORKTREE_ISSUE } from "@synara/shared/projectFolders";
 import { workspaceRootsEqual } from "@synara/shared/threadWorkspace";
 import { WORKSPACE_FILE_WRITE_CONFLICT_CODE } from "@synara/shared/workspaceFileWrite";
 import {
@@ -205,7 +221,10 @@ import {
   OrchestrationCommandPreviouslyRejectedError,
   ProviderDeliveryRecoveryError,
 } from "./orchestration/Errors";
-import { makeDispatchCommandNormalizer } from "./orchestration/dispatchCommandNormalization";
+import {
+  makeDispatchCommandNormalizer,
+  withoutRemoteResumeComputerGrant,
+} from "./orchestration/dispatchCommandNormalization";
 import { sanitizeOrchestrationEventProviderOptions } from "./orchestration/providerOptionsSecurity";
 import { prepareQuitResume } from "./orchestration/quitResume";
 import { makeImportThreadHandler } from "./orchestration/importThreadRoute";
@@ -304,6 +323,7 @@ import {
 } from "./wsSnapshotLiveStream";
 import { PullRequestService } from "./pullRequests/Services/PullRequestService";
 import { PullRequestAutoFixService } from "./pullRequestAutoFix/Services/PullRequestAutoFixService";
+import { ComposerPredictionService } from "./composerPrediction/Services/ComposerPredictionService";
 import {
   GitHubInboxRateLimitedError,
   GitHubInboxService,
@@ -528,24 +548,6 @@ function isShellRelevantEvent(event: OrchestrationEvent): boolean {
   );
 }
 
-/** Keeps the two worktree RPCs behind the same project eligibility check. */
-export function makeProjectWorktreeGuard<E1, R1, E2, R2>(dependencies: {
-  readonly canonicalizeWorkspaceRoot: (cwd: string) => Effect.Effect<string, E1, R1>;
-  readonly getActiveProjectByWorkspaceRoot: (
-    cwd: string,
-  ) => Effect.Effect<Option.Option<OrchestrationProject>, E2, R2>;
-}) {
-  return (cwd: string) =>
-    dependencies.canonicalizeWorkspaceRoot(cwd).pipe(
-      Effect.flatMap(dependencies.getActiveProjectByWorkspaceRoot),
-      Effect.flatMap((project) =>
-        Option.isSome(project) && (project.value.additionalFolders ?? []).length > 0
-          ? Effect.fail(new WsRpcError({ message: PROJECT_FOLDERS_WORKTREE_ISSUE }))
-          : Effect.void,
-      ),
-    );
-}
-
 const makeWsRpcHandlersLayer = () =>
   AdmittedWsFeatureRpcGroup.toLayer(
     Effect.gen(function* () {
@@ -579,6 +581,7 @@ const makeWsRpcHandlersLayer = () =>
       const path = yield* Path.Path;
       const pullRequests = yield* PullRequestService;
       const pullRequestAutoFix = yield* PullRequestAutoFixService;
+      const composerPrediction = yield* ComposerPredictionService;
       const githubInbox = yield* GitHubInboxService;
       const profileStatsQuery = yield* ProfileStatsQuery;
       const recapStatsQuery = yield* RecapStatsQuery;
@@ -668,7 +671,7 @@ const makeWsRpcHandlersLayer = () =>
         Effect.gen(function* () {
           const settings = yield* serverSettings.getSettings;
           const routing = resolveTextGenerationRouting(settings, input);
-          yield* gitManager.runStackedAction(
+          const result = yield* gitManager.runStackedAction(
             {
               ...input,
               ...(routing.modelSelection
@@ -678,7 +681,9 @@ const makeWsRpcHandlersLayer = () =>
             },
             { actionId: input.actionId, progressReporter: { publish } },
           );
-          yield* refreshGitStatusInBackground(input.cwd);
+          yield* input.threadId !== undefined
+            ? linkGitActionPullRequestInBackground(input.threadId, input.cwd, result)
+            : refreshGitStatusInBackground(input.cwd);
         }).pipe(
           Effect.catchCause((cause) => Effect.fail(toWsRpcError(cause, "Git action failed"))),
         ),
@@ -878,11 +883,6 @@ const makeWsRpcHandlersLayer = () =>
           Effect.provideService(FileSystem.FileSystem, fileSystem),
           Effect.provideService(Path.Path, path),
         );
-      });
-      // Fail before Git runs; a refused turn must not leave an orphaned worktree.
-      const refuseMultiFolderProjectWorktree = makeProjectWorktreeGuard({
-        canonicalizeWorkspaceRoot: canonicalizeProjectWorkspaceRoot,
-        getActiveProjectByWorkspaceRoot: projectionReadModelQuery.getActiveProjectByWorkspaceRoot,
       });
       // One mkdir loop shared by every container kind; the relative directory set is the
       // only thing that varies (general chats scaffold work/outputs, Studio mirrors the
@@ -1105,6 +1105,43 @@ const makeWsRpcHandlersLayer = () =>
           Effect.asVoid,
         );
 
+      // The thread owns the PR its git action created, or the open PR it pushed to. Linking is
+      // server-side so a client that disconnects after the action cannot drop the association.
+      const linkGitActionPullRequestInBackground = (
+        threadId: ThreadId,
+        cwd: string,
+        result: GitRunStackedActionResult,
+      ) => {
+        const dispatchLink = (
+          pullRequest: OrchestrationThreadPullRequest,
+          source: "created" | "user",
+        ) =>
+          orchestrationEngine.dispatch({
+            type: "thread.pull-request.link",
+            commandId: CommandId.makeUnsafe(`server:git-action-pr:${crypto.randomUUID()}`),
+            threadId,
+            pullRequest,
+            source,
+          });
+        return Effect.gen(function* () {
+          const created = pullRequestFromGitActionResult(result);
+          if (created) yield* dispatchLink(created, "created");
+          const status = yield* gitStatusBroadcaster.refreshStatus(cwd);
+          if (!created && result.push.status === "pushed" && status.pr?.state === "open") {
+            yield* dispatchLink(status.pr, "user");
+          }
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("git action pull request link failed", {
+              threadId,
+              cause: Cause.pretty(cause),
+            }),
+          ),
+          Effect.forkDetach,
+          Effect.asVoid,
+        );
+      };
+
       const validateArchiveWorktreeRemoval = (input: GitRemoveWorktreeInput) =>
         Effect.gen(function* () {
           if (!input.archiveCleanup) return;
@@ -1272,7 +1309,9 @@ const makeWsRpcHandlersLayer = () =>
           default:
             if (event.aggregateKind !== "thread") return Effect.succeed(Option.none());
             return projectionReadModelQuery
-              .getThreadShellById(ThreadId.makeUnsafe(String(event.aggregateId)))
+              .getThreadShellById(ThreadId.makeUnsafe(String(event.aggregateId)), {
+                includeLatestReplyPreview: true,
+              })
               .pipe(
                 Effect.map((thread) =>
                   Option.map(thread, (nextThread) => ({
@@ -1626,10 +1665,15 @@ const makeWsRpcHandlersLayer = () =>
                 return yield* Effect.fail(new WsRpcError({ message: GROUPS_BETA_ONLY_MESSAGE }));
               }
               const { command: normalizedCommand, prepareWorkspaceRoot } =
-                yield* normalizeDispatchCommand({ command });
+                yield* normalizeDispatchCommand({
+                  command: withoutRemoteResumeComputerGrant(command, principal.ownerId),
+                });
               // A paused/archived group's coordinator must not run turns —
               // the picker filters them out, but the server enforces it.
-              if (normalizedCommand.type === "thread.turn.start") {
+              if (
+                normalizedCommand.type === "thread.turn.start" ||
+                normalizedCommand.type === "thread.turn.resume"
+              ) {
                 yield* projectAgentService.assertGroupCoordinatorTurnAllowed({
                   threadId: normalizedCommand.threadId,
                 });
@@ -1671,7 +1715,10 @@ const makeWsRpcHandlersLayer = () =>
           ),
         [ORCHESTRATION_WS_METHODS.getShellSnapshot]: () =>
           rpcEffect(
-            projectionReadModelQuery.getShellSnapshot(),
+            projectionReadModelQuery.getShellSnapshot({
+              verifyEmptyThreads: true,
+              includeLatestReplyPreview: true,
+            }),
             "Failed to load orchestration shell snapshot",
           ),
         [ORCHESTRATION_WS_METHODS.getThreadDetailSnapshot]: (input) =>
@@ -1808,7 +1855,7 @@ const makeWsRpcHandlersLayer = () =>
                 onDroppedEvents: () => Effect.void,
               },
               snapshot: projectionReadModelQuery
-                .getShellSnapshot()
+                .getShellSnapshot({ includeLatestReplyPreview: true })
                 .pipe(
                   Effect.mapError((cause) => toWsRpcError(cause, "Failed to load shell snapshot")),
                 ),
@@ -2437,7 +2484,37 @@ const makeWsRpcHandlersLayer = () =>
         [WS_METHODS.pullRequestsDiff]: (input) =>
           pullRequestsEffect(pullRequests.diff(input), "Failed to load pull request diff"),
         [WS_METHODS.pullRequestsAction]: (input) =>
-          pullRequestsEffect(pullRequests.action(input), "Pull request action failed"),
+          pullRequestsEffect(
+            pullRequests.action(input).pipe(
+              Effect.tap((result) => {
+                const threadId = input.threadId;
+                if (input.action !== "reopen" || !threadId) return Effect.void;
+                // GitHub has already accepted the reopen. Persist it even if the caller
+                // disconnects, and report local refresh failures without failing the action.
+                return Effect.gen(function* () {
+                  const thread = Option.getOrUndefined(
+                    yield* projectionReadModelQuery.getThreadShellById(threadId),
+                  );
+                  if (!thread || thread.projectId !== result.projectId) return;
+                  yield* refreshReopenedThreadPullRequest({
+                    thread,
+                    repository: result.repository,
+                    number: result.number,
+                    dispatch: orchestrationEngine.dispatch,
+                  });
+                }).pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning("reopened pull request link refresh failed", {
+                      threadId,
+                      cause: Cause.pretty(cause),
+                    }),
+                  ),
+                  Effect.uninterruptible,
+                );
+              }),
+            ),
+            "Pull request action failed",
+          ),
         [WS_METHODS.pullRequestsComment]: (input) =>
           pullRequestsEffect(pullRequests.comment(input), "Could not post the comment"),
         [WS_METHODS.pullRequestsSetPinned]: (input) =>
@@ -2452,50 +2529,22 @@ const makeWsRpcHandlersLayer = () =>
           rpcEffect(git.listBranches(input), "Failed to list branches"),
         [WS_METHODS.gitListRecentCommits]: (input) =>
           rpcEffect(git.listRecentCommits(input), "Failed to list recent commits"),
+        // The created worktree is the result; its status/PR refresh runs in the background.
         [WS_METHODS.gitCreateWorktree]: (input) =>
           rpcEffect(
-            refuseMultiFolderProjectWorktree(input.cwd).pipe(
-              Effect.andThen(
-                refreshGitStatusAfter(
-                  input.cwd,
-                  git.withMutation(input.cwd, git.createWorktree(input)),
-                ),
-              ),
-            ),
+            git
+              .withMutation(input.cwd, git.createWorktree(input))
+              .pipe(Effect.tap(() => refreshGitStatusInBackground(input.cwd))),
             "Failed to create worktree",
           ),
         [WS_METHODS.gitCreateDetachedWorktree]: (input) =>
           bufferLiveUiStream(
-            Stream.callback<GitWorktreeSetupProgressEvent, WsRpcError>((queue) => {
-              const progressId = input.progressId ?? null;
-              return refuseMultiFolderProjectWorktree(input.cwd)
-                .pipe(
-                  Effect.andThen(
-                    refreshGitStatusAfter(
-                      input.cwd,
-                      git.withMutation(
-                        input.cwd,
-                        git.createDetachedWorktree(input, {
-                          onPhase: (phase) =>
-                            Queue.offer(queue, { kind: "phase_started", progressId, phase }).pipe(
-                              Effect.asVoid,
-                            ),
-                        }),
-                      ),
-                    ),
-                  ),
-                )
-                .pipe(
-                  Effect.matchCauseEffect({
-                    onFailure: (cause) =>
-                      Queue.fail(queue, toWsRpcError(cause, "Failed to create detached worktree")),
-                    onSuccess: (result) =>
-                      Queue.offer(queue, { kind: "completed", progressId, result }).pipe(
-                        Effect.andThen(Queue.end(queue)),
-                        Effect.asVoid,
-                      ),
-                  }),
-                );
+            makeDetachedWorktreeSetupStream({
+              progressId: input.progressId ?? null,
+              create: (onPhase) =>
+                git.withMutation(input.cwd, git.createDetachedWorktree(input, { onPhase })),
+              refreshStatusInBackground: refreshGitStatusInBackground(input.cwd),
+              toError: (cause) => toWsRpcError(cause, "Failed to create detached worktree"),
             }),
             { label: "git.create-detached-worktree" },
           ),
@@ -3042,6 +3091,10 @@ const makeWsRpcHandlersLayer = () =>
             }),
             "Failed to generate thread recap",
           ),
+        // Thread-scoped like the other thread reads. The service derives the
+        // conversation and provider settings from the supplied IDs.
+        [WS_METHODS.serverGenerateComposerPrediction]: (input) =>
+          rpcEffect(composerPrediction.generate(input), "Failed to generate a composer suggestion"),
         [WS_METHODS.serverGenerateAutomationIntent]: (input) =>
           rpcEffect(
             Effect.gen(function* () {

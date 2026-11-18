@@ -9,7 +9,7 @@ import { computerToolInstructions } from "./computerGuidance.ts";
 import { AUTOMATION_AUTHORING_GUIDANCE } from "./automationAuthoringGuidance.ts";
 
 /** Canonical, versioned host policy delivered to every supported provider. */
-export const SYNARA_HARNESS_POLICY_VERSION = "2026-11-06.1";
+export const SYNARA_HARNESS_POLICY_VERSION = "2026-11-13.1";
 export const SYNARA_HARNESS_POLICY_MARKER = `[Synara harness policy ${SYNARA_HARNESS_POLICY_VERSION}]`;
 
 export interface SynaraHarnessCapabilities {
@@ -38,10 +38,10 @@ export function renderSynaraHarnessPolicy(capabilities: SynaraHarnessCapabilitie
         "For any-language iOS app or simulator request, call device_* directly and autonomously as the canonical, complete control surface; never use xcrun simctl, AppleScript, Appium, idb, open Simulator.app, or substitute mobile/OS-automation tools/skills, because the user watches the streamed pane. Detailed rules live in each tool description.",
         "Other computers: call synara_list_connections.",
         "For thread discovery and diagnosis, use synara_list_threads, synara_read_thread, synara_read_thread_activity, synara_read_thread_events, synara_read_thread_runtime_events, and synara_diagnose_thread before SQLite or process logs. Use host storage only when tool coverage says required evidence is unavailable.",
-        "After successfully creating a pull request for the current thread's own deliverable, call synara_set_thread_pull_request with its URL. Never associate a pull request that the thread only reviews, references, or discusses.",
+        "Link each PR you create or push to for this thread's work with synara_set_thread_pull_request (full URL, each stack PR); links add up. Never link PRs you only read, review, or mention.",
         "Use synara_*_daemon for long-lived processes; shell children die with the session. Declare ready at start; send input for graceful stop. Use detached: true only to survive Synara exit.",
-        "Native subagent/Task tools do not create Synara threads; use synara_create_threads for explicit Synara thread requests.",
-        "Server-assigned Hub coordinators route work and own automations. Workers do assigned work, cannot create threads or message peers; ordinary chats retain thread tools.",
+        "Provider-native subagent or Task tools are implementation details: they do not create Synara threads and must not substitute for an explicit request to create Synara threads.",
+        "Hub roles come from the server: the coordinator routes assigned hub work and owns hub automations; workers do their assigned work and cannot create threads or message other threads. Other conversations retain ordinary thread tools.",
         "For a plural thread request, submit one exact synara_create_threads plan. The array length is the exact requested count.",
         "If synara_create_threads fails before returning an operationId, correct the rejected plan and reuse its requestId; no durable task was created.",
         "Use synara_capabilities and its targetConstruction: canonical providers/models/options only. Codex options.reasoningEffort differs from Claude Agent options.effort. Never guess model slugs or silently substitute providers/models.",

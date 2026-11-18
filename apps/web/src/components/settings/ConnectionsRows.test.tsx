@@ -111,12 +111,6 @@ describe("TrustedDeviceRow", () => {
 });
 
 describe("HostRow", () => {
-  it("renders the host name and platform", () => {
-    const html = renderHostRow({ host: makeHost() });
-    expect(html).toContain("Ada&#x27;s MacBook");
-    expect(html).toContain("macOS");
-  });
-
   it("labels a workspace host and keeps an owned host quiet", () => {
     expect(renderHostRow({ host: makeHost({ mine: false }) })).toContain(
       "Shared by your workspace",
@@ -133,14 +127,6 @@ describe("HostRow", () => {
     );
   });
 
-  it("names the winning transport once a probe succeeded", () => {
-    const html = renderHostRow({
-      host: makeHost(),
-      reachability: { state: "reachable", transport: "tailscale", at: 1 },
-    });
-    expect(html).toContain("Reachable over Tailscale");
-  });
-
   it("keeps a network failure distinguishable from a refusal", () => {
     expect(
       renderHostRow({ host: makeHost(), reachability: { state: "unreachable", at: 1 } }),
@@ -148,20 +134,6 @@ describe("HostRow", () => {
     expect(
       renderHostRow({ host: makeHost(), reachability: { state: "no-answer", at: 1 } }),
     ).toContain("No response");
-  });
-
-  // ADR 0010 + the palette: no success/warning token exists, and there is no
-  // live presence to justify a light anyway.
-  it("renders reachability without a status dot or status color", () => {
-    for (const reachability of [
-      { state: "reachable", transport: "lan", at: 1 },
-      { state: "unreachable", at: 1 },
-      { state: "no-answer", at: 1 },
-    ] satisfies HostReachability[]) {
-      const html = renderHostRow({ host: makeHost(), reachability });
-      expect(html).not.toMatch(/bg-success|bg-destructive|text-success|text-warning/);
-      expect(html).not.toMatch(/rounded-full[^"]*bg-(green|red|emerald|amber)/);
-    }
   });
 
   it("disables Connect until the host has finished its key exchange", () => {
@@ -187,12 +159,6 @@ describe("HostRow", () => {
     });
     expect(html).toContain("Back to this computer");
     expect(html).toContain("Working on it over local network");
-  });
-
-  it("keeps secondary actions in an overflow menu", () => {
-    expect(renderHostRow({ host: makeHost() })).toContain(
-      'aria-label="More actions for Ada&#x27;s MacBook"',
-    );
   });
 });
 

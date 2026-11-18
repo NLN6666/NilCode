@@ -11,6 +11,7 @@ import { resolveForkSourceCutoff } from "../forkSourceCutoff.ts";
 // Purpose: Routes orchestration intents into provider sessions and maintains replay-safe context.
 // Layer: Orchestration provider reactor
 
+import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { makeKeyedDrainableWorker } from "@synara/shared/KeyedDrainableWorker";
 import { sanitizeUserFacingErrorMessage } from "@synara/shared/errorMessages";
@@ -40,6 +41,7 @@ import {
   ProviderTaskReconciliation,
   type ProviderReviewTarget,
   type ProviderStartOptions,
+  type ProviderSkillDescriptor,
   type ProviderSkillReference,
   type ProviderTurnStartResult,
   type OrchestrationSession,
@@ -89,6 +91,7 @@ import {
   PROVIDER_DELIVERY_BLOCK_SUMMARY,
 } from "@synara/shared/providerDeliveryBlock";
 import { buildStalePendingRequestFailureDetail } from "@synara/shared/threadSummary";
+import { resolveTurnResumeTarget, TURN_RESUME_MESSAGE_ID_PREFIX } from "@synara/shared/turnResume";
 import { resolveThreadWorkspaceState } from "@synara/shared/threadEnvironment";
 import {
   buildProjectFoldersPreamble,
@@ -120,7 +123,21 @@ import {
 } from "../../provider/promptInjectionBudget.ts";
 import { PersistenceDecodeError, PersistenceSqlError } from "../../persistence/Errors.ts";
 import { providerDisabledSettingsMessage } from "../../provider/enabledProviderAdapter.ts";
-import { buildInlineSkillInstructions } from "../../provider/skillPromptInjection.ts";
+import {
+  buildInlineSkillInstructions,
+  formatInlineSkillInstructions,
+  loadInlineSkillBlocks,
+  selectSkillsToInline,
+  shouldInlineSkillForProvider,
+} from "../../provider/skillPromptInjection.ts";
+import {
+  extractPromptSkillTokenNames,
+  leadingPromptSkillTokenName,
+  leadingSlashTokenName,
+  resolvePromptSkillReferences,
+} from "../../provider/promptSkillReferences.ts";
+import { skillNameKey } from "@synara/shared/skillOrigins";
+import { discoverSkillsCatalog, filterDisabledSkills } from "../../provider/skillsCatalog.ts";
 import {
   PROVIDER_DEBUG_MODE_PROMPT_PREFIX,
   withProviderDebugModePrompt,
@@ -148,6 +165,8 @@ import {
   ProviderService,
   type ProviderRuntimeSessionStopTarget,
 } from "../../provider/Services/ProviderService.ts";
+import { buildClaudeInstanceProcessEnv } from "../../provider/claudeEnvironment.ts";
+import { ProviderDiscoveryService } from "../../provider/Services/ProviderDiscoveryService.ts";
 import { ProviderHealth } from "../../provider/Services/ProviderHealth.ts";
 import { isServerGroupsEnabled } from "../../projectAgent/groupsBetaGate.ts";
 import { ProjectAgentService } from "../../projectAgent/Services/ProjectAgentService.ts";
@@ -166,6 +185,8 @@ import { ProjectionThreadActivityRepository } from "../../persistence/Services/P
 import { ProjectionThreadActivityRepositoryLive } from "../../persistence/Layers/ProjectionThreadActivities.ts";
 import { ProjectionThreadMessageRepository } from "../../persistence/Services/ProjectionThreadMessages.ts";
 import { ProjectionThreadMessageRepositoryLive } from "../../persistence/Layers/ProjectionThreadMessages.ts";
+import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
+import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import { orchestrationMessageFromStoredMessage } from "../../persistence/projectionThreadMessageRow.ts";
 import {
   OrchestrationEventDeliveryRepository,
@@ -467,12 +488,33 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 // Codex app-server still expects `$skill` text next to the structured skill item.
+// Claude Code runs a leading `/name` as its own command. Only a `.claude` skill
+// written as a clean command stays one; any other leading skill (shared from another
+// provider's folder, or glued to punctuation) becomes a `$name` mention next to its
+// inlined instructions instead of failing as an unknown command.
 export function normalizeSkillMentionTextForProvider(input: {
   readonly provider: ProviderKind;
   readonly messageText: string;
-  readonly skills?: ReadonlyArray<ProviderSkillReference>;
+  readonly skills?: ReadonlyArray<ProviderSkillReference> | undefined;
+  readonly claudeConfigDir?: string | undefined;
 }): string {
-  if (input.provider !== "codex" || !input.skills || input.skills.length === 0) {
+  if (!input.skills || input.skills.length === 0) {
+    return input.messageText;
+  }
+  if (input.provider === "claudeAgent") {
+    const leadingName = leadingPromptSkillTokenName(input.messageText);
+    if (leadingName === null) return input.messageText;
+    const leadingKey = skillNameKey(leadingName);
+    const leadingSkill = input.skills.find((skill) => skillNameKey(skill.name) === leadingKey);
+    if (leadingSkill === undefined) return input.messageText;
+    const claudeLoadsItself =
+      !shouldInlineSkillForProvider("claudeAgent", leadingSkill.path, input.claudeConfigDir) &&
+      leadingSlashTokenName(input.messageText) === leadingName;
+    return claudeLoadsItself
+      ? input.messageText
+      : input.messageText.replace(/^(\s*)\//, (_match, whitespace: string) => `${whitespace}$`);
+  }
+  if (input.provider !== "codex") {
     return input.messageText;
   }
 
@@ -496,6 +538,11 @@ function attachmentTitleSeed(attachment: ChatAttachment | undefined): string {
   }
   return attachment.text.trim();
 }
+
+// Provider input for a resumed turn. The old provider process is gone, so the
+// agent re-checks the workspace instead of assuming its last command finished.
+const TURN_RESUME_INPUT =
+  "Continue the interrupted task from the existing conversation and working state. First verify which operations have already completed; avoid repeating them and resume the remaining work.";
 
 const serverCommandId = (tag: string): CommandId =>
   CommandId.makeUnsafe(`server:${tag}:${crypto.randomUUID()}`);
@@ -755,6 +802,7 @@ export function resolvePreTurnBaselineTimeoutMs(env: NodeJS.ProcessEnv = process
 }
 const PRE_TURN_BASELINE_REF_PROBE_TIMEOUT = Duration.seconds(1);
 const PROVIDER_CACHE_RESPONSE_TIMEOUT = Duration.minutes(15);
+const USAGE_LIMIT_BINDING_READ_TIMEOUT = Duration.seconds(8);
 const GATEWAY_OPERATION_COMPLETION_WAIT_TIMEOUT = Duration.seconds(120);
 const THREAD_MENTION_CONTEXT_SUFFIX_PREFIX_CHARS = 2;
 const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
@@ -1041,6 +1089,7 @@ export interface ProviderCommandReactorLiveOptions {
   readonly commandEventTimeout?: Duration.Duration;
   readonly preTurnBaselineTimeout?: Duration.Duration;
   readonly cacheResponseTimeout?: Duration.Duration;
+  readonly usageLimitBindingReadTimeout?: Duration.Duration;
   readonly gatewayOperationCompletionWaitTimeout?: Duration.Duration;
   readonly gatewayOperationCompletionNegativeCacheTtl?: Duration.Duration;
 }
@@ -1049,6 +1098,7 @@ interface ProviderCommandReactorConfigShape {
   readonly commandEventTimeout: Duration.Duration;
   readonly preTurnBaselineTimeout: Duration.Duration;
   readonly cacheResponseTimeout: Duration.Duration;
+  readonly usageLimitBindingReadTimeout: Duration.Duration;
   readonly gatewayOperationCompletionWaitTimeout: Duration.Duration;
   readonly gatewayOperationCompletionNegativeCacheTtl: Duration.Duration;
 }
@@ -1078,6 +1128,7 @@ const make = Effect.gen(function* () {
     commandEventTimeout,
     preTurnBaselineTimeout,
     cacheResponseTimeout,
+    usageLimitBindingReadTimeout,
     gatewayOperationCompletionWaitTimeout,
     gatewayOperationCompletionNegativeCacheTtl,
   } = yield* ProviderCommandReactorConfig;
@@ -1087,6 +1138,7 @@ const make = Effect.gen(function* () {
   const queuedTurnPromotions = yield* QueuedTurnPromotionRepository;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const providerService = yield* ProviderService;
+  const providerDiscovery = yield* ProviderDiscoveryService;
   const computerService = yield* Effect.serviceOption(ComputerService);
   const gatewaySessions = yield* Effect.serviceOption(AgentGatewaySessionRegistry);
   // Resolved at make time: fibers that run turn dispatch do not inherit the
@@ -1097,6 +1149,7 @@ const make = Effect.gen(function* () {
   const pendingInteractions = yield* ProjectionPendingInteractionRepository;
   const projectionThreadActivityRepository = yield* ProjectionThreadActivityRepository;
   const projectionThreadMessageRepository = yield* ProjectionThreadMessageRepository;
+  const projectionTurns = yield* ProjectionTurnRepository;
   const runtimeEventRepository = yield* ProviderRuntimeEventRepository;
   const checkpointStore = yield* CheckpointStore;
   const hubOutputReactor = yield* HubOutputReactor;
@@ -1206,6 +1259,9 @@ const make = Effect.gen(function* () {
   // was actually spawned with so a changed value restarts the runtime instead
   // of silently reusing a session provisioned under the old approval set.
   const threadSessionAutoApproveSynaraTools = new Map<string, boolean>();
+  // The extra project folders each live session was granted. Editing a project's folders
+  // restarts the session (keeping its resume cursor) so the provider sees the new set.
+  const threadSessionAdditionalDirectories = new Map<string, ReadonlyArray<string>>();
   // Seeded from the engine's in-memory command read model, not a second snapshot query.
   // The engine loads that model once after the projection bootstrap and keeps it current
   // as commands commit, so reading it here is both free and strictly fresher than
@@ -1296,6 +1352,100 @@ const make = Effect.gen(function* () {
     });
   });
 
+  // Match the home/config directory of the Claude process that owns the turn.
+  const resolveClaudeSkillConfigDir = Effect.fnUntraced(function* (
+    threadId: ThreadId,
+    instanceId: string | undefined,
+  ) {
+    let providerOptions = threadProviderOptions.get(threadId);
+    if (!threadProviderOptions.has(threadId)) {
+      const settings = yield* serverSettings.getSettings;
+      const instance = resolveProviderInstance(settings, { provider: "claudeAgent", instanceId });
+      providerOptions = mergeProviderStartOptions(
+        providerStartOptionsFromServerSettings(settings),
+        instance ? providerStartOptionsFromInstance(instance) : undefined,
+      );
+    }
+    const claude = providerOptions?.claudeAgent;
+    const env = buildClaudeInstanceProcessEnv(claude?.homePath, claude?.environment, {
+      homeDir: serverConfig.homeDir,
+      isolationRootDir: serverConfig.stateDir,
+      ...(instanceId !== undefined ? { providerInstanceId: instanceId } : {}),
+    });
+    return resolve(
+      env.CLAUDE_CONFIG_DIR?.trim() || resolve(env.HOME ?? serverConfig.homeDir, ".claude"),
+    );
+  });
+
+  // Menu picks arrive as exact references. Typed tokens use Codex's instance-aware
+  // catalog so its native skill paths take precedence over shared names.
+  const resolveTurnSkills = Effect.fnUntraced(function* (input: {
+    readonly provider: ProviderKind;
+    readonly threadId: ThreadId;
+    readonly instanceId: string | undefined;
+    readonly cwd: string | undefined;
+    readonly claudeConfigDir?: string | undefined;
+    readonly messageText: string;
+    readonly attached: ReadonlyArray<ProviderSkillReference> | undefined;
+    readonly resolveTypedSkills: boolean;
+  }): Effect.fn.Return<ReadonlyArray<ProviderSkillReference> | undefined> {
+    // Automatic discovery needs the active profile's native catalog. Other
+    // providers still get their exact references from explicit menu selections.
+    if (
+      !input.resolveTypedSkills ||
+      (input.provider !== "codex" && input.provider !== "claudeAgent")
+    ) {
+      return input.attached;
+    }
+    let available: ReadonlyArray<ProviderSkillDescriptor>;
+    if (input.provider === "codex" && input.cwd !== undefined) {
+      available = yield* providerDiscovery
+        .listSkills({
+          provider: input.provider,
+          threadId: input.threadId,
+          cwd: input.cwd,
+          ...(input.instanceId !== undefined ? { instanceId: input.instanceId } : {}),
+        })
+        .pipe(
+          Effect.map((result) => result.skills),
+          Effect.catch((error) =>
+            Effect.logWarning("typed Codex skill resolution skipped: skill discovery unavailable", {
+              threadId: input.threadId,
+              error,
+            }).pipe(Effect.as([])),
+          ),
+        );
+    } else {
+      const catalog = yield* Effect.tryPromise(() =>
+        discoverSkillsCatalog({
+          cwd: input.cwd ?? null,
+          homeDir: serverConfig.homeDir,
+          synaraBaseDir: serverConfig.baseDir,
+          provider: input.provider,
+          claudeConfigDir: input.claudeConfigDir,
+          includePortableFallback: true,
+        }),
+      ).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("typed skill resolution skipped: skills catalog unavailable", {
+            provider: input.provider,
+            error,
+          }).pipe(Effect.as([])),
+        ),
+      );
+      const disabledSkills = yield* serverSettings.getSettings.pipe(
+        Effect.map((settings) => settings.skills.disabled[input.provider] ?? []),
+        Effect.orElseSucceed((): ReadonlyArray<string> => []),
+      );
+      available = filterDisabledSkills(catalog, disabledSkills);
+    }
+    const resolved = resolvePromptSkillReferences({
+      text: input.messageText,
+      attached: input.attached,
+      available,
+    });
+    return resolved.length > 0 ? resolved : input.attached;
+  });
   const editResendTurnStartKeys = new Set<string>();
   const quarantinedThreads = new Set<string>();
   const drainingQueuedTurns = new Set<string>();
@@ -1880,6 +2030,7 @@ const make = Effect.gen(function* () {
     readonly threadId: ThreadId;
     readonly session: OrchestrationSession;
     readonly expectedSession?: Pick<OrchestrationSession, "status" | "updatedAt">;
+    readonly pendingResumeMessageId?: MessageId;
     readonly createdAt: string;
   }) =>
     orchestrationEngine.dispatch({
@@ -1887,6 +2038,9 @@ const make = Effect.gen(function* () {
       commandId: serverCommandId("provider-session-set"),
       threadId: input.threadId,
       session: input.session,
+      ...(input.pendingResumeMessageId !== undefined
+        ? { pendingResumeMessageId: input.pendingResumeMessageId }
+        : {}),
       ...(input.expectedSession !== undefined
         ? {
             expectedSessionStatus: input.expectedSession.status,
@@ -2357,6 +2511,7 @@ const make = Effect.gen(function* () {
       threadProviderOptions.delete(threadId);
       threadSessionModelSelections.delete(threadId);
       threadSessionComputerControl.delete(threadId);
+      threadSessionAdditionalDirectories.delete(threadId);
       const editResendPrefix = `${threadId}:`;
       for (const key of editResendTurnStartKeys) {
         if (key.startsWith(editResendPrefix)) {
@@ -2572,6 +2727,8 @@ const make = Effect.gen(function* () {
       readonly enableComputerControl?: boolean;
       readonly runtimeMode?: RuntimeMode;
       readonly registerPriorTranscriptBootstrapOnFreshStart?: boolean;
+      /** The user explicitly requested a same-thread handoff. */
+      readonly providerHandoff?: boolean;
     },
   ) {
     const thread = yield* resolveThreadShell(threadId);
@@ -2692,10 +2849,13 @@ const make = Effect.gen(function* () {
     const preferredProvider: ProviderKind = providerRebindRequested
       ? thread.modelSelection.provider
       : (boundProvider ?? desiredProvider);
+    // Only Hand off may move a started thread to another account of its
+    // provider: the replacement starts fresh from the transcript.
     if (
       establishedProvider !== undefined &&
       requestedProviderInstanceChanged &&
-      !providerRebindRequested
+      !providerRebindRequested &&
+      options?.providerHandoff !== true
     ) {
       return yield* new ProviderAdapterValidationError({
         provider: preferredProvider,
@@ -2730,7 +2890,6 @@ const make = Effect.gen(function* () {
         ? providerStartOptionsFromInstance(desiredProviderInstance)
         : undefined,
     );
-    const effectiveCwd = yield* resolveProjectedThreadWorkspaceCwd(thread);
     const workspaceState = resolveThreadWorkspaceState({
       envMode: thread.envMode,
       worktreePath: thread.worktreePath,
@@ -2742,8 +2901,9 @@ const make = Effect.gen(function* () {
         issue: `Thread '${threadId}' targets a worktree that has not been created yet.`,
       });
     }
-    // Multi-folder projects grant their extra folders natively; refuse the chats that
-    // could not honor them rather than silently dropping folders.
+    // Multi-folder projects grant their extra folders natively; refuse the providers that
+    // could not honor them rather than silently dropping folders. Worktree chats isolate
+    // only the primary folder; the extra folders stay live.
     const workspaceProject = yield* projectionSnapshotQuery
       .getProjectShellById(thread.projectId)
       .pipe(
@@ -2756,12 +2916,18 @@ const make = Effect.gen(function* () {
             }),
         ),
       );
-    const additionalDirectories = Option.getOrUndefined(workspaceProject)?.additionalFolders ?? [];
+    const project = Option.getOrUndefined(workspaceProject);
+    const effectiveCwd = project
+      ? resolveThreadWorkspaceCwd({
+          thread,
+          projects: [project],
+          dedicatedChatWorkspaceParent:
+            preferredProvider === "pi" ? serverConfig.chatWorkspaceRoot : undefined,
+        })
+      : undefined;
+    const additionalDirectories = project?.additionalFolders ?? [];
     if (additionalDirectories.length > 0) {
-      const folderIssue = projectFoldersSessionIssue({
-        provider: preferredProvider,
-        worktree: workspaceState !== "local",
-      });
+      const folderIssue = projectFoldersSessionIssue({ provider: preferredProvider });
       if (folderIssue !== null) {
         return yield* new ProviderAdapterValidationError({
           provider: preferredProvider,
@@ -2835,6 +3001,7 @@ const make = Effect.gen(function* () {
           ? providerService.startSessionWithOutcome(threadId, startInput, {
               registerPriorTranscriptBootstrapOnFreshStart,
               ...(startsStoredProvider ? { abandonOtherProviderContinuation: true } : {}),
+              ...(options?.providerHandoff ? { startFreshForAccountHandoff: true } : {}),
             })
           : providerService.startSession(threadId, startInput).pipe(
               Effect.map((session) => ({
@@ -2874,6 +3041,28 @@ const make = Effect.gen(function* () {
     const workspaceChanged =
       activeSessionBeforeEnsure !== undefined &&
       providerWorkspaceChanged(activeSessionBeforeEnsure.cwd, effectiveCwd);
+    // A runtime this process recovered or prewarmed is not in the cache, so read the grants
+    // it was launched with from its persisted binding before deciding it can be reused.
+    const previousAdditionalDirectories =
+      threadSessionAdditionalDirectories.get(threadId) ??
+      (activeSessionBeforeEnsure !== undefined && providerService.getSessionAdditionalDirectories
+        ? yield* providerService.getSessionAdditionalDirectories(threadId).pipe(
+            Effect.tapError((cause) =>
+              Effect.logWarning("provider command reactor could not read session folder grants", {
+                threadId,
+                cause,
+              }),
+            ),
+            Effect.orElseSucceed(() => undefined),
+          )
+        : undefined);
+    if (previousAdditionalDirectories !== undefined) {
+      threadSessionAdditionalDirectories.set(threadId, previousAdditionalDirectories);
+    }
+    const additionalDirectoriesChanged =
+      activeSessionBeforeEnsure !== undefined &&
+      previousAdditionalDirectories !== undefined &&
+      !isDeepStrictEqual(previousAdditionalDirectories, additionalDirectories);
     // Starting another provider stops this runtime. Only Hand off may end its
     // background tasks that way, after the user agrees to stop them.
     const replacesOtherProviderRuntime =
@@ -2882,7 +3071,7 @@ const make = Effect.gen(function* () {
     // Background tasks may share the old process. Never kill them merely to
     // apply a project relocation, including when metadata cleared the projection.
     if (
-      (workspaceChanged || replacesOtherProviderRuntime) &&
+      (workspaceChanged || additionalDirectoriesChanged || replacesOtherProviderRuntime) &&
       providerService.hasLiveRuntimeTasks &&
       (yield* providerService.hasLiveRuntimeTasks({ threadId }))
     ) {
@@ -2891,7 +3080,9 @@ const make = Effect.gen(function* () {
         operation: "thread.turn.start",
         issue: replacesOtherProviderRuntime
           ? "Finish or stop this thread's background tasks before switching providers."
-          : "Finish or stop this thread's background tasks before resuming in the new project path.",
+          : workspaceChanged
+            ? "Finish or stop this thread's background tasks before resuming in the new project path."
+            : "Finish or stop this thread's background tasks before using the project's updated folders.",
       });
     }
     const reusableSession =
@@ -2967,6 +3158,7 @@ const make = Effect.gen(function* () {
         !runtimeModeChanged &&
         !providerChanged &&
         !workspaceChanged &&
+        !additionalDirectoriesChanged &&
         !providerInstanceChanged &&
         !shouldRestartForModelChange &&
         !shouldRestartForModelSelectionChange &&
@@ -3000,6 +3192,7 @@ const make = Effect.gen(function* () {
         !runtimeModeChanged &&
         !providerChanged &&
         !workspaceChanged &&
+        !additionalDirectoriesChanged &&
         !providerOptionsChanged &&
         !shouldRestartForModelChange &&
         !shouldRestartForModelSelectionChange &&
@@ -3052,6 +3245,7 @@ const make = Effect.gen(function* () {
         runtimeModeChanged,
         providerChanged,
         workspaceChanged,
+        additionalDirectoriesChanged,
         modelChanged,
         shouldRestartForModelChange,
         shouldRestartForModelSelectionChange,
@@ -3069,7 +3263,10 @@ const make = Effect.gen(function* () {
       // keeps its history in the new session's first turn.
       const restartedOutcome = yield* startProviderSessionWithOutcome(
         resumeCursor,
-        (workspaceChanged || providerChanged || shouldRestartForModelChange) &&
+        (workspaceChanged ||
+          additionalDirectoriesChanged ||
+          providerChanged ||
+          shouldRestartForModelChange) &&
           shouldRegisterContextBootstrap,
       ).pipe(
         // The live-turn check above sees only turns. The adapter also refuses
@@ -3108,6 +3305,7 @@ const make = Effect.gen(function* () {
         freshSessionContextBootstrapThreadIds.add(threadId);
       }
       threadSessionModelSelections.set(threadId, desiredModelSelection);
+      threadSessionAdditionalDirectories.set(threadId, additionalDirectories);
       if (options?.enableComputerControl !== undefined) {
         threadSessionComputerControl.set(threadId, options.enableComputerControl);
       }
@@ -3195,6 +3393,7 @@ const make = Effect.gen(function* () {
           sidechatContextBootstrapThreadIds.add(threadId);
         }
         threadSessionModelSelections.set(threadId, desiredModelSelection);
+        threadSessionAdditionalDirectories.set(threadId, additionalDirectories);
         threadSessionComputerControl.set(threadId, forkComputerControl);
         threadSessionAutoApproveSynaraTools.set(threadId, autoApproveSynaraTools);
         setThreadProviderOptions(threadId, resolvedProviderOptions);
@@ -3298,6 +3497,7 @@ const make = Effect.gen(function* () {
     // restart-necessity checks compare against the live spawn state even when
     // the spawning dispatch carried no explicit model selection.
     threadSessionModelSelections.set(threadId, desiredModelSelection);
+    threadSessionAdditionalDirectories.set(threadId, additionalDirectories);
     threadSessionAutoApproveSynaraTools.set(threadId, autoApproveSynaraTools);
     if (options?.enableComputerControl !== undefined) {
       threadSessionComputerControl.set(threadId, options.enableComputerControl);
@@ -3583,11 +3783,20 @@ const make = Effect.gen(function* () {
     ).pipe(Effect.catch(() => Effect.succeed("")));
     // A multi-folder project lists its folders as ambient context too, so every input
     // budget below already reserves room for it.
+    // A worktree chat edits the primary folder in its worktree, so point the model there.
     const threadProject = yield* resolveThreadWorkspaceProject(thread);
+    const threadWorktreePath =
+      resolveThreadWorkspaceState({
+        envMode: thread.envMode,
+        worktreePath: thread.worktreePath,
+      }) === "worktree-ready"
+        ? thread.worktreePath
+        : null;
     const projectFoldersPreamble = threadProject
       ? buildProjectFoldersPreamble({
-          primaryFolder: threadProject.workspaceRoot,
+          primaryFolder: threadWorktreePath ?? threadProject.workspaceRoot,
           additionalFolders: threadProject.additionalFolders ?? [],
+          worktreeOf: threadWorktreePath ? threadProject.workspaceRoot : null,
         })
       : null;
     const projectContext = [projectContextPacket, projectFoldersPreamble ?? ""]
@@ -3603,6 +3812,13 @@ const make = Effect.gen(function* () {
     const authoredMessageText = computerInvocation
       ? computerInvocation.prompt || "Use Synara Computer for this task."
       : input.messageText;
+    // Typed skill tokens count only in words a person or automation wrote, not in
+    // another agent's message or a generated goal continuation.
+    const resolveTypedSkills =
+      input.dispatchOrigin !== "agent" &&
+      input.turnKind !== "goal-continuation" &&
+      extractPromptSkillTokenNames(authoredMessageText).length > 0;
+    const hasSkills = resolveTypedSkills || (input.skills?.length ?? 0) > 0;
     // The project packet is ambient context, not user words: it prefixes the
     // assembled provider input rather than joining `<latest_user_message>`.
     const projectContextPrefix = projectContext.trim().length > 0 ? `${projectContext}\n\n` : "";
@@ -3648,12 +3864,32 @@ const make = Effect.gen(function* () {
       // text-only subagent steering channel.
       const steerProvider = (providerThread.session?.providerName ??
         providerThread.modelSelection.provider) as ProviderKind;
+      const steerInstanceId =
+        providerThread.session?.providerInstanceId ?? providerThread.modelSelection.instanceId;
+      const steerClaudeConfigDir =
+        steerProvider === "claudeAgent" && hasSkills
+          ? yield* resolveClaudeSkillConfigDir(providerThread.id, steerInstanceId)
+          : undefined;
+      const steerSkills = yield* resolveTurnSkills({
+        provider: steerProvider,
+        threadId: providerThread.id,
+        instanceId: steerInstanceId,
+        claudeConfigDir: steerClaudeConfigDir,
+        cwd: yield* resolveProjectedThreadWorkspaceCwd(
+          steerProvider === "codex" ? providerThread : thread,
+        ),
+        messageText: authoredMessageText,
+        attached: input.skills,
+        resolveTypedSkills,
+      });
+      // No `providerInput`: a subagent steer is never a native slash command, so
+      // Claude gets every referenced skill inline.
       const steerSkillInlineText =
-        input.skills !== undefined && input.skills.length > 0
+        steerSkills !== undefined && steerSkills.length > 0
           ? yield* Effect.tryPromise(() =>
               buildInlineSkillInstructions({
                 provider: steerProvider,
-                skills: input.skills ?? [],
+                skills: steerSkills,
                 maxChars: availablePromptInjectionChars(
                   messageText.length + providerPromptOverheadChars,
                 ),
@@ -3708,7 +3944,8 @@ const make = Effect.gen(function* () {
             input.attachments,
             PROVIDER_SEND_TURN_MAX_INPUT_CHARS - providerPromptOverheadChars,
           ),
-          ...(input.skills !== undefined ? { skills: input.skills } : {}),
+          skills: steerSkills,
+          claudeConfigDir: steerClaudeConfigDir,
         }),
       });
       if (
@@ -3738,7 +3975,7 @@ const make = Effect.gen(function* () {
         ...(normalizedSteerAttachments.length > 0
           ? { attachments: normalizedSteerAttachments }
           : {}),
-        ...(input.skills !== undefined ? { skills: input.skills } : {}),
+        ...(steerSkills !== undefined ? { skills: steerSkills } : {}),
         ...(providerMentions !== undefined ? { mentions: providerMentions } : {}),
       });
       return;
@@ -4128,30 +4365,46 @@ const make = Effect.gen(function* () {
           ? wrapProviderContext({ ...bootstrap, messageText: boundaryMessageText })
           : boundaryMessageText
       }`;
-    const providerInputWithMentionContext = withProviderThreadStatePrompts({
-      interactionMode: input.interactionMode,
-      goal: activeThreadGoal(thread),
-      text: `${composeProviderInput(selectedBootstrapContext)}${mentionContextSuffix}`,
+    const providerWorkspaceCwd =
+      activeSession.cwd ?? (yield* resolveProjectedThreadWorkspaceCwd(thread));
+    const claudeConfigDir =
+      selectedProvider === "claudeAgent" && hasSkills
+        ? yield* resolveClaudeSkillConfigDir(
+            activeSession.threadId,
+            activeSession.providerInstanceId,
+          )
+        : undefined;
+    const turnSkills = yield* resolveTurnSkills({
+      provider: selectedProvider as ProviderKind,
+      threadId: activeSession.threadId,
+      instanceId: activeSession.providerInstanceId,
+      claudeConfigDir,
+      cwd: providerWorkspaceCwd,
+      messageText: authoredMessageText,
+      attached: input.skills,
+      resolveTypedSkills,
     });
-    // Portable skills fallback: providers that cannot load the referenced skill
-    // file natively get the skill instructions inlined into the prompt.
-    const skillInlineText =
-      input.skills !== undefined && input.skills.length > 0
+    // Portable skills fallback: skills the provider cannot load natively travel
+    // inline. Each file is read once here; which ones go inline depends on the
+    // final prompt, and the stale-resume retry below can wrap it differently.
+    const inlineSkillBlocks: ReadonlyMap<string, string> =
+      turnSkills !== undefined && turnSkills.length > 0
         ? yield* Effect.tryPromise(() =>
-            buildInlineSkillInstructions({
-              provider: selectedProvider as ProviderKind,
-              skills: input.skills ?? [],
-              maxChars: availablePromptInjectionChars(providerInputWithMentionContext.length),
-            }),
+            loadInlineSkillBlocks(
+              selectSkillsToInline({
+                provider: selectedProvider as ProviderKind,
+                skills: turnSkills,
+              }),
+            ),
           ).pipe(
             Effect.catch((error) =>
               Effect.logWarning("failed to inline portable skill instructions", {
                 threadId: input.threadId,
                 error,
-              }).pipe(Effect.as("")),
+              }).pipe(Effect.as(new Map<string, string>())),
             ),
           )
-        : "";
+        : new Map<string, string>();
     const finalizeProviderInput = (bootstrap: BootstrapContextSelection | null) =>
       Effect.gen(function* () {
         // Native control commands must remain the first token in every mode.
@@ -4162,6 +4415,28 @@ const make = Effect.gen(function* () {
           return input.messageText.trim();
         }
         const withMentionContext = `${composeProviderInput(bootstrap)}${mentionContextSuffix}`;
+        const promptWithoutSkills = withProviderThreadStatePrompts({
+          interactionMode: input.interactionMode,
+          goal: activeThreadGoal(thread),
+          text: withMentionContext,
+        });
+        const skillInlineText =
+          turnSkills !== undefined && turnSkills.length > 0
+            ? formatInlineSkillInstructions({
+                skills: selectSkillsToInline({
+                  provider: selectedProvider as ProviderKind,
+                  skills: turnSkills,
+                  claudeConfigDir,
+                  // A steer may join a running turn, where Claude's own `/name`
+                  // loading is not guaranteed, so it gets every skill inline.
+                  ...(input.dispatchMode === "steer" ? {} : { providerInput: promptWithoutSkills }),
+                }),
+                blocks: inlineSkillBlocks,
+                maxChars: availablePromptInjectionChars(
+                  promptWithoutSkills.length + providerPromptOverheadChars,
+                ),
+              })
+            : "";
         const withSkills = skillInlineText
           ? `${withMentionContext}\n\n${skillInlineText}`
           : withMentionContext;
@@ -4207,7 +4482,8 @@ const make = Effect.gen(function* () {
                 input.attachments,
                 PROVIDER_SEND_TURN_MAX_INPUT_CHARS - providerPromptOverheadChars,
               ),
-              ...(input.skills !== undefined ? { skills: input.skills } : {}),
+              skills: turnSkills,
+              claudeConfigDir,
             }),
           }),
         );
@@ -4241,13 +4517,11 @@ const make = Effect.gen(function* () {
     const providerTurnInput = {
       threadId: input.threadId,
       ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
-      ...(input.skills !== undefined ? { skills: input.skills } : {}),
+      ...(turnSkills !== undefined ? { skills: turnSkills } : {}),
       ...(providerMentions !== undefined ? { mentions: providerMentions } : {}),
       ...(modelForTurn !== undefined ? { modelSelection: modelForTurn } : {}),
       ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
     };
-    const providerWorkspaceCwd =
-      activeSession.cwd ?? (yield* resolveProjectedThreadWorkspaceCwd(thread));
     // Baseline capture may time out, but provider execution must never bypass
     // an Undo that still owns this checkout. Keep the activation wait outside
     // the baseline deadline and release it after provider admission/cleanup.
@@ -6583,7 +6857,7 @@ const make = Effect.gen(function* () {
     }).pipe(
       Effect.provideService(ServerConfig, serverConfig),
       Effect.provideService(ServerSettingsService, serverSettings),
-      Effect.timeoutOption("8 seconds"),
+      Effect.timeoutOption(usageLimitBindingReadTimeout),
       Effect.catch(() => Effect.succeed(Option.none())),
     );
     const settings = yield* serverSettings.getSettings;
@@ -6704,7 +6978,8 @@ const make = Effect.gen(function* () {
       sourceEventSequence: event.sequence,
       messageId: MessageId.makeUnsafe(`usage-limit:${recovery.id}`),
       messageText:
-        "Continue the remaining task after the provider usage limit. Check the conversation and current workspace state, verify whether pending operations already completed before repeating them, and preserve pending approvals and user decisions.",
+        "I hit my usage limit while you were working, but it has reset now. Please continue from where you left off. " +
+        "Check the conversation and current workspace state, verify whether pending operations already completed before repeating them, and preserve pending approvals and user decisions.",
       dispatchOrigin: "automation",
       runtimeMode: thread.runtimeMode,
       interactionMode: thread.interactionMode,
@@ -6783,6 +7058,195 @@ const make = Effect.gen(function* () {
     }
   });
 
+  // `thread.turn.resume` (Resume, Continue task, quit resume). The decider only
+  // saw the command model, which lacks the linked transcript, so the target is
+  // picked here, under the session lease, after the same live-work checks as a
+  // goal continuation. A stale request (work moved on) does nothing.
+  const processManualResume = Effect.fnUntraced(function* (
+    event: Extract<ProviderIntentEvent, { type: "thread.goal-continuation-requested" }>,
+  ) {
+    const threadId = event.payload.threadId;
+    const messageId = MessageId.makeUnsafe(`${TURN_RESUME_MESSAGE_ID_PREFIX}${event.eventId}`);
+    const thread = yield* resolveThreadShell(threadId);
+    if (
+      !thread ||
+      thread.archivedAt != null ||
+      thread.claudeCacheReview != null ||
+      thread.usageLimitRecovery != null ||
+      (event.payload.sourceTurnId !== undefined &&
+        thread.latestTurn?.turnId !== event.payload.sourceTurnId)
+    ) {
+      return;
+    }
+    const pendingInteractionCounts = yield* pendingInteractions.getPendingCountsByThreadId({
+      threadId,
+    });
+    // A retryable persistence failure can leave this delivery's own durable start in place.
+    const pendingStart =
+      thread.session?.status === "starting"
+        ? yield* projectionTurns.getPendingTurnStartByThreadId({ threadId })
+        : Option.none();
+    if (
+      pendingInteractionCounts.pendingApprovalCount > 0 ||
+      pendingInteractionCounts.pendingUserInputCount > 0 ||
+      (thread.session?.status === "starting" &&
+        Option.getOrUndefined(pendingStart)?.messageId !== messageId) ||
+      thread.session?.status === "running" ||
+      (yield* hasLiveProviderTurn(threadId))
+    ) {
+      return;
+    }
+    // Queued user work always wins over a continuation.
+    yield* drainQueuedTurnsForSession(threadId);
+    if (yield* hasPendingQueuedTurnForSession(threadId)) {
+      return;
+    }
+    const detail = yield* projectionSnapshotQuery.getThreadDetailSnapshotById(threadId);
+    if (Option.isNone(detail)) {
+      return;
+    }
+    const target = resolveTurnResumeTarget(detail.value.thread);
+    if (target === null) {
+      return;
+    }
+    if (target.kind === "resend") {
+      // Re-request the turn for the stored message: the normal send path
+      // delivers it and links it to the turn it starts, so it is never resent
+      // twice and the chat gains no new message.
+      const message = detail.value.thread.messages.find(
+        (candidate) => candidate.id === target.messageId,
+      );
+      // The newest request for the message carries what the stored row does not:
+      // the plan it implements, a native review target, and its computer access.
+      const original = yield* orchestrationEngine
+        .readThreadEventsThrough(threadId, 0, event.sequence, [
+          "thread.turn-start-requested",
+          "thread.turn-queued",
+        ])
+        .pipe(
+          Stream.filter(
+            (candidate) =>
+              (candidate.type === "thread.turn-start-requested" ||
+                candidate.type === "thread.turn-queued") &&
+              candidate.payload.messageId === target.messageId,
+          ),
+          Stream.runLast,
+          Effect.map((last) =>
+            Option.isSome(last) &&
+            (last.value.type === "thread.turn-start-requested" ||
+              last.value.type === "thread.turn-queued")
+              ? last.value.payload
+              : undefined,
+          ),
+        );
+      // Computer access needs the resuming person's current generation, the
+      // same consent a fresh send gives (Stop bumps it, so a stale grant from
+      // the original request cannot revive control). No consent: off.
+      const originalComputerMode = original?.computerControlMode ?? "off";
+      const consentGeneration = event.payload.resumeComputerControlGeneration;
+      const computerFields =
+        originalComputerMode !== "off" && consentGeneration !== undefined
+          ? {
+              enableComputerControl: true,
+              computerControlMode: originalComputerMode,
+              computerControlGeneration: consentGeneration,
+            }
+          : {};
+      yield* orchestrationEngine
+        .dispatch({
+          type: "thread.turn.dispatch-queued",
+          // Keyed by the session state it saw: a doubled Resume that reaches this
+          // point before the first request is projected hits the same command id
+          // and is dropped instead of sending the message twice. A later retry
+          // sees a newer session, so it gets a new id.
+          commandId: CommandId.makeUnsafe(
+            `server:turn-resume-resend:${threadId}:${target.messageId}:${thread.session?.updatedAt ?? "none"}`,
+          ),
+          threadId,
+          messageId: target.messageId,
+          ...computerFields,
+          ...(original?.sourceProposedPlan !== undefined
+            ? { sourceProposedPlan: original.sourceProposedPlan }
+            : {}),
+          ...(original?.reviewTarget !== undefined ? { reviewTarget: original.reviewTarget } : {}),
+          ...(original?.assistantDeliveryMode !== undefined
+            ? { assistantDeliveryMode: original.assistantDeliveryMode }
+            : {}),
+          dispatchMode: "queue",
+          dispatchOrigin: original?.dispatchOrigin ?? message?.dispatchOrigin ?? "user",
+          runtimeMode: thread.runtimeMode,
+          interactionMode: thread.interactionMode,
+          createdAt: event.payload.createdAt,
+        })
+        .pipe(Effect.catchTag("OrchestrationCommandIdentityCollisionError", () => Effect.void));
+      return;
+    }
+    const createdAt = event.payload.createdAt;
+    const providerName = thread.session?.providerName ?? thread.modelSelection.provider;
+    const turnStartSession = deriveTurnStartSession({
+      threadId,
+      currentSession: thread.session,
+      providerName,
+      providerInstanceId:
+        thread.session?.providerInstanceId ?? thread.modelSelection.instanceId ?? providerName,
+      requestedRuntimeMode: thread.runtimeMode,
+      requestedAt: createdAt,
+    });
+    if (turnStartSession !== null) {
+      yield* setThreadSession({
+        threadId,
+        session: turnStartSession,
+        pendingResumeMessageId: messageId,
+        createdAt,
+      });
+    }
+    yield* dispatchTurnForThread({
+      threadId,
+      sourceEventSequence: event.sequence,
+      messageId,
+      messageText: event.payload.resumePrompt ?? TURN_RESUME_INPUT,
+      dispatchOrigin: "user",
+      runtimeMode: thread.runtimeMode,
+      interactionMode: thread.interactionMode,
+      dispatchMode: "queue",
+      // No chat message: same transcript and skill handling as a goal turn.
+      turnKind: "goal-continuation",
+      createdAt,
+    }).pipe(
+      Effect.catchCause((cause) => {
+        if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
+        const outcome = classifyProviderAttemptOutcome(Exit.failCause(cause));
+        if (outcome._tag === "safe_retry") return Effect.failCause(cause);
+        const detail = Cause.pretty(cause);
+        const session = turnStartSession ?? thread.session;
+        // Reporting is best-effort. Keep the original failure for the durable delivery worker.
+        return appendProviderFailureActivity({
+          threadId,
+          kind: "provider.turn.start.failed",
+          summary: "Resume failed",
+          detail,
+          turnId: null,
+          createdAt,
+          ...(outcome._tag === "uncertain" ? { settlementStatus: "uncertain" } : {}),
+        }).pipe(
+          Effect.ignore,
+          Effect.andThen(
+            session?.status === "starting"
+              ? setThreadSessionError({
+                  threadId,
+                  runtimeMode: thread.runtimeMode,
+                  expectedSession: session,
+                  detail,
+                  createdAt,
+                }).pipe(Effect.ignore)
+              : Effect.void,
+          ),
+          Effect.andThen(Effect.failCause(cause)),
+        );
+      }),
+    );
+  });
+
   const processGoalContinuationRequested = (
     event: Extract<ProviderIntentEvent, { type: "thread.goal-continuation-requested" }>,
   ) =>
@@ -6791,6 +7255,10 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         if (event.payload.usageLimitRecovery) {
           yield* processUsageLimitContinuation(event);
+          return;
+        }
+        if (event.payload.trigger === "manual-resume") {
+          yield* processManualResume(event);
           return;
         }
         // A soft-deleted thread reads as missing.
@@ -8382,8 +8850,31 @@ const make = Effect.gen(function* () {
       : undefined;
 
   type ProviderHandoffRequest = NonNullable<ReturnType<typeof readProviderHandoff>>;
-  const describeHandoffSelection = (selection: ModelSelection) =>
-    `${PROVIDER_DISPLAY_NAMES[selection.provider] ?? selection.provider} (${selection.model})`;
+  // "Claude (model)", or "Claude · Work (model)" when the handoff switches
+  // accounts of one provider: the provider alone would read the same on both
+  // sides. Mobile clients parse this summary, so keep its shape.
+  const describeHandoffEndpoints = Effect.fnUntraced(function* (input: ProviderHandoffRequest) {
+    const { sourceModelSelection: source, targetModelSelection: target } = input;
+    const settings =
+      source.provider === target.provider
+        ? yield* serverSettings.getSettings.pipe(Effect.catch(() => Effect.succeed(null)))
+        : null;
+    const describe = (selection: ModelSelection) => {
+      const providerName = PROVIDER_DISPLAY_NAMES[selection.provider] ?? selection.provider;
+      const accountName =
+        settings === null
+          ? undefined
+          : resolveProviderInstance(settings, {
+              instanceId: resolveModelSelectionInstanceId(selection),
+            })?.displayName;
+      const name =
+        accountName && !accountName.toLowerCase().includes(providerName.toLowerCase())
+          ? `${providerName} · ${accountName}`
+          : providerName;
+      return `${name} (${selection.model})`;
+    };
+    return { source: describe(source), target: describe(target) };
+  });
   const handoffPayload = (input: ProviderHandoffRequest) => ({
     sourceProvider: input.sourceModelSelection.provider,
     sourceModel: input.sourceModelSelection.model,
@@ -8437,6 +8928,7 @@ const make = Effect.gen(function* () {
         return changed ? Effect.succeed(false) : Effect.fail(error);
       }),
     );
+    const endpoints = yield* describeHandoffEndpoints(input);
     yield* persistHandoffOutcome({
       type: "thread.activity.append",
       commandId: CommandId.makeUnsafe(`server:provider-handoff-failed:${input.handoffKey}`),
@@ -8446,8 +8938,8 @@ const make = Effect.gen(function* () {
         tone: "error",
         kind: PROVIDER_HANDOFF_FAILED_ACTIVITY_KIND,
         summary: restoredSource
-          ? `Handoff to ${describeHandoffSelection(input.targetModelSelection)} failed; the thread stays on ${describeHandoffSelection(input.sourceModelSelection)}.`
-          : `Handoff to ${describeHandoffSelection(input.targetModelSelection)} failed.`,
+          ? `Handoff to ${endpoints.target} failed; the thread stays on ${endpoints.source}.`
+          : `Handoff to ${endpoints.target} failed.`,
         payload: {
           ...handoffPayload(input),
           detail,
@@ -8475,9 +8967,8 @@ const make = Effect.gen(function* () {
     // way to carry the conversation to the new provider.
     suppressContextBootstrapOnNextStartThreadIds.delete(input.threadId);
     const cachedProviderOptions = threadProviderOptions.get(input.threadId);
-    // The source's native continuation (e.g. a Codex resume cursor) is
-    // protected: ProviderService refuses another provider on the thread until
-    // the handoff explicitly abandons it. This also stops the source runtime.
+    const accountHandoff =
+      input.sourceModelSelection.provider === input.targetModelSelection.provider;
     let sourceContinuationReset = false;
     let blockedByBackgroundTasks = false;
     const startOutcome = yield* runBoundedProviderCall({
@@ -8513,13 +9004,27 @@ const make = Effect.gen(function* () {
             issue: "Finish or stop this thread's background tasks before handing it off.",
           });
         }
-        yield* providerService.clearSessionResumeCursor
-          ? providerService.clearSessionResumeCursor({ threadId: input.threadId })
-          : providerService.stopSession({ threadId: input.threadId });
-        sourceContinuationReset = true;
+        if (accountHandoff) {
+          if (!providerService.stopRuntimeSession || !providerService.startSessionWithOutcome) {
+            return yield* new ProviderAdapterValidationError({
+              provider: input.sourceModelSelection.provider,
+              operation: "thread.meta.update",
+              issue:
+                "This server cannot hand off between accounts while preserving the source session.",
+            });
+          }
+          // Keep the source binding usable until startup commits the target account.
+          yield* providerService.stopRuntimeSession({ threadId: input.threadId });
+        } else {
+          yield* providerService.clearSessionResumeCursor
+            ? providerService.clearSessionResumeCursor({ threadId: input.threadId })
+            : providerService.stopSession({ threadId: input.threadId });
+          sourceContinuationReset = true;
+        }
         yield* ensureSessionForThread(input.threadId, input.occurredAt, {
           modelSelection: input.targetModelSelection,
           registerPriorTranscriptBootstrapOnFreshStart: true,
+          providerHandoff: true,
           ...(cachedProviderOptions !== undefined
             ? { providerOptions: cachedProviderOptions }
             : {}),
@@ -8543,6 +9048,7 @@ const make = Effect.gen(function* () {
     if (startFailure === null) {
       threadSessionModelSelections.set(input.threadId, input.targetModelSelection);
       providerHandoffContextThreadIds.add(input.threadId);
+      const endpoints = yield* describeHandoffEndpoints(input);
       // Same metadata a new-thread handoff carries, so surfaces that already
       // show "handed off from <provider>" (the sidebar avatar pair) show it here.
       // "completed": the context travels through the prior-transcript bootstrap.
@@ -8565,7 +9071,7 @@ const make = Effect.gen(function* () {
           id: EventId.makeUnsafe(`provider-handoff:${input.handoffKey}`),
           tone: "info",
           kind: PROVIDER_HANDOFF_ACTIVITY_KIND,
-          summary: `Handed off from ${describeHandoffSelection(input.sourceModelSelection)} to ${describeHandoffSelection(input.targetModelSelection)}`,
+          summary: `Handed off from ${endpoints.source} to ${endpoints.target}`,
           payload: {
             ...handoffPayload(input),
             contextText,
@@ -8693,19 +9199,22 @@ const make = Effect.gen(function* () {
         createdAt,
       });
     }
+    const manualResume = event.payload.trigger === "manual-resume";
     yield* appendProviderFailureActivity({
       threadId: event.payload.threadId,
       kind: "provider.turn.start.failed",
-      summary: "Goal continuation timed out",
+      summary: manualResume ? "Resume timed out" : "Goal continuation timed out",
       detail,
       turnId: null,
       createdAt,
       settlementStatus: "uncertain",
     });
-    yield* pauseActiveThreadGoal({
-      threadId: event.payload.threadId,
-      expectedGoalStartedAt: event.payload.goalStartedAt,
-    });
+    if (!manualResume) {
+      yield* pauseActiveThreadGoal({
+        threadId: event.payload.threadId,
+        expectedGoalStartedAt: event.payload.goalStartedAt,
+      });
+    }
   });
 
   const processDomainEvent = (event: ProviderIntentEvent) =>
@@ -11255,6 +11764,8 @@ export const makeProviderCommandReactorLive = (options?: ProviderCommandReactorL
   const preTurnBaselineTimeout =
     options?.preTurnBaselineTimeout ?? Duration.millis(resolvePreTurnBaselineTimeoutMs());
   const cacheResponseTimeout = options?.cacheResponseTimeout ?? PROVIDER_CACHE_RESPONSE_TIMEOUT;
+  const usageLimitBindingReadTimeout =
+    options?.usageLimitBindingReadTimeout ?? USAGE_LIMIT_BINDING_READ_TIMEOUT;
   const gatewayOperationCompletionWaitTimeout =
     options?.gatewayOperationCompletionWaitTimeout ?? GATEWAY_OPERATION_COMPLETION_WAIT_TIMEOUT;
   const gatewayOperationCompletionNegativeCacheTtl =
@@ -11263,6 +11774,7 @@ export const makeProviderCommandReactorLive = (options?: ProviderCommandReactorL
   for (const [name, duration] of Object.entries({
     preTurnBaselineTimeout,
     cacheResponseTimeout,
+    usageLimitBindingReadTimeout,
     gatewayOperationCompletionWaitTimeout,
     gatewayOperationCompletionNegativeCacheTtl,
   })) {
@@ -11274,11 +11786,13 @@ export const makeProviderCommandReactorLive = (options?: ProviderCommandReactorL
   return Layer.effect(ProviderCommandReactor, make).pipe(
     Layer.provide(ProjectionThreadActivityRepositoryLive),
     Layer.provide(ProjectionThreadMessageRepositoryLive),
+    Layer.provideMerge(ProjectionTurnRepositoryLive),
     Layer.provide(
       Layer.succeed(ProviderCommandReactorConfig, {
         commandEventTimeout: options?.commandEventTimeout ?? PROVIDER_COMMAND_EVENT_TIMEOUT,
         preTurnBaselineTimeout,
         cacheResponseTimeout,
+        usageLimitBindingReadTimeout,
         gatewayOperationCompletionWaitTimeout,
         gatewayOperationCompletionNegativeCacheTtl,
       }),

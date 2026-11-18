@@ -708,6 +708,16 @@ function stableActivityState(activity: {
   };
 }
 
+// A stable activity keeps its first createdAt so its row stays anchored; the
+// payload carries when this update was observed so live rows can report recent
+// activity and elapsed time from the latest update, not the first.
+function withLastActivityAt(
+  payload: OrchestrationThreadActivity["payload"],
+  lastActivityAt: string,
+): OrchestrationThreadActivity["payload"] {
+  return isJsonObject(payload) ? { ...payload, lastActivityAt } : payload;
+}
+
 /**
  * Resolves persisted image tool records to their durable display paths. Studio
  * copies add a source -> workspace-path marker; non-Studio images keep the
@@ -1279,6 +1289,7 @@ const make = Effect.gen(function* () {
       event.payload.itemType === "reasoning";
     const hasStableActivity =
       isStreamingReasoning || providerRuntimeCommandProgressKey(event) !== undefined;
+    let updatedAt: string | undefined;
     if (hasStableActivity) {
       const cached = Option.getOrUndefined(yield* Cache.getOption(stableActivityById, activity.id));
       const durable = cached
@@ -1300,6 +1311,7 @@ const make = Effect.gen(function* () {
             asObject(activity.payload)?.status !== "completed")
         )
           return;
+        updatedAt = activity.createdAt;
         activity = { ...activity, createdAt: previous.createdAt, sequence: previous.sequence };
       }
     }
@@ -1310,6 +1322,10 @@ const make = Effect.gen(function* () {
       if (Option.isSome(previous) && previous.value === fingerprint) {
         return;
       }
+    }
+    // Stamped after the fingerprint: a repeated identical snapshot stays a duplicate.
+    if (updatedAt !== undefined) {
+      activity = { ...activity, payload: withLastActivityAt(activity.payload, updatedAt) };
     }
 
     yield* orchestrationEngine.dispatch({
@@ -3243,6 +3259,14 @@ const make = Effect.gen(function* () {
                 Effect.provideService(ServerSettingsService, recoverySettings.value),
                 Effect.provideService(ServerConfig, serverConfig),
                 Effect.timeoutOption("8 seconds"),
+                Effect.tap((result) =>
+                  Option.isNone(result)
+                    ? Effect.logWarning(
+                        "usage-limit recovery unavailable: provider account binding timed out",
+                        { threadId: thread.id, turnId: eventTurnId, provider: event.provider },
+                      )
+                    : Effect.void,
+                ),
                 Effect.map((result) => Option.getOrNull(result)),
                 Effect.catch(() => Effect.succeed(null)),
               );

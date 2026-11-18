@@ -64,9 +64,7 @@ export function useSettingsRestoreDefaults({
     ...(settings.showEnvironmentActions !== defaults.showEnvironmentActions
       ? ["workspace:actions"]
       : []),
-    ...(settings.showHeaderHandoff !== defaults.showHeaderHandoff
-      ? ["common:header_handOff"]
-      : []),
+    ...(settings.showHeaderHandoff !== defaults.showHeaderHandoff ? ["common:header_handOff"] : []),
     ...(settings.showHeaderActions !== defaults.showHeaderActions
       ? ["workspace:projectActions"]
       : []),
@@ -149,6 +147,9 @@ export function useSettingsRestoreDefaults({
       : []),
     ...(settings.composerEffortSlider !== defaults.composerEffortSlider
       ? ["settings:effortSlider"]
+      : []),
+    ...(settings.showComposerSuggestions !== defaults.showComposerSuggestions
+      ? ["settings:showSuggestions"]
       : []),
     ...(settings.showRateLimitWarnings !== defaults.showRateLimitWarnings
       ? ["settings:rateLimitWarnings"]

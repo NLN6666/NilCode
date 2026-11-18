@@ -92,6 +92,10 @@ describe("ComputerSettingsPanel", () => {
     expect(markup).toContain('id="setting-computer-control"');
     expect(buttonCount(markup)).toBe(buttonCount(render({})));
     expect(markup).not.toContain('role="alert"');
+    expect(markup).toContain("Connected to the desktop");
+    expect(markup).not.toContain("Set up");
+    expect(markup).not.toContain("Refresh");
+    expect(markup).not.toContain("Background typing is limited");
   });
 
   it("asks to check access while nothing has confirmed the grants", () => {

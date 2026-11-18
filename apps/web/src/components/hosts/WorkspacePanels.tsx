@@ -43,6 +43,7 @@ import { resolveNewChatDefault, useAppSettings } from "../../appSettings";
 import { useTranslation } from "~/i18n";
 import { ensureNativeApi } from "../../nativeApi";
 import { createOrRecoverProjectFromPath } from "../../lib/projectCreation";
+import { deleteProjectFromClient } from "../../lib/projectDelete";
 import { readExecutionContext } from "../../lib/hosts/executionContext";
 import { createWorkspaceResourceRequester } from "../../lib/hosts/workspaceResources";
 import { useHandleNewThread } from "../../hooks/useHandleNewThread";
@@ -59,6 +60,7 @@ import { dispatchThreadRename } from "../../lib/threadRename";
 import { newCommandId } from "../../lib/utils";
 import { useStore } from "../../store";
 import { useComposerDraftStore } from "../../composerDraftStore";
+import { composerThreadDraftIsPending } from "../../composerDraftDomain";
 import { rawSocketUrl } from "../../wsTransport";
 import { readDesktopZoomFactor, subscribeDesktopZoomFactor } from "../../lib/desktopZoom";
 import { readDesktopWindowTranslucency } from "../../lib/desktopWindowTranslucency";
@@ -84,12 +86,23 @@ import {
   type WorkspaceSession,
 } from "../../lib/hosts/workspaceSessions";
 import { recoverBeforeLocalEscape } from "../../lib/hosts/executionSwitch";
+import { reconnectWorkspaceComputer } from "../../lib/hosts/workspaceReconnect";
 import { isHomeChatContainerProject } from "../../lib/chatProjects";
 import { isGroupContainerProject } from "../../lib/groupProjects";
 import { useWorkspacePathsStore } from "../../workspacePathsStore";
 import { useTerminalStateStore } from "../../terminalStateStore";
 import { useSidebar } from "../ui/sidebar";
 import { modelPickerShortcutRowIndex } from "../chat/ComposerModelPicker.logic";
+
+function hasUnsentProjectDraft(projectId: ProjectId): boolean {
+  const drafts = useComposerDraftStore.getState();
+  return Object.entries(drafts.draftThreadsByThreadId).some(([threadId, thread]) => {
+    const draft = drafts.draftsByThreadId[ThreadId.makeUnsafe(threadId)];
+    return (
+      thread.projectId === projectId && draft !== undefined && composerThreadDraftIsPending(draft)
+    );
+  });
+}
 
 function selection(
   href = appHistory.location.href,
@@ -223,6 +236,7 @@ function WorkspacePanel({
           sessions: readWorkspaceSessions,
           subscribe: subscribeWorkspaceSessions,
           newChat: newLocalChat,
+          reconnect: reconnectWorkspaceComputer,
           createProject: () => window.dispatchEvent(new Event(OPEN_CREATE_PROJECT_EVENT)),
           prepareAutomation: prepareWorkspaceAutomation,
           navigate: (path) => {
@@ -369,10 +383,11 @@ export function WorkspacePanels() {
     ...connectionsQueryOptions(),
     enabled: controller && account.data?.state === "signed-in",
   });
+  // A successful poll can advance frame retries even when React Query reuses the payload.
   useEffect(() => {
     if (controller && account.data && connections.data)
       restoreConnectedWorkspaces(connections.data, account.data);
-  }, [controller, account.data, connections.data]);
+  }, [controller, account.data, connections.data, connections.dataUpdatedAt]);
   const { handleNewChat } = useHandleNewChat();
   const localChatRef = useRef(handleNewChat);
   localChatRef.current = handleNewChat;
@@ -389,7 +404,11 @@ export function WorkspacePanels() {
     const environmentId = session.host.executionScope.environmentId;
     return (
       <WorkspacePanel
-        key={JSON.stringify([session.host.hostId, session.host.executionScope])}
+        key={JSON.stringify([
+          session.host.hostId,
+          session.host.executionScope,
+          session.frameGeneration ?? 0,
+        ])}
         session={session}
         newLocalChat={newLocalChat}
         active={selected?.environmentId === environmentId}
@@ -612,6 +631,37 @@ export function WorkspaceFrameNavigation() {
         renameProject: (projectId, name) => projectExists(projectId).renameProject(projectId, name),
         setProjectPinned: (projectId, isPinned) =>
           projectExists(projectId).setProjectPinned(projectId, isPinned),
+        removeEmptyProject: async (projectId) => {
+          if (!available())
+            throw new Error(
+              "This computer is no longer available. Reconnect before making changes.",
+            );
+          const store = useStore.getState();
+          if (
+            !store.projects.some(
+              (project) => project.id === projectId && project.kind === "project",
+            )
+          )
+            throw new Error("This project is no longer available on this computer.");
+          if (
+            Object.values(store.sidebarThreadSummaryById).some(
+              (thread) => thread.projectId === projectId,
+            ) ||
+            hasUnsentProjectDraft(projectId)
+          )
+            throw new Error("Only projects without chats or unsent drafts can be removed.");
+
+          // The owner server rechecks persisted chats, including any created
+          // while the confirmation was open. Never cascade thread deletion.
+          await deleteProjectFromClient({
+            api: ensureNativeApi().orchestration,
+            projectId,
+            removeDeletedProjectFromClientState: store.removeDeletedProjectFromClientState,
+          });
+          if (!hasUnsentProjectDraft(projectId)) {
+            useComposerDraftStore.getState().clearProjectDraftThreads(projectId);
+          }
+        },
       },
       navigate: (next) => {
         if (isWorkspacePath(next) && next !== appHistory.location.href) appHistory.replace(next);
@@ -679,7 +729,9 @@ export function WorkspaceFrameNavigation() {
   }, [frame, hydrated]);
   useEffect(() => {
     if (!frame || !hydrated) return;
-    const threads = Object.values(shell ?? {})
+    const allThreads = Object.values(shell ?? {});
+    const projectsWithThreads = new Set(allThreads.map((thread) => thread.projectId));
+    const threads = allThreads
       .filter((thread) => !thread.archivedAt)
       // oxlint-disable-next-line no-map-spread -- Preserve the owner store's immutable summaries.
       .map((thread) => ({
@@ -711,6 +763,7 @@ export function WorkspaceFrameNavigation() {
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,
         isPinned: pinnedProjectIds.includes(project.id),
+        hasThreads: projectsWithThreads.has(project.id),
         section: isHomeChatContainerProject(project, paths)
           ? "chats"
           : isGroupContainerProject(project, paths)

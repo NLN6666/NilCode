@@ -462,5 +462,16 @@
   "branch_removeLockAndRetry": "移除锁并重试",
   "branch_retryStashSwitch": "重试暂存并切换",
   "branch_stashAndSwitch": "暂存并切换",
-  "closeSourceControl": "关闭源代码管理"
+  "closeSourceControl": "关闭源代码管理",
+  "openPullRequestNumber": "打开拉取请求 #{{number}}",
+  "pullRequestCount_one": "{{count}} 个拉取请求",
+  "pullRequestCount_other": "{{count}} 个拉取请求",
+  "prDialog_linkTitle": "关联拉取请求",
+  "prDialog_linkDescription": "将 GitHub 拉取请求关联到此会话。不会切换分支，也不会修改拉取请求。",
+  "prDialog_link": "关联",
+  "prDialog_linking": "正在关联…",
+  "prDialog_linkFailed": "无法关联拉取请求。",
+  "linkPullRequest": "关联拉取请求…",
+  "unlinkPullRequest": "从此会话解除关联",
+  "unlinkPullRequestFailed": "无法解除拉取请求关联"
 }

@@ -4878,6 +4878,7 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
           readonly experimentalWebSockets?: boolean;
           readonly environment?: Readonly<Record<string, string>>;
           readonly reuseAnyActiveContext?: boolean;
+          readonly poolIsolationKey?: string;
         },
         fn: (input: {
           readonly client: OpencodeClient;
@@ -4939,6 +4940,7 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
                   ...(serverUrl ? { serverUrl } : {}),
                   ...(input.environment !== undefined ? { environment: input.environment } : {}),
                   ...(input.experimentalWebSockets ? { experimentalWebSockets: true } : {}),
+                  ...(input.poolIsolationKey ? { poolIsolationKey: input.poolIsolationKey } : {}),
                 })
                 .pipe(Effect.mapError(toAdapterRequestError));
               const clientServerPassword = serverPasswordForOpenCodeClient(server, serverPassword);
@@ -4962,6 +4964,7 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
           readonly serverPassword?: string | null;
           readonly experimentalWebSockets?: boolean;
           readonly environment?: Readonly<Record<string, string>>;
+          readonly poolIsolationKey?: string;
         },
         fn: (input: {
           readonly client: OpencodeClient;
@@ -4972,7 +4975,7 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
         withDiscoveryClient(
           {
             ...input,
-            reuseAnyActiveContext: true,
+            reuseAnyActiveContext: input.poolIsolationKey === undefined,
           },
           ({ activeContext, client }) =>
             Effect.gen(function* () {
@@ -5032,6 +5035,11 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
                 ? { experimentalWebSockets: input.experimentalWebSockets }
                 : {}),
               ...(input.environment !== undefined ? { environment: input.environment } : {}),
+              // A running session can retain the previous model catalog. Read
+              // this revision from a discovery-only server on a cache miss.
+              ...(input.localConfigRevision !== undefined
+                ? { poolIsolationKey: `model-catalog:${input.localConfigRevision}` }
+                : {}),
             },
             ({ inventory, credentialProviderIDs }) =>
               Effect.succeed({

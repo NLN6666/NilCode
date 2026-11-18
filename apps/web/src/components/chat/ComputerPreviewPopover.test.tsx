@@ -212,6 +212,8 @@ describe("ComputerPreviewPopover", () => {
     // Compact is the default footprint: small and glanceable.
     expect(markup).toContain("width:288px");
     expect(controlLabels(markup)).toHaveLength(2);
+    expect(markup).not.toContain("Open the Computer pane");
+    expect(markup).toContain("Hide the computer preview for the rest of this task");
   });
 
   it("renders a live session closed until the first frame arrives", () => {

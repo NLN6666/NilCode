@@ -272,7 +272,13 @@ export function ExternalMcpSettingsPanel(props: { active: boolean }) {
             id="setting-access-all-of-synara"
             title="settings:accessAllOfSynara"
             description="settings:theAgentCanDiscoverAndWorkInEveryProject"
-            control={<Switch checked={allProjects} onCheckedChange={setAllProjects} />}
+            control={
+              <Switch
+                checked={allProjects}
+                onCheckedChange={setAllProjects}
+                aria-label={t("settings:accessAllOfSynara")}
+              />
+            }
           >
             <DisclosureRegion open={!allProjects} contentClassName="mt-3">
               <div className="grid gap-2 sm:grid-cols-2">
@@ -339,7 +345,11 @@ export function ExternalMcpSettingsPanel(props: { active: boolean }) {
                     {t("settings:withoutThisPermissionTheAgentCanReadOnlyTasks")}
                   </div>
                 </div>
-                <Switch checked={allowProjectRead} onCheckedChange={setAllowProjectRead} />
+                <Switch
+                  checked={allowProjectRead}
+                  onCheckedChange={setAllowProjectRead}
+                  aria-label={t("settings:readOtherProjectTasks")}
+                />
               </div>
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -350,7 +360,11 @@ export function ExternalMcpSettingsPanel(props: { active: boolean }) {
                     {t("settings:highImpactTasksMayModifyTheCheckoutYouAre")}
                   </div>
                 </div>
-                <Switch checked={allowLocal} onCheckedChange={setAllowLocal} />
+                <Switch
+                  checked={allowLocal}
+                  onCheckedChange={setAllowLocal}
+                  aria-label={t("settings:useTheSharedLocalCheckout")}
+                />
               </div>
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -361,7 +375,11 @@ export function ExternalMcpSettingsPanel(props: { active: boolean }) {
                     {t("settings:highImpactTheExternalAgentMayStartFullAccess")}
                   </div>
                 </div>
-                <Switch checked={allowFullAccess} onCheckedChange={setAllowFullAccess} />
+                <Switch
+                  checked={allowFullAccess}
+                  onCheckedChange={setAllowFullAccess}
+                  aria-label={t("settings:runWithoutApprovalPrompts")}
+                />
               </div>
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -370,7 +388,11 @@ export function ExternalMcpSettingsPanel(props: { active: boolean }) {
                     {t("settings:highImpactTasksMayDriveThisMacSScreen")}
                   </div>
                 </div>
-                <Switch checked={allowComputerControl} onCheckedChange={setAllowComputerControl} />
+                <Switch
+                  checked={allowComputerControl}
+                  onCheckedChange={setAllowComputerControl}
+                  aria-label={t("settings:computerControl")}
+                />
               </div>
             </DisclosureRegion>
           </SettingsRow>

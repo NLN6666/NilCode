@@ -1058,6 +1058,7 @@ export class WsTransport {
   private clientPromise: Promise<RpcClientInstance>;
   private reconnectPromise: Promise<RpcClientInstance> | null = null;
   private reconnectFailures = 0;
+  private readonly backendReady: Promise<void> | null;
   private remoteRecoveryVersion = 0;
   private remoteConnectionPause: {
     readonly error: unknown;
@@ -1110,6 +1111,12 @@ export class WsTransport {
       ? "remote"
       : "local";
     this.protocolOpenTimeoutMs = options?.protocolOpenTimeoutMs;
+    // The desktop opens its window before its backend listens. Connecting
+    // earlier only fails and then waits out a backoff step.
+    this.backendReady =
+      url === undefined
+        ? (window.desktopBridge?.whenBackendReady?.().catch(() => undefined) ?? null)
+        : null;
     this.clientPromise = this.createSession().clientPromise;
     void this.clientPromise.catch((error) => {
       if (this.disposed || isTerminalConnectionFailure(error)) return;
@@ -1639,8 +1646,8 @@ export class WsTransport {
     this.disposed = true;
     this.unaryRequestQueue.close(new Error("Transport disposed"));
     this.clearRecoveryEscalationTimer();
-    // Abort before anything else: a pending negotiate must fail now rather
-    // than resolve later and build a runtime this teardown will not see.
+    // Abort pending startup waits and negotiation before either can create
+    // a runtime this teardown will not see.
     this.lifetime.abort(new Error("Transport disposed"));
     this.setState("disposed");
     this.resetAllStreamCapacityRetries();
@@ -1747,6 +1754,10 @@ export class WsTransport {
     const cachedCompatibility = this.compatibility?.remoteAttachmentId ? null : this.compatibility;
     const featureSession: FeatureSession = { id: ++this.featureSessionCounter, failed: false };
     const clientPromise = (async () => {
+      if (this.backendReady) {
+        await awaitWithAbort(this.backendReady, this.lifetime.signal);
+        if (this.disposed) throw new Error("Transport disposed");
+      }
       const compatibility = cachedCompatibility ?? (await this.negotiateCompatibility());
       if (this.disposed || this.sessionVersion !== sessionVersion) {
         throw new Error("WebSocket session superseded during compatibility negotiation.");
@@ -2053,6 +2064,9 @@ export class WsTransport {
 
   private noteFeatureSessionAdopted(): void {
     this.clearRecoveryEscalationTimer();
+    // "tripped" is the recovery breaker's terminal phase: only a new transport leaves it.
+    // Enforced here, not only by callers, so no adoption path can revive a tripped one.
+    if (this.recovery.phase === "tripped") return;
     if (this.recovery.phase !== "ready") {
       this.recovery.phase = "ready";
       this.recovery.episodeRef = null;

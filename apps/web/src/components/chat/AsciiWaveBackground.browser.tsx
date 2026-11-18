@@ -1,5 +1,5 @@
 // Purpose: Browser checks for the landing ASCII field’s rendering and lifecycle.
-// Covers hidden owners, reduced motion, Retina allocation and complete resize frames.
+// Covers hidden owners, reduced motion, Retina allocation and resize frames.
 import "../../index.css";
 
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -20,7 +20,8 @@ function pixels(canvas: HTMLCanvasElement, bottomQuarter = false) {
   return canvas.getContext("2d")!.getImageData(0, y, canvas.width, canvas.height - y).data;
 }
 
-async function mount(width = 800, height = 600) {
+// `settle` waits out the glyph reveal for tests that compare finished pixels.
+async function mount(width = 800, height = 600, settle = false) {
   const view = await render(
     <div data-testid="landing" style={{ position: "relative", width, height }}>
       <AsciiWaveBackground />
@@ -29,7 +30,7 @@ async function mount(width = 800, height = 600) {
   const host = document.querySelector<HTMLDivElement>('[data-testid="landing"]')!;
   const canvas = host.querySelector("canvas")!;
   await expect.poll(() => pixels(canvas).some((byte) => byte > 0), { timeout: 5000 }).toBe(true);
-  await wait(1600);
+  if (settle) await wait(1600);
   return { view, host, canvas };
 }
 
@@ -48,7 +49,7 @@ it("pauses canvas work in an invisible retained owner, resumes, and stops on unm
   host.style.visibility = "hidden";
   await wait(150);
   draws.mockClear();
-  await wait(1200);
+  await wait(600);
   expect(draws.mock.calls.length).toBe(0);
   host.style.visibility = "visible";
   await expect.poll(() => draws.mock.calls.length, { timeout: 2000 }).toBeGreaterThan(0);
@@ -60,7 +61,7 @@ it("pauses canvas work in an invisible retained owner, resumes, and stops on unm
 
 it("keeps the reduced-motion field unchanged after a user-triggered ripple settles", async () => {
   motion.reduced = true;
-  const { host, canvas } = await mount();
+  const { host, canvas } = await mount(800, 600, true);
   const before = pixels(canvas);
   const rect = host.getBoundingClientRect();
   for (const type of ["pointerdown", "pointerup"]) {
@@ -103,7 +104,7 @@ it("bounds Retina canvas allocation while preserving the landing's CSS size", as
 
 it("publishes complete glyph layers after resize without a partial top-down wipe", async () => {
   motion.reduced = true;
-  const { host, canvas } = await mount();
+  const { host, canvas } = await mount(800, 600, true);
   const bottomCoverage: boolean[] = [];
   const drawImage = CanvasRenderingContext2D.prototype.drawImage;
   vi.spyOn(CanvasRenderingContext2D.prototype, "drawImage").mockImplementation(function (

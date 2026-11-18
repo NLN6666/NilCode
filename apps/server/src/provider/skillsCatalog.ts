@@ -262,6 +262,8 @@ export interface SkillsCatalogDiscoveryInput {
   /** Optional workspace cwd; when present, project-level skill folders are included. */
   readonly cwd?: string | null;
   readonly homeDir: string;
+  /** Active Claude profile; replaces only the Claude home origin. */
+  readonly claudeConfigDir?: string | undefined;
   /** Synara base dir (usually `~/.synara`); skills live in `{base}/skills`. */
   readonly synaraBaseDir: string;
   /**
@@ -276,6 +278,8 @@ export interface SkillsCatalogDiscoveryInput {
   readonly forceReload?: boolean;
   /** Provider-configured agent dir (pi/omp) — overrides the default profile root. */
   readonly agentDir?: string | null;
+  /** Only callers that can deliver non-native skill references opt into portable fallback. */
+  readonly includePortableFallback?: boolean;
 }
 
 export interface SkillsCatalogRootInput extends SkillsCatalogDiscoveryInput {
@@ -339,7 +343,9 @@ const SKILL_ORIGIN_ROOTS = {
     projectRootNames: [".codex"],
   },
   claude: {
-    homeRoots: (input) => [nodePath.join(input.homeDir, ".claude", "skills")],
+    homeRoots: (input) => [
+      nodePath.join(input.claudeConfigDir ?? nodePath.join(input.homeDir, ".claude"), "skills"),
+    ],
     projectRootNames: [".claude"],
   },
   cursor: {
@@ -408,10 +414,8 @@ function projectRootNamesForOrigin(origin: SkillHomeOrigin): readonly string[] {
 /**
  * Origins to walk, native folders first so an agent keeps using its own copy of a skill.
  *
- * A provider-scoped scan stops at the folders that provider genuinely reads. It must not
- * fall back to "and every other provider's folder too": offering a Codex session a skill
- * out of `~/.claude/skills` mentions something Codex will never load, and the mention then
- * fails at turn time rather than in the picker.
+ * Native scans stop at the folders the provider genuinely reads. A caller that can
+ * attach or inline portable skills can extend this order without changing native lookup.
  *
  * Without a provider this returns every origin — the machine-wide view Settings needs to
  * list what exists on disk regardless of who can load it.
@@ -436,6 +440,11 @@ function rootsForOrderedOrigins(
     ),
   );
   const homeRootPaths = new Set(homeRoots.map((root) => nodePath.resolve(root.path)));
+  // A profile override replaces the default Claude home even if its path is
+  // seen again while walking the project ancestors.
+  if (input.claudeConfigDir) {
+    homeRootPaths.add(nodePath.resolve(input.homeDir, ".claude", "skills"));
+  }
 
   const projectRoots: SkillRoot[] = [];
   const cwd = input.cwd?.trim();
@@ -470,10 +479,13 @@ function rootsForOrderedOrigins(
 }
 
 export function skillsCatalogRoots(input: SkillsCatalogRootInput): SkillRoot[] {
-  return rootsForOrderedOrigins(
-    input,
-    orderedOriginsForProvider(input.provider, input.includeSynaraRoot !== false),
-  );
+  const ordered = orderedOriginsForProvider(input.provider, input.includeSynaraRoot !== false);
+  if (input.provider && input.includePortableFallback) {
+    for (const origin of SKILL_HOME_ORIGIN_ORDER) {
+      if (origin !== "synara" && !ordered.includes(origin)) ordered.push(origin);
+    }
+  }
+  return rootsForOrderedOrigins(input, ordered);
 }
 
 /**
@@ -495,9 +507,11 @@ export async function discoverSkillsCatalog(
     input.cwd?.trim() ?? "",
     input.provider ?? "",
     input.homeDir,
+    input.claudeConfigDir ?? "",
     input.synaraBaseDir,
     input.agentDir?.trim() ?? "",
     input.includeDuplicateOrigins ? "all-origins" : "deduped",
+    input.includePortableFallback ? "portable" : "native",
   ].join("\u0000");
 
   if (!input.forceReload) {
@@ -518,6 +532,7 @@ export async function discoverSkillsCatalog(
       ...skillsCatalogRoots(input),
       ...(await discoverClaudePluginSkillRoots({
         homeDir: input.homeDir,
+        ...(input.claudeConfigDir ? { claudeConfigDir: input.claudeConfigDir } : {}),
         ...(input.cwd ? { cwd: input.cwd } : {}),
       })),
     ];

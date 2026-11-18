@@ -24,6 +24,7 @@ import "katex/dist/katex.min.css";
 import { matchWikiLinkAt, remarkWikiLinks } from "../lib/remarkWikiLinks";
 import { remarkGithubAlerts, type GithubAlertKind } from "../lib/remarkGithubAlerts";
 import { remarkHtmlBreaks } from "../lib/remarkHtmlBreaks";
+import { MARKDOWN_IMAGE_ROW_CLASS_NAME, remarkImageRows } from "../lib/remarkImageRows";
 import React, {
   Children,
   createContext,
@@ -51,7 +52,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { copyTextToClipboard } from "../hooks/useCopyToClipboard";
+import { copyTextToClipboard, useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffRendering";
 import { dedentCode, parseCodeFenceInfo, type CodeFenceInfo } from "../lib/codeFence";
 import { findHexColorMatches } from "../lib/colorSwatch";
@@ -64,8 +65,13 @@ import {
 import { MAX_SYNTAX_HIGHLIGHT_INPUT_CHARS } from "../lib/syntaxHighlightingLimits";
 import { getFileIconName, pathLooksLikeKnownFile } from "../file-icons";
 import { CentralIcon } from "~/lib/central-icons";
-import { isLocalImageMarkdownSrc, normalizeMarkdownImagePath } from "../lib/localImageUrls";
+import {
+  isLocalImageMarkdownSrc,
+  isLocalVideoMarkdownSrc,
+  normalizeMarkdownImagePath,
+} from "../lib/localImageUrls";
 import { repairMarkdownTableDelimiters } from "../lib/markdownTableRepair";
+import { extractTableMarkdown, rehypeTableLayout } from "../lib/markdownTableLayout";
 import { showFileReferenceContextMenu } from "../lib/fileReferenceContextMenu";
 import {
   ChatLinkActionsContext,
@@ -74,6 +80,7 @@ import {
 } from "../lib/linkContextMenu";
 import { useTheme } from "../hooks/useTheme";
 import { useSmoothStreamedText } from "../hooks/useSmoothStreamedText";
+import { useStableCallback } from "../hooks/useStableCallback";
 import { useStableValue } from "../hooks/useStableValue";
 import { useThrottledStreamingValue } from "../hooks/useThrottledStreamingValue";
 import { openWorkspaceFileReference, useWorkspaceFileOpener } from "../lib/workspaceFileOpener";
@@ -87,6 +94,7 @@ import {
 } from "../markdown-links";
 import type { ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { GeneratedMarkdownImage } from "./chat/GeneratedMarkdownImage";
+import { GeneratedMarkdownVideo } from "./chat/GeneratedMarkdownVideo";
 import { TerminalContextInlineChip } from "./chat/TerminalContextInlineChip";
 import type { ParsedTerminalContextEntry } from "../lib/terminalContext";
 import { formatInlineTerminalContextLabel } from "./chat/userMessageTerminalContexts";
@@ -323,12 +331,13 @@ const MARKDOWN_REMARK_PLUGINS: MarkdownRemarkPlugins = [
   [remarkMath, { singleDollarTextMath: true }],
   remarkGithubAlerts,
   remarkHtmlBreaks,
+  remarkImageRows,
 ];
 // User prompts are casual typing, not authored markdown: hard-break single
 // newlines and skip math entirely (the composer chip plugin is appended per
 // render because it closes over the message's mention references).
 const USER_MARKDOWN_REMARK_PLUGINS: MarkdownRemarkPlugins = [remarkGfm, remarkBreaks];
-const USER_MARKDOWN_REHYPE_PLUGINS: MarkdownRehypePlugins = [];
+const USER_MARKDOWN_REHYPE_PLUGINS: MarkdownRehypePlugins = [rehypeTableLayout];
 const LITERAL_DOLLAR_PLACEHOLDER = "\uE000";
 // `\$` is two source characters that render as a single `$`. Collapsing it to one placeholder used
 // to shorten the protected string, which shifted every downstream source offset (find positions
@@ -387,6 +396,8 @@ function rehypeRestoreLiteralDollars() {
 }
 
 const MARKDOWN_REHYPE_PLUGINS: MarkdownRehypePlugins = [
+  // Classify literal dollars while leaving the math nodes and source offsets for KaTeX.
+  [rehypeTableLayout, restoreLiteralDollarPlaceholders],
   [rehypeKatex, { output: "htmlAndMathml", strict: false, throwOnError: false }],
   rehypeRestoreLiteralDollars,
 ];
@@ -474,6 +485,7 @@ const AUTHORED_HTML_SCHEMA = {
       ...(defaultSchema.attributes?.blockquote ?? []),
       ["dataGithubAlert", "note", "tip", "important", "warning", "caution"],
     ],
+    span: [...(defaultSchema.attributes?.span ?? []), ["className", MARKDOWN_IMAGE_ROW_CLASS_NAME]],
   },
   protocols: {
     ...defaultSchema.protocols,
@@ -1304,6 +1316,48 @@ function MarkdownCodeBlock({
   );
 }
 
+// Short columns keep their width and the table scrolls sideways only when they cannot all fit
+// (see lib/markdownTableLayout.ts). Copy puts the table's own Markdown on the clipboard.
+function MarkdownTable({
+  source,
+  children,
+  ...props
+}: React.ComponentProps<"table"> & {
+  source: { start: number; end: number; column: number } | null;
+}) {
+  const { t } = useTranslation();
+  const readSourceText = useContext(MarkdownSourceTextReaderContext);
+  const { copyToClipboard, isCopied } = useCopyToClipboard({ timeout: 1200 });
+  const copyLabel = isCopied ? t("chat:theme_copied") : t("chat:copyTable");
+  const handleCopy = () => {
+    if (!source) return;
+    const markdown = extractTableMarkdown(readSourceText(), source);
+    if (markdown) copyToClipboard(markdown);
+  };
+
+  return (
+    <div className="chat-markdown-table">
+      {source ? (
+        <div className="chat-markdown-table__actions">
+          <IconButton
+            className="chat-markdown-table__action"
+            onClick={handleCopy}
+            title={copyLabel}
+            label={copyLabel}
+            size="icon-xs"
+            variant="ghost"
+          >
+            {isCopied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+          </IconButton>
+        </div>
+      ) : null}
+      <div className="chat-markdown-table__scroll">
+        <table {...props}>{children}</table>
+      </div>
+    </div>
+  );
+}
+
 interface SuspenseShikiCodeBlockProps {
   language: string;
   code: string;
@@ -1458,6 +1512,8 @@ const MarkdownRenderContext = createContext<MarkdownRenderContextValue | null>(n
 // inline code read it, so it stays out of MarkdownRenderContext and the links,
 // images and chips of settled blocks do not re-render per token.
 const MarkdownSourceTextContext = createContext("");
+// Reads the same text on demand (a table's Copy), without re-rendering per token.
+const MarkdownSourceTextReaderContext = createContext<() => string>(() => "");
 
 // Stable component types preserve code highlighting timers, copy state and image state.
 const GITHUB_ALERTS: Record<GithubAlertKind, { titleKey: string; icon: LucideIcon }> = {
@@ -1606,6 +1662,19 @@ const MARKDOWN_COMPONENTS: Components = {
           {...(restoredHref ? { href: restoredHref } : {})}
         />
       </TechnicalBidiIsolate>
+    );
+  },
+  table: function MarkdownTableElement({ node, children, ...props }) {
+    const start = node?.position?.start;
+    const end = node?.position?.end;
+    const source =
+      start?.offset === undefined || end?.offset === undefined
+        ? null
+        : { start: start.offset, end: end.offset, column: start.column };
+    return (
+      <MarkdownTable source={source} {...props}>
+        {children}
+      </MarkdownTable>
     );
   },
   pre: function MarkdownPre({ node, children, ...props }) {
@@ -1761,6 +1830,18 @@ const MARKDOWN_COMPONENTS: Components = {
           threadId={threadId}
           attachmentId={attachmentId}
           onImageExpand={onImageExpand}
+          isLinked={isInsideLink}
+        />
+      );
+    }
+    // Local videos play inline; remote video URLs keep the plain <img> path.
+    if (isLocalVideoMarkdownSrc(restoredSrc)) {
+      return (
+        <GeneratedMarkdownVideo
+          src={restoredSrc}
+          alt={alt}
+          cwd={cwd}
+          threadId={threadId}
           isLinked={isInsideLink}
         />
       );
@@ -1967,6 +2048,7 @@ function ChatMarkdown({
   // Find ranges are empty without a query; keep the provider's value stable
   // then instead of recomputing it (and every text node) per streamed token.
   const findSourceText = normalizeFindQuery(findQuery).length > 0 ? sourceText : "";
+  const readSourceText = useStableCallback(() => sourceText);
   const composerChipsRemarkPlugin = useMemo(
     () =>
       isUserVariant
@@ -2056,13 +2138,15 @@ function ChatMarkdown({
         >
           <MarkdownRenderContext.Provider value={renderContext}>
             <MarkdownSourceTextContext.Provider value={sourceText}>
-              <ParsedMarkdown
-                text={renderedText}
-                splitBlocks={splitBlocks}
-                remarkPlugins={remarkPlugins}
-                rehypePlugins={rehypePlugins}
-                components={MARKDOWN_COMPONENTS}
-              />
+              <MarkdownSourceTextReaderContext.Provider value={readSourceText}>
+                <ParsedMarkdown
+                  text={renderedText}
+                  splitBlocks={splitBlocks}
+                  remarkPlugins={remarkPlugins}
+                  rehypePlugins={rehypePlugins}
+                  components={MARKDOWN_COMPONENTS}
+                />
+              </MarkdownSourceTextReaderContext.Provider>
             </MarkdownSourceTextContext.Provider>
           </MarkdownRenderContext.Provider>
         </ChatFindRenderProvider>

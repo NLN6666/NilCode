@@ -18,7 +18,12 @@ import {
 } from "./desktopPreferences";
 import { BackendIssueDetector } from "./backendIssueDetector";
 import { attachAppSubframeNavigationGuard } from "./subframeNavigationGuard";
-import { CuaDriverHost, sweepOrphanedCuaDrivers } from "./cuaDriverHost";
+import { CuaDriverHost, sweepOrphanedCuaDriversInBackground } from "./cuaDriverHost";
+import {
+  backendCompileCacheEnv,
+  pruneBackendCompileCaches,
+  resolveBackendCompileCacheDir,
+} from "./backendCompileCache";
 import { createLinuxCuaDriverHost } from "./linuxCuaDriverHost";
 import { LinuxEscapeKillSwitchMonitor, linuxEscapeSession } from "./linuxEscapeKillSwitchMonitor";
 import { ComputerFrameTap } from "./computerFrameTap";
@@ -773,7 +778,7 @@ function startBrowserPerformanceLogging(): void {
   browserPerfInterval.unref();
 }
 
-async function ensureBrowserHostPipeServer(): Promise<void> {
+async function ensureBrowserHostPipeServer(browserSessionReady?: Promise<void>): Promise<void> {
   if (browserHostPipeServer || !SYNARA_BROWSER_HOST_PIPE_PATH) {
     return;
   }
@@ -781,6 +786,7 @@ async function ensureBrowserHostPipeServer(): Promise<void> {
     vault: browserVault,
     vaultCapture: browserVaultCapture,
     capability: DESKTOP_BROWSER_HOST_CAPABILITY,
+    ...(browserSessionReady ? { browserSessionReady } : {}),
     requestOpenPanel: (threadId) => {
       if (!threadId) return;
       mainWindow?.webContents.send(IPC.browser.requestOpenPanel, { threadId });
@@ -4212,6 +4218,11 @@ function configureAutoUpdater(): void {
 
   scheduleUpdatePoll();
 }
+
+function backendCompileCacheDir(): string {
+  return resolveBackendCompileCacheDir(STATE_DIR, app.getVersion());
+}
+
 // Builds process-local Node args so provider/tool children do not inherit Synara's heap guard.
 function backendNodeArgs(): string[] {
   const configuredMaxOldSpaceMb =
@@ -4266,7 +4277,6 @@ async function attachCuaHost(host: CuaDriverHost): Promise<void> {
 
 async function startCuaHost(): Promise<void> {
   if ((process.platform !== "darwin" && process.platform !== "linux") || cuaDriverHost) return;
-  sweepOrphanedCuaDrivers();
   if (process.platform === "linux") {
     linuxEscapeKillSwitchMonitor ??= new LinuxEscapeKillSwitchMonitor({
       shortcutRegistry: globalShortcut,
@@ -5001,6 +5011,8 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
     // Run the child in Node mode so this backend process does not become a GUI app instance.
     env: {
       ...backendEnv(),
+      // Most of a backend boot is compiling its modules; Node keeps the result on disk.
+      ...backendCompileCacheEnv(process.env, backendCompileCacheDir()),
       // A file read stuck behind a macOS privacy prompt holds a libuv worker. More
       // workers keep DNS and crypto, and so remote authorization, moving meanwhile.
       UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE || "16",
@@ -5500,6 +5512,11 @@ function registerIpcHandlers(): void {
     // live URL instead of trusting build-time or inherited renderer env.
     event.returnValue =
       normalizeDesktopWsUrl(backendWsUrl) ?? resolveDesktopWsUrlFromEnv(process.env);
+  });
+
+  ipcMain.removeHandler(IPC.backendReady);
+  ipcMain.handle(IPC.backendReady, async () => {
+    await backendInitialWindowOpenInFlight;
   });
 
   ipcMain.removeAllListeners(IPC.zoomFactor);
@@ -6654,7 +6671,32 @@ if (!hasSingleInstanceLock) {
   });
 }
 
-async function bootstrap(): Promise<void> {
+// Restores the imported browser session's cookies. Never rejects: a failure or timeout
+// leaves the browser without saved cookies, as before.
+async function restoreBrowserSession(restore: BrowserSessionRestore): Promise<void> {
+  try {
+    let restoreTimer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        restore.initialize().finally(() => clearTimeout(restoreTimer)),
+        new Promise<never>((_, reject) => {
+          restoreTimer = setTimeout(
+            () => reject(new Error("Browser session restoration timed out.")),
+            BROWSER_SESSION_RESTORE_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(restoreTimer);
+    }
+  } catch {
+    console.warn(
+      "[Synara browser] Secure session restoration is unavailable; no saved session cookies were restored.",
+    );
+  }
+}
+
+async function bootstrap(browserNetworkGuardReady: Promise<void>): Promise<void> {
   writeDesktopLogHeader("bootstrap start");
   if (!(await requireCurrentDesktopMigrationBundle())) {
     return;
@@ -6679,26 +6721,10 @@ async function bootstrap(): Promise<void> {
     createCookieSessionBackend(BROWSER_SESSION_PARTITION),
     browserOsKeyStore,
   );
-  try {
-    let restoreTimer: NodeJS.Timeout | undefined;
-    try {
-      await Promise.race([
-        browserSessionRestore.initialize().finally(() => clearTimeout(restoreTimer)),
-        new Promise<never>((_, reject) => {
-          restoreTimer = setTimeout(
-            () => reject(new Error("Browser session restoration timed out.")),
-            BROWSER_SESSION_RESTORE_TIMEOUT_MS,
-          );
-        }),
-      ]);
-    } finally {
-      clearTimeout(restoreTimer);
-    }
-  } catch {
-    console.warn(
-      "[Synara browser] Secure session restoration is unavailable; no saved session cookies were restored.",
-    );
-  }
+  // Saved cookies feed neither the backend nor the window, so they are restored while the
+  // backend starts. Browser tools and the first window wait for them below, so no page in
+  // the browser partition loads before they are back.
+  const browserSessionRestored = restoreBrowserSession(browserSessionRestore);
 
   registerIpcHandlers();
   // Apply the saved keep-awake preference at launch, before any window reports.
@@ -6717,14 +6743,37 @@ async function bootstrap(): Promise<void> {
   });
   app.once("will-quit", disposeRemoteResources);
   writeDesktopLogHeader("bootstrap ipc handlers registered");
+  // Browser tools from the backend must not navigate before the network guard's proxy is
+  // installed or before saved cookies are back. If the guard fails, startup is fatal and
+  // the app quits, so tools stay held rather than run unguarded.
+  const browserToolsReady = browserNetworkGuardReady.then(
+    () => browserSessionRestored,
+    () => new Promise<void>(() => undefined),
+  );
   try {
-    await ensureBrowserHostPipeServer();
+    await ensureBrowserHostPipeServer(browserToolsReady);
   } catch (error) {
     console.warn("[Synara browser] Failed to start browser host pipe", error);
   }
   await startCuaHost();
   startBackend();
   writeDesktopLogHeader("bootstrap backend start requested");
+  void pruneBackendCompileCaches(backendCompileCacheDir());
+  if (process.platform === "darwin" || process.platform === "linux") {
+    // Reaps drivers left by a host that died. It feeds nothing above, so it no longer
+    // holds the backend's start behind a synchronous process listing.
+    void sweepOrphanedCuaDriversInBackground();
+  }
+
+  // The window's webviews are browser-partition pages: they must not load before the
+  // network guard is up and saved cookies are restored. A failed guard is reported by
+  // the whenReady handler, which quits.
+  try {
+    await browserNetworkGuardReady;
+  } catch {
+    return;
+  }
+  await browserSessionRestored;
 
   if (isDevelopment) {
     void waitForBackendWindowReady(backendHttpUrl)
@@ -6815,21 +6864,16 @@ if (hasSingleInstanceLock) {
   app
     .whenReady()
     .then(async () => {
-      // Install the session-owned proxy before bootstrap can create or navigate browser pages.
-      await getBetterwrightNetworkGuard(
+      // Install the session-owned proxy before anything can create or navigate browser
+      // pages. It does not feed the backend, so bootstrap starts the backend meanwhile
+      // and holds the first window until the guard is up; a failure is awaited below.
+      const browserNetworkGuardReady = getBetterwrightNetworkGuard(
         session.fromPartition(BROWSER_SESSION_PARTITION),
       ).initialize();
-      writeDesktopLogHeader("app ready");
+      // Observed below and in bootstrap; this keeps an early return from leaving it unobserved.
+      browserNetworkGuardReady.catch(() => undefined);
       productAnalytics.start();
       productAnalytics.track({ event: "app.open", outcome: "succeeded" });
-      productAnalytics.track({
-        event: "performance.startup",
-        outcome: "succeeded",
-        durationMs: Math.min(
-          86_400_000,
-          Math.round(performance.now() - PRODUCT_ANALYTICS_STARTUP_AT),
-        ),
-      });
       if (betaDiagnostics) {
         betaDiagnostics.start();
         const previousLaunchVersion = parseLastLaunchVersion(readLaunchVersionRecordContents());
@@ -6873,8 +6917,18 @@ if (hasSingleInstanceLock) {
         throw error;
       }
       startBundleSwapWatcher();
-      void bootstrap().catch((error) => {
+      void bootstrap(browserNetworkGuardReady).catch((error) => {
         handleFatalStartupError("bootstrap", error);
+      });
+      await browserNetworkGuardReady;
+      writeDesktopLogHeader("app ready");
+      productAnalytics.track({
+        event: "performance.startup",
+        outcome: "succeeded",
+        durationMs: Math.min(
+          86_400_000,
+          Math.round(performance.now() - PRODUCT_ANALYTICS_STARTUP_AT),
+        ),
       });
 
       app.on("browser-window-blur", () => {

@@ -115,6 +115,7 @@ function accountSearchEntries(
  */
 export const ROW_EXTRA_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   "setting-default-provider": [
+    "settings:changed_defaultProvider",
     "settings:chooseTheProviderUsedForNewChatsAgentCodex",
     "default provider default agent default account",
   ],
@@ -162,6 +163,7 @@ export const ROW_EXTRA_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
   "setting-assistant-output": ["settings:showTokenByTokenOutputWhileAResponseIs2"],
   "setting-fold-finished-turns": ["settings:hideAFinishedTurnSToolCallsAndIntermediate"],
   "setting-effort-slider": ["settings:showReasoningEffortAsASliderInTheComposer"],
+  "setting-composer-suggestions": ["settings:showAPredictedNextMessageInTheEmptyComposerAfter"],
   "setting-automatically-open-simulator": [
     "settings:disableAutomaticIOSSimulatorDevicePaneOpeningUseSimulator",
   ],
@@ -205,10 +207,17 @@ export const ROW_APPLIES: Readonly<Record<string, (context: SettingsSearchContex
     typeof window !== "undefined" && Boolean(window.desktopBridge?.keepAwake),
 };
 
+// Search result identity does not change when a setting moves to a different page.
+const ROW_STABLE_IDS: Readonly<Record<string, string>> = {
+  "setting-automation-runs": "general:automation-run-threads",
+  "setting-project-instructions": "general:environment-instructions",
+  "setting-use-system-ui-font": "appearance:system-ui-font",
+};
+
 function generatedRowEntry(row: GeneratedSettingsSearchRow): SettingsSearchEntry {
   const applies = ROW_APPLIES[row.target];
   return {
-    id: `${row.section}:${row.target.replace(/^setting-/, "")}`,
+    id: ROW_STABLE_IDS[row.target] ?? `${row.section}:${row.target.replace(/^setting-/, "")}`,
     section: row.section,
     title: row.title,
     keywords: [...(ROW_EXTRA_KEYWORDS[row.target] ?? []), row.description].filter(

@@ -63,9 +63,8 @@
   "agentsReadyComputer_one": "Uno está listo en este ordenador",
   "agentsReadyComputer_other": "{{amount}} están listos en este ordenador",
   "agentsSetUp": "Configura los que uses",
-  "agentsDescription": "Cada uno conserva su propio inicio de sesión, modelos y límites. Desactiva los que quieras o configura el resto más tarde desde Ajustes.",
+  "agentsDescription": "Synara ejecuta los agentes instalados aquí, cada uno con su propia sesión, modelos y límites. Inicia sesión donde haga falta o configura el resto más tarde en Ajustes.",
   "providerSummary": "{{connected}} conectados · {{needsSignIn}} requieren iniciar sesión · {{notInstalled}} sin instalar",
-  "signingInToProvider": "Iniciando sesión en {{provider}}",
   "tasksLead": "Ejecútalos todos a la vez.",
   "tasksStatement": "Cada tarea tiene su propio worktree",
   "tasksDescription": "Revisa los cambios, ejecuta las pruebas y abre la PR sin salir de {{app}}.",
@@ -181,5 +180,10 @@
   "appTourClose": "Cerrar recorrido",
   "appTourDone": "Listo",
   "appTourSteps": "Pasos del recorrido",
-  "safariHeroFullDiskAccess": "Acceso total al disco"
+  "safariHeroFullDiskAccess": "Acceso total al disco",
+  "providerSummaryUnavailable_one": "{{count}} requiere atención",
+  "providerSummaryUnavailable_other": "{{count}} requieren atención",
+  "providerUnavailableHint": "Está instalado, pero Synara no pudo utilizarlo. Revísalo en Ajustes.",
+  "receiptAgentsNeedSignIn_one": "{{count}} necesita que inicies sesión",
+  "receiptAgentsNeedSignIn_other": "{{count}} necesitan que inicies sesión"
 }

@@ -391,9 +391,9 @@ HTTP-hosted clients retain native component visuals but never execute HTML. The 
 bootstrap removes WebRTC capabilities before page scripts and stops parsing if that boundary
 cannot be enforced. HTML messages cannot open external URLs through the host.
 
-The list is currently empty. Account profiles, saved Inbox history, MCP Connectors,
-the native editor and Simplified Chinese are available in Stable and Beta. Remote
-connections use their separate runtime activation policy.
+Account profiles, saved Inbox history, MCP Connectors, the native editor and
+Simplified Chinese are available in Stable and Beta. Remote connections use
+their separate runtime activation policy.
 
 NilCode retains its existing Stable Simplified Chinese support: `chinese-ui` is promoted out
 of the Beta-only list. Explicit, restored and System-selected Chinese use the same shared
@@ -427,6 +427,38 @@ Inbox and its `stats.getRecap` RPC are available in Stable and Beta. Stable show
 chat attention, running and finished work, review requests, and the activity recap.
 The to-do list, quick-add, delegation card, and **All tasks** link appear only where
 Tasks is available, including Stable and Beta.
+
+In Stable and Beta, composer predictions show one predicted next message after a turn
+settles in the main chat view. The suggestion contains at most 320 characters of
+dimmed ghost text in the empty composer, followed by a `Tab` key chip. The ghost text wraps
+up to three rows and the composer grows to fit them, switching the single-row composer to
+its block layout like a draft that no longer fits one line; a longer suggestion ends with an
+ellipsis on the third row. Tab or an unmodified Right Arrow in the focused, empty composer
+inserts the full suggestion as an ordinary editable draft with the cursor at the end; Enter
+never accepts it, and nothing is ever sent automatically. Typing only hides the suggestion: it
+shows again when the composer is empty again for the same turn, and a request still running
+when the user starts typing keeps running. Accepting it, or a new turn, ends it.
+**Settings → Chat behavior → Show suggestions** (on by default) turns it off. The
+`server.generateComposerPrediction` RPC takes only the thread and turn ids and derives
+everything else from the read model: it reads the latest few exchanges of visible user and
+assistant text and generates through the isolated text-generation path on the chat's own
+provider instance. A Git-writing model on that instance takes precedence. Otherwise, Claude
+uses Sonnet 5.5 and Codex uses the default Git text-generation model. Other providers with
+text generation use the chat's model. The prediction uses the chosen model's lowest catalog
+effort. A chat without a stored provider instance id uses its provider's default instance, on
+the server and in the client.
+The result's `outcome` is `suggested`, `none` (the model had no suggestion), `unavailable`
+(a busy or moved-on thread or no usable route before generation), or `generation-unavailable`
+(generation may already have run without returning a usable result). The server logs one
+content-free reason code per miss. While the composer can show the suggestion, the client
+retries pre-generation misses after 2, 5, and 15 seconds. If generation may have run, a
+response was lost, or an older server omitted `outcome`, only the first request can be
+retried after 2 seconds. Unanswered turns can try again when the chat is reopened.
+Suggestions live in memory only. The window's session storage remembers when a suggestion
+was accepted or the model had none. Older session data also treated failed attempts as
+settled, so the new storage starts fresh. This can also make previously accepted turns eligible again.
+The `server.getEnvironment` descriptor advertises RPC support as
+`capabilities.composerPredictions`. Older servers may omit the capability.
 
 `accountInbox` is the account-saved Inbox history. In Stable, Beta and Remote, a signed-in computer
 automatically saves account/workspace-owned daily snapshots, including project names,

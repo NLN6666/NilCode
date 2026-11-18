@@ -1126,32 +1126,39 @@ describe("summarizeGitResult", () => {
 });
 
 describe("resolveAutoFeatureBranchName", () => {
-  it("uses semantic preferred branch names when available", () => {
-    const branch = resolveAutoFeatureBranchName(["main", "feature/other"], "fix toast copy");
-    assert.equal(branch, "feature/fix-toast-copy");
-  });
-
-  it("normalizes preferred names that already include a branch namespace", () => {
-    const branch = resolveAutoFeatureBranchName(["main"], "feature/refine-toolbar-actions");
-    assert.equal(branch, "feature/refine-toolbar-actions");
-  });
-
-  it("increments suffix when the preferred branch name already exists", () => {
-    const branch = resolveAutoFeatureBranchName(
+  it.each([
+    [
+      "uses semantic preferred branch names when available",
+      ["main", "feature/other"],
+      "fix toast copy",
+      "feature/fix-toast-copy",
+    ],
+    [
+      "normalizes preferred names that already include a branch namespace",
+      ["main"],
+      "feature/refine-toolbar-actions",
+      "feature/refine-toolbar-actions",
+    ],
+    [
+      "increments suffix when the preferred branch name already exists",
       ["main", "feature/fix-toast-copy", "feature/fix-toast-copy-2"],
       "fix toast copy",
-    );
-    assert.equal(branch, "feature/fix-toast-copy-3");
-  });
-
-  it("treats existing branch names as case-insensitive for collision checks", () => {
-    const branch = resolveAutoFeatureBranchName(["Feature/Ticket-1"], "feature/ticket-1");
-    assert.equal(branch, "feature/ticket-1-2");
-  });
-
-  it("falls back to feature/update when no preferred name is provided", () => {
-    const branch = resolveAutoFeatureBranchName(["main"]);
-    assert.equal(branch, "feature/update");
+      "feature/fix-toast-copy-3",
+    ],
+    [
+      "treats existing branch names as case-insensitive for collision checks",
+      ["Feature/Ticket-1"],
+      "feature/ticket-1",
+      "feature/ticket-1-2",
+    ],
+    [
+      "falls back to feature/update when no preferred name is provided",
+      ["main"],
+      undefined,
+      "feature/update",
+    ],
+  ])("%s", (_case, existing, preferred, expected) => {
+    assert.equal(resolveAutoFeatureBranchName(existing, preferred), expected);
   });
 });
 
@@ -1192,55 +1199,38 @@ describe("resolveLiveThreadBranchUpdate", () => {
 });
 
 describe("shouldOfferCreateBranchPrompt", () => {
-  const temporaryBranch = "synara/deadbeef";
+  const worktree = "/tmp/project/.worktrees/feature-test";
 
-  it("hides the create-branch prompt when the branch already has upstream", () => {
-    assert.isFalse(
-      shouldOfferCreateBranchPrompt({
-        activeWorktreePath: "/tmp/project/.worktrees/feature-test",
-        gitStatus: {
-          branch: temporaryBranch,
-          hasUpstream: true,
-        },
-      }),
-    );
-  });
-
-  it("hides the create-branch prompt outside a worktree even when the branch is local-only", () => {
-    assert.isFalse(
-      shouldOfferCreateBranchPrompt({
-        activeWorktreePath: null,
-        gitStatus: {
-          branch: temporaryBranch,
-          hasUpstream: false,
-        },
-      }),
-    );
-  });
-
-  it("hides the create-branch prompt once the current branch has been finalized", () => {
-    assert.isFalse(
-      shouldOfferCreateBranchPrompt({
-        activeWorktreePath: "/tmp/project/.worktrees/feature-test",
-        gitStatus: {
-          branch: "feature/test",
-          hasUpstream: false,
-        },
+  it.each([
+    [
+      "hides the prompt when the branch already has upstream",
+      { activeWorktreePath: worktree, gitStatus: { branch: "synara/deadbeef", hasUpstream: true } },
+      false,
+    ],
+    [
+      "hides the prompt outside a worktree even when the branch is local-only",
+      { activeWorktreePath: null, gitStatus: { branch: "synara/deadbeef", hasUpstream: false } },
+      false,
+    ],
+    [
+      "hides the prompt once the current branch has been finalized",
+      {
+        activeWorktreePath: worktree,
+        gitStatus: { branch: "feature/test", hasUpstream: false },
         createBranchFlowCompleted: true,
-      }),
-    );
-  });
-
-  it("keeps the create-branch prompt visible for a semantic local-only branch until the flow is completed", () => {
-    assert.isTrue(
-      shouldOfferCreateBranchPrompt({
-        activeWorktreePath: "/tmp/project/.worktrees/feature-test",
-        gitStatus: {
-          branch: "feature/test",
-          hasUpstream: false,
-        },
+      },
+      false,
+    ],
+    [
+      "keeps the prompt visible for a semantic local-only branch until the flow is completed",
+      {
+        activeWorktreePath: worktree,
+        gitStatus: { branch: "feature/test", hasUpstream: false },
         createBranchFlowCompleted: false,
-      }),
-    );
+      },
+      true,
+    ],
+  ])("%s", (_case, input, expected) => {
+    assert.equal(shouldOfferCreateBranchPrompt(input), expected);
   });
 });

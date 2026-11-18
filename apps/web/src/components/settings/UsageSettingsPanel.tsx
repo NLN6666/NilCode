@@ -7,6 +7,7 @@
 
 import { type ReactNode, useState } from "react";
 
+import { useTranslation } from "~/i18n";
 import { SegmentedPicker } from "../SegmentedPicker";
 import { BillingSettingsPanel, SYNARA_PLAN_SECTION_ID } from "./BillingSettingsPanel";
 import { ProviderUsageSettingsPanel } from "./ProviderUsageSettingsPanel";
@@ -28,6 +29,7 @@ export function UsageSettingsPanel({
   /** Settings that react to limits (warnings, auto-resume), shown under Overview. */
   overviewExtra?: ReactNode;
 }) {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<UsageTab>(() =>
     billingEnabled && target === SYNARA_PLAN_SECTION_ID ? "billing" : "overview",
   );
@@ -41,7 +43,9 @@ export function UsageSettingsPanel({
         options={[
           { value: "overview", label: t("settings:analytics_overview") },
           { value: "analytics", label: t("settings:analytics_analytics") },
-          ...(billingEnabled ? [{ value: "billing" as const, label: t("settings:analytics_billing") }] : []),
+          ...(billingEnabled
+            ? [{ value: "billing" as const, label: t("settings:analytics_billing") }]
+            : []),
         ]}
       />
       <div>

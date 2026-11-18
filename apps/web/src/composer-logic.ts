@@ -7,6 +7,9 @@ import {
 import { MCP_TOOL_REFERENCE_PREFIX } from "./lib/mcpToolReferences";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
+/** Keys the composer editor hands to its owner before its own handling. */
+export type ComposerCommandKey = "ArrowDown" | "ArrowUp" | "ArrowRight" | "Enter" | "Tab" | "Slash";
+
 export type ComposerTriggerKind =
   | "mention"
   | "slash-command"

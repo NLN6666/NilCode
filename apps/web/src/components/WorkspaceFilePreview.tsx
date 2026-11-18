@@ -1,6 +1,6 @@
 // FILE: WorkspaceFilePreview.tsx
 // Purpose: Shared single-file preview (code with syntax highlighting, parsed
-//          markdown, images, PDFs) for workspace files plus absolute local
+//          markdown, images, videos, PDFs) for workspace files plus absolute local
 //          file references reused by editor and right-dock panes.
 // Layer: Web chat presentation component
 // Exports: WorkspaceFilePreview, isMarkdownPreviewablePath
@@ -9,6 +9,7 @@ import type { ProjectFileChangeEvent, ProjectReadFileResult } from "@synara/cont
 import {
   isSupportedLocalImagePath,
   isSupportedLocalPdfPath,
+  isSupportedLocalVideoPath,
   lowerCaseExtensionOf,
 } from "@synara/shared/localPreviewFiles";
 import {
@@ -47,6 +48,7 @@ import { type FileCommentSelection } from "~/lib/fileComments";
 import { showFileReferenceContextMenu } from "~/lib/fileReferenceContextMenu";
 import { gitWorkingTreeDiffQueryOptions } from "~/lib/gitReactQuery";
 import { PlusIcon } from "~/lib/icons";
+import { buildLocalImageUrl } from "~/lib/localImageUrls";
 import { toggleMarkdownTaskMarker } from "~/lib/markdownTaskList";
 import { isRpcCapacityExceededError } from "~/lib/expensiveReadRetry";
 import {
@@ -78,6 +80,7 @@ import { WorkspaceFilePreviewHeader } from "./chat/WorkspaceFilePreviewHeader";
 import { TranscriptSelectionAction } from "./chat/TranscriptSelectionAction";
 import { useCodeSelectionAction } from "./chat/useCodeSelectionAction";
 import { LocalImagePreview } from "./LocalImagePreview";
+import { LocalVideoPreview } from "./LocalVideoPreview";
 import { PdfFilePreview } from "./PdfFilePreview";
 import { Skeleton } from "./ui/skeleton";
 import { CodeEditorPane } from "./codeEditor/CodeEditorPane";
@@ -439,7 +442,7 @@ export interface WorkspaceFilePreviewProps {
   workspaceRoot: string | null;
   /**
    * Workspace-relative path of the previewed file. Binary previews (images,
-   * PDFs) may instead be absolute paths outside the workspace — e.g. a
+   * videos, PDFs) may instead be absolute paths outside the workspace — e.g. a
    * session's scratch directory — served by the local-image route, which never
    * touch the workspace-relative file-read RPC.
    */
@@ -503,11 +506,15 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
   const filePath = relocatedFullPath ?? requestedFilePath;
   const markdownPreviewDefault = props.markdownPreviewDefault ?? false;
   const fileIsImage = filePath !== null && isSupportedLocalImagePath(filePath);
+  const fileIsVideo = filePath !== null && isSupportedLocalVideoPath(filePath);
   const fileIsPdf = filePath !== null && isSupportedLocalPdfPath(filePath);
+  // Images, videos and PDFs stream through the local-image HTTP route instead
+  // of the text file-read RPC.
+  const fileIsBinaryPreview = fileIsImage || fileIsVideo || fileIsPdf;
   const fileIsLocalAbsolute = filePath !== null && isLocalAbsolutePath(filePath);
   const fileIsWorkspaceRelative = filePath !== null && isWorkspaceRelativePathSafe(filePath);
   const fileIsScratchBinaryPreview =
-    filePath !== null && (fileIsImage || fileIsPdf) && isScratchWorkspacePath(filePath);
+    filePath !== null && fileIsBinaryPreview && isScratchWorkspacePath(filePath);
   const fileNeedsLocalPreviewGrant =
     filePath !== null && fileIsLocalAbsolute && !fileIsScratchBinaryPreview;
   const fileIsMarkdown = filePath !== null && isMarkdownPreviewablePath(filePath);
@@ -534,19 +541,24 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     fileNeedsLocalPreviewGrant && isLocalPreviewGrantUsable(localPreviewGrantQuery.data)
       ? (localPreviewGrantQuery.data?.grant ?? null)
       : null;
+  // Keep the player mounted across renewal so a temporary grant outage cannot
+  // discard a loaded frame or its seek position.
+  const videoHadGrant = fileIsVideo && localPreviewGrantQuery.data !== undefined;
   const binaryPreviewKey = `${props.workspaceRoot ?? ""}\0${filePath ?? ""}\0${localPreviewGrant ?? ""}\0${binaryPreviewRevision}`;
+  // A renewed grant must not remount a playing video; LocalVideoPreview adopts
+  // the fresh grant URL itself if the current one stops working.
+  const videoPreviewKey = `${props.workspaceRoot ?? ""}\0${filePath ?? ""}\0${binaryPreviewRevision}`;
   const fileQuery = useQuery(
     projectReadFileQueryOptions({
       cwd: props.workspaceRoot,
       relativePath: filePath,
       previewGrant: localPreviewGrant,
-      // Images and PDFs are binary: they stream through the local-image HTTP
-      // route instead of the text file-read RPC.
+      // Images, videos and PDFs are binary: they stream through the
+      // local-image HTTP route instead of the text file-read RPC.
       enabled:
         liveRevalidationEnabled &&
         filePath !== null &&
-        !fileIsImage &&
-        !fileIsPdf &&
+        !fileIsBinaryPreview &&
         (fileNeedsLocalPreviewGrant ? localPreviewGrant !== null : props.workspaceRoot !== null),
     }),
   );
@@ -556,7 +568,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
       : null;
   const watchedWorkspaceRelativePath =
     resolvedWorkspaceRelativePath ??
-    ((fileIsImage || fileIsPdf) &&
+    (fileIsBinaryPreview &&
     workspaceRoot &&
     requestedFilePath &&
     isWorkspaceRelativePathSafe(requestedFilePath)
@@ -575,7 +587,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
       // them stale until the window regains focus. Only active variants are
       // re-read, so an idle workspace costs nothing here.
       void refreshGitAfterFileWrite(queryClient, workspaceRoot);
-      if (fileIsImage || fileIsPdf) {
+      if (fileIsBinaryPreview) {
         setBinaryPreviewReloading(true);
         setBinaryPreviewRevision((current) => current + 1);
       }
@@ -587,8 +599,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
       }
     },
     [
-      fileIsImage,
-      fileIsPdf,
+      fileIsBinaryPreview,
       queryClient,
       relocationRequestKey,
       requestedFilePath,
@@ -704,7 +715,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
 
   const handleFileReload = useCallback(() => {
     if (!filePath) return;
-    if (fileIsImage || fileIsPdf) {
+    if (fileIsBinaryPreview) {
       setBinaryPreviewReloading(true);
       setBinaryPreviewRevision((current) => current + 1);
       return;
@@ -713,7 +724,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
       cwd: workspaceRoot,
       relativePath: filePath,
     });
-  }, [fileIsImage, fileIsPdf, filePath, queryClient, workspaceRoot]);
+  }, [fileIsBinaryPreview, filePath, queryClient, workspaceRoot]);
 
   const handleEditBufferReload = editor.reloadFromDisk;
   // Wait for the file read before asking for the working-tree diff: while the
@@ -723,8 +734,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     props.workspaceRoot !== null &&
     resolvedWorkspaceRelativePath !== null &&
     fileQuery.data !== undefined &&
-    !fileIsImage &&
-    !fileIsPdf &&
+    !fileIsBinaryPreview &&
     !showMarkdownPreview &&
     editableDocument === null;
   const workingTreeDiffQuery = useQuery(
@@ -896,8 +906,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
   const editFile =
     onEditFile &&
     canToggleTasks &&
-    !fileIsImage &&
-    !fileIsPdf &&
+    !fileIsBinaryPreview &&
     filePath !== null &&
     fileQuery.data !== undefined &&
     resolveWorkspaceFileEditorReadOnlyReason(fileQuery.data) === null
@@ -921,7 +930,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
       )
     );
   }
-  if (fileNeedsLocalPreviewGrant && !localPreviewGrant) {
+  if (fileNeedsLocalPreviewGrant && !localPreviewGrant && !videoHadGrant) {
     if (localPreviewGrantQuery.error) {
       return (
         <PanelStateMessage density="compact" fill="flex" className="items-start justify-start p-3">
@@ -970,6 +979,23 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
   const showFileReadErrorIndicator =
     hasFileContents && fileReadError !== null && !activeEditBuffer?.error;
 
+  // A rejected Range request may mean the server restarted before the token's
+  // advertised expiry. Fetch a new grant at the point of recovery or download.
+  const resolveGrantedVideoUrl = async (download: boolean) => {
+    const { data: grant } = await localPreviewGrantQuery.refetch({
+      cancelRefetch: false,
+      throwOnError: true,
+    });
+    return buildLocalImageUrl({
+      src: filePath,
+      cwd: props.workspaceRoot ?? undefined,
+      canonicalPath: grant?.canonicalPath,
+      grant: grant?.grant,
+      download,
+      ...(download ? {} : { cacheKey: binaryPreviewRevision }),
+    });
+  };
+
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col app-content-surface">
       <WorkspaceFilePreviewHeader
@@ -980,7 +1006,9 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
         onMarkdownPreviewChange={handleMarkdownPreviewChange}
         onReferenceInChat={onReferenceInChat}
         onAskWhyInChat={onAskWhyInChat}
-        contentsForCopy={fileIsImage || fileQuery.data === undefined ? null : displayedFileContents}
+        contentsForCopy={
+          fileIsBinaryPreview || fileQuery.data === undefined ? null : displayedFileContents
+        }
         truncated={fileQuery.data?.truncated ?? false}
         onEditFile={editFile}
         dirty={editBufferDirty}
@@ -998,7 +1026,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
         saving={activeEditBuffer?.saving ?? false}
         onSave={activeEditBuffer ? editor.save : undefined}
         readOnlyReason={readOnlyReason}
-        reloading={fileIsImage || fileIsPdf ? binaryPreviewReloading : fileQuery.isFetching}
+        reloading={fileIsBinaryPreview ? binaryPreviewReloading : fileQuery.isFetching}
         onReload={workspaceRoot && filePath ? handleFileReload : undefined}
       />
       {activeEditBuffer?.error ? (
@@ -1070,6 +1098,36 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
             alt={basenameOfPath(filePath)}
             className="min-h-full"
             imageClassName="max-h-[calc(100vh-13rem)]"
+            onPreviewReady={handleBinaryPreviewReady}
+            onPreviewError={handleBinaryPreviewError}
+          />
+        </div>
+      ) : fileIsVideo ? (
+        <div
+          className="editor-file-viewer min-h-0 flex-1 overflow-auto"
+          onContextMenu={handleContentsContextMenu}
+        >
+          <LocalVideoPreview
+            key={videoPreviewKey}
+            src={filePath}
+            cwd={props.workspaceRoot}
+            previewGrant={localPreviewGrant}
+            cacheKey={binaryPreviewRevision}
+            label={basenameOfPath(filePath)}
+            className="min-h-full"
+            videoClassName="max-h-[calc(100vh-13rem)]"
+            resolveRecoveryUrl={
+              fileNeedsLocalPreviewGrant ? () => resolveGrantedVideoUrl(false) : undefined
+            }
+            resolveDownloadUrl={
+              fileNeedsLocalPreviewGrant ? () => resolveGrantedVideoUrl(true) : undefined
+            }
+            onRetry={() => {
+              if (fileNeedsLocalPreviewGrant) {
+                void localPreviewGrantQuery.refetch({ cancelRefetch: false });
+              }
+              handleFileReload();
+            }}
             onPreviewReady={handleBinaryPreviewReady}
             onPreviewError={handleBinaryPreviewError}
           />

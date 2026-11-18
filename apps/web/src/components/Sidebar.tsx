@@ -194,6 +194,7 @@ import { reconcileDeletedThreadsFromClient } from "../lib/deletedThreadClientRec
 import { deleteProjectFromClient } from "../lib/projectDelete";
 import { setProjectBrowserSharing as dispatchProjectBrowserSharing } from "../lib/projectBrowserSharing";
 import { persistAppStateNow, useStore } from "../store";
+import { deepEqualJson } from "../storeNormalization";
 import { useThreadIdsWithPendingDraft } from "../composerDraftStore";
 import { getThreadFromState } from "../threadDerivation";
 import {
@@ -510,7 +511,6 @@ import {
 import { createClientPointMenuAnchor } from "~/lib/clientPointMenuAnchor";
 import {
   canCreateThreadHandoff,
-  canContinueThreadHandoff,
   resolveAvailableHandoffTargets,
   resolveThreadHandoffAvailability,
   resolveThreadHandoffBadgeLabel,
@@ -546,6 +546,7 @@ import {
   SIDEBAR_ROW_SNOOZE_REMINDER_CLASS_NAME,
   SIDEBAR_ROW_LABEL_TEXT_CLASS_NAME,
   SIDEBAR_SECTION_LABEL_CLASS_NAME,
+  SIDEBAR_EMPTY_STATE_CLASS_NAME,
 } from "../sidebarRowStyles";
 import { AccountFooterControl } from "./account/AccountFooterControl";
 import { SettingsSidebarNav } from "./SettingsSidebarNav";
@@ -3117,7 +3118,7 @@ export default function Sidebar() {
   // Warm model discovery before ChatView mounts so new-thread composers skip
   // the "Loading models" skeleton when React Query already has a fresh cache hit.
   const prefetchModelsForProjectNewThread = useCallback(
-    (projectId: ProjectId, options?: { includeDroid?: boolean }) => {
+    (projectId: ProjectId, options?: { includeDroid?: boolean; passive?: boolean }) => {
       const project = projects.find((candidate) => candidate.id === projectId);
       if (!project) {
         return;
@@ -3149,6 +3150,7 @@ export default function Sidebar() {
         statusesReconciled: hasReconciledServerProviderStatuses(queryClient),
         providerOrder: appSettings.providerOrder,
         includeDroid: options?.includeDroid === true,
+        passive: options?.passive === true,
       });
     },
     [
@@ -3168,14 +3170,20 @@ export default function Sidebar() {
     }
     // Idle hover/focus must not spin Droid's expensive per-model ACP discovery;
     // only explicit new-thread intent (the click path below) warms Droid.
-    prefetchModelsForProjectNewThread(primaryNewThreadTarget.projectId);
+    prefetchModelsForProjectNewThread(primaryNewThreadTarget.projectId, {
+      passive: true,
+    });
   }, [prefetchModelsForProjectNewThread, primaryNewThreadTarget]);
 
   useEffect(() => {
     if (!primaryNewThreadTarget) {
       return;
     }
-    prefetchModelsForProjectNewThread(primaryNewThreadTarget.projectId);
+    // Opening a thread changes this target. Warming every provider here started
+    // their CLIs and servers for a new thread nobody asked for.
+    prefetchModelsForProjectNewThread(primaryNewThreadTarget.projectId, {
+      passive: true,
+    });
   }, [prefetchModelsForProjectNewThread, primaryNewThreadTarget]);
 
   const handlePrimaryNewThread = useCallback(() => {
@@ -3704,22 +3712,16 @@ export default function Sidebar() {
             providerStatuses,
           })
         : [];
-      const continueHandoffTargets = handoffTargets.filter((target) =>
-        canContinueThreadHandoff({
-          sourceProvider: thread.modelSelection.provider,
-          targetProvider: target.provider,
-        }),
-      );
       const handoffTargetById = new Map(
         handoffTargets.map((target) => [`handoff:${target.instanceId}`, target]),
       );
       const continueHandoffTargetById = new Map(
-        continueHandoffTargets.map((target) => [`handoff-here:${target.instanceId}`, target]),
+        handoffTargets.map((target) => [`handoff-here:${target.instanceId}`, target]),
       );
       const handoffItems = contextMenuGroup(
         { id: "handoff", label: t("workspace:handoff"), icon: THREAD_CONTEXT_MENU_ICONS.handoff },
         [
-          ...continueHandoffTargets.map((target) => ({
+          ...handoffTargets.map((target) => ({
             id: `handoff-here:${target.instanceId}`,
             label: t("workspace:inThisThread", { value0: target.label }),
             standaloneLabel: t("workspace:handoffToInThisThread", { value0: target.label }),
@@ -3727,13 +3729,10 @@ export default function Sidebar() {
           })),
           ...handoffTargets.map((target, index) => ({
             id: `handoff:${target.instanceId}`,
-            label:
-              continueHandoffTargets.length > 0
-                ? t("workspace:inANewThread", { value0: target.label })
-                : target.label,
+            label: t("workspace:inANewThread", { value0: target.label }),
             standaloneLabel: t("workspace:handoffTo", { value0: target.label }),
             icon: THREAD_CONTEXT_MENU_ICONS.handoff,
-            ...(index === 0 && continueHandoffTargets.length > 0 ? { separatorBefore: true } : {}),
+            ...(index === 0 ? { separatorBefore: true } : {}),
           })),
         ],
       );
@@ -4908,7 +4907,28 @@ export default function Sidebar() {
   }, []);
 
   const handleEditProjectSave = useCallback(
-    (projectId: ProjectId, next: EditProjectValue, previousLocalName: string | null) => {
+    async (
+      projectId: ProjectId,
+      next: EditProjectValue,
+      previous: {
+        readonly localName: string | null;
+        readonly additionalFolders: ReadonlyArray<string>;
+      },
+    ) => {
+      // Folders are server state: save them first so a refused edit keeps the dialog open
+      // with nothing applied.
+      const nextFolders = next.additionalFolders;
+      if (nextFolders !== undefined && !deepEqualJson(nextFolders, previous.additionalFolders)) {
+        const api = readNativeApi();
+        if (!api) throw new Error(t("workspace:theAppServerIsUnavailable"));
+        await api.orchestration.dispatchCommand({
+          type: "project.meta.update",
+          commandId: newCommandId(),
+          projectId,
+          additionalFolders: [...nextFolders],
+        });
+      }
+      const previousLocalName = previous.localName;
       setProjectAppearanceLocally(projectId, next.appearance);
       const trimmed = next.name.trim();
       const normalizedPrevious = previousLocalName?.trim() ?? "";
@@ -4917,7 +4937,7 @@ export default function Sidebar() {
       }
       renameProjectLocally(projectId, trimmed.length > 0 ? trimmed : null);
     },
-    [renameProjectLocally, setProjectAppearanceLocally],
+    [renameProjectLocally, setProjectAppearanceLocally, t],
   );
 
   const savedRemoteProjectSpaces = useRemoteProjectSpacesStore((state) => state.spaceByCheckout);
@@ -6238,6 +6258,7 @@ export default function Sidebar() {
                 branch: thread.branch,
                 hasDedicatedWorktree: thread.worktreePath !== null,
                 lastKnownPr: thread.lastKnownPr ?? null,
+                pullRequests: thread.pullRequests,
               })
         }
         status={resolveThreadStatusForSidebar(thread)}
@@ -6514,9 +6535,10 @@ export default function Sidebar() {
         >
       | undefined,
     rowPaddingPx: number,
-    childCount = nesting?.childCount ?? 0,
+    childCountOverride?: number,
   ) {
     const depth = nesting?.depth ?? 0;
+    const childCount = childCountOverride ?? nesting?.childCount ?? 0;
     const stemX = (level: number) =>
       rowPaddingPx + level * SIDEBAR_CHILD_INDENT_PX + SIDEBAR_THREAD_GLYPH_CENTER_PX;
     const stems: ReactNode[] = [];
@@ -6609,8 +6631,8 @@ export default function Sidebar() {
   function renderThreadRow(
     {
       thread,
-      depth = 0,
-      childCount = 0,
+      depth: depthProp,
+      childCount: childCountProp,
       nativeSubagentDepth,
       nativeSubagentChildCount,
     }: Pick<
@@ -6631,6 +6653,8 @@ export default function Sidebar() {
       "depth" | "childCount" | "childrenCollapsed" | "isLastChild" | "guideContinues"
     >,
   ) {
+    const depth = depthProp ?? 0;
+    const childCount = childCountProp ?? 0;
     const nestDepth = Math.max(0, (nesting?.depth ?? 0) - (nativeSubagentDepth ?? 0));
     const threadTerminalState = selectThreadTerminalState(terminalStateByThreadId, thread.id);
     const threadEntryPoint = threadTerminalState.entryPoint;
@@ -6877,10 +6901,10 @@ export default function Sidebar() {
           tooltipSide="top"
           data-testid="new-thread-button"
           onMouseEnter={() => {
-            prefetchModelsForProjectNewThread(project.id);
+            prefetchModelsForProjectNewThread(project.id, { passive: true });
           }}
           onFocus={() => {
-            prefetchModelsForProjectNewThread(project.id);
+            prefetchModelsForProjectNewThread(project.id, { passive: true });
           }}
           onClick={(event) => {
             event.preventDefault();
@@ -6920,7 +6944,7 @@ export default function Sidebar() {
                   render={<button type="button" />}
                   data-thread-selection-safe
                   size="sm"
-                  className="h-7 flex-1 translate-x-0 justify-start rounded-lg pr-2 pl-8 text-left text-ui text-muted-foreground/79 hover:bg-transparent hover:text-foreground active:bg-transparent active:text-foreground"
+                  className="h-7 flex-1 translate-x-0 justify-start rounded-lg pr-2 pl-8 text-left text-ui text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent active:text-foreground"
                   onMouseDown={preventFocusOnMouseDown}
                   onClick={() => {
                     showMoreThreadsForProject(project.cwd, threadListExtraPages);
@@ -6935,7 +6959,7 @@ export default function Sidebar() {
                   data-thread-selection-safe
                   size="sm"
                   className={cn(
-                    "h-7 translate-x-0 justify-start rounded-lg text-left text-ui text-muted-foreground/79 hover:bg-transparent hover:text-foreground active:bg-transparent active:text-foreground",
+                    "h-7 translate-x-0 justify-start rounded-lg text-left text-ui text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent active:text-foreground",
                     // Keep the left indent when "Show less" is the only affordance left.
                     canShowMoreThreads ? "w-auto flex-none px-2" : "flex-1 pr-2 pl-8",
                   )}
@@ -7268,9 +7292,7 @@ export default function Sidebar() {
             </SidebarMenuItem>
           </SidebarMenu>
           {railSpacesProjectSidebarData.visibleEntries.length === 0 ? (
-            <div className="px-2 pt-4 text-center text-ui text-muted-foreground/58">
-              {t("workspace:noThreadsYet")}
-            </div>
+            <div className={SIDEBAR_EMPTY_STATE_CLASS_NAME}>{t("workspace:noThreadsYet")}</div>
           ) : null}
         </SidebarGroup>
       );
@@ -8825,7 +8847,7 @@ export default function Sidebar() {
                           aria-live="polite"
                           aria-label={t("workspace:emptyStates_loadingProjectsAriaLabel")}
                         >
-                          <div className="text-center text-ui text-muted-foreground/58">
+                          <div className="text-center text-ui text-muted-foreground">
                             {t("workspace:emptyStates_loadingProjects")}
                           </div>
                           <div className="mx-auto grid w-full max-w-42 gap-1.5 opacity-70">
@@ -8892,7 +8914,7 @@ export default function Sidebar() {
                       }}
                     >
                       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-                        <span className="truncate font-system-ui text-ui font-normal text-muted-foreground/79">
+                        <span className="truncate font-system-ui text-ui font-normal text-muted-foreground">
                           {t("workspace:general_chats")}
                         </span>
                         <DisclosureChevron
@@ -8964,7 +8986,7 @@ export default function Sidebar() {
                               {canShowMoreChatThreads ? (
                                 <SidebarMenuButton
                                   size="sm"
-                                  className="h-7 flex-1 justify-start rounded-lg pr-2 pl-8 text-left text-ui font-normal text-muted-foreground/79 hover:bg-transparent hover:text-foreground active:bg-transparent active:text-foreground"
+                                  className="h-7 flex-1 justify-start rounded-lg pr-2 pl-8 text-left text-ui font-normal text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent active:text-foreground"
                                   onMouseDown={preventFocusOnMouseDown}
                                   onClick={() =>
                                     setChatThreadListExtraPages(
@@ -8979,7 +9001,7 @@ export default function Sidebar() {
                                 <SidebarMenuButton
                                   size="sm"
                                   className={cn(
-                                    "h-7 justify-start rounded-lg text-left text-ui font-normal text-muted-foreground/79 hover:bg-transparent hover:text-foreground active:bg-transparent active:text-foreground",
+                                    "h-7 justify-start rounded-lg text-left text-ui font-normal text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent active:text-foreground",
                                     // Keep the left indent when "Show less" is the only affordance left.
                                     canShowMoreChatThreads
                                       ? "w-auto flex-none px-2"
@@ -9496,17 +9518,18 @@ export default function Sidebar() {
           initialValue={{
             name: editProjectDialogProject.localName ?? "",
             appearance: editProjectDialogProject.appearance ?? null,
+            additionalFolders: editProjectDialogProject.additionalFolders ?? [],
           }}
+          editFolders={editProjectDialogProject.kind === "project"}
           onOpenChange={(nextOpen) => {
             if (!nextOpen)
               setEditProjectDialog((current) => current && { ...current, open: false });
           }}
           onSave={(next) =>
-            handleEditProjectSave(
-              editProjectDialogProject.id,
-              next,
-              editProjectDialogProject.localName,
-            )
+            handleEditProjectSave(editProjectDialogProject.id, next, {
+              localName: editProjectDialogProject.localName,
+              additionalFolders: editProjectDialogProject.additionalFolders ?? [],
+            })
           }
         />
       ) : null}

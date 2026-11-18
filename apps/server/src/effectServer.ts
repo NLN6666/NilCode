@@ -1,5 +1,6 @@
 import { remoteConnectionsUnavailableReason } from "./remoteFeaturePolicy";
 import { ProjectionPendingInteractionRepositoryLive } from "./persistence/Layers/ProjectionPendingInteractions";
+import { ProjectionTurnRepositoryLive } from "./persistence/Layers/ProjectionTurns";
 import { ProviderSessionRuntimeRepositoryLive } from "./persistence/Layers/ProviderSessionRuntime";
 import http from "node:http";
 
@@ -313,6 +314,7 @@ export const createEffectServer = Effect.fn(function* (
       yield* reconcileRestartStuckTurns;
     }).pipe(
       Effect.provide(ProjectionPendingInteractionRepositoryLive),
+      Effect.provide(ProjectionTurnRepositoryLive),
       Effect.provide(ProviderSessionRuntimeRepositoryLive),
     ),
     reactors: [

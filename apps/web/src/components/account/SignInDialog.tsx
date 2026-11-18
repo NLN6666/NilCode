@@ -349,7 +349,7 @@ export function SignInPanel({ onSignedIn, onDismiss, variant = "dialog" }: SignI
               disabled={busy}
               onClick={() => void handleSso("apple")}
             >
-              <SiApple className="size-3.5" />
+              <SiApple className="size-3.5" aria-hidden />
               Continue with Apple
             </Button>
             <div className="grid grid-cols-2 gap-2">
@@ -361,7 +361,7 @@ export function SignInPanel({ onSignedIn, onDismiss, variant = "dialog" }: SignI
                 disabled={busy}
                 onClick={() => void handleSso("google")}
               >
-                <SiGoogle className="size-3.5" />
+                <SiGoogle className="size-3.5" aria-hidden />
                 Google
               </Button>
               <Button
@@ -372,7 +372,7 @@ export function SignInPanel({ onSignedIn, onDismiss, variant = "dialog" }: SignI
                 disabled={busy}
                 onClick={() => void handleSso("github")}
               >
-                <SiGithub className="size-3.5" />
+                <SiGithub className="size-3.5" aria-hidden />
                 GitHub
               </Button>
             </div>
@@ -488,7 +488,7 @@ export function SignInPanel({ onSignedIn, onDismiss, variant = "dialog" }: SignI
                   disabled={busy}
                   onClick={() => void handleSso(provider)}
                 >
-                  <Icon className="size-3.5" />
+                  <Icon className="size-3.5" aria-hidden />
                   {label}
                 </Button>
               ))}

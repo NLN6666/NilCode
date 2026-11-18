@@ -526,14 +526,17 @@ function readPersistedContinuationResetRequested(
   return runtimePayloadRecord(runtimePayload).continuationResetRequested === true;
 }
 
-// Claude launch options that only change how the runtime behaves. They never
-// decide which native session store or account owns a resume cursor, so
-// changing one in Settings (Artifacts, for example) must keep existing threads
-// resumable. Home, binary, and environment still have to match.
+// Compare the launch options that affect native session ownership. Claude
+// behavior-only settings and the location of the Pi installation can change
+// while the same profile still owns a saved session.
 function continuationOwningProviderOptions(
   provider: ProviderKind,
   options: ProviderStartOptions | undefined,
 ): unknown {
+  if (provider === "pi" && options?.pi !== undefined) {
+    const { binaryPath: _binaryPath, ...owning } = options.pi;
+    return Object.keys(owning).length > 0 ? owning : undefined;
+  }
   if (provider !== "claudeAgent" || options?.claudeAgent === undefined) {
     return options?.[provider];
   }
@@ -1393,19 +1396,17 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
             `Model selection provider '${input.modelSelection.provider}' does not match provider instance '${instance.instanceId}' driver '${instance.driver}'.`,
           );
         }
+        const configuredOptions = providerStartOptionsFromInstance(instance);
         return {
           instance,
           modelSelection: modelSelectionForInstance(input.modelSelection, instance),
+          // Pi loads an SDK in-process. Session input, including old bindings, cannot select it.
           providerOptions:
-            input.providerOptionsPrecedence === "caller"
-              ? mergeProviderStartOptions(
-                  providerStartOptionsFromInstance(instance),
-                  input.providerOptions,
-                )
-              : mergeProviderStartOptions(
-                  input.providerOptions,
-                  providerStartOptionsFromInstance(instance),
-                ),
+            instance.driver === "pi"
+              ? configuredOptions
+              : input.providerOptionsPrecedence === "caller"
+                ? mergeProviderStartOptions(configuredOptions, input.providerOptions)
+                : mergeProviderStartOptions(input.providerOptions, configuredOptions),
         } as const;
       });
 
@@ -3181,11 +3182,15 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
                   `Provider instance '${resolved.instance.instanceId}' changed while its session was starting.`,
                 );
               }
+              const freshAccountHandoff =
+                outcomeOptions?.startFreshForAccountHandoff === true &&
+                persistedBinding?.provider === resolved.instance.driver &&
+                persistedProviderInstanceId !== resolved.instance.instanceId;
               const hasExplicitResumeCursor = input.resumeCursor !== undefined;
               const currentContinuationIdentity =
-                (hasExplicitResumeCursor && resolved.instance.driver === "codex") ||
-                (persistedBinding !== undefined &&
-                  persistedBinding.provider === resolved.instance.driver)
+                !freshAccountHandoff &&
+                ((hasExplicitResumeCursor && resolved.instance.driver === "codex") ||
+                  persistedBinding?.provider === resolved.instance.driver)
                   ? yield* prepareContinuationIdentityForCompatibility({
                       operation: "ProviderService.startSession",
                       provider: resolved.instance.driver,
@@ -3227,9 +3232,8 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
               const continuationResetRequested =
                 persistedBinding !== undefined &&
                 readPersistedContinuationResetRequested(persistedBinding.runtimePayload);
-              // Only a switch to another driver may abandon the persisted
-              // continuation implicitly; a same-driver home or account change
-              // still has to be resolved by the user.
+              // A stored rebind can leave another driver. Leaving the current
+              // account within one driver requires an explicit handoff.
               const abandonsOtherProviderContinuation =
                 outcomeOptions?.abandonOtherProviderContinuation === true &&
                 persistedBinding !== undefined &&
@@ -3242,6 +3246,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
                 persistedBinding !== undefined &&
                 !continuationResetRequested &&
                 !abandonsOtherProviderContinuation &&
+                !freshAccountHandoff &&
                 ((!hasAvailableResumeCursor && !exactPersistedLaunchMatch) ||
                   (hasAvailableResumeCursor && !continuationCompatible)) &&
                 (providerUsesProtectedNativeContinuation(persistedBinding.provider) ||
@@ -3260,7 +3265,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
                 );
               }
               const effectiveResumeCursor =
-                input.forkSourceResumeCursor !== undefined
+                freshAccountHandoff || input.forkSourceResumeCursor !== undefined
                   ? undefined
                   : (input.resumeCursor ??
                     // A replacement retired for another account or endpoint must
@@ -3402,6 +3407,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
                   persistedPriorTranscriptBootstrapPending ||
                   staleSessionFallbackOccurred ||
                   abandonsOtherProviderContinuation ||
+                  freshAccountHandoff ||
                   ((nativeResumeAttempted ||
                     outcomeOptions?.registerPriorTranscriptBootstrapOnFreshStart === true) &&
                     !nativeResumeSucceeded);
@@ -3415,6 +3421,10 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
                 const sessionWithInstance: ProviderSession = {
                   ...session,
                   providerInstanceId: resolved.instance.instanceId,
+                  // An account can start before it has a cursor to persist.
+                  ...(freshAccountHandoff && session.resumeCursor === undefined
+                    ? { resumeCursor: null }
+                    : {}),
                 };
 
                 yield* withBindingWriteLock(
@@ -5278,6 +5288,16 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
     const hasLiveRuntimeTasks: NonNullable<ProviderServiceShape["hasLiveRuntimeTasks"]> = (input) =>
       Effect.sync(() => (liveRuntimeTaskIds.get(input.threadId)?.size ?? 0) > 0);
 
+    const getSessionAdditionalDirectories: NonNullable<
+      ProviderServiceShape["getSessionAdditionalDirectories"]
+    > = (threadId) =>
+      directory.getBinding(threadId).pipe(
+        Effect.map((bindingOption) => {
+          const binding = Option.getOrUndefined(bindingOption);
+          return binding ? readPersistedAdditionalDirectories(binding.runtimePayload) : undefined;
+        }),
+      );
+
     stopIdleRuntimeSession = (threadId, generation, cleanupStarted = false) => {
       const stopEffect = Effect.gen(function* () {
         if (!isRuntimeIdleGenerationCurrent(threadId, generation)) {
@@ -5928,6 +5948,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       getRuntimeSessionStopTarget,
       withRuntimeSessionStopTarget,
       hasLiveRuntimeTasks,
+      getSessionAdditionalDirectories,
       clearSessionResumeCursor,
       listSessions,
       listRetainedSessions,

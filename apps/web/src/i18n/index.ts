@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { createInstance } from "i18next";
+import { createInstance, type i18n as I18n } from "i18next";
 import { initReactI18next, useTranslation as useReactTranslation } from "react-i18next";
 
 import { APP_SETTINGS_STORAGE_KEY } from "../appSettingsStorage";
@@ -66,7 +66,7 @@ function syncDesktopLanguage(force = false): void {
   void synchronize();
 }
 
-export const i18n = createInstance();
+export const i18n: I18n = createInstance();
 void i18n.use(initReactI18next).init({
   lng: resolveLocale(
     preference,

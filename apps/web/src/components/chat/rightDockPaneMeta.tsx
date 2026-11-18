@@ -10,6 +10,7 @@ import { resolveSubagentPresentationForThread } from "~/lib/subagentPresentation
 import { basenameOfPath } from "~/file-icons";
 import type { LucideIcon } from "~/lib/icons";
 import {
+  BackgroundTrayIcon,
   BotIcon,
   DeviceMobileIcon,
   DiffIcon,
@@ -52,6 +53,7 @@ const RIGHT_DOCK_PANE_ICONS: Record<RightDockPaneKind, LucideIcon> = {
   pullRequest: GitPullRequestIcon,
   services: ServerIcon,
   subagents: BotIcon,
+  backgroundTasks: BackgroundTrayIcon,
 };
 
 const RIGHT_DOCK_PANE_LABEL_KEYS: Record<RightDockPaneKind, string> = {
@@ -66,6 +68,7 @@ const RIGHT_DOCK_PANE_LABEL_KEYS: Record<RightDockPaneKind, string> = {
   pullRequest: "git:general_environmentPullRequest",
   services: "desktop:services",
   subagents: "chat:subagents",
+  backgroundTasks: "chat:backgroundTasks",
 };
 
 // Always resolve pane meta through this helper instead of indexing the map

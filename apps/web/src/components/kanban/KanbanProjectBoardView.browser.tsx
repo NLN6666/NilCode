@@ -69,6 +69,7 @@ vi.mock("./useKanbanBoard", () => ({
 }));
 
 import type { ServerProviderStatus, ThreadId } from "@synara/contracts";
+import { KANBAN_COLUMN_V2_LABELS } from "@synara/shared/kanban";
 import { dispatchKanbanDraftCardAsGoal } from "../../lib/kanbanDispatch";
 import { KanbanProjectBoardView } from "./KanbanProjectBoardView";
 import {

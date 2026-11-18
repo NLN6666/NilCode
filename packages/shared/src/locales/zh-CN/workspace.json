@@ -781,7 +781,6 @@
   "theFolderMovedOrIsMissingLinkItsNew": "文件夹已移动或丢失。关联其新位置以继续这些对话，或仅导入历史记录。",
   "projectsKeepTheirExistingFoldersAndConversationsAreCopied": "项目将保留现有文件夹，对话会复制到 Synara。你当前项目中的内容不会改变。",
   "threadsContextAndMemoryForTheHubLiveIn": "设置协调智能体后，中心的对话、上下文和记忆将保存在此文件夹中。设置过程不会启动模型。",
-  "chatsInAMultiFolderProjectRunInLocal": "多文件夹项目中的聊天使用 Codex 或 Claude，以本地模式运行。Git 操作和文件撤销仅涵盖主文件夹。",
   "enterTheRestoredFolderSPathOnTheSynara": "输入恢复后的文件夹在 Synara 服务器上的路径。现有项目和对话会保留。此操作不会恢复丢失的文件，也不会移动或修复关联的 Git worktree。请先结束正在进行的轮次。",
   "deletesTheHubItsCoordinatorContextAndAutomationsThe": "删除中心及其协调智能体、上下文和自动化。资源库会尽可能移到废纸篓。~/Documents/Synara/Groups 下的中心文件夹仅在其中全部为 Synara 生成的文件时才会删除；如果包含你的文件，则会保留并向你显示其路径。关联的仓库及其对话不受影响。",
   "awaitingInput": "等待输入",
@@ -1084,5 +1083,11 @@
   "childThreadsWorking_one": "{{count}} 个运行中",
   "childThreadsWorking_other": "{{count}} 个运行中",
   "childThreadsDoneCount_one": "+{{count}} 个已完成",
-  "childThreadsDoneCount_other": "+{{count}} 个已完成"
+  "childThreadsDoneCount_other": "+{{count}} 个已完成",
+  "removeRemoteProject": "移除项目",
+  "remoteProjectRemovalKeepsFiles": "此操作只会从 Synara 移除项目，文件夹和文件仍会保留在磁盘上。",
+  "multiFolderProjectHint": "多文件夹项目中的会话使用 Codex 或 Claude。工作树（worktree）只隔离主文件夹，其他文件夹会被直接编辑。Git 操作和文件撤销仅适用于主文件夹。",
+  "introducingSynaraForIphone": "Synara for iPhone 上线",
+  "iosBetaAnnouncementDescription": "电脑运行时，可在手机上查看和引导代理。现已开放 Beta 测试。",
+  "joinTheBeta": "加入 Beta 测试"
 }

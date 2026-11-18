@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  describeBackgroundTaskStatus,
-  summarizeBackgroundTaskGroup,
-} from "./backgroundTaskRow.logic";
+import { describeBackgroundTaskStatus } from "./backgroundTaskRow.logic";
 
 const task = (
   status: "running" | "finished" | "failed" | "stopped",
@@ -42,39 +39,5 @@ describe("describeBackgroundTaskStatus", () => {
     expect(describeBackgroundTaskStatus(task("stopped"), "2026-10-10T00:11:00.000Z").status).toBe(
       "stopped",
     );
-  });
-});
-
-describe("summarizeBackgroundTaskGroup", () => {
-  it("preserves empty, single, and mixed group counts in lifecycle order", () => {
-    expect(summarizeBackgroundTaskGroup([]).match(/\d+/gu)).toEqual(["0"]);
-    expect(summarizeBackgroundTaskGroup([{ status: "running" }]).match(/\d+/gu)).toEqual([
-      "1",
-      "1",
-    ]);
-    expect(
-      summarizeBackgroundTaskGroup([
-        { status: "stopped" },
-        { status: "finished" },
-        { status: "finished" },
-      ]).match(/\d+/gu),
-    ).toEqual(["3", "2", "1"]);
-  });
-  it("counts tasks by state in lifecycle order", () => {
-    expect(
-      summarizeBackgroundTaskGroup([
-        { status: "stopped" },
-        { status: "finished" },
-        { status: "finished" },
-        { status: "finished" },
-      ]).match(/\d+/gu),
-    ).toEqual(["4", "3", "1"]);
-    expect(
-      summarizeBackgroundTaskGroup([
-        { status: "finished" },
-        { status: "running" },
-        { status: "failed" },
-      ]).match(/\d+/gu),
-    ).toEqual(["3", "1", "1", "1"]);
   });
 });

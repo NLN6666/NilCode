@@ -225,7 +225,14 @@ export interface WorkLogEntry {
   providerContextLifecycle?: ProviderContextLifecycleInfo;
   providerHandoff?: ProviderHandoffInfo;
   /** Durable terminal feedback; session readiness never clears a failed turn. */
-  turnFailure?: { cause: string; message: string; errorCode?: string };
+  turnFailure?: {
+    cause: string;
+    message: string;
+    errorCode?: string;
+    provider?: string;
+    // The provider refused the turn for quota: a pause until the limit resets, not a fault.
+    usageLimit?: boolean;
+  };
   // An answered agent question, paired with the answers the user submitted. It
   // renders as a question/answer exchange that stays visible outside the
   // collapsed turn instead of as two bare "User input" log lines.
@@ -908,6 +915,52 @@ function deriveBackgroundTaskStates(ordered: ReadonlyArray<OrchestrationThreadAc
   return { tasks, noticesAnnouncingSubagents };
 }
 
+// Cheap pre-check: only a "Moved to background" notice or a backgrounded task
+// update can make a task a background task.
+function hasBackgroundTaskActivity(ordered: ReadonlyArray<OrchestrationThreadActivity>): boolean {
+  return ordered.some(
+    (activity) =>
+      (activity.kind === "runtime.warning" &&
+        asRecord(activity.payload)?.nativeEventType === "background_tasks_changed") ||
+      (activity.kind === "task.updated" && asRecord(activity.payload)?.isBackgrounded === true),
+  );
+}
+
+// Every background task of the thread, oldest first, with the command its
+// launching call ran. The Environment panel summary and the right-dock list
+// read this, so they need no transcript rows.
+export function deriveThreadBackgroundTasks(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): WorkLogBackgroundTask[] {
+  const ordered = orderedActivities(activities);
+  if (!hasBackgroundTaskActivity(ordered)) {
+    return [];
+  }
+  const { tasks } = deriveBackgroundTaskStates(ordered);
+  const launchToolUseIds = new Set<string>();
+  for (const task of tasks.values()) {
+    if (task.toolUseId) launchToolUseIds.add(task.toolUseId);
+  }
+  // The launching call's lifecycle updates repeat its input; the last one that
+  // names a command wins, as it does when the transcript merges them.
+  const commandByToolUseId = new Map<string, string>();
+  if (launchToolUseIds.size > 0) {
+    for (const activity of ordered) {
+      const payload = asRecord(activity.payload);
+      const toolCallId = extractToolCallId(payload);
+      if (!toolCallId || !launchToolUseIds.has(toolCallId)) continue;
+      const { command, rawCommand } = extractToolCommand(payload);
+      const launchCommand = rawCommand ?? command;
+      if (launchCommand) commandByToolUseId.set(toolCallId, launchCommand);
+    }
+  }
+  // The rest copy is the task's own new object, so it takes the command in place.
+  return [...tasks.values()].map(({ toolUseId, noticeActivityId: _noticeActivityId, ...task }) => {
+    task.command = (toolUseId ? commandByToolUseId.get(toolUseId) : undefined) ?? null;
+    return task;
+  });
+}
+
 // One row per background task, in place of the call that launched it (or of
 // its "Moved to background" notice when that call is not visible). The row's
 // status follows the task, so the transcript never stacks a launch notice,
@@ -917,14 +970,7 @@ function withBackgroundTaskRows<Entry extends WorkLogEntry>(
   ordered: ReadonlyArray<OrchestrationThreadActivity>,
   translate: typeof t,
 ): ReadonlyArray<WorkLogEntry> {
-  if (
-    !ordered.some(
-      (activity) =>
-        (activity.kind === "runtime.warning" &&
-          asRecord(activity.payload)?.nativeEventType === "background_tasks_changed") ||
-        (activity.kind === "task.updated" && asRecord(activity.payload)?.isBackgrounded === true),
-    )
-  ) {
+  if (!hasBackgroundTaskActivity(ordered)) {
     return entries;
   }
   const { tasks, noticesAnnouncingSubagents } = deriveBackgroundTaskStates(ordered);
@@ -1208,6 +1254,13 @@ function isTurnFailureActivity(activity: OrchestrationThreadActivity): boolean {
   );
 }
 
+// Claude reports `rate_limit`; Codex reports its quota variants by name.
+const USAGE_LIMIT_ERROR_CODES: ReadonlySet<string> = new Set([
+  "rate_limit",
+  "usageLimitExceeded",
+  "rateLimitExceeded",
+]);
+
 function deriveTurnFailureEntries(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
   translate: typeof t,
@@ -1243,6 +1296,7 @@ function deriveTurnFailureEntries(
       previous?.turnFailure?.cause ??
       "The provider reported an error.";
     const errorCode = asTrimmedString(payload?.errorCode) ?? previous?.turnFailure?.errorCode;
+    const provider = asTrimmedString(payload?.provider) ?? previous?.turnFailure?.provider;
     const overloaded =
       errorCode === "server_overloaded" || /selected model is at capacity/i.test(cause);
     const message = overloaded
@@ -1264,7 +1318,13 @@ function deriveTurnFailureEntries(
       tone: "error",
       label: translate("chat:taskInterrupted"),
       activityKind: activity.kind,
-      turnFailure: { cause, message, ...(errorCode ? { errorCode } : {}) },
+      turnFailure: {
+        cause,
+        message,
+        ...(errorCode ? { errorCode } : {}),
+        ...(provider ? { provider } : {}),
+        ...(errorCode && USAGE_LIMIT_ERROR_CODES.has(errorCode) ? { usageLimit: true } : {}),
+      },
     });
   }
   return [...failures.values()];
@@ -2491,11 +2551,16 @@ function deriveWorkLogLiveActivity(
         : null);
   const progress = deriveWorkLogLiveActivityProgress(payload, data);
   const elapsedSeconds = firstFiniteNumber(payload?.elapsedSeconds, data?.elapsedSeconds);
+  // Updated-in-place rows keep their first createdAt; the server stamps when
+  // the latest update arrived.
+  const updatedAt = asTrimmedString(payload?.lastActivityAt);
+  const lastActivityAt =
+    updatedAt !== null && !Number.isNaN(Date.parse(updatedAt)) ? updatedAt : activity.createdAt;
 
   return {
     state,
     label: entry.toolTitle ?? entry.label,
-    lastActivityAt: activity.createdAt,
+    lastActivityAt,
     ...(activity.kind === "tool.started" ? { startedAt: activity.createdAt } : {}),
     ...(detail ? { detail } : {}),
     ...(progress !== undefined ? { progress } : {}),
@@ -3628,6 +3693,25 @@ function extractToolCommand(
   const dataInput = asRecord(data?.input);
   const dataArguments = asCommandArgumentRecord(data?.arguments ?? data?.args ?? data?.params);
   const rawInput = asCommandArgumentRecord(data?.rawInput);
+  if (hasTurnScopedProviderToolCallId(payload)) {
+    // Older ACP events copied backticked read/search targets into data.command.
+    // Sparse starts may omit the kind before a typed completion arrives.
+    const kind = data?.kind;
+    const legacyTarget =
+      /^(?:read(?:ing)?|find(?:ing)?|found|search(?:ing|ed)?)\s+`([^`]+)`/iu.exec(
+        asTrimmedString(payload?.title) ?? "",
+      )?.[1];
+    const hasLegacyTitleCommand =
+      (kind === undefined || kind === "other") &&
+      legacyTarget !== undefined &&
+      asTrimmedString(data?.command) === legacyTarget.trim() &&
+      !normalizeCommandValue(rawInput?.command) &&
+      !normalizeCommandValue(rawInput?.cmd) &&
+      !asTrimmedString(rawInput?.executable);
+    if (kind === "read" || kind === "search" || hasLegacyTitleCommand) {
+      return { command: null, rawCommand: null };
+    }
+  }
   const detailCommand =
     isCommandLikeDetail(payload) && typeof payload?.detail === "string"
       ? stripTrailingExitCode(payload.detail).output
@@ -3810,10 +3894,16 @@ function extractToolName(payload: Record<string, unknown> | null): string | null
   const itemInput = asRecord(item?.input);
   const dataInvocation = asRecord(data?.invocation);
   const itemInvocation = asRecord(item?.invocation);
+  // ACP adapters keep the provider-native name in rawInput (e.g. Grok's
+  // `read_file` / `bash`); they only promote Computer names to data.toolName.
+  const rawInput = asRecord(data?.rawInput);
   const candidates = [
     payload?.toolName,
     data?.toolName,
     data?.tool,
+    rawInput?._toolName,
+    rawInput?.toolName,
+    rawInput?.tool_name,
     dataInvocation?.tool,
     dataInvocation?.toolName,
     item?.toolName,
@@ -3983,9 +4073,18 @@ function parseHistoricalToolParamsDisplay(value: unknown): Record<string, unknow
   return Object.keys(result).length > 0 ? result : null;
 }
 
+// Older servers stored each Claude tool heartbeat under its synthetic
+// `<tool id>-heartbeat-<n>` id, so every 30 s of a long command became its own
+// row that never settled. Fold those back onto the tool they report on.
+const LEGACY_TOOL_HEARTBEAT_ID = /^(.+)-heartbeat-\d+$/u;
+
 function extractToolCallId(payload: Record<string, unknown> | null): string | null {
   const data = asRecord(payload?.data);
   const item = asRecord(data?.item);
+  const progressToolUseId = data?.toolCallId == null ? asTrimmedString(data?.toolUseId) : null;
+  if (progressToolUseId !== null) {
+    return LEGACY_TOOL_HEARTBEAT_ID.exec(progressToolUseId)?.[1] ?? progressToolUseId;
+  }
   return asTrimmedString(
     data?.toolCallId ?? data?.toolUseId ?? data?.callID ?? data?.callId ?? item?.id,
   );

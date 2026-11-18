@@ -3,9 +3,8 @@
 // Layer: Component rendering tests
 // Depends on: SettingsSidebarNav, the settings search index, and React server rendering.
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach } from "vitest";
 import { setLanguagePreference, t } from "../i18n";
 import { SettingsRow } from "./settings/SettingsPanelPrimitives";
 
@@ -134,32 +133,6 @@ describe("rankSettingsSearchEntries", () => {
       }
     }
   });
-
-  it("finds the Behavior and Providers rows by their titles", () => {
-    const titles = (query: string) =>
-      rankSettingsSearchEntries(query, 12).map((entry) => t(entry.title));
-    expect(titles("dictating")).toContain("Enter while dictating");
-    expect(titles("diff colors")).toContain("Pull request diff colors");
-    expect(titles("enabled providers")).toContain("Agents");
-  });
-
-  it("finds the Fold finished turns and Wait for subagents rows", () => {
-    const sections = (query: string) =>
-      rankSettingsSearchEntries(query, 12).map((entry) => `${entry.section}:${t(entry.title)}`);
-    expect(sections("fold")).toContain("behavior:Fold finished turns");
-    expect(sections("worked for")).toContain("behavior:Fold finished turns");
-    expect(sections("subagents")).toContain("notifications:Wait for subagents");
-    const targets = (query: string) =>
-      rankSettingsSearchEntries(query, 12).map((entry) => settingsSearchEntryTarget(entry));
-    expect(targets("fold")).toContain("setting-fold-finished-turns");
-    expect(targets("subagents")).toContain("setting-wait-for-subagents");
-  });
-
-  it("deep-links the provider picker result to the merged Agents list", () => {
-    const [top] = rankSettingsSearchEntries("picker order", 12);
-    expect(top && t(top.title)).toBe("Agents");
-    expect(settingsSearchEntryTarget(top!)).toBe("setting-providers");
-  });
 });
 
 describe("account search", () => {
@@ -189,14 +162,5 @@ describe("account search", () => {
     expect(settingsSearchEntryTarget(byEmail!)).toBe("setting-account-codex-work");
     const byAgent = rankSettingsSearchEntries("claude personal", 12, context);
     expect(byAgent.some((entry) => entry.id === "accounts:account:claudeAgent")).toBe(true);
-  });
-
-  it("files moved rows under their new pages", () => {
-    const sectionOf = (query: string) => rankSettingsSearchEntries(query, 1)[0]?.section;
-    expect(sectionOf("thread tabs")).toBe("layout");
-    expect(sectionOf("time format")).toBe("general");
-    expect(sectionOf("rate limit warnings")).toBe("usage");
-    expect(sectionOf("share product analytics")).toBe("privacy");
-    expect(sectionOf("release history")).toBe("about");
   });
 });

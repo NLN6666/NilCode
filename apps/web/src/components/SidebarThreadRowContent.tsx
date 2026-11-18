@@ -236,31 +236,32 @@ export function SidebarThreadRowContent({
 
   const hasPendingDraft = useThreadHasPendingDraft(thread.id);
 
-  const leadingGlyph = variant === "standard" && isSubagentThread ? (
-    <span
-      aria-hidden="true"
-      className="relative inline-flex h-3.5 w-[26px] shrink-0 items-center"
-      style={{ marginLeft: `${subagentIndentPx}px` }}
-    >
-      <span className="absolute left-1.5 top-0 bottom-0 w-px rounded-full bg-border/35" />
-      <span className="absolute left-1.5 top-1/2 h-px w-2 -translate-y-1/2 bg-border/35" />
-      <BotIcon
-        className={cn(
-          "absolute right-0 top-1/2 size-3.5 -translate-y-1/2",
-          isSettledSubagent && "text-muted-foreground/35",
-        )}
-        style={isSettledSubagent ? undefined : { color: subagentPresentation?.accentColor }}
+  const leadingGlyph =
+    variant === "standard" && isSubagentThread ? (
+      <span
+        aria-hidden="true"
+        className="relative inline-flex h-3.5 w-[26px] shrink-0 items-center"
+        style={{ marginLeft: `${subagentIndentPx}px` }}
+      >
+        <span className="absolute left-1.5 top-0 bottom-0 w-px rounded-full bg-border/35" />
+        <span className="absolute left-1.5 top-1/2 h-px w-2 -translate-y-1/2 bg-border/35" />
+        <BotIcon
+          className={cn(
+            "absolute right-0 top-1/2 size-3.5 -translate-y-1/2",
+            isSettledSubagent && "text-muted-foreground/35",
+          )}
+          style={isSettledSubagent ? undefined : { color: subagentPresentation?.accentColor }}
+        />
+      </span>
+    ) : terminalEntryPoint ? (
+      <SidebarGlyph icon={TerminalIcon} variant="chrome" />
+    ) : showThreadProviderAvatar ? (
+      <ProviderAvatarWithTerminal
+        thread={thread}
+        terminalStatus={terminalStatus}
+        terminalCount={terminalCount}
       />
-    </span>
-  ) : terminalEntryPoint ? (
-    <SidebarGlyph icon={TerminalIcon} variant="chrome" />
-  ) : showThreadProviderAvatar ? (
-    <ProviderAvatarWithTerminal
-      thread={thread}
-      terminalStatus={terminalStatus}
-      terminalCount={terminalCount}
-    />
-  ) : null;
+    ) : null;
 
   return (
     <>

@@ -462,5 +462,16 @@
   "timelineOpenedThis": "{{value0}} abrió esta {{value1}}",
   "timelineReviewedBy": "{{value0}} revisó",
   "timelineSomeone": "Alguien",
-  "thisWillMergeIntoBranchUsing": "Se fusionará #{{value0}} en {{value1}} usando {{value2}}."
+  "thisWillMergeIntoBranchUsing": "Se fusionará #{{value0}} en {{value1}} usando {{value2}}.",
+  "openPullRequestNumber": "Abrir solicitud de cambios n.º {{number}}",
+  "pullRequestCount_one": "{{count}} solicitud de cambios",
+  "pullRequestCount_other": "{{count}} solicitudes de cambios",
+  "prDialog_linkTitle": "Vincular solicitud de cambios",
+  "prDialog_linkDescription": "Vincula una solicitud de cambios de GitHub a este chat. No se cambia de rama ni se modifica la solicitud.",
+  "prDialog_link": "Vincular",
+  "prDialog_linking": "Vinculando…",
+  "prDialog_linkFailed": "No se pudo vincular la solicitud de cambios.",
+  "linkPullRequest": "Vincular solicitud de cambios…",
+  "unlinkPullRequest": "Desvincular de este chat",
+  "unlinkPullRequestFailed": "No se pudo desvincular la solicitud de cambios"
 }

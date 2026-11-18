@@ -20,7 +20,6 @@ import {
 import { ContextWindowMeter } from "./ContextWindowMeter";
 import { useTranslation } from "~/i18n";
 
-
 function formatEnvironmentLabel(
   envMode: DraftThreadEnvMode,
   envState: ResolvedThreadWorkspaceState,

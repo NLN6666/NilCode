@@ -72,7 +72,9 @@ import { ProviderUsageMenuControl } from "../ProviderUsageMenuControl";
 import { EnvironmentToggle, type EnvironmentToggleState } from "./environment/EnvironmentToggle";
 import { SurfacePanelToggle, type SurfacePanelToggleState } from "./chatHeaderControls";
 import type { ThreadHandoffTarget } from "~/lib/threadHandoff";
+import type { ProjectAppearance } from "~/lib/projectAppearance";
 import { useTranslation } from "~/i18n";
+import { ProjectSidebarIcon } from "../ProjectSidebarIcon";
 
 /**
  * Width (px) below which collapsible header controls drop their text labels and
@@ -87,6 +89,13 @@ interface ChatHeaderProps {
   activeThreadEntryPoint: ThreadPrimarySurface;
   activeProvider: ProviderKind;
   activeProjectName: string | undefined;
+  // The project the chat belongs to, shown ahead of the title ("project / chat") when the
+  // row has no tabs. Null for chats outside a project (home chats, groups).
+  projectCrumb?: {
+    name: string;
+    cwd: string;
+    appearance: ProjectAppearance | null;
+  } | null;
   threadBreadcrumbs: ReadonlyArray<{
     threadId: ThreadId;
     title: string;
@@ -111,8 +120,6 @@ interface ChatHeaderProps {
   handoffActionLabel: string;
   handoffDisabled: boolean;
   handoffActionTargets: ReadonlyArray<ThreadHandoffTarget>;
-  /** Subset of `handoffActionTargets` that can continue in this same thread. */
-  continueHandoffActionTargets: ReadonlyArray<ThreadHandoffTarget>;
   // Coordinator threads pass false — a hand-off copy would read as a second
   // coordinator, so the action itself is hidden rather than disabled.
   showHandoffAction?: boolean;
@@ -444,6 +451,7 @@ export function ChatHeader({
   activeThreadEntryPoint,
   activeProvider,
   activeProjectName,
+  projectCrumb: projectCrumbProp,
   threadBreadcrumbs,
   className,
   threadTabs,
@@ -460,7 +468,6 @@ export function ChatHeader({
   handoffActionLabel,
   handoffDisabled,
   handoffActionTargets,
-  continueHandoffActionTargets,
   showHandoffAction: showHandoffActionProp,
   showHeaderActions: showHeaderActionsProp,
   gitCwd,
@@ -508,6 +515,7 @@ export function ChatHeader({
   const subagentModelLabel = subagentModelLabelProp ?? null;
   const environment = environmentProp ?? null;
   const editorChatControls = editorChatControlsProp ?? null;
+  const projectCrumb = projectCrumbProp ?? null;
   const headerRef = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
   const { additions: diffAdditions, deletions: diffDeletions, hasChanges } = diffTotals;
@@ -686,6 +694,27 @@ export function ChatHeader({
               <div
                 className={cn("flex min-w-0 items-center gap-2", editorChatControls && "h-full")}
               >
+                {projectCrumb ? (
+                  <>
+                    <span
+                      // ps-px leaves room for the logo's 1px outer ring, which the header's
+                      // overflow-hidden row would otherwise clip on the left edge.
+                      className="flex min-w-0 max-w-[40%] items-center gap-1.5 ps-px text-muted-foreground"
+                      title={projectCrumb.name}
+                    >
+                      <ProjectSidebarIcon
+                        cwd={projectCrumb.cwd}
+                        expanded={false}
+                        appearance={projectCrumb.appearance}
+                        glyphClassName="size-3.5 shrink-0"
+                      />
+                      <span className="truncate font-system-ui text-ui">{projectCrumb.name}</span>
+                    </span>
+                    <span aria-hidden className="shrink-0 text-ui text-muted-foreground/35">
+                      /
+                    </span>
+                  </>
+                ) : null}
                 <div
                   className={cn(
                     "flex min-w-0 items-center gap-2",
@@ -802,25 +831,21 @@ export function ChatHeader({
               <TooltipPopup side="bottom">{handoffActionLabel}</TooltipPopup>
             </Tooltip>
             <ComposerPickerMenuPopup align="end" side="bottom" className="w-56 min-w-56">
-              {continueHandoffActionTargets.length > 0 ? (
-                <>
-                  <MenuGroup>
-                    <MenuGroupLabel>{t("chat:continueInThisThread")}</MenuGroupLabel>
-                    {continueHandoffActionTargets.map((target) => (
-                      <MenuItem
-                        key={target.instanceId}
-                        data-handoff-destination="this-thread"
-                        onClick={() => onContinueHandoff(target)}
-                      >
-                        {/* opacity-100 opts brand icons out of the option row's 80% icon dim. */}
-                        {renderProviderIcon(target.provider, "size-3.5 shrink-0 opacity-100")}
-                        <span>{target.label}</span>
-                      </MenuItem>
-                    ))}
-                  </MenuGroup>
-                  <MenuSeparator />
-                </>
-              ) : null}
+              <MenuGroup>
+                <MenuGroupLabel>{t("chat:continueInThisThread")}</MenuGroupLabel>
+                {handoffActionTargets.map((target) => (
+                  <MenuItem
+                    key={target.instanceId}
+                    data-handoff-destination="this-thread"
+                    onClick={() => onContinueHandoff(target)}
+                  >
+                    {/* opacity-100 opts brand icons out of the option row's 80% icon dim. */}
+                    {renderProviderIcon(target.provider, "size-3.5 shrink-0 opacity-100")}
+                    <span>{target.label}</span>
+                  </MenuItem>
+                ))}
+              </MenuGroup>
+              <MenuSeparator />
               <MenuGroup>
                 <MenuGroupLabel>{t("chat:continueInANewThread")}</MenuGroupLabel>
                 {handoffActionTargets.map((target) => (

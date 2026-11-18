@@ -27,6 +27,10 @@ A ready secondary account keeps the provider available when its default account 
 disabled. Implicit new-chat selection prefers a usable configured account from the
 selected provider. Explicit account picks and live sessions keep their exact account.
 
+For Codex, the model picker's Speed menu offers Ultrafast when the selected account's
+Codex CLI catalog advertises it for that model. Availability depends on the account
+and its workspace permissions. [Codex speed modes](https://learn.chatgpt.com/docs/agent-configuration/speed#ultrafast-mode)
+
 A build that encounters a newer server settings format preserves the file and
 provider credentials. Open the same app channel on a build that supports the
 saved format.
@@ -663,6 +667,18 @@ locations (`~/.opencode/bin`, `~/.bun/bin`, npm/pnpm/yarn global bins, Homebrew,
 Volta, asdf, mise, proto, Deno, nvm/fnm). Set an explicit binary path in
 provider settings only when the install lives somewhere else entirely.
 
+### Claude turn plan
+
+Claude Code no longer offers its own task-list tools (`TodoWrite`, `TaskCreate`, `TaskUpdate`) to
+models newer than Opus 4.7, Sonnet 4.6, and Haiku 4.5, so those sessions never reported a plan.
+Synara gives Claude sessions its own `synara_update_plan` tool instead, the same way Claude Desktop
+offers `update_plan`. Its schema is always loaded rather than deferred behind tool search, and its
+description tells the model when to keep a plan; Synara adds nothing to the system prompt. Each
+accepted call replaces the turn's task list, and a turn that ends normally checks off the steps
+still open. An interrupted or failed turn keeps them as they were. Only Claude sessions are offered
+the tool: providers with a native plan, such as Codex, keep their own. Older Claude models that
+still use the native task-list tools keep working as before.
+
 ### Claude Artifacts, `/design` and `/slides`
 
 Claude Code keeps [Artifacts](https://code.claude.com/docs/en/artifacts) off by default for Agent
@@ -792,7 +808,7 @@ launch tests use disposable CLI fixtures and do not authenticate personal accoun
 A [provider handoff](https://www.trysynara.com/docs/workflows/handoffs) allows another provider to
 continue the task and work in the same environment with the context Synara passes to it.
 
-Continue task, workflow resumes, and plan follow-ups use the same handoff eligibility checks
+Continue task, Resume task, workflow resumes, and plan follow-ups use the same handoff eligibility checks
 as Send. A refused plan handoff keeps the thread's runtime and interaction modes; a refusal
 caused by background tasks uses the existing stop-or-wait notice. Editing a queued message
 after a handoff restores the current provider and an access mode it supports.

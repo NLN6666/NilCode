@@ -1013,6 +1013,49 @@ export const OrchestrationThreadPullRequest = Schema.Struct({
 export type OrchestrationThreadPullRequest = typeof OrchestrationThreadPullRequest.Type;
 
 /**
+ * Who associated a pull request with a thread. Explicit sources (`created`, `agent`, `user`,
+ * `checkout`) are never removed by branch discovery; `discovered` links follow the thread's
+ * branch, and `legacy` marks the single pre-link `lastKnownPr` slot, which kept the
+ * branch-managed behavior it had before links existed.
+ *
+ * Links are persisted in events and `projection_threads.pull_requests_json`. Adding a source or a
+ * required link field therefore needs a migration bump, so an older build refuses the database
+ * ("database too new") instead of reading links it cannot decode.
+ */
+export const OrchestrationThreadPullRequestLinkSource = Schema.Literals([
+  "created",
+  "agent",
+  "user",
+  "checkout",
+  "discovered",
+  "legacy",
+]);
+export type OrchestrationThreadPullRequestLinkSource =
+  typeof OrchestrationThreadPullRequestLinkSource.Type;
+
+export const OrchestrationThreadPullRequestExplicitLinkSource = Schema.Literals([
+  "created",
+  "agent",
+  "user",
+  "checkout",
+]);
+export type OrchestrationThreadPullRequestExplicitLinkSource =
+  typeof OrchestrationThreadPullRequestExplicitLinkSource.Type;
+
+/**
+ * One pull request associated with a thread. The link (identity + provenance) is the thread's
+ * decision; `pullRequest` is only the last state observed on GitHub and is refreshed in place.
+ * `dismissedAt` keeps an unlinked entry as a tombstone so automatic sources do not re-add it.
+ */
+export const OrchestrationThreadPullRequestLink = Schema.Struct({
+  pullRequest: OrchestrationThreadPullRequest,
+  source: OrchestrationThreadPullRequestLinkSource,
+  linkedAt: IsoDateTime,
+  dismissedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+});
+export type OrchestrationThreadPullRequestLink = typeof OrchestrationThreadPullRequestLink.Type;
+
+/**
  * A message the user pinned to the chat's sidebar checklist. `label` is an
  * optional user override; when null the UI derives a label from the message
  * text. `done` tracks the checklist "addressed" state. Decoding defaults keep
@@ -1034,6 +1077,9 @@ export const ThreadGoalContinuationTrigger = Schema.Literals([
   "interaction-mode-updated",
   "turn-completed",
   "startup-recovery",
+  // `thread.turn.resume`: continue an interrupted or failed turn (Resume,
+  // Continue task, quit resume) without adding a chat message. No goal needed.
+  "manual-resume",
 ]);
 export type ThreadGoalContinuationTrigger = typeof ThreadGoalContinuationTrigger.Type;
 /**
@@ -1200,6 +1246,10 @@ export const OrchestrationThread = Schema.Struct({
   lastKnownPr: Schema.optional(Schema.NullOr(OrchestrationThreadPullRequest)).pipe(
     Schema.withDecodingDefault(() => null),
   ),
+  /** Every PR linked to the thread; `lastKnownPr` is the current one derived from this list. */
+  pullRequests: Schema.optional(Schema.Array(OrchestrationThreadPullRequestLink)).pipe(
+    Schema.withDecodingDefault(() => []),
+  ),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   latestUserMessageAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   latestHumanMessageAt: Schema.optional(Schema.NullOr(IsoDateTime)),
@@ -1239,6 +1289,9 @@ export const OrchestrationThread = Schema.Struct({
   session: Schema.NullOr(OrchestrationSession),
 });
 export type OrchestrationThread = typeof OrchestrationThread.Type;
+
+/** Upper bound, in UTF-16 code units and including the trailing "…", of `latestReplyPreview`. */
+export const THREAD_LATEST_REPLY_PREVIEW_MAX_LENGTH = 240;
 
 export const OrchestrationThreadShell = Schema.Struct({
   ...UsageLimitRecoveryFields,
@@ -1308,6 +1361,10 @@ export const OrchestrationThreadShell = Schema.Struct({
   lastKnownPr: Schema.optional(Schema.NullOr(OrchestrationThreadPullRequest)).pipe(
     Schema.withDecodingDefault(() => null),
   ),
+  /** Every PR linked to the thread; `lastKnownPr` is the current one derived from this list. */
+  pullRequests: Schema.optional(Schema.Array(OrchestrationThreadPullRequestLink)).pipe(
+    Schema.withDecodingDefault(() => []),
+  ),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   latestUserMessageAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   latestHumanMessageAt: Schema.optional(Schema.NullOr(IsoDateTime)),
@@ -1336,6 +1393,21 @@ export const OrchestrationThreadShell = Schema.Struct({
   goal: Schema.optional(ThreadGoal),
   ...ThreadGoalTimingFields,
   session: Schema.NullOr(OrchestrationSession),
+  /**
+   * Server-authoritative count of background tasks still outstanding anywhere
+   * in the thread while its session can finish them (session present and not
+   * stopped/errored); 0 otherwise. Absent from older servers.
+   */
+  pendingBackgroundTaskCount: Schema.optional(NonNegativeInt),
+  /**
+   * Plain-text start of the thread's newest finished assistant message that has text, for list
+   * rows: Markdown and code-fence markup removed (code kept as text), whitespace and newlines
+   * collapsed to single spaces, trimmed, at most `THREAD_LATEST_REPLY_PREVIEW_MAX_LENGTH` UTF-16
+   * code units ending in "…" when cut on a grapheme boundary. Server-derived; absent when the
+   * thread has no such message, when it is archived, and from older servers. Changes when an
+   * assistant message finishes, never per streamed delta.
+   */
+  latestReplyPreview: Schema.optional(Schema.String),
 });
 export type OrchestrationThreadShell = typeof OrchestrationThreadShell.Type;
 
@@ -1351,6 +1423,7 @@ export type OrchestrationReadModel = typeof OrchestrationReadModel.Type;
 export const OrchestrationShellSnapshot = Schema.Struct({
   snapshotSequence: NonNegativeInt,
   requiresEmptyProjectShellRepair: Schema.optional(Schema.Boolean),
+  emptyThreadShellVerified: Schema.optional(Schema.Boolean),
   spaces: Schema.Array(OrchestrationSpaceShell),
   projects: Schema.Array(OrchestrationProjectShell),
   threads: Schema.Array(OrchestrationThreadShell),
@@ -1498,6 +1571,11 @@ const ProjectMetaUpdateCommand = Schema.Struct({
   isPinned: Schema.optional(Schema.Boolean),
   browserSharing: Schema.optional(ProjectBrowserSharing),
   spaceId: Schema.optional(Schema.NullOr(SpaceId)),
+  /**
+   * Replaces the extra source folders of an ordinary project; `[]` makes it single-folder
+   * again. Each folder must already exist; the primary stays `workspaceRoot`.
+   */
+  additionalFolders: Schema.optional(ProjectAdditionalFolders),
 });
 
 const ProjectDeleteCommand = Schema.Struct({
@@ -1687,6 +1765,37 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   providerHandoffStopsBackgroundTasks: Schema.optional(Schema.Boolean),
 });
 
+/** Adds (or refreshes) an explicit PR link. Linking an already-linked PR is a no-op. */
+const ThreadPullRequestLinkCommand = Schema.Struct({
+  type: Schema.Literal("thread.pull-request.link"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  pullRequest: OrchestrationThreadPullRequest,
+  /** Provenance only; clients that omit it link as `user`. */
+  source: Schema.optional(OrchestrationThreadPullRequestExplicitLinkSource),
+});
+
+/** Removes a PR link and keeps a tombstone; the PR itself is not closed. */
+const ThreadPullRequestUnlinkCommand = Schema.Struct({
+  type: Schema.Literal("thread.pull-request.unlink"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  url: TrimmedNonEmptyString,
+});
+
+/**
+ * Server-only PR observations. `discovered` replaces the branch-managed link (null clears it)
+ * and never touches explicit links; `snapshots` refresh the stored state of PRs that are
+ * already linked and never add new links.
+ */
+const ThreadPullRequestSyncCommand = Schema.Struct({
+  type: Schema.Literal("thread.pull-request.sync"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  discovered: Schema.optional(Schema.NullOr(OrchestrationThreadPullRequest)),
+  snapshots: Schema.optional(Schema.Array(OrchestrationThreadPullRequest)),
+});
+
 const ThreadPinnedMessageAddCommand = Schema.Struct({
   type: Schema.Literal("thread.pinned-message.add"),
   commandId: CommandId,
@@ -1736,6 +1845,17 @@ const ThreadInteractionModeSetCommand = Schema.Struct({
 export const ComputerControlMode = Schema.Literals(["off", "request", "chat"]);
 export type ComputerControlMode = typeof ComputerControlMode.Type;
 
+export const TURN_RESUME_MAX_PROMPT_CHARS = 2_000;
+const TurnResumePrompt = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(TURN_RESUME_MAX_PROMPT_CHARS),
+);
+
+const ThreadResumePreconditionSchema = Schema.Struct({
+  /** Turn in flight when the chat was recorded; null while the provider was still connecting. */
+  recordedTurnId: Schema.NullOr(TurnId),
+  recordedAt: IsoDateTime,
+});
+
 export const ThreadTurnStartCommand = Schema.Struct({
   type: Schema.Literal("thread.turn.start"),
   asyncUserInputResponse: Schema.optional(AsyncUserInputResponse),
@@ -1774,13 +1894,38 @@ export const ThreadTurnStartCommand = Schema.Struct({
   // has nothing in flight, and no turn finished on its own since the record was
   // taken (the recorded turn itself, or any later one). Clients cannot set it:
   // ClientThreadTurnStartCommand omits the field, so decoding strips a spoofed value.
-  resumePrecondition: Schema.optional(
-    Schema.Struct({
-      /** Turn in flight when the chat was recorded; null while the provider was still connecting. */
-      recordedTurnId: Schema.NullOr(TurnId),
-      recordedAt: IsoDateTime,
-    }),
-  ),
+  resumePrecondition: Schema.optional(ThreadResumePreconditionSchema),
+  createdAt: IsoDateTime,
+});
+
+/**
+ * Continues the thread's interrupted work without adding a chat message: the
+ * newest request is delivered again when it never reached the provider,
+ * otherwise an interrupted or failed latest turn continues from the
+ * conversation.
+ */
+const ThreadTurnResumeCommand = Schema.Struct({
+  type: Schema.Literal("thread.turn.resume"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  computerControlGeneration: Schema.optional(NonNegativeInt),
+  // Server-only (quit resume), stripped from clients by ClientThreadTurnResumeCommand:
+  // the same atomic re-check `thread.turn.start` applies, and the recorded prompt.
+  resumePrecondition: Schema.optional(ThreadResumePreconditionSchema),
+  continuationPrompt: Schema.optional(TurnResumePrompt),
+  createdAt: IsoDateTime,
+});
+
+const ClientThreadTurnResumeCommand = Schema.Struct({
+  type: Schema.Literal("thread.turn.resume"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  /**
+   * The resuming person's current computer-control generation: their consent
+   * to restore the computer access a resent message asked for. Without it (a
+   * remote device, an automatic resume) the resend runs without computer access.
+   */
+  computerControlGeneration: Schema.optional(NonNegativeInt),
   createdAt: IsoDateTime,
 });
 
@@ -1988,6 +2133,8 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadArchiveCommand,
   ThreadUnarchiveCommand,
   ThreadMetaUpdateCommand,
+  ThreadPullRequestLinkCommand,
+  ThreadPullRequestUnlinkCommand,
   ThreadPinnedMessageAddCommand,
   ThreadPinnedMessageRemoveCommand,
   ThreadPinnedMessageDoneSetCommand,
@@ -1995,6 +2142,7 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
   ThreadTurnStartCommand,
+  ThreadTurnResumeCommand,
   ThreadClaudeCacheRespondCommand,
   ThreadTurnInterruptCommand,
   ThreadTaskStopCommand,
@@ -2025,6 +2173,8 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadArchiveCommand,
   ThreadUnarchiveCommand,
   ThreadMetaUpdateCommand,
+  ThreadPullRequestLinkCommand,
+  ThreadPullRequestUnlinkCommand,
   ThreadPinnedMessageAddCommand,
   ThreadPinnedMessageRemoveCommand,
   ThreadPinnedMessageDoneSetCommand,
@@ -2032,6 +2182,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
   ClientThreadTurnStartCommand,
+  ClientThreadTurnResumeCommand,
   ThreadClaudeCacheRespondCommand,
   ThreadTurnInterruptCommand,
   ThreadTaskStopCommand,
@@ -2051,6 +2202,8 @@ const ThreadSessionSetCommand = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   session: OrchestrationSession,
+  // Server-only identity of a starting resume that has no visible user message.
+  pendingResumeMessageId: Schema.optional(MessageId),
   expectedSessionStatus: Schema.optional(OrchestrationSessionStatus),
   expectedSessionUpdatedAt: Schema.optional(IsoDateTime),
   createdAt: IsoDateTime,
@@ -2282,6 +2435,7 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadDispatchQueuedTurnCommand,
   ThreadSidechatActivityRecordCommand,
   ThreadSidechatExpireCommand,
+  ThreadPullRequestSyncCommand,
 ]);
 export type InternalOrchestrationCommand = typeof InternalOrchestrationCommand.Type;
 
@@ -2396,6 +2550,7 @@ export const ProjectMetaUpdatedPayload = Schema.Struct({
   isPinned: Schema.optional(Schema.Boolean),
   browserSharing: Schema.optional(ProjectBrowserSharing),
   spaceId: Schema.optional(Schema.NullOr(SpaceId)),
+  additionalFolders: Schema.optional(ProjectAdditionalFolders),
   updatedAt: IsoDateTime,
 });
 
@@ -2464,6 +2619,8 @@ export const ThreadCreatedPayload = Schema.Struct({
   lastKnownPr: Schema.optional(Schema.NullOr(OrchestrationThreadPullRequest)).pipe(
     Schema.withDecodingDefault(() => null),
   ),
+  /** Absent on events written before PR links; replay derives them from `lastKnownPr`. */
+  pullRequests: Schema.optional(Schema.Array(OrchestrationThreadPullRequestLink)),
   handoff: Schema.NullOr(ThreadHandoff).pipe(Schema.withDecodingDefault(() => null)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -2530,6 +2687,12 @@ export const ThreadMetaUpdatedPayload = Schema.Struct({
   subagentRole: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   handoff: Schema.optional(Schema.NullOr(ThreadHandoff)),
   lastKnownPr: Schema.optional(Schema.NullOr(OrchestrationThreadPullRequest)),
+  /**
+   * The thread's full PR link list after this event. Written together with the derived
+   * `lastKnownPr`; events written before links carry only `lastKnownPr`, which replay
+   * interprets as the old single-slot replacement.
+   */
+  pullRequests: Schema.optional(Schema.Array(OrchestrationThreadPullRequestLink)),
   pinnedMessages: Schema.optional(ThreadPinnedMessages),
   notes: Schema.optional(ThreadNotes),
   goal: Schema.optional(ThreadGoal),
@@ -2658,6 +2821,10 @@ export const ThreadGoalContinuationRequestedPayload = Schema.Struct({
   goalStartedAt: Schema.NullOr(IsoDateTime),
   trigger: ThreadGoalContinuationTrigger,
   sourceTurnId: Schema.optional(TurnId),
+  /** "manual-resume" only: provider input for the continuation; a default otherwise. */
+  resumePrompt: Schema.optional(TurnResumePrompt),
+  /** "manual-resume" only: consent to restore a resent message's computer access. */
+  resumeComputerControlGeneration: Schema.optional(NonNegativeInt),
   createdAt: IsoDateTime,
 });
 
@@ -2755,6 +2922,7 @@ export const ThreadSessionStopRequestedPayload = Schema.Struct({
 export const ThreadSessionSetPayload = Schema.Struct({
   threadId: ThreadId,
   session: OrchestrationSession,
+  pendingResumeMessageId: Schema.optional(MessageId),
 });
 
 export const ThreadProposedPlanUpsertedPayload = Schema.Struct({
@@ -3233,7 +3401,7 @@ export type OrchestrationReconcileProviderDeliveryResult =
  * the renderer can reply to the quit request only after the record exists.
  */
 export const QUIT_RESUME_MAX_THREADS = 256;
-export const QUIT_RESUME_MAX_PROMPT_CHARS = 2_000;
+export const QUIT_RESUME_MAX_PROMPT_CHARS = TURN_RESUME_MAX_PROMPT_CHARS;
 
 export const OrchestrationPrepareQuitResumeInput = Schema.Struct({
   threadIds: Schema.Array(ThreadId).check(

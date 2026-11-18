@@ -86,8 +86,43 @@ describe("classifyToolCallSummaryCategory", () => {
     );
   });
 
+  it("classifies ACP native read and search tool names", () => {
+    // Grok/Cursor report reads through rawInput._toolName (read_file, view) and
+    // searches as `search`/`find`; all must count in the collapsed summary.
+    expect(
+      classifyToolCallSummaryCategory(
+        workEntry({ id: "g1", itemType: "dynamic_tool_call", toolName: "read_file" }),
+      ),
+    ).toBe("read");
+    expect(
+      classifyToolCallSummaryCategory(
+        workEntry({ id: "g2", itemType: "dynamic_tool_call", toolName: "view" }),
+      ),
+    ).toBe("read");
+    expect(
+      classifyToolCallSummaryCategory(
+        workEntry({ id: "g3", itemType: "dynamic_tool_call", toolName: "search" }),
+      ),
+    ).toBe("search");
+    expect(
+      classifyToolCallSummaryCategory(
+        workEntry({ id: "g4", itemType: "web_search", toolName: "grep" }),
+      ),
+    ).toBe("search");
+  });
+
   it("classifies mutating commands, agent tasks, and MCP tools", () => {
     expect(classifyToolCallSummaryCategory(command("c1"))).toBe("command");
+    expect(
+      classifyToolCallSummaryCategory(
+        workEntry({
+          id: "compound",
+          itemType: "command_execution",
+          toolTitle: "Read src/app.ts",
+          command: "cat src/app.ts | head -n 5",
+        }),
+      ),
+    ).toBe("command");
     expect(
       classifyToolCallSummaryCategory(workEntry({ id: "a1", itemType: "collab_agent_tool_call" })),
     ).toBe("agent");
@@ -203,6 +238,36 @@ describe("summarizeToolCallGroup", () => {
     ]);
     expect(summary?.label).toBe("Ran 2 commands");
     expect(summary?.failedCount).toBe(1);
+  });
+
+  it("counts background launches and their failures without a live state", () => {
+    const background = (id: string, status: "running" | "failed") =>
+      workEntry({
+        id,
+        label: "Background task",
+        backgroundTask: {
+          taskId: id,
+          taskType: "local_bash",
+          description: null,
+          command: "bun run dev",
+          status,
+          startedAt: "2026-06-05T00:00:00.000Z",
+          completedAt: status === "running" ? null : "2026-06-05T00:00:01.000Z",
+          exitCode: status === "failed" ? 1 : null,
+        },
+      });
+    const summary = summarizeToolCallGroup([
+      command("c1", "nc -z 127.0.0.1 3947"),
+      background("b1", "failed"),
+      background("b2", "running"),
+    ]);
+    expect(summary?.label).toBe("Ran 1 command, 2 in background");
+    expect(summary?.failedLabel).toBe("1 failed");
+    // A task still running must not keep the line open as live work.
+    expect(summary?.hasRunningEntry).toBe(false);
+    expect(
+      summarizeToolCallGroup([background("b3", "running"), background("b4", "running")]),
+    ).toMatchObject({ label: "2 in background", iconCategory: "background" });
   });
 
   it("names at most three kinds and folds the rest into other actions", () => {

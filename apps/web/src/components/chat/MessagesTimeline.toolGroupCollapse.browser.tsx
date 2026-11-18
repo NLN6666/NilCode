@@ -118,6 +118,13 @@ function findSummaryTrigger(label: string): HTMLButtonElement | null {
   );
 }
 
+function copyButtonOpacity(messageId: string): string | null {
+  const button = document.querySelector(
+    `[data-message-id='${messageId}'] [aria-label='Copy message']`,
+  );
+  return button ? getComputedStyle(button).opacity : null;
+}
+
 function isVisibleOutsideClosedDisclosure(text: string): boolean {
   // The innermost element containing the text (command labels may span nested
   // spans, so a leaf-only check would miss them).
@@ -144,7 +151,7 @@ describe("MessagesTimeline tool group collapse", () => {
     document.body.innerHTML = "";
   });
 
-  it("folds consumed background work, preserves both answers and reveals the command on demand", async () => {
+  it("folds background work with its turn, preserves both answers and reveals the command on demand", async () => {
     const startedAt = "2026-03-17T19:12:00.000Z";
     const completedAt = "2026-03-17T19:12:21.000Z";
     const entries = (settled: boolean): TimelineEntry[] => [
@@ -230,9 +237,10 @@ describe("MessagesTimeline tool group collapse", () => {
       container: createTimelineHost(),
     });
     try {
-      await expect
-        .element(screen.getByText("node scripts/rebuild.mjs", { exact: true }))
-        .toBeVisible();
+      // No row stays pinned under the launching turn while the follow-up streams;
+      // live task state lives in the Environment panel.
+      await expect.poll(() => findSummaryTrigger("Worked for") !== null).toBe(true);
+      expect(isVisibleOutsideClosedDisclosure("node scripts/rebuild.mjs")).toBe(false);
       await screen.rerender(<ToolGroupCollapseTimeline timelineEntries={entries(true)} settled />);
       await expect
         .element(screen.getByText("The build is running.", { exact: true }))
@@ -244,6 +252,14 @@ describe("MessagesTimeline tool group collapse", () => {
         .poll(() => isVisibleOutsideClosedDisclosure("node scripts/rebuild.mjs"))
         .toBe(false);
       await expect.poll(() => findSummaryTrigger("Worked for") !== null).toBe(true);
+      // Only "Worked for" closes with a hairline; the wake's "Resumed" line stands alone.
+      const hairlineAfter = (label: string) =>
+        findSummaryTrigger(label)
+          ?.closest(".group\\/collapsed-work")
+          ?.querySelector(":scope > .h-px") ?? null;
+      expect(hairlineAfter("Worked for")).not.toBeNull();
+      expect(findSummaryTrigger("Resumed")).not.toBeNull();
+      expect(hairlineAfter("Resumed")).toBeNull();
       findSummaryTrigger("Worked for")!.click();
       await expect
         .element(screen.getByText("node scripts/rebuild.mjs", { exact: true }))
@@ -255,6 +271,63 @@ describe("MessagesTimeline tool group collapse", () => {
       await expect
         .element(screen.getByText("The new app is ready.", { exact: true }))
         .toBeVisible();
+    } finally {
+      await screen.unmount();
+    }
+  });
+
+  it("ends a reply a background task carried on once, with a Resumed line between", async () => {
+    const message = (id: string, role: "user" | "assistant", text: string, at: string) => ({
+      id,
+      kind: "message" as const,
+      createdAt: at,
+      message: {
+        id: MessageId.makeUnsafe(id),
+        role,
+        text,
+        createdAt: at,
+        streaming: false,
+        ...(role === "assistant" ? { completedAt: at } : {}),
+      },
+    });
+    const wakeAt = "2026-03-17T19:12:10.000Z";
+    const entries: TimelineEntry[] = [
+      message("request", "user", "Run the suite", "2026-03-17T19:12:00.000Z"),
+      message("first-answer", "assistant", "The suite is running.", "2026-03-17T19:12:04.000Z"),
+      {
+        id: "wake",
+        kind: "work",
+        createdAt: wakeAt,
+        entry: {
+          id: "wake",
+          createdAt: wakeAt,
+          label: "Background task finished: Full suite",
+          tone: "info",
+          backgroundTaskCompletion: {
+            taskId: "suite-task",
+            taskType: "local_bash",
+            description: "Full suite",
+            outcome: "finished",
+          },
+        },
+      },
+      message("follow-up", "assistant", "The suite passed.", "2026-03-17T19:12:12.000Z"),
+    ];
+    const screen = await render(<ToolGroupCollapseTimeline timelineEntries={entries} settled />, {
+      container: createTimelineHost(),
+    });
+    try {
+      await expect.element(screen.getByText("The suite passed.", { exact: true })).toBeVisible();
+      await expect
+        .element(screen.getByText("The suite is running.", { exact: true }))
+        .toBeVisible();
+      await expect.element(screen.getByText(/^Resumed: “Full suite” finished/)).toBeVisible();
+      // Only the reply's last answer shows its actions at rest; the earlier
+      // answer keeps them in place, revealed on hover.
+      await expect.poll(() => copyButtonOpacity("follow-up")).toBe("1");
+      await expect.poll(() => copyButtonOpacity("first-answer")).toBe("0");
+      await screen.getByText("The suite is running.", { exact: true }).hover();
+      await expect.poll(() => copyButtonOpacity("first-answer")).toBe("1");
     } finally {
       await screen.unmount();
     }
@@ -342,85 +415,6 @@ describe("MessagesTimeline tool group collapse", () => {
       await expect
         .element(screen.getByText("Original detail from the last update.", { exact: true }).last())
         .toBeVisible();
-    } finally {
-      await screen.unmount();
-    }
-  });
-
-  it("mutes settled reasoning, summaries and narration without muting the final answer", async () => {
-    const turnId = TurnId.makeUnsafe("prose-tone-turn");
-    const entries = deriveTimelineEntries(
-      [
-        {
-          id: MessageId.makeUnsafe("tone-request"),
-          role: "user",
-          text: "Check the boundary",
-          createdAt: "2026-03-17T19:12:20.000Z",
-          streaming: false,
-        },
-        {
-          id: MessageId.makeUnsafe("tone-narration"),
-          role: "assistant",
-          turnId,
-          text: "I am checking the boundary.",
-          createdAt: "2026-03-17T19:12:23.000Z",
-          streaming: false,
-        },
-        {
-          id: MessageId.makeUnsafe("tone-final"),
-          role: "assistant",
-          turnId,
-          text: "The boundary is verified.",
-          createdAt: "2026-03-17T19:12:26.000Z",
-          completedAt: "2026-03-17T19:12:28.000Z",
-          streaming: false,
-        },
-      ],
-      [],
-      [
-        {
-          id: "tone-reasoning",
-          turnId,
-          createdAt: "2026-03-17T19:12:21.000Z",
-          label: "Reasoning trace",
-          toolCallId: "reasoning-item",
-          tone: "tool",
-          detail: "Inspect the provider boundary.",
-        },
-        {
-          id: "tone-summary",
-          turnId,
-          createdAt: "2026-03-17T19:12:22.000Z",
-          label: "Tool summary",
-          activityKind: "tool.summary",
-          tone: "info",
-          detail: "The tools checked cancellation.",
-        },
-      ],
-    );
-    const host = createTimelineHost();
-    const screen = await render(<ToolGroupCollapseTimeline timelineEntries={entries} settled />, {
-      container: host,
-    });
-    try {
-      await expect.poll(() => findSummaryTrigger("Worked for") !== null).toBe(true);
-      findSummaryTrigger("Worked for")!.click();
-      await expect
-        .element(screen.getByText("I am checking the boundary.", { exact: true }))
-        .toBeVisible();
-      const narration = host.querySelector<HTMLElement>(
-        '[data-chat-find-narration-id="tone-narration"]',
-      )!;
-      const mutedColor = getComputedStyle(narration).color;
-      const prose = host.querySelectorAll<HTMLElement>("[data-work-entry-prose='true'] p");
-      expect(prose).toHaveLength(2);
-      for (const paragraph of [...prose, narration.querySelector("p")!]) {
-        expect(getComputedStyle(paragraph).color).toBe(mutedColor);
-      }
-      const final = [...host.querySelectorAll("p")].find(
-        (paragraph) => paragraph.textContent === "The boundary is verified.",
-      )!;
-      expect(getComputedStyle(final).color).not.toBe(mutedColor);
     } finally {
       await screen.unmount();
     }
