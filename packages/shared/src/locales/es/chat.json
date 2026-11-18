@@ -1040,7 +1040,6 @@
   "stopDeviceControlForThisTurnAgentContinuesWithout": "Detener el control del dispositivo en este turno; el agente continúa sin herramientas",
   "computerMayBringWindowsToTheFrontUntilThis": "Ordenador puede traer ventanas al primer plano hasta que termine esta respuesta.",
   "placeholder_refinePlan": "Añade comentarios para mejorar el plan o déjalo en blanco para implementarlo",
-  "placeholder_typeOwnAnswer": "Escribe tu propia respuesta o deja esto vacío para utilizar la opción seleccionada",
   "header_diffPanelUnavailable": "El panel de cambios no está disponible porque este proyecto no es un repositorio de git.",
   "yourMessageIsSavedAndOnHoldContinuingMay": "Tu mensaje está guardado y en espera. Al continuar se puede volver a procesar {{value0}}.",
   "couldnTLoadOMPModelsCheckThatOmpIs": "No se pudieron cargar los modelos de OMP; comprueba que omp esté instalado y autenticado",
@@ -1208,5 +1207,11 @@
   "usageLimitResumeAt": "Límite de uso · se reanuda a las {{time}}",
   "usageLimitAwaitingHost": "Cuota restablecida · esperando al ordenador",
   "cancelUsageLimitResume": "Cancelar reanudación automática",
-  "usageLimitResuming": "Continuando en tu ordenador…"
+  "usageLimitResuming": "Continuando en tu ordenador…",
+  "composerPendingUserInputPanel_pickHint": "elegir",
+  "composerPendingUserInputPanel_nextHint": "siguiente",
+  "composerPendingUserInputPanel_submitHint": "enviar",
+  "subagentsCreated_one": "Subagente creado",
+  "subagentsCreated_other": "{{count}} subagentes creados",
+  "checkpointBaselineUnavailable": "La comparación del checkpoint y Deshacer archivos no están disponibles en este turno."
 }

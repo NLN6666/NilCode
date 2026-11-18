@@ -55,7 +55,8 @@ interface ChatTranscriptPaneProps {
   activeThreadId: string;
   activeTurnId?: TurnId | null;
   activeTurnInProgress: boolean;
-  subagentsRunning?: boolean;
+  /** Subagent rows with a child still at work, shown at the end of their answer. */
+  liveSubagentRunEntryIds?: ReadonlySet<string>;
   /** What the transcript's subagent cards read from the chat (child threads, controls). */
   subagentRun?: Omit<SubagentRunContextValue, "visibility"> | null;
   /** The newest card with subagents at work; drives the floating "N running" chip. */
@@ -175,7 +176,7 @@ export function ChatTranscriptPane({
   activeThreadId,
   activeTurnId,
   activeTurnInProgress,
-  subagentsRunning,
+  liveSubagentRunEntryIds,
   subagentRun,
   runningSubagentRun,
   subagentThread,
@@ -404,6 +405,7 @@ export function ChatTranscriptPane({
           {/* The timeline stays mounted under the agent detail: unmounting it would rebuild
             every row and lose the scroll position on Back. The wrapper has no box of its own
             (`contents`), so the timeline's layout and measurement are the same either way. */}
+
           <div
             className={cn("contents", agentDetailOpen && "pointer-events-none invisible")}
             aria-hidden={agentDetailOpen || undefined}
@@ -430,7 +432,7 @@ export function ChatTranscriptPane({
                 {...(onResolveWorktreeSetup ? { onResolveWorktreeSetup } : {})}
                 activeTurnId={activeTurnId ?? null}
                 activeTurnInProgress={activeTurnInProgress}
-                subagentsRunning={subagentsRunning === true}
+                {...(liveSubagentRunEntryIds ? { liveSubagentRunEntryIds } : {})}
                 collapseFinishedTurns={collapseFinishedTurns !== false}
                 activeTurnStartedAt={activeTurnStartedAt}
                 listRef={listRef}

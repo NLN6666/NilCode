@@ -8,7 +8,6 @@ import { t } from "~/i18n";
 import type {
   AssistantDeliveryMode,
   ProjectId,
-  ProviderKind,
   ProviderStartOptions,
   ThreadId,
 } from "@synara/contracts";
@@ -18,6 +17,7 @@ import {
   type KanbanCard,
   type KanbanDraftOpenThreadReason,
 } from "../components/kanban/kanban.logic";
+import type { NewChatDefault } from "../appSettings";
 import { useKanbanUiStore } from "../kanbanUiStore";
 import type { SidebarThreadSummary } from "../types";
 import { dispatchDraftThread, type DraftDispatchProviderInstance } from "./draftThreadDispatch";
@@ -62,8 +62,8 @@ export function kanbanDispatchFailureToast(
 
 export async function dispatchKanbanDraftCard(input: {
   card: KanbanCard;
-  defaultProvider: ProviderKind;
-  defaultModelByProvider: ReadonlyArray<DefaultModelRef>;
+  newChatDefault: NewChatDefault;
+  defaultModelByProvider?: ReadonlyArray<DefaultModelRef> | undefined;
   assistantDeliveryMode: AssistantDeliveryMode;
   providerOptions?: ProviderStartOptions | undefined;
   providerInstances?: ReadonlyArray<DraftDispatchProviderInstance> | undefined;
@@ -93,7 +93,7 @@ async function dispatchKanbanDraftCardInternal(
       threadId: card.threadId,
       projectId: card.projectId,
       thread: card.thread,
-      defaultProvider: input.defaultProvider,
+      newChatDefault: input.newChatDefault,
       defaultModelByProvider: input.defaultModelByProvider,
       assistantDeliveryMode: input.assistantDeliveryMode,
       providerOptions: input.providerOptions,
@@ -108,8 +108,8 @@ interface KanbanDraftDispatchInput {
   projectId: ProjectId;
   /** Backing summary; null for local-only draft threads not yet promoted. */
   thread: SidebarThreadSummary | null;
-  defaultProvider: ProviderKind;
-  defaultModelByProvider: ReadonlyArray<DefaultModelRef>;
+  newChatDefault: NewChatDefault;
+  defaultModelByProvider?: ReadonlyArray<DefaultModelRef> | undefined;
   assistantDeliveryMode: AssistantDeliveryMode;
   providerOptions?: ProviderStartOptions | undefined;
   providerInstances?: ReadonlyArray<DraftDispatchProviderInstance> | undefined;

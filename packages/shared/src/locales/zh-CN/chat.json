@@ -305,7 +305,6 @@
   "proposedPlan_workspaceUnavailableDesc": "此会话没有可用于下载的工作区路径。",
   "stopGeneration_title": "停止当前回复。Mac 上按 Ctrl+C 中断。",
   "placeholder_refinePlan": "添加反馈以优化计划，或留空直接执行",
-  "placeholder_typeOwnAnswer": "输入你自己的回答，或留空使用所选选项",
   "header_diffPanelUnavailable": "差异面板不可用，因为该项目不是 Git 仓库。",
   "x": "X",
   "pR": "PR",
@@ -1208,5 +1207,11 @@
   "usageLimitResumeAt": "用量已达限额 · 将于 {{time}} 继续",
   "usageLimitAwaitingHost": "已到重置时间 · 正在等待电脑",
   "cancelUsageLimitResume": "取消自动恢复",
-  "usageLimitResuming": "正在电脑上继续…"
+  "usageLimitResuming": "正在电脑上继续…",
+  "composerPendingUserInputPanel_pickHint": "选择",
+  "composerPendingUserInputPanel_nextHint": "下一项",
+  "composerPendingUserInputPanel_submitHint": "提交",
+  "subagentsCreated_one": "已创建子智能体",
+  "subagentsCreated_other": "已创建 {{count}} 个子智能体",
+  "checkpointBaselineUnavailable": "此轮无法查看检查点差异或撤销文件更改。"
 }

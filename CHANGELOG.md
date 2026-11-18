@@ -2,6 +2,9 @@
 
 ## Unreleased — dev integration
 
+- Merge `main` through `fa05901d4` (Synara 1.5.3), adopting the new settings/account pages, child-thread nesting, quieter chat activity, Remote Space fixes and account/session reliability improvements while retaining NilCode's multilingual and provider integrations.
+- Keep released fork migrations 143–144 unchanged; run deleted-token analytics at 145 and repair the released main 143 tracker without discarding archived usage, shared-browser settings or Advisor overrides.
+- Move language and Classic/Rail controls, OMP policy details and their restore/search behavior into the new settings owners. Keep live reasoning in its stable-height region while simplifying ordinary tool rows.
 - Merge `main` through `12faafc6b` (Synara 1.5.1), retaining English, Spanish and Simplified Chinese, native language preferences, OMP, Advisor, project services, provider-scoped subagent catalogs, shared-browser continuity and header overlap fixes.
 - Adopt the redesigned sign-in, announcements and app tour, Stable account profiles and private Inbox history, migration-gap recovery and browser request-lifecycle fixes. Keep Stable diagnostics disabled and product analytics opt-in.
 - Quote the browser-lifecycle smoke's BetterWright subpath glob so Bun runs the actual Electron scenario instead of rejecting an unmatched shell pattern.
@@ -21,6 +24,62 @@
 - Keep service output attached to its adopted terminal and shared browser menu captures attached to their browser surface, preserving native viewport size and document ownership.
 - Keep the shared server RPC declarations, MCP process boundary, prompt-injection budget, and production-stage dependency patch verification. Build with the pinned Bun 1.4.4 / Node 24.13.1 toolchain.
 - Let the native smoke runner remove Chromium profiles only after Electron exits, avoiding Windows profile-lock failures without weakening viewport or remote-resource assertions.
+## 1.5.3 — 2026-11-12
+
+**Clearer settings and chats, more reliable accounts, and less background work.**
+
+### Added
+
+- Settings groups navigation by purpose and gives provider accounts their own searchable page. Choose a provider account as the default for new chats; account and sign-in data survive an agents-list reset.
+- Open a subagent alongside its launching chat. Related agent-created threads can be nested in the sidebar and Activity, and the running-agents indicator opens the Subagents list.
+- Browser automation reports bounded, sanitized causes for supported script failures and suggests supported alternatives when an API is unavailable.
+
+### Changed
+
+- Transcript tool activity and routine provider warnings are quieter. Provider questions use a compact composer, and the model picker stays open when selecting a favorite.
+- New installations ask before resuming a large, long-idle Claude session and offer a summary; existing preferences remain intact. Claude is guided to avoid unnecessary unrequested subagents.
+- Idle account polling, usage synchronization and account API requests perform less work. API improvements include fewer database and service round trips and shorter database lock exposure; service availability depends on deployment.
+- Release packaging overlaps independent macOS work while preserving signing and notarization; results vary by runner and no general speedup is claimed.
+
+### Fixed
+
+- Transient account token refresh failures retain the session and retry rather than forcing a sign-out. Sign-in no longer waits on a stalled enrollment, which retries in the background.
+- Usage synchronization avoids stalls on large histories. Stale interrupted-command blockers are settled without suppressing safeguards for other ambiguous commands.
+- Remote projects remain in their selected Space, and Space moves and rail navigation are more consistent.
+- Provider warnings and Claude subagent activity retain actionable information while suppressing routine bookkeeping.
+
+### Verification
+
+The release checkpoint records local checks and their inputs. The exact-tag workflow must pass quality, server tests, all native packages, macOS signing and notarization, Windows Defender, provenance and packaged startup before publication. Windows uses the version-scoped unsigned exception. Packaged startup does not establish manual installation, upgrades or live provider behavior.
+
+## 1.5.2 — 2026-11-11
+
+**Linux ARM64 desktop packages beside the existing x86_64 build.**
+
+### Added
+
+- Usage & limits includes Analytics for token and activity trends by provider, model and project, with reported or estimated API-rate costs. On macOS, This Mac can include local Claude Code and Codex sessions; API-rate estimates are not subscription charges.
+- Settings can target a connected computer. Supported Codex and Claude accounts show available signed-in identity to help distinguish accounts.
+- Linux ARM64 AppImage (`Synara-<version>-arm64.AppImage`) built on an ARM64 runner with the same provenance record, packaged-startup smoke test and unsigned Linux publication policy as the x86_64 build.
+- Dedicated Linux feed per architecture (`synara-linux.yml` for x86_64, `synara-linux-arm64.yml` for ARM64). electron-updater derives that suffix from the running architecture and, inside a manifest, prefers an AppImage whose name contains `process.arch` before falling back to the first `.AppImage` match. `x64` never matches the `x86_64` file alias, so a shared manifest could still hand x64 the arm64 payload.
+- The download page exposes both Linux builds through an architecture toggle, and the installation and troubleshooting docs describe the `aarch64` choice and the FUSE 2 requirement.
+
+### Changed
+
+- `dist:desktop:linux` follows the host architecture instead of forcing x64; `--arch arm64` also works there.
+- The pinned compatibility release stays x64-only: it predates ARM64 support, so publishing an ARM64 build there would point an old app at the x86_64 feed.
+- Usage & limits separates overview, analytics and billing; provider and checkpoint warnings appear in the environment panel when available. Rate-limit reset durations and onboarding are clearer, and users can hide rate-limit warnings.
+- Simulator control persists across chats with less helper overhead. The app tour and announcement presentation have been refreshed.
+
+### Fixed
+
+- Account refresh and revoked-device recovery, uncertain chat sends, queued work, provider lifecycle and Remote connection recovery handle interruptions more reliably.
+- macOS update preparation and window shutdown handle application lifecycle more reliably. Onboarding provider counts follow their switches and window controls no longer obscure its header.
+- Migration backups and recovery protect database and WAL state through interrupted restores; deleted-chat usage retains supported aggregates.
+
+### Verification
+
+Local release checks and the independent migration review are recorded in the release checkpoint. The exact-tag workflow must pass quality, server tests, all native packages including Linux ARM64, macOS signing and notarization, Windows Defender, provenance and packaged startup before publication. Windows uses the version-scoped unsigned exception. Manual installation, installed-app upgrades and live-provider behavior are not established by packaged startup checks.
 
 ## 1.5.1 — 2026-11-11
 

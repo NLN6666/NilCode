@@ -300,6 +300,7 @@ describe("threadBootstrap", () => {
           runtimeMode: "full-access",
           interactionMode: "default",
         },
+        newChatDefault: null,
         draftComposerState: makeComposerDraftState(),
         draftThread: makeDraftThread(),
         options: undefined,
@@ -330,6 +331,7 @@ describe("threadBootstrap", () => {
           runtimeMode: "full-access",
           interactionMode: "plan",
         },
+        newChatDefault: null,
         draftComposerState: makeComposerDraftState(),
         draftThread: null,
         options: undefined,
@@ -358,6 +360,7 @@ describe("threadBootstrap", () => {
           interactionMode: "default",
           ...(lastKnownPr === undefined ? {} : { lastKnownPr }),
         },
+        newChatDefault: null,
         draftComposerState: null,
         draftThread: null,
         options: undefined,
@@ -377,6 +380,7 @@ describe("threadBootstrap", () => {
           runtimeMode: "full-access",
           interactionMode: "default",
         },
+        newChatDefault: null,
         draftComposerState: makeComposerDraftState(),
         draftThread: makeDraftThread({ interactionMode: "plan" }),
         options: undefined,
@@ -397,6 +401,7 @@ describe("threadBootstrap", () => {
           interactionMode: "default",
           envMode: "worktree",
         },
+        newChatDefault: null,
         draftComposerState: makeComposerDraftState(),
         draftThread: makeDraftThread(),
         options: {
@@ -418,7 +423,7 @@ describe("threadBootstrap", () => {
       resolveTerminalThreadCreationState({
         activeDraftThread: null,
         activeThread: null,
-        defaultProvider: "codex",
+        newChatDefault: { defaultProvider: "codex", defaultProviderInstanceId: null },
         draftComposerState: makeComposerDraftState({
           modelSelectionByProvider: { claudeAgent: lastUsed },
           activeProvider: "claudeAgent",

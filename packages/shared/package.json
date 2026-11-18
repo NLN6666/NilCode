@@ -16,6 +16,10 @@
       "types": "./src/backgroundServiceSession.ts",
       "import": "./src/backgroundServiceSession.ts"
     },
+    "./parentBoundProcess": {
+      "types": "./src/parentBoundProcess.ts",
+      "import": "./src/parentBoundProcess.ts"
+    },
     "./hostUsage": {
       "types": "./src/hostUsage.ts",
       "import": "./src/hostUsage.ts"
@@ -579,6 +583,10 @@
     "./installerDownloads": {
       "types": "./src/installerDownloads.ts",
       "import": "./src/installerDownloads.ts"
+    },
+    "./releaseDownloads": {
+      "types": "./src/releaseDownloads.ts",
+      "import": "./src/releaseDownloads.ts"
     }
   },
   "scripts": {

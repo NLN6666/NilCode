@@ -64,6 +64,7 @@ import {
   matchSidebarSearchThemes,
   matchSidebarSearchThreads,
 } from "./SidebarSearchPalette.logic";
+import { useKeepAwakeState } from "../hooks/useKeepAwakeState";
 import { useTheme } from "../hooks/useTheme";
 import { getAvailableCodeThemes, getCodeThemeSeed } from "../theme/theme.logic";
 import {
@@ -82,7 +83,9 @@ import type { ThreadImportTarget } from "~/lib/threadImport";
 import type { SettingsSectionId } from "~/settingsNavigation";
 import {
   rankSettingsSearchEntries,
+  settingsSearchEntryDescription,
   settingsSearchEntryTarget,
+  settingsSearchEntryTitle,
   settingsSectionLabel,
 } from "~/settingsSearchIndex";
 import { t, useTranslation } from "~/i18n";
@@ -392,6 +395,7 @@ function HighlightedText(props: { text: string; query: string; className?: strin
 
 export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
   const { t } = useTranslation();
+  const keepAwakeAvailable = useKeepAwakeState()?.available === true;
   const { activeTheme, resolvedTheme, setCodeThemeId, setTheme, theme } = useTheme();
   const [query, setQuery] = useState("");
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
@@ -546,7 +550,9 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
         : undefined,
     [serverThreadSearch, trimmedQuery],
   );
-  const matchedSettings = isBrowsing ? [] : rankSettingsSearchEntries(query, 12);
+  const matchedSettings = isBrowsing
+    ? []
+    : rankSettingsSearchEntries(query, 12, { keepAwakeAvailable });
   // Scoring normalizes and scans every message of every thread; keep it keyed
   // on the thread set and query so highlight/keyboard/state re-renders and
   // unrelated store flushes do not rescore the whole workspace.
@@ -1163,8 +1169,8 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                     {matchedSettings.map((entry) =>
                       renderActionItem({
                         id: `setting:${entry.id}`,
-                        label: t(entry.title),
-                        description: t(entry.keywords),
+                        label: settingsSearchEntryTitle(entry),
+                        description: settingsSearchEntryDescription(entry),
                         metaLabel: settingsSectionLabel(entry.section),
                         icon: SettingsIcon,
                         run: () => {

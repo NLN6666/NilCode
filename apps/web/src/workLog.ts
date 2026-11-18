@@ -1,5 +1,6 @@
 import {
   classifyCodexStderr,
+  CODEX_STDERR_NATIVE_EVENT_TYPE,
   normalizeCodexUserVisibleErrorMessage,
 } from "@synara/shared/codexStderr";
 import {
@@ -592,6 +593,23 @@ export function omitRoutedSubagentWorkEntries<Entry extends WorkLogEntry>(
   return kept.length === entries.length ? entries : kept;
 }
 
+/** A skipped Hub baseline can leave the Git checkpoint intact or inapplicable. */
+export function isMissingCheckpointBaselineActivity(
+  activity: OrchestrationThreadActivity,
+): boolean {
+  if (activity.kind !== "checkpoint.baseline.skipped") return false;
+  const checkpoint = asRecord(activity.payload)?.checkpointBaseline;
+  return checkpoint !== "captured" && checkpoint !== "not-applicable";
+}
+
+// Pi unsupported-UI notices are log-only now; hide the rows old hosts stored.
+// Extension notifications themselves (mode changes, saved settings) stay visible.
+const PI_UNSUPPORTED_UI_WARNING = /^Pi extension UI API '[^']+' is not supported in Synara yet\.$/;
+function isLogOnlyPiWarning(activity: OrchestrationThreadActivity): boolean {
+  if (activity.kind !== "runtime.warning") return false;
+  return PI_UNSUPPORTED_UI_WARNING.test(asTrimmedString(asRecord(activity.payload)?.message) ?? "");
+}
+
 export function deriveWorkLogEntries(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
   latestTurnId: TurnId | undefined,
@@ -602,12 +620,14 @@ export function deriveWorkLogEntries(
     latestTurnState?: OrchestrationLatestTurnState | null;
     latestTurnCompletedAt?: string | null;
     translate?: typeof t;
+    keepMissingCheckpointNotices?: boolean;
   } = {},
 ): WorkLogEntry[] {
   const translate = options.translate ?? t;
   const visibleTurnIds = options.visibleTurnIds;
   const ordered = orderedActivities(activities);
   const entries = ordered
+    .filter((activity) => !isLogOnlyPiWarning(activity))
     // Old hosts persisted startup diagnostics as warnings. Apply the ingestion policy on replay.
     .filter((activity) => {
       if (activity.kind !== "runtime.warning" || activity.tone === "error") return true;
@@ -619,9 +639,14 @@ export function deriveWorkLogEntries(
         payload?.nativeEventType === "background_tasks_changed"
       )
         return true;
+      // Ingestion already judged the Codex stderr rows it marks, and stored their
+      // text normalized: judging that text again could hide a structured ERROR
+      // whose level the normalization removed.
+      if (payload?.nativeEventType === CODEX_STDERR_NATIVE_EVENT_TYPE) return true;
       const message = asTrimmedString(payload?.message);
       return !message || classifyCodexStderr(message)?.kind === "notice";
     })
+    .filter((activity) => !isLogOnlyClaudeWarning(activity))
     .filter((activity) => !isTurnFailureActivity(activity))
     .filter((activity) => shouldKeepActivityForWorkLog(activity, latestTurnId, visibleTurnIds))
     .filter(
@@ -633,6 +658,15 @@ export function deriveWorkLogEntries(
     .filter((activity) => !isQuietTurnLifecycleActivity(activity))
     .filter((activity) => !isQuietApprovalResolutionActivity(activity))
     .filter((activity) => activity.kind !== "account.rate-limits.updated")
+    // Environment replaces quota history and missing-checkpoint notices when available.
+    .filter(
+      (activity) =>
+        (options.keepMissingCheckpointNotices || !isMissingCheckpointBaselineActivity(activity)) &&
+        !(
+          activity.kind === "account.rate-limited" &&
+          asRecord(activity.payload)?.status === "allowed_warning"
+        ),
+    )
     .filter(
       (activity) =>
         activity.kind !== "context-window.updated" && activity.kind !== "context-window.configured",
@@ -966,6 +1000,28 @@ function subagentOutcomeFromStatus(
     default:
       return undefined;
   }
+}
+
+// Claude warnings older hosts stored that the adapter now only logs: unmodelled
+// SDK kinds, the cache-ingestion diagnostic, and the first API retries, which
+// Claude Code also lets pass unseen. History follows the live policy.
+function isLogOnlyClaudeWarning(activity: OrchestrationThreadActivity): boolean {
+  if (activity.kind !== "runtime.warning" || activity.tone === "error") return false;
+  const payload = asRecord(activity.payload);
+  const message = asTrimmedString(payload?.message) ?? "";
+  if (message.startsWith("Unhandled Claude ")) {
+    return !/^Unhandled Claude system message subtype '(mirror_error|instruction_size_warning|session_writes_lost|file_attachments_missing)'\.$/.test(
+      message,
+    );
+  }
+  if (message.startsWith("Claude reported ") && message.includes("outside cache in one request")) {
+    return true;
+  }
+  const detail = asRecord(payload?.data) ?? asRecord(payload?.detail);
+  if (detail?.subtype !== "api_retry" || detail.type !== "system") return false;
+  const attempt = typeof detail.attempt === "number" ? detail.attempt : 0;
+  const maxRetries = typeof detail.max_retries === "number" ? detail.max_retries : 0;
+  return detail.error !== "rate_limit" && attempt < Math.min(3, maxRetries);
 }
 
 export interface SubagentTaskEnd {
@@ -1393,8 +1449,7 @@ function shouldKeepActivityForWorkLog(
     return true;
   }
 
-  // Failed Undo and skipped baseline feedback can precede a provider turn id,
-  // or refer to a turn that Undo rolled out of view. Keep this feedback visible.
+  // Recovery and pre-turn preparation feedback may precede the provider turn id.
   if (
     activity.kind === CHECKPOINT_REVERT_FAILED_ACTIVITY_KIND ||
     activity.kind === "checkpoint.baseline.skipped"

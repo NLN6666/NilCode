@@ -24,6 +24,7 @@ import { LinuxEscapeKillSwitchMonitor, linuxEscapeSession } from "./linuxEscapeK
 import { ComputerFrameTap } from "./computerFrameTap";
 import { ComputerShield } from "./computerShield";
 import { ProductAnalytics } from "./productAnalytics";
+import { attachBackendReliability } from "./backendReliability";
 import { attachProductAnalyticsIpc } from "./productAnalyticsIpc";
 import { createDesktopNotificationRetainer } from "./notificationRetention";
 import { registerComputerDesktopLifecycle } from "./computerDesktopLifecycle";
@@ -253,6 +254,7 @@ import {
   isUpdateVersionAllowedForFlavor,
   isUpdateVersionNewer,
   shouldBroadcastDownloadProgress,
+  shouldAcceptAvailableUpdate,
   shouldCheckForUpdatesOnForeground,
 } from "./updateState";
 import { registerDesktopVoiceTranscriptionHandler } from "./voiceTranscription";
@@ -501,6 +503,7 @@ initializeDesktopI18n(
       : [new Intl.DateTimeFormat().resolvedOptions().locale],
   desktopFlavor,
 );
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 // Remote shares usage and diagnostics by default; Settings turns both off.
 // Stable stays opt-in for product events and never runs diagnostics.
@@ -511,6 +514,7 @@ const productAnalytics = new ProductAnalytics({
   platform: process.platform,
   defaultEnabled: desktopFlavor === "remote",
 });
+if (hasSingleInstanceLock) productAnalytics.initialize();
 
 // Diagnostics are constructed only for the Beta and Remote build flavors, so
 // production binaries never run a collection path. The payload schema is an
@@ -572,11 +576,13 @@ process.stderr.on("error", handleDesktopStdioError);
 // Node's exit behavior — the POSIX EPIPE filter and the default crash path
 // stay exactly as before.
 process.on("uncaughtExceptionMonitor", (error: unknown) => {
-  if (!isBrokenPipeError(error)) productAnalytics.track({ event: "app.crash", outcome: "failed" });
+  if (!isBrokenPipeError(error)) {
+    productAnalytics.track({ event: "app.crash", outcome: "failed" });
+    productAnalytics.trackReliability({ code: "app.main_unhandled" });
+  }
   betaDiagnostics?.trackError("main", error);
 });
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000;
 const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const AUTO_UPDATE_FOREGROUND_RECHECK_MIN_INTERVAL_MS = 5 * 60 * 1000;
@@ -645,6 +651,7 @@ let restartTimer: ReturnType<typeof setTimeout> | null = null;
 let isQuitting = false;
 let isUpdaterInstallPreparing = false;
 let isUpdaterQuitAndInstallInFlight = false;
+let updaterWindowToRestore: BrowserWindow | null = null;
 const updateInstallPreparation = makeUpdateInstallPreparationCoordinator();
 const deferredDesktopQuitIntent = makeDeferredDesktopQuitIntentCoordinator();
 const runningChatsQuitGuard = makeRunningChatsQuitGuard();
@@ -1178,11 +1185,11 @@ let downloadedUpdateIdentityTask: Promise<void> | null = null;
 let activeUpdateInstallHandoff: UpdateInstallHandoffExpectation | null = null;
 const pendingUpdateCacheClearQueue = new PendingUpdateCacheClearQueue();
 const macUpdateInstallHandoff =
-  process.platform === "darwin"
-    ? new MacUpdateInstallHandoff(nativeAutoUpdater, (error) =>
-        autoUpdater.emit("error", error instanceof Error ? error : new Error(String(error))),
-      )
-    : null;
+  process.platform === "darwin" ? new MacUpdateInstallHandoff(nativeAutoUpdater) : null;
+
+function isMacUpdateShuttingDown(): boolean {
+  return macUpdateInstallHandoff !== null && isQuitting && isUpdaterInstallPreparing;
+}
 
 function getUpdaterInstallBlockedReason(): string | null {
   return macUpdateInstallHandoff?.blockedReason ?? null;
@@ -1197,8 +1204,9 @@ function resolveUpdaterErrorContext(): DesktopUpdateErrorContext {
 
 function clearUpdaterInstallInFlightAfterError(input?: {
   readonly preservePendingPreparation?: boolean;
+  readonly error?: Error;
 }): boolean {
-  macUpdateInstallHandoff?.cancel();
+  macUpdateInstallHandoff?.cancel(input?.error);
   const preparationCancelled = updateInstallPreparation.cancel();
   if (preparationCancelled && input?.preservePendingPreparation) {
     return true;
@@ -1236,6 +1244,8 @@ function replayDeferredDesktopQuitAfterUpdaterSettles(): boolean {
 }
 
 function recoverDesktopAfterUpdaterInstallFailure(): void {
+  const windowToRestore = updaterWindowToRestore;
+  updaterWindowToRestore = null;
   if (replayDeferredDesktopQuitAfterUpdaterSettles()) return;
 
   // A second updater failure signal can race the replay above (for example,
@@ -1246,9 +1256,13 @@ function recoverDesktopAfterUpdaterInstallFailure(): void {
     return;
   }
 
-  // The backend was already stopped for install preparation. When no quit was
-  // requested in the meantime, restore the live app and its update polling.
+  // If shutdown started, restart the backend and restore the old window.
   startBackend();
+  if (windowToRestore?.isDestroyed()) {
+    ensureInitialBackendWindowOpen(backendHttpUrl);
+  } else {
+    windowToRestore?.showInactive();
+  }
   scheduleUpdatePoll();
 }
 
@@ -1508,6 +1522,7 @@ async function requireCurrentDesktopMigrationBundle(): Promise<boolean> {
 }
 
 async function rejectUnverifiableDesktopMigrationBundle(error: unknown): Promise<false> {
+  productAnalytics.trackReliability({ code: "migration.startup_blocked" });
   const message = formatErrorMessage(error);
   writeDesktopLogHeader(`migration bundle source check failed message=${message}`);
   await dialog.showMessageBox({
@@ -1526,6 +1541,7 @@ async function rejectUnverifiableDesktopMigrationBundle(error: unknown): Promise
 async function rejectDesktopMigrationBundleMismatch(
   mismatch: MigrationRuntimeIdentityMismatch,
 ): Promise<false> {
+  productAnalytics.trackReliability({ code: "migration.startup_blocked" });
   writeDesktopLogHeader(
     `migration bundle source mismatch expected=${mismatch.expectedDigest} actual=${mismatch.actualDigest}`,
   );
@@ -1586,6 +1602,9 @@ async function handleDesktopMigrationRecovery(): Promise<DesktopMigrationRecover
     requiresRecovery: () => requiresDesktopMigrationRecovery(paths),
     markerRemains: () => hasPendingDesktopMigrationRecovery(paths),
     choose: async ({ previousFailure }) => {
+      productAnalytics.trackReliability({
+        code: previousFailure === null ? "migration.startup_blocked" : "migration.recovery_failed",
+      });
       // The user is here because Synara cannot open its database, so the
       // in-app update button is unreachable by definition. A newer build is
       // often the actual fix, and this dialog is the only surface left to
@@ -1871,6 +1890,7 @@ function registerDesktopProtocol(): void {
 }
 
 function dispatchMenuAction(action: string): void {
+  if (isMacUpdateShuttingDown()) return;
   const existingWindow =
     BrowserWindow.getFocusedWindow() ?? mainWindow ?? BrowserWindow.getAllWindows()[0];
   const targetWindow = existingWindow ?? createWindow();
@@ -1879,7 +1899,7 @@ function dispatchMenuAction(action: string): void {
   }
 
   const send = () => {
-    if (targetWindow.isDestroyed()) return;
+    if (targetWindow.isDestroyed() || isMacUpdateShuttingDown()) return;
     targetWindow.webContents.send(IPC.menuAction, action);
     if (!targetWindow.isVisible()) {
       targetWindow.show();
@@ -2392,6 +2412,7 @@ function clearUnreadNotificationBadge(): void {
 // Reuse the existing desktop window when the app is launched again so users
 // don't end up with multiple packaged instances racing the same local state.
 function focusMainWindow(options: { stealAppFocus?: boolean } = {}): void {
+  if (isMacUpdateShuttingDown()) return;
   if (!mainWindow || mainWindow.isDestroyed()) {
     mainWindow = null;
     return;
@@ -3759,8 +3780,24 @@ async function waitForMigrationRecoveryInstallHandoff(): Promise<void> {
   });
 }
 
+async function stopBackendForUpdateInstall(
+  attempt: UpdateInstallPreparationAttempt,
+): Promise<void> {
+  isQuitting = true;
+  clearUpdatePollTimer();
+  if (isMacUpdateShuttingDown() && mainWindow?.isVisible()) {
+    updaterWindowToRestore = mainWindow;
+    hideDesktopWindowForImmediateQuit();
+  }
+  await stopBackendAndWaitForExit();
+  updateInstallPreparation.requireActive(attempt);
+}
+
+type UpdateInstallSource = "desktop" | "backend";
+
 async function runDownloadedUpdateInstall(
   preparationAttempt: UpdateInstallPreparationAttempt,
+  source: UpdateInstallSource,
 ): Promise<{
   accepted: boolean;
   completed: boolean;
@@ -3811,11 +3848,12 @@ async function runDownloadedUpdateInstall(
   };
   let markerWritten = false;
   let artifactInvalidated = false;
+  // Keep the backend stop close to the remote install's active-work check.
+  const prepareBeforeShutdown = macUpdateInstallHandoff !== null && source === "desktop";
   try {
-    isQuitting = true;
-    clearUpdatePollTimer();
-    await stopBackendAndWaitForExit();
-    updateInstallPreparation.requireActive(preparationAttempt);
+    if (!prepareBeforeShutdown) {
+      await stopBackendForUpdateInstall(preparationAttempt);
+    }
     await logMacUpdateDiagnostics("before install handoff");
     updateInstallPreparation.requireActive(preparationAttempt);
     if (!(await verifyUpdateArtifactIdentity(artifact))) {
@@ -3833,9 +3871,18 @@ async function runDownloadedUpdateInstall(
       throw new Error("Durable update install marker changed before install handoff.");
     }
     activeUpdateInstallHandoff = handoffExpectation;
+    if (macUpdateInstallHandoff !== null) {
+      // Squirrel can apply a staged update on exit, so validate and record the
+      // exact artifact before giving it to the native updater.
+      await macUpdateInstallHandoff.prepare(AUTO_UPDATE_INSTALL_WATCHDOG_MS);
+      updateInstallPreparation.requireActive(preparationAttempt);
+      if (prepareBeforeShutdown) {
+        await stopBackendForUpdateInstall(preparationAttempt);
+      }
+    }
     isUpdaterQuitAndInstallInFlight = true;
     if (macUpdateInstallHandoff !== null) {
-      macUpdateInstallHandoff.start();
+      macUpdateInstallHandoff.quitAndInstall();
     } else {
       autoUpdater.quitAndInstall();
     }
@@ -3860,7 +3907,7 @@ async function runDownloadedUpdateInstall(
   }
 }
 
-async function installDownloadedUpdate(): Promise<{
+async function installDownloadedUpdate(source: UpdateInstallSource = "desktop"): Promise<{
   accepted: boolean;
   completed: boolean;
 }> {
@@ -3887,7 +3934,7 @@ async function installDownloadedUpdate(): Promise<{
   try {
     // A retry must not retain the last failure while the new handoff is pending.
     setUpdateState(reduceDesktopUpdateStateOnInstallStart(updateState));
-    return await runDownloadedUpdateInstall(preparationAttempt);
+    return await runDownloadedUpdateInstall(preparationAttempt, source);
   } finally {
     if (!isUpdaterQuitAndInstallInFlight && isUpdaterInstallPreparing) {
       clearUpdaterInstallInFlightAfterError();
@@ -4023,19 +4070,27 @@ function configureAutoUpdater(): void {
   autoUpdater.on("update-available", (info) => {
     if (isQuitting || isUpdaterInstallPreparing || updateDownloadInFlight) return;
     clearUpdateCheckTimeoutTimer();
-    if (!isAcceptableUpdateVersion(info.version)) {
+    const accepted = shouldAcceptAvailableUpdate({
+      currentVersion: app.getVersion(),
+      version: info.version,
+      flavor: desktopFlavor,
+      info,
+      platform: process.platform,
+      arch: process.arch,
+    });
+    if (!accepted) {
+      const versionAccepted = isAcceptableUpdateVersion(info.version);
+      const reason = versionAccepted
+        ? `artifact for ${info.version} does not match ${process.platform}/${process.arch}`
+        : describeRejectedUpdateVersion(info.version);
       const nextState = reduceDesktopUpdateStateOnNoUpdate(updateState, new Date().toISOString());
       if (nextState.downloadedVersion === null) {
         downloadedUpdateArtifact = null;
-        void clearPendingUpdateCache(
-          `available update rejected: ${describeRejectedUpdateVersion(info.version)}`,
-        );
+        void clearPendingUpdateCache(`available update rejected: ${reason}`);
       }
       setUpdateState(nextState);
       lastLoggedDownloadMilestone = -1;
-      console.info(
-        `[desktop-updater] Ignoring available update: ${describeRejectedUpdateVersion(info.version)}.`,
-      );
+      console.info(`[desktop-updater] Ignoring available update: ${reason}.`);
       return;
     }
     setUpdateState(
@@ -4084,6 +4139,7 @@ function configureAutoUpdater(): void {
     const failedHandoff = activeUpdateInstallHandoff;
     const installPreparationPending = clearUpdaterInstallInFlightAfterError({
       preservePendingPreparation: true,
+      error,
     });
     if (errorContext === "download") {
       downloadedUpdateArtifact = null;
@@ -4575,6 +4631,8 @@ async function handleDesktopSchemaTooNewRecovery(
       !hasVerifiedDesktopMigrationRestore(paths, restoreCandidate.backupPath),
     choose: async ({ previousFailure }) => {
       const restoreFailed = previousFailure?.attempt === "restore";
+      if (previousFailure !== null)
+        productAnalytics.trackReliability({ code: "migration.recovery_failed" });
       const canInstallUpdate = canInstallUpdateFromRecovery();
       const releaseUrl = updateState.releaseUrl;
       const choices: Array<{
@@ -4665,6 +4723,8 @@ async function handleDesktopSchemaTooNewRecovery(
 
 function handleBackendStartupBlock(block: BackendStartupBlock): void {
   if (isQuitting || backendLifecycleDialogInFlight) return;
+  if (block.kind.startsWith("migration-"))
+    productAnalytics.trackReliability({ code: "migration.startup_blocked" });
 
   const diagnosticId =
     betaDiagnostics?.trackIssue("main", {
@@ -4976,6 +5036,10 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
   backendListeningDetector = listeningDetector;
   backendProcess = child;
   desktopHangWatchdog?.updateBackendPid(child.pid ?? null);
+  let backendReachedReadiness = false;
+  attachBackendReliability(child, {
+    report: (issue) => productAnalytics.trackReliability(issue),
+  });
   attachDesktopUpdateControl(child, {
     isPackaged: app.isPackaged,
     platform: process.platform,
@@ -4985,7 +5049,7 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
     getInstallBlockedReason: getUpdaterInstallBlockedReason,
     check: () => checkForUpdates("remote"),
     download: downloadAvailableUpdate,
-    install: installDownloadedUpdate,
+    install: () => installDownloadedUpdate("backend"),
   });
   cuaDriverHost?.resume();
   const backendBaseUrl = backendHttpUrl;
@@ -5036,6 +5100,7 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
       }),
     isCurrent: () => backendProcess === child,
     onReady: () => {
+      backendReachedReadiness = true;
       backendSupervision.recordReadiness();
       // Startup blocks are classified only before readiness; stop scanning
       // every later output chunk for the rest of this backend's life.
@@ -5045,6 +5110,7 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
   });
 
   child.on("error", (error) => {
+    if (!isQuitting) productAnalytics.trackReliability({ code: "backend.spawn_failed" });
     startupHealthMonitor.abort();
     if (backendListeningDetector === listeningDetector) {
       listeningDetector.fail(error);
@@ -5089,6 +5155,9 @@ function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
       lastBackendFailureDetail = outputTailDetector.read();
       if (!expectedExit) {
         productAnalytics.track({ event: "app.crash", outcome: "failed" });
+        productAnalytics.trackReliability({
+          code: backendReachedReadiness ? "backend.exit_after_ready" : "backend.exit_before_ready",
+        });
         trackBetaDiagnostics("app.child-process-crash", {
           kind: "crash",
           processType: "backend",
@@ -6241,6 +6310,10 @@ function createWindow(): BrowserWindow {
     emitUpdateState();
   });
   window.once("ready-to-show", () => {
+    if (isMacUpdateShuttingDown()) {
+      updaterWindowToRestore = window;
+      return;
+    }
     // Preserve the original first-launch behavior, then respect the state saved
     // by subsequent closes. Normal bounds are restored before maximizing so the
     // native restore control returns to the user's last windowed size.
@@ -6355,8 +6428,10 @@ function attachRendererCrashRecovery(window: BrowserWindow): void {
     // the pending ask and count it as quitting for the crash policy.
     const quitAskPending = runningChatsQuitGuard.hasPendingAsk();
     runningChatsQuitGuard.allowPending();
-    if (!isQuitting && ["crashed", "oom", "abnormal-exit"].includes(details.reason))
+    if (!isQuitting && ["crashed", "oom", "abnormal-exit"].includes(details.reason)) {
       productAnalytics.track({ event: "app.crash", outcome: "failed" });
+      productAnalytics.trackReliability({ code: "app.renderer_crashed" });
+    }
     // A pending quit ask has not started shutdown: an unexpected crash while
     // that ask is open still belongs in diagnostics, even though recovery quits.
     if (!isQuitting && details.reason !== "clean-exit")

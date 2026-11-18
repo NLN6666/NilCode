@@ -24,7 +24,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   OrchestrationProposedPlanId,
   type OrchestrationReadModel,
-  type ProjectId,
+  ProjectId,
   type ProjectAgentOverview,
   type ServerConfig,
   type ServerSettingsPatch,
@@ -72,7 +72,7 @@ import {
   removeInlineTerminalContextPlaceholder,
 } from "../lib/terminalContext";
 import { extractTrailingBrowserAnnotations } from "../lib/browserAnnotations";
-import { isMacNavigatorPlatform } from "../lib/utils";
+import { isMacNavigatorPlatform, randomUUID } from "../lib/utils";
 import { STARRED_MODELS_STORAGE_KEY } from "../lib/starredModels";
 import { readNativeApi } from "../nativeApi";
 import { DEFAULT_THEME_STATE, getCodeThemeSeed } from "~/theme/theme.logic";
@@ -120,12 +120,14 @@ import { useTemporaryThreadStore } from "../temporaryThreadStore";
 import { useTerminalStateStore } from "../terminalStateStore";
 import { resetRetainedThreadDetailSubscriptionsForTests } from "../threadDetailSubscriptionRetention";
 import { useWorkspacePathsStore } from "../workspacePathsStore";
+import { appHistory } from "../appNavigation";
 import { readExecutionContext } from "../lib/hosts/executionContext";
 import {
   addWorkspaceSession,
   removeWorkspaceSession,
   updateWorkspaceSession,
 } from "../lib/hosts/workspaceSessions";
+import { REMOTE_CONNECTIONS_ANNOUNCEMENT_STORAGE_KEY } from "./hosts/RemoteConnectionsAnnouncement";
 import { WorkspacePanels } from "./hosts/WorkspacePanels";
 
 vi.mock("../lib/hosts/executionContext", { spy: true });
@@ -1513,6 +1515,7 @@ function installDeterministicSendNativeApi(options?: {
   rejectTurnStart?: boolean;
   beforeWorktreeCreation?: () => Promise<void>;
   beforeTurnStart?: () => Promise<void>;
+  beforeShellSnapshot?: () => Promise<void>;
   beforeTerminalOpen?: () => Promise<void>;
   projectThreadCommands?: boolean;
 }): () => void {
@@ -1562,6 +1565,10 @@ function installDeterministicSendNativeApi(options?: {
       },
       orchestration: {
         ...wsNativeApi.orchestration,
+        getShellSnapshot: async () => {
+          await options?.beforeShellSnapshot?.();
+          return wsNativeApi.orchestration.getShellSnapshot();
+        },
         dispatchCommand: async (
           command: Parameters<typeof wsNativeApi.orchestration.dispatchCommand>[0],
         ) => {
@@ -2376,7 +2383,8 @@ async function waitForMountedChatReady(options: {
         "Active thread detail did not hydrate.",
       ).toBe(true);
     },
-    { timeout: 20_000, interval: 16 },
+    // Allow a cold browser fixture to finish mounting on CI.
+    { timeout: 45_000, interval: 16 },
   );
   await waitForLayout();
 }
@@ -2537,6 +2545,7 @@ describe("ChatView transcript geometry (full app)", () => {
     attachmentUploadBarrier = null;
     attachmentCancelBarrier = null;
     localStorage.clear();
+    sessionStorage.clear();
     useOpenThreadTabsStore.setState({ threadIds: [] });
     acknowledgeStartupAnnouncementsForTest(createBaseServerConfig());
     // Clearing localStorage does not reset the live Zustand dock state.
@@ -2601,6 +2610,155 @@ describe("ChatView transcript geometry (full app)", () => {
     resetRetainedThreadDetailSubscriptionsForTests();
     document.body.innerHTML = "";
   });
+
+  it.each(["turn", "message", "hidden", "editor", "editor-hidden"] as const)(
+    "routes quota and checkpoint notices to Environment while retaining blocking limits at the composer (%s)",
+    async (attribution) => {
+      const editor = attribution === "editor" || attribution === "editor-hidden";
+      const warningsHidden = attribution === "hidden" || attribution === "editor-hidden";
+      if (warningsHidden)
+        localStorage.setItem(
+          "synara:app-settings:v1",
+          JSON.stringify({ showRateLimitWarnings: false }),
+        );
+      const base = createSnapshotWithInlineToolOverflow({ active: false });
+      const thread = base.threads[0]!;
+      const turnId = thread.latestTurn!.turnId;
+      const quotaActivity = (id: string, status: string, resetsAt?: string) => ({
+        id: EventId.makeUnsafe(id),
+        kind: "account.rate-limits.updated",
+        summary: "Rate limits updated",
+        createdAt: isoAt(1_109),
+        tone: "info" as const,
+        turnId,
+        payload: {
+          provider: "claudeAgent",
+          providerInstanceId: "claudeAgent",
+          status,
+          utilization: 0.91,
+          ...(resetsAt ? { resetsAt } : {}),
+        },
+      });
+      const snapshot: OrchestrationReadModel = {
+        ...base,
+        threads: [
+          {
+            ...thread,
+            modelSelection: { provider: "claudeAgent", model: "claude-opus-4-7" },
+            session: thread.session ? { ...thread.session, providerName: "claudeAgent" } : null,
+            messages: [{ ...thread.messages.at(-3)!, turnId }, ...thread.messages.slice(-2)],
+            activities: [
+              ...thread.activities,
+              {
+                ...quotaActivity("old-approaching", "allowed_warning"),
+                kind: "account.rate-limited",
+                summary: "Approaching rate limit",
+              },
+              quotaActivity("usage-warning", "allowed_warning"),
+              {
+                id: EventId.makeUnsafe("baseline-unavailable"),
+                kind: "checkpoint.baseline.skipped",
+                summary: "Checkpoint baseline unavailable for this turn",
+                createdAt: isoAt(1_110),
+                tone: "info",
+                turnId: attribution === "message" ? null : turnId,
+                payload: {
+                  detail: "The checkpoint baseline could not be prepared.",
+                  checkpointBaseline: "unavailable",
+                  messageId: thread.messages.at(-3)!.id,
+                },
+              },
+            ],
+          },
+        ],
+      };
+      const mounted = await mountChatView({
+        viewport: { ...DEFAULT_VIEWPORT, width: 1_400 },
+        snapshot,
+      });
+      try {
+        await waitForComposerEditor();
+        if (editor) {
+          await mounted.router.navigate({
+            to: "/$threadId",
+            params: { threadId: THREAD_ID },
+            search: { view: "editor" },
+          });
+          await expect
+            .element(page.getByRole("button", { name: /Toggle environment panel/ }))
+            .not.toBeInTheDocument();
+          const warning = page.getByText("Approaching rate limit (91% used).", { exact: true });
+          if (warningsHidden) expect(warning.query()).toBeNull();
+          else await expect.element(warning, { timeout: 3_000 }).toBeVisible();
+          return;
+        }
+        const toggle = page.getByRole("button", { name: /Toggle environment panel/ });
+        if (toggle.element().getAttribute("aria-pressed") !== "true") await toggle.click();
+        const approaching = page.getByText("Approaching rate limit (91% used).", { exact: true });
+        if (warningsHidden) expect(approaching.query()).toBeNull();
+        else await expect.element(approaching).toBeVisible();
+        await expect
+          .element(
+            page.getByText("Checkpoint diff and file Undo unavailable for this turn.", {
+              exact: true,
+            }),
+          )
+          .toBeVisible();
+        expect(page.getByText("Approaching rate limit", { exact: true }).query()).toBeNull();
+        expect(
+          page.getByText("Checkpoint baseline unavailable for this turn", { exact: true }).query(),
+        ).toBeNull();
+        if (!warningsHidden)
+          await page.screenshot({
+            path: "../../../../output/playwright/status-warnings-usage.png",
+          });
+        await toggle.click();
+        await expect
+          .element(toggle)
+          .toHaveAccessibleName(warningsHidden ? "Toggle environment panel" : /needs attention/i);
+        const appendQuota = (id: string, status: string, sequence: number, resetsAt?: string) =>
+          useStore
+            .getState()
+            .applyOrchestrationEventsHotPath([
+              makeDomainEvent(
+                "thread.activity-appended",
+                { threadId: THREAD_ID, activity: quotaActivity(id, status, resetsAt) },
+                { sequence },
+              ),
+            ]);
+        appendQuota(
+          "quota-blocked",
+          "rejected",
+          snapshot.snapshotSequence + 1,
+          new Date(Date.now() + (2 * 24 + 2) * 3_600_000 + 300_000).toISOString(),
+        );
+        const banner = page.getByRole("alert").filter({ hasText: "Rate limit reached." });
+        await expect.element(banner).toBeVisible();
+        await expect.element(banner).toHaveTextContent("Resets in 2d 2h");
+        expect(
+          document.querySelector('[data-chat-composer-form="true"]')!.contains(banner.element()),
+        ).toBe(true);
+        await page.screenshot({
+          path: "../../../../output/playwright/status-warnings-blocked.png",
+        });
+        appendQuota("quota-recovered", "allowed", snapshot.snapshotSequence + 2);
+        await expect.element(banner).not.toBeInTheDocument();
+        await expect.element(toggle).toHaveAccessibleName("Toggle environment panel");
+        appendQuota(
+          "quota-expiring",
+          "allowed_warning",
+          snapshot.snapshotSequence + 3,
+          new Date(Date.now() + 1_000).toISOString(),
+        );
+        await expect
+          .element(toggle)
+          .toHaveAccessibleName(warningsHidden ? "Toggle environment panel" : /needs attention/i);
+        await expect.element(toggle).toHaveAccessibleName("Toggle environment panel");
+      } finally {
+        await mounted.cleanup();
+      }
+    },
+  );
 
   it.each(["project", "hub discovery pending"] as const)(
     "keeps persistent turn failure visible after reopening and admits one manual continuation (%s)",
@@ -2688,8 +2846,16 @@ describe("ChatView transcript geometry (full app)", () => {
         nextFixture.projectAgentSummariesPending = true;
       };
       const first = await mountChatView({ viewport: DEFAULT_VIEWPORT, snapshot, configureFixture });
-      await expect.element(page.getByText("Task interrupted", { exact: true })).toBeVisible();
-      await first.cleanup();
+      try {
+        await expect.element(page.getByText("Task interrupted", { exact: true })).toBeVisible();
+      } finally {
+        await first.cleanup();
+      }
+
+      // Reopening starts a fresh connection while the server still owns the failed turn.
+      resetRetainedThreadDetailSubscriptionsForTests();
+      await resetWsNativeApiForTest();
+      wsRequests.length = 0;
       const reopened = await mountChatView({
         viewport: DEFAULT_VIEWPORT,
         snapshot,
@@ -3507,7 +3673,8 @@ describe("ChatView transcript geometry (full app)", () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
       expect(document.querySelector("[data-feature-tour]")).toBeNull();
       await page.getByTestId("composer-editor").click();
-      await remounted.router.navigate({ to: "/settings", search: { section: "advanced" } });
+      // The app tour lives under Settings › General › Getting started.
+      await remounted.router.navigate({ to: "/settings", search: { section: "general" } });
       await page.getByRole("button", { name: "Replay tour" }).click();
       await expect
         .element(page.getByRole("dialog", { name: "Start a chat with any agent" }))
@@ -4442,6 +4609,147 @@ describe("ChatView transcript geometry (full app)", () => {
       });
     } finally {
       await mounted.cleanup();
+      useSpacesUiStore.getState().setActiveSpaceId(null);
+      useRailShellStore.getState().closeSpacesProject();
+      useRailShellStore.getState().selectPanelItem("home");
+    }
+  });
+
+  it("keeps a remote project in the rail Space where it was created", async () => {
+    localStorage.setItem(
+      REMOTE_CONNECTIONS_ANNOUNCEMENT_STORAGE_KEY,
+      JSON.stringify({ acknowledged: true }),
+    );
+    const destinationSpaceId = SpaceId.makeUnsafe("remote-destination");
+    const hostId = "remote-project-owner";
+    const projectId = ProjectId.makeUnsafe("remote-created-project");
+    const projectName = "Remote created project";
+    const workspaceRoot = "/remote/created-project";
+    const controller = {
+      environmentId: "remote-project-controller",
+      label: "This computer",
+      channel: "dev",
+      capabilities: { remoteConnections: true },
+    } as ExecutionEnvironmentDescriptor;
+    vi.mocked(readExecutionContext).mockReturnValue({
+      controller,
+      execution: controller,
+      remote: null,
+    });
+    vi.mocked(WorkspacePanels).mockReturnValue(null);
+    const navigate = vi.spyOn(appHistory, "push").mockImplementation(() => {});
+    onTestFinished(() => {
+      navigate.mockRestore();
+      vi.mocked(readExecutionContext).mockRestore();
+      vi.mocked(WorkspacePanels).mockRestore();
+    });
+    const snapshot = createSnapshotForTargetUser({
+      targetMessageId: MessageId.makeUnsafe("remote-project-space"),
+      targetText: "Remote project",
+    });
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: {
+        ...snapshot,
+        spaces: [
+          {
+            id: destinationSpaceId,
+            name: "Remote destination",
+            icon: "bag",
+            sortOrder: 0,
+            createdAt: NOW_ISO,
+            updatedAt: NOW_ISO,
+            deletedAt: null,
+          },
+        ],
+      },
+    });
+    const projects = [
+      {
+        id: projectId,
+        kind: "project" as const,
+        name: projectName,
+        cwd: workspaceRoot,
+        appearance: null,
+        createdAt: NOW_ISO,
+        updatedAt: NOW_ISO,
+        isPinned: false,
+        section: "projects" as const,
+      },
+    ];
+    const createProject = vi.fn(async () => {
+      updateWorkspaceSession(hostId, {
+        summary: {
+          state: "open",
+          path: "/remote-draft",
+          activeProjectId: projectId,
+          projects,
+          threads: [],
+        },
+      });
+      return { projectId, path: "/remote-draft" };
+    });
+    try {
+      addWorkspaceSession({
+        hostId,
+        hostName: "Remote test computer",
+        wsPath: "/ws/remote/project-owner",
+        executionScope: {
+          environmentId: hostId,
+          accountAuthority: "https://account.example",
+          userId: "alice",
+          organizationId: "org",
+          channel: "dev",
+        },
+      });
+      updateWorkspaceSession(hostId, {
+        navigation: {
+          createProject,
+          navigate: vi.fn(),
+          newChat: vi.fn(),
+          createChat: vi.fn(),
+          openTerminal: vi.fn(),
+          browseFolders: vi.fn(),
+          openProject: vi.fn(),
+          recover: vi.fn(),
+        },
+        summary: { state: "open", path: "/", projects: [], threads: [] },
+      });
+      await page
+        .getByRole("navigation", { name: "Primary" })
+        .getByRole("button", { name: "Spaces", exact: true })
+        .click();
+      const header = await waitForElement(
+        () =>
+          Array.from(document.querySelectorAll<HTMLElement>(".group\\/project-header")).find(
+            (element) => element.textContent?.includes("Remote destination"),
+          ) ?? null,
+        "Remote destination Space header missing",
+      );
+      header.querySelector<HTMLButtonElement>('button[aria-label="Add project"]')!.click();
+      await page.getByRole("button", { name: "Project computer: This computer" }).click();
+      await page.getByRole("menuitem", { name: /Remote test computer/ }).click();
+      await page.getByLabelText("Project folder path").fill(workspaceRoot);
+      await page.getByRole("button", { name: "Create project", exact: true }).click();
+      await vi.waitFor(() =>
+        expect(createProject).toHaveBeenCalledWith(expect.objectContaining({ workspaceRoot })),
+      );
+      await vi.waitFor(() =>
+        expect(navigate).toHaveBeenCalledWith(
+          "/remote?environment=remote-project-owner&path=%2Fremote-draft",
+        ),
+      );
+
+      // Closing the fresh remote draft must not hide an explicitly assigned empty project.
+      updateWorkspaceSession(hostId, {
+        summary: { state: "open", path: "/", projects, threads: [] },
+      });
+      await vi.waitFor(() => expect(header.parentElement?.textContent).toContain(projectName), {
+        timeout: 2_000,
+      });
+    } finally {
+      await mounted.cleanup();
+      removeWorkspaceSession(hostId);
       useSpacesUiStore.getState().setActiveSpaceId(null);
       useRailShellStore.getState().closeSpacesProject();
       useRailShellStore.getState().selectPanelItem("home");
@@ -11170,7 +11478,7 @@ describe("ChatView transcript geometry (full app)", () => {
       };
       const mounted = await mountChatView({ viewport: DEFAULT_VIEWPORT, snapshot });
       const queuedTurn = {
-        id: "queued-turn-paused",
+        id: randomUUID(),
         kind: "chat" as const,
         createdAt: NOW_ISO,
         previewText: queuedPrompt,
@@ -13724,8 +14032,7 @@ describe("ChatView transcript geometry (full app)", () => {
           threadId: THREAD_ID,
           projectId: PROJECT_ID,
           thread: null,
-          defaultProvider: "codex",
-          defaultModelByProvider: [],
+          newChatDefault: { defaultProvider: "codex", defaultProviderInstanceId: null },
           assistantDeliveryMode: "buffered",
         });
       try {
@@ -13739,12 +14046,9 @@ describe("ChatView transcript geometry (full app)", () => {
         await vi.waitFor(() => expect(turnCommands()).toHaveLength(1));
         if (firstOwner === "board") {
           sendButton.click();
-          // The actual chat send must have entered its pending UI before releasing the board RPC.
-          await vi.waitFor(() =>
-            expect(
-              useThreadDispatchStore.getState().threads[THREAD_ID]?.localDispatch,
-            ).toBeTruthy(),
-          );
+          await expect.element(page.getByText("Still sending your last message")).toBeVisible();
+          expect(turnCommands()).toHaveLength(1);
+          expect(useComposerDraftStore.getState().draftsByThreadId[THREAD_ID]?.prompt).toBe(prompt);
         } else {
           boardSend = sendFromBoard();
           expect(await boardSend).toMatchObject({ kind: "dispatched", deferred: true });
@@ -13905,6 +14209,116 @@ describe("ChatView transcript geometry (full app)", () => {
     } finally {
       await mounted.cleanup();
       restoreNativeApi();
+    }
+  });
+
+  it("shows a rejected first send on the empty landing and restores the original draft", async () => {
+    const restoreNativeApi = installDeterministicSendNativeApi({ rejectTurnStart: true });
+    useComposerDraftStore.getState().setProjectDraftThreadId(PROJECT_ID, THREAD_ID);
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createDraftOnlySnapshot(),
+    });
+    try {
+      const prompt = "Keep the draft when the first send fails";
+      await page.getByTestId("composer-editor").fill(prompt);
+      const sendButton = await waitForSendButton();
+      await vi.waitFor(() => expect(sendButton.disabled).toBe(false));
+      sendButton.click();
+      await vi.waitFor(() => {
+        expect(
+          wsRequests
+            .map(readDispatchedCommand)
+            .some((command) => command?.type === "thread.turn.start"),
+        ).toBe(true);
+        expect(useComposerDraftStore.getState().draftsByThreadId[THREAD_ID]?.prompt).toBe(prompt);
+        expect(hasActiveComposerSend(THREAD_ID)).toBe(false);
+      });
+      await expect.element(page.getByTestId("empty-landing-heading")).toBeVisible();
+      await expect
+        .element(page.getByText("Turn start failed for test.", { exact: true }))
+        .toBeVisible();
+    } finally {
+      restoreNativeApi();
+      await mounted.cleanup();
+    }
+  });
+
+  it("preserves a promoted chat and reconciles its exact late first message on retry", async () => {
+    const turnStarts = () =>
+      wsRequests
+        .map(readDispatchedCommand)
+        .filter((command) => command?.type === "thread.turn.start");
+    const restoreNativeApi = installDeterministicSendNativeApi({
+      beforeTurnStart: async () => {
+        throw Object.assign(new Error("Delivery could not be checked."), {
+          _tag: "WsTransportRequestInterruptedError",
+          code: "WS_TURN_SETTLEMENT_UNAVAILABLE",
+          delivery: "unknown",
+        });
+      },
+    });
+    useComposerDraftStore.getState().setProjectDraftThreadId(PROJECT_ID, THREAD_ID);
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createDraftOnlySnapshot(),
+    });
+    try {
+      const prompt = "Reconcile the exact original message";
+      await page.getByTestId("composer-editor").fill(prompt);
+      const sendButton = await waitForSendButton();
+      await vi.waitFor(() => expect(sendButton.disabled).toBe(false));
+      sendButton.click();
+      await vi.waitFor(() => {
+        expect(turnStarts()).toHaveLength(1);
+        expect(useComposerDraftStore.getState().draftsByThreadId[THREAD_ID]?.prompt).toBe(prompt);
+        expect(hasActiveComposerSend(THREAD_ID)).toBe(false);
+      });
+      expect(
+        wsRequests.map(readDispatchedCommand).some((command) => command?.type === "thread.delete"),
+      ).toBe(false);
+
+      const original = turnStarts()[0]!;
+      const message = original.message as { messageId: MessageId; text: string };
+      const createdSnapshot = addThreadToSnapshot(fixture.snapshot, THREAD_ID);
+      const startedThread = {
+        ...createdSnapshot.threads[0]!,
+        session: null,
+        messages: [
+          {
+            ...createUserMessage({ id: message.messageId, text: message.text, offsetSeconds: 1 }),
+            createdAt: original.createdAt as string,
+            updatedAt: original.createdAt as string,
+          },
+        ],
+      };
+      fixture.snapshot = { ...createdSnapshot, threads: [startedThread] };
+      useStore
+        .getState()
+        .syncServerShellSnapshot(createShellSnapshotFromReadModel(fixture.snapshot));
+      useStore.getState().syncServerThreadDetailHotPath(startedThread);
+      await vi.waitFor(() => {
+        expect(useStore.getState().messageByThreadId?.[THREAD_ID]?.[message.messageId]?.id).toBe(
+          message.messageId,
+        );
+      });
+      await waitForLayout();
+
+      const retryButton = await waitForSendButton();
+      await vi.waitFor(() => expect(retryButton.disabled).toBe(false));
+      retryButton.click();
+      await vi.waitFor(
+        () => {
+          expect(useComposerDraftStore.getState().draftsByThreadId[THREAD_ID]?.prompt ?? "").toBe(
+            "",
+          );
+        },
+        { timeout: 8_000 },
+      );
+      expect(turnStarts()).toEqual([original]);
+    } finally {
+      restoreNativeApi();
+      await mounted.cleanup();
     }
   });
 
@@ -15619,6 +16033,55 @@ describe("ChatView transcript geometry (full app)", () => {
       }
     },
   );
+
+  it("keeps remote settings off the local computer after a disconnect", async () => {
+    const controller = {
+      environmentId: "controller-test",
+      label: "This computer",
+      channel: "dev",
+      capabilities: { remoteConnections: true },
+    } as ExecutionEnvironmentDescriptor;
+    vi.mocked(readExecutionContext).mockReturnValue({
+      controller,
+      execution: controller,
+      remote: null,
+    });
+    vi.mocked(WorkspacePanels).mockReturnValue(null);
+    onTestFinished(() => {
+      vi.mocked(readExecutionContext).mockRestore();
+      vi.mocked(WorkspacePanels).mockRestore();
+    });
+    await using mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: MessageId.makeUnsafe("remote-settings-owner"),
+        targetText: "Remote settings owner",
+      }),
+    });
+
+    const environment = "disconnected-settings-host";
+    await mounted.router.navigate({
+      to: "/settings",
+      search: { section: "providers", computer: environment },
+    });
+    await expect
+      .element(page.getByText("This computer is not connected.", { exact: false }))
+      .toBeVisible();
+    expect(mounted.router.state.location.search).toMatchObject({
+      environment,
+      path: "/settings?section=providers",
+    });
+    expect(page.getByRole("heading", { name: "Providers", exact: true }).query()).toBeNull();
+
+    await mounted.router.navigate({
+      to: "/remote",
+      search: { environment, path: "/settings?section=appearance" },
+    });
+    await expect
+      .element(page.getByRole("heading", { name: "Appearance", exact: true }))
+      .toBeVisible();
+    expect(mounted.router.state.location.pathname).toBe("/settings");
+  });
 
   it("creates a new thread from the global chat.new shortcut", async () => {
     const mounted = await mountChatView({
@@ -17461,6 +17924,39 @@ describe("ChatView transcript geometry (full app)", () => {
       );
       expect(freshThreadPath).not.toBe(promotedThreadPath);
     } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("retains an accepted implementation thread if its shell refresh fails", async () => {
+    let turnStarted = false;
+    const restoreNativeApi = installDeterministicSendNativeApi({
+      beforeTurnStart: async () => {
+        turnStarted = true;
+      },
+      beforeShellSnapshot: async () => {
+        if (turnStarted) throw new Error("Implementation shell refresh failed");
+      },
+    });
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotWithSettledPlanAwaitingFollowUp(),
+    });
+    try {
+      await page.getByRole("button", { name: "Implementation actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Implement in a new thread", exact: true }).click();
+      await expect.element(page.getByText("Implementation shell refresh failed")).toBeVisible();
+      const commands = wsRequests.map(readDispatchedCommand);
+      const implementationTurn = commands.find((command) => command?.type === "thread.turn.start");
+      expect(implementationTurn?.threadId).toBeDefined();
+      expect(
+        commands.some(
+          (command) =>
+            command?.type === "thread.delete" && command.threadId === implementationTurn?.threadId,
+        ),
+      ).toBe(false);
+    } finally {
+      restoreNativeApi();
       await mounted.cleanup();
     }
   });

@@ -28,7 +28,11 @@ import {
   resolveModelSlugForProvider,
   resolveSelectableModel,
 } from "@synara/shared/model";
-import { resolveAppModelSelection } from "./appSettings";
+import {
+  newChatDefaultInstanceIdFor,
+  resolveAppModelSelection,
+  type NewChatDefault,
+} from "./appSettings";
 import { resolveDefaultModelRef, type DefaultModelRef } from "./providerOrdering";
 import {
   composerContextWindowOptionId,
@@ -867,8 +871,13 @@ export function resolvePreferredComposerModelSelection(input: {
     | undefined;
   threadModelSelection: ModelSelection | null | undefined;
   projectModelSelection: ModelSelection | null | undefined;
-  defaultProvider?: ProviderKind | null | undefined;
-  /** User-configured per-provider defaults; consulted only after draft/thread/project. */
+  /**
+   * Agent and account picked in Settings for new chats (see resolveNewChatDefault).
+   * Applies only when nothing else decides the provider; draft, thread, and
+   * project selections keep their own account. Omitted means codex.
+   */
+  newChatDefault?: NewChatDefault | null | undefined;
+  /** User-configured model and traits; draft/thread/project choices take precedence. */
   defaultModelByProvider?: ReadonlyArray<DefaultModelRef> | null | undefined;
   resolveProviderForInstanceId?: (
     instanceId: ProviderInstanceId,
@@ -888,13 +897,31 @@ export function resolvePreferredComposerModelSelection(input: {
       input.resolveProviderForInstanceId?.(activeInstanceId) ??
       normalizeProviderKind(activeInstanceId))
     : null;
-  const preferredProvider =
+  const selectedProvider =
     activeInstanceProvider ??
     draftProviderWithSelection ??
     input.threadModelSelection?.provider ??
     input.projectModelSelection?.provider ??
-    input.defaultProvider ??
-    "codex";
+    null;
+  const preferredProvider = selectedProvider ?? input.newChatDefault?.defaultProvider ?? "codex";
+  const defaultInstanceId =
+    selectedProvider === null
+      ? normalizeProviderInstanceId(
+          newChatDefaultInstanceIdFor(
+            input.newChatDefault,
+            preferredProvider,
+            input.projectModelSelection?.provider,
+          ),
+        )
+      : undefined;
+  // Ignore an account that resolves to a different agent than the default one.
+  const defaultAccountInstanceId =
+    defaultInstanceId &&
+    (input.resolveProviderForInstanceId?.(defaultInstanceId) ??
+      normalizeProviderKind(defaultInstanceId) ??
+      preferredProvider) === preferredProvider
+      ? defaultInstanceId
+      : undefined;
 
   const preferredPersistedSelection =
     input.threadModelSelection?.provider === preferredProvider
@@ -906,7 +933,7 @@ export function resolvePreferredComposerModelSelection(input: {
     preferredProvider,
     activeInstanceProvider === preferredProvider
       ? activeInstanceId
-      : preferredPersistedSelection?.instanceId,
+      : (preferredPersistedSelection?.instanceId ?? defaultAccountInstanceId),
   );
   const persistedSelection =
     (modelSelectionMatchesProviderInstance(

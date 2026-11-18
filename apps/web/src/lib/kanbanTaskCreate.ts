@@ -4,14 +4,9 @@
 // Layer: Web orchestration helper
 // Exports: createKanbanDraftTask, createAndSendKanbanTask, KanbanDraftTaskInput
 
-import type {
-  AssistantDeliveryMode,
-  ProviderKind,
-  ProviderStartOptions,
-  ThreadId,
-} from "@synara/contracts";
+import type { AssistantDeliveryMode, ProviderStartOptions, ThreadId } from "@synara/contracts";
 
-import type { ProviderInstanceOption } from "../appSettings";
+import type { NewChatDefault, ProviderInstanceOption } from "../appSettings";
 import type { DefaultModelRef } from "../providerOrdering";
 import { createDraftThread, type DraftThreadInput } from "./draftThreadCreate";
 import {
@@ -42,8 +37,8 @@ export function createKanbanDraftTask(input: KanbanDraftTaskInput): ThreadId {
  */
 export async function createAndSendKanbanTask(
   input: KanbanDraftTaskInput & {
-    defaultProvider: ProviderKind;
-    defaultModelByProvider: ReadonlyArray<DefaultModelRef>;
+    newChatDefault: NewChatDefault;
+    defaultModelByProvider?: ReadonlyArray<DefaultModelRef> | undefined;
     assistantDeliveryMode: AssistantDeliveryMode;
     providerOptions?: ProviderStartOptions | undefined;
     sendAsGoal?: boolean | undefined;
@@ -57,7 +52,7 @@ export async function createAndSendKanbanTask(
     threadId,
     projectId: input.projectId,
     thread: null,
-    defaultProvider: input.defaultProvider,
+    newChatDefault: input.newChatDefault,
     defaultModelByProvider: input.defaultModelByProvider,
     assistantDeliveryMode: input.assistantDeliveryMode,
     providerOptions: input.providerOptions,

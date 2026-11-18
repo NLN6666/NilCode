@@ -109,6 +109,7 @@ import { InlineAgentChip } from "./InlineAgentChip";
 import { EditedFileRow } from "./EditedFileRow";
 import { MessageActionButton, MESSAGE_ACTION_ICON_CLASS_NAME } from "./MessageActionButton";
 import { MessageCopyButton } from "./MessageCopyButton";
+import { mergeSubagentRunEntries } from "./SubagentRunCard.logic";
 import { AssistantSelectionsSummaryChip } from "./AssistantSelectionsSummaryChip";
 import { FileAttachmentChip } from "./FileAttachmentChip";
 import { FileCommentsSummaryChip } from "./FileCommentsSummaryChip";
@@ -118,7 +119,6 @@ import { UserMessagePastedTextCard } from "./PastedTextChip";
 import { UserMessagePullRequestContextCard } from "./PullRequestContextCard";
 import {
   EditedFileRowContent,
-  prefersCompactWorkEntryRow,
   renderWorkEntryIcon,
   TimelineWorkEntryRow,
 } from "./TimelineWorkEntryRow";
@@ -141,6 +141,7 @@ import {
   formatTurnHeaderLabel,
   findLastLiveWorkGroupId,
   isPinnedBackgroundTaskEntry,
+  isPinnedSubagentRunEntry,
   MAX_VISIBLE_WORK_LOG_ENTRIES,
   MIN_BACKGROUND_TASK_GROUP_SIZE,
   planWorkEntryRenderChunks,
@@ -191,6 +192,8 @@ import {
   USER_MESSAGE_BUBBLE_SHELL_CHROME_CLASS_NAME,
   USER_INPUT_EXCHANGE_BUBBLE_CLASS_NAME,
   userMessageBubbleBorderClassName,
+  WORK_ROW_DISCLOSED_CLASS_NAME,
+  WORK_ROW_STACK_CLASS_NAME,
 } from "./chatTypography";
 import { DisclosureChevron } from "../ui/DisclosureChevron";
 import { CollapseRail } from "../ui/CollapseRail";
@@ -458,8 +461,8 @@ interface MessagesTimelineProps {
   isWorking: boolean;
   workingLabel?: WorkingLabel | undefined;
   activeTurnInProgress: boolean;
-  /** Keeps the latest turn expanded while background subagents are still running. */
-  subagentsRunning?: boolean;
+  /** Subagent rows with a child still at work, shown at the end of their answer. */
+  liveSubagentRunEntryIds?: ReadonlySet<string>;
   /** User setting: false keeps every finished turn expanded instead of folding it. */
   collapseFinishedTurns?: boolean;
   activeTurnStartedAt: string | null;
@@ -607,6 +610,8 @@ interface MessagesTimelineProps {
   findHighlight?: ThreadFindHighlight | null;
 }
 
+const EMPTY_LIVE_SUBAGENT_RUN_ENTRY_IDS: ReadonlySet<string> = new Set();
+
 export const MessagesTimeline = memo(function MessagesTimeline({
   hasMessages,
   heightCacheScope,
@@ -614,7 +619,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   isWorking,
   workingLabel: workingLabelProp,
   activeTurnInProgress,
-  subagentsRunning,
+  liveSubagentRunEntryIds: liveSubagentRunEntryIdsProp,
   collapseFinishedTurns,
   activeTurnStartedAt,
   worktreeSetup: worktreeSetupProp,
@@ -917,7 +922,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         worktreeSetup: presentedWorktreeSetup?.snapshot ?? null,
         worktreeSetupOpen: presentedWorktreeSetup?.open ?? false,
         activeTurnInProgress,
-        subagentsRunning: subagentsRunning === true,
         collapseFinishedTurns: collapseFinishedTurns !== false,
         activeTurnId,
         activeTurnStartedAt,
@@ -931,7 +935,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isWorking,
       presentedWorktreeSetup,
       activeTurnInProgress,
-      subagentsRunning,
       collapseFinishedTurns,
       activeTurnId,
       activeTurnStartedAt,
@@ -1073,6 +1076,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     return ids;
   }, [rows, subagentThread]);
   const subagentDeliveredMessageIds = useStableValue(derivedSubagentDeliveredMessageIds, setsEqual);
+  // The scan rebuilds this set on every work-log change; keep its identity while
+  // the live cards stay the same so streaming does not re-render every row.
+  const liveSubagentRunEntryIds = useStableValue(
+    liveSubagentRunEntryIdsProp ?? EMPTY_LIVE_SUBAGENT_RUN_ENTRY_IDS,
+    setsEqual,
+  );
   const settledTurnCollapseTransitions = useSettledTurnCollapseTransitions(rows);
   const enteringMessageRowIds = useMessageSendEnterAnimations(rows, enteringUserMessageIds);
   // Latest rows kept in a ref so the imperative scroll controller can look up a message's
@@ -1225,16 +1234,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         const target = resolveWorkEntryJumpTarget(rowsRef.current, entryId);
         if (!target) return;
         onNavigate?.();
-        if (target.expandCollapsedWorkMessageId) {
+        const selector = `[data-subagent-run-card="${cssAttributeSelectorValue(target.cardEntryId)}"]`;
+        const mounted = timelineRootRef.current?.querySelector(selector);
+        // A card still at work is pinned under its folded turn's header: reach it
+        // without opening "Worked for". Anything else in the fold opens it first.
+        const pinnedOnScreen =
+          mounted instanceof HTMLElement && !mounted.closest('[aria-hidden="true"], [inert]');
+        if (target.expandCollapsedWorkMessageId && !pinnedOnScreen) {
           setCollapsedWorkExpanded(target.expandCollapsedWorkMessageId, true);
         }
-        const row = rowsRef.current[target.rowIndex];
-        const cardEntryId =
-          row?.kind === "work" && row.groupedEntries.every((entry) => entry.subagentRun)
-            ? (row.groupedEntries[0]?.id ?? entryId)
-            : entryId;
-        const selector = `[data-subagent-run-card="${cssAttributeSelectorValue(cardEntryId)}"]`;
-        const mounted = timelineRootRef.current?.querySelector(selector);
         if (mounted instanceof HTMLElement) {
           mounted.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
           return;
@@ -1654,7 +1662,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           item.entry.synaraThreadCreation ||
           item.entry.computerSetupRequired ||
           item.entry.computerControlDenied ||
-          isPinnedBackgroundTaskEntry(item.entry, turnEndedAt, item.backgroundTaskConsumed)
+          isPinnedBackgroundTaskEntry(item.entry, turnEndedAt, item.backgroundTaskConsumed) ||
+          isPinnedSubagentRunEntry(item.entry, liveSubagentRunEntryIds)
         ),
     );
     const hasCollapsedWork = Boolean(collapsedTurnItems && collapsedTurnItems.length > 0);
@@ -1673,7 +1682,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             workEntry={item.entry}
             chatMetaFontSizePx={appTypographyScale.chatMetaPx}
             textFontSizePx={normalizedChatFontSizePx}
-            density={prefersCompactWorkEntryRow(item.entry) ? "compact" : "default"}
+            density="compact"
             mutedProse
             markdownCwd={markdownCwd}
             threadId={threadId}
@@ -1689,7 +1698,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       return (
         <div
           key={`${keyPrefix}:narration:${row.message.id}:${item.id}`}
-          className={MUTED_LABEL_TEXT_CLASS_NAME}
+          // The stack's 14px gap is the same step a live turn gives text.
+          className={cn("first:pt-0.5", MUTED_LABEL_TEXT_CLASS_NAME)}
           data-chat-find-narration-id={item.message.id}
           data-chat-find-document-id={item.message.id}
         >
@@ -1742,7 +1752,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           onToggle={(open) => setToolGroupSummaryOpen(summaryOverrideKey, open)}
           fontSizePx={normalizedChatFontSizePx}
           renderChildren={() => (
-            <div className="space-y-0.5 pt-0.5">
+            <div className={WORK_ROW_DISCLOSED_CLASS_NAME}>
               {chunk.entries.map((entry) =>
                 renderCollapsedTurnItem({ kind: "work", id: entry.id, entry }, keyPrefix),
               )}
@@ -1764,7 +1774,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           >
             <DisclosureRegion
               open={settledCollapseTransition.open}
-              contentClassName="space-y-1.5 pb-2.5"
+              contentClassName={cn(WORK_ROW_STACK_CLASS_NAME, "pb-2.5")}
             >
               {chunkCollapsedTurnItems(settledCollapseTransition.items).map((chunk) =>
                 renderCollapsedTurnChunk(chunk, "settling-turn-close"),
@@ -1807,7 +1817,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     <div
                       className={disclosureContentClassName(
                         isCollapsedWorkExpanded,
-                        "mb-2.5 space-y-1.5",
+                        cn(WORK_ROW_STACK_CLASS_NAME, "mb-2.5"),
                       )}
                     >
                       {chunkCollapsedTurnItems(collapsedTurnItems!).map((chunk) =>
@@ -1825,7 +1835,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 />
               ) : null}
               {pinnedBackgroundEntries.length > 0 ? (
-                <div className="space-y-0.5">
+                <div className={cn(WORK_ROW_STACK_CLASS_NAME, "pt-2.5")}>
                   {pinnedBackgroundEntries.length >= MIN_BACKGROUND_TASK_GROUP_SIZE ? (
                     <BackgroundTaskGroupRow
                       entries={pinnedBackgroundEntries}
@@ -1863,18 +1873,21 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       className={cn(
         CHAT_COLUMN_FRAME_CLASS_NAME,
         "px-1 transition-colors duration-500",
+        // Only the live tail hugs "Thinking"; every other text and tool block
+        // keeps ~10-12px so mid-turn text never crowds the rows around it.
         row.kind === "working" ||
           (row.kind === "message" &&
             row.message.role === "assistant" &&
-            row.assistantTurnInProgress)
+            row.assistantTurnInProgress &&
+            row.id === tailContentRowId)
           ? "pb-1"
-          : row.kind === "work" ||
-              row.kind === "working-header" ||
-              (row.kind === "message" && row.message.role === "assistant") ||
-              row.kind === "message-segment" ||
-              row.kind === "inline-visual"
-            ? "pb-2"
-            : "pb-4",
+          : row.kind === "work" || row.kind === "message-segment"
+            ? "pb-3.5"
+            : row.kind === "working-header" ||
+                (row.kind === "message" && row.message.role === "assistant") ||
+                row.kind === "inline-visual"
+              ? "pb-2"
+              : "pb-4",
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
         (row.kind === "message" || row.kind === "message-segment") &&
           row.message.id === highlightedMessageId
@@ -1942,7 +1955,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               workEntry={workEntry}
               chatMetaFontSizePx={appTypographyScale.chatMetaPx}
               textFontSizePx={normalizedChatFontSizePx}
-              density={prefersCompactWorkEntryRow(workEntry) ? "compact" : "default"}
+              density="compact"
               markdownCwd={markdownCwd}
               threadId={threadId}
               onImageExpand={onImageExpand}
@@ -1954,15 +1967,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             />
           );
           if (groupedEntries.every((entry) => entry.subagentRun)) {
-            const first = groupedEntries[0]!;
-            return renderEntryRow({
-              ...first,
-              subagents: groupedEntries.flatMap((entry) => entry.subagents ?? []),
-              subagentRun: {
-                members: groupedEntries.flatMap((entry) => entry.subagentRun!.members),
-                entryIds: groupedEntries.map((entry) => entry.id),
-              },
-            });
+            return renderEntryRow(mergeSubagentRunEntries(groupedEntries));
           }
           const isLiveGroup =
             groupId === lastLiveWorkGroupId && (activeTurnInProgress || isWorking);
@@ -1986,8 +1991,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const hasCollapsedChunk = renderChunks.some(isFoldedWorkEntryChunk);
           if (hasCollapsedChunk) {
             return (
-              <div>
-                <div className="space-y-0.5">
+              <div className={WORK_ROW_STACK_CLASS_NAME}>
+                <div className={WORK_ROW_STACK_CLASS_NAME}>
                   {renderChunks.map((chunk) => {
                     if (chunk.backgroundGroup) {
                       const groupKey = `${groupId}:background:${chunk.id}`;
@@ -2014,7 +2019,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         onToggle={(open) => setToolGroupSummaryOpen(summaryKey, open)}
                         fontSizePx={normalizedChatFontSizePx}
                         renderChildren={() => (
-                          <div className="space-y-0.5 pt-0.5">
+                          <div className={WORK_ROW_DISCLOSED_CLASS_NAME}>
                             {fold.entries.map(renderEntryRow)}
                           </div>
                         )}
@@ -2023,14 +2028,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   })}
                 </div>
                 {cappedRenderPlan.hasOverflow && (
-                  <div className="mt-1.5 flex items-center justify-start gap-2 px-0.5">
+                  <div className="py-0.5">
                     <button
                       type="button"
                       className={cn(
-                        "font-system-ui transition-colors duration-150 hover:text-foreground",
+                        "leading-5 transition-colors duration-150 hover:text-foreground",
                         MUTED_LABEL_TEXT_CLASS_NAME,
                       )}
-                      style={{ fontSize: `${appTypographyScale.uiSmPx}px` }}
+                      style={{ fontSize: `${normalizedChatFontSizePx}px` }}
                       onClick={() => handleToggleWorkGroup(groupId)}
                     >
                       {isExpanded
@@ -2052,17 +2057,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           const showOverflowToggle = hasOverflow;
 
           return (
-            <div>
-              <div className="space-y-0.5">{visibleEntries.map(renderEntryRow)}</div>
+            <div className={WORK_ROW_STACK_CLASS_NAME}>
+              <div className={WORK_ROW_STACK_CLASS_NAME}>{visibleEntries.map(renderEntryRow)}</div>
               {showOverflowToggle && (
-                <div className="mt-1.5 flex items-center justify-start gap-2 px-0.5">
+                <div className="py-0.5">
                   <button
                     type="button"
                     className={cn(
-                      "font-system-ui transition-colors duration-150 hover:text-foreground",
+                      "leading-5 transition-colors duration-150 hover:text-foreground",
                       MUTED_LABEL_TEXT_CLASS_NAME,
                     )}
-                    style={{ fontSize: `${appTypographyScale.uiSmPx}px` }}
+                    style={{ fontSize: `${normalizedChatFontSizePx}px` }}
                     onClick={() => handleToggleWorkGroup(groupId)}
                   >
                     {isExpanded
@@ -2580,6 +2585,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           // Computer setup/denied cards carry the only affordance to unblock the
           // agent, so a settled turn shows the latest of each after the answer
           // instead of burying it inside the closed "Worked for" disclosure.
+          // Subagents still at work after the turn ended close the answer, right
+          // before its actions and timestamp, until they settle into "Worked for".
+          const pinnedSubagentEntries = (row.collapsedTurnItems ?? []).flatMap((item) =>
+            item.kind === "work" && isPinnedSubagentRunEntry(item.entry, liveSubagentRunEntryIds)
+              ? [item.entry]
+              : [],
+          );
           const collapsedComputerActionEntries = [
             ...new Map(
               (row.collapsedTurnItems ?? []).flatMap((item) =>
@@ -2600,7 +2612,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 item.entry.synaraThreadCreation ||
                 item.entry.computerSetupRequired ||
                 item.entry.computerControlDenied ||
-                isPinnedBackgroundTaskEntry(item.entry, turnEndedAt, item.backgroundTaskConsumed)
+                isPinnedBackgroundTaskEntry(item.entry, turnEndedAt, item.backgroundTaskConsumed) ||
+                isPinnedSubagentRunEntry(item.entry, liveSubagentRunEntryIds)
               ),
           );
           const hasCollapsedWork = Boolean(collapsedTurnItems?.length);
@@ -2649,122 +2662,124 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             });
             const renderChunks = cappedRenderPlan.chunks;
             const collapseAsSummary = renderChunks.some(isFoldedWorkEntryChunk);
+            const showSummaryBlock =
+              !hasCollapsedWork && collapseAsSummary && display.renderableToolEntries.length > 0;
+            const showToolBlock =
+              !hasCollapsedWork &&
+              !collapseAsSummary &&
+              display.visibleRenderableToolEntries.length > 0;
+            const showStatusBlock = !hasCollapsedWork && display.statusEntries.length > 0;
+            if (!showSummaryBlock && !showToolBlock && !showStatusBlock) return null;
+            // Tool rows and status rows (subagents, notices) read as one stack of
+            // 24px rows 14px apart; the text around the stack keeps the same 14px.
             return (
-              <>
-                {!hasCollapsedWork &&
-                  collapseAsSummary &&
-                  display.renderableToolEntries.length > 0 && (
-                    <div className={placement === "leading" ? "mb-1.5" : "mt-1.5"}>
-                      <div className="space-y-px">
-                        {renderChunks.map((chunk) => {
-                          if (chunk.backgroundGroup) {
-                            const groupKey = `${placement}:${row.message.id}:background:${chunk.id}`;
-                            return (
-                              <BackgroundTaskGroupRow
-                                key={`inline-background-group:${groupKey}`}
-                                entries={chunk.entries}
-                                open={toolGroupSummaryOverrides[groupKey] ?? false}
-                                onToggle={(open) => setToolGroupSummaryOpen(groupKey, open)}
-                                fontSizePx={normalizedChatFontSizePx}
-                                renderEntry={renderInlineToolRow}
-                              />
-                            );
-                          }
-                          const fold = resolveWorkEntryChunkFold(chunk);
-                          if (!fold) {
-                            // Narration-tone entries render in the status block
-                            // below; here they only serve as run boundaries.
-                            return chunk.entries
-                              .filter((workEntry) => workEntry.tone === "tool")
-                              .map(renderInlineToolRow);
-                          }
-                          // Message ids stay stable while a live group's first-entry id can drift.
-                          const summaryRowKey = `${placement}:${row.message.id}:${chunk.id}`;
-                          const summaryOverrideKey = `${summaryRowKey}${fold.keySuffix}`;
+              <div
+                className={cn(
+                  WORK_ROW_STACK_CLASS_NAME,
+                  placement === "leading" ? "mb-3.5" : "mt-3.5",
+                )}
+              >
+                {showSummaryBlock && (
+                  <div className={WORK_ROW_STACK_CLASS_NAME}>
+                    <div className={WORK_ROW_STACK_CLASS_NAME}>
+                      {renderChunks.map((chunk) => {
+                        if (chunk.backgroundGroup) {
+                          const groupKey = `${placement}:${row.message.id}:background:${chunk.id}`;
                           return (
-                            <ToolCallGroupSummaryRow
-                              key={`inline-tool-summary:${summaryRowKey}`}
-                              summary={fold.summary}
-                              liveEntry={chunk.liveEntry}
-                              open={toolGroupSummaryOverrides[summaryOverrideKey] ?? false}
-                              onToggle={(open) => setToolGroupSummaryOpen(summaryOverrideKey, open)}
+                            <BackgroundTaskGroupRow
+                              key={`inline-background-group:${groupKey}`}
+                              entries={chunk.entries}
+                              open={toolGroupSummaryOverrides[groupKey] ?? false}
+                              onToggle={(open) => setToolGroupSummaryOpen(groupKey, open)}
                               fontSizePx={normalizedChatFontSizePx}
-                              renderChildren={() => (
-                                <div className="space-y-px pt-0.5">
-                                  {fold.entries.map(renderInlineToolRow)}
-                                </div>
-                              )}
+                              renderEntry={renderInlineToolRow}
                             />
                           );
-                        })}
-                      </div>
-                      {display.toolGroupId && cappedRenderPlan.hasOverflow && (
-                        <div className="py-0.5">
-                          <button
-                            type="button"
-                            className={cn(
-                              "transition-colors duration-150 hover:text-foreground",
-                              MUTED_LABEL_TEXT_CLASS_NAME,
+                        }
+                        const fold = resolveWorkEntryChunkFold(chunk);
+                        if (!fold) {
+                          // Narration-tone entries render in the status block
+                          // below; here they only serve as run boundaries.
+                          return chunk.entries
+                            .filter((workEntry) => workEntry.tone === "tool")
+                            .map(renderInlineToolRow);
+                        }
+                        // Message ids stay stable while a live group's first-entry id can drift.
+                        const summaryRowKey = `${placement}:${row.message.id}:${chunk.id}`;
+                        const summaryOverrideKey = `${summaryRowKey}${fold.keySuffix}`;
+                        return (
+                          <ToolCallGroupSummaryRow
+                            key={`inline-tool-summary:${summaryRowKey}`}
+                            summary={fold.summary}
+                            liveEntry={chunk.liveEntry}
+                            open={toolGroupSummaryOverrides[summaryOverrideKey] ?? false}
+                            onToggle={(open) => setToolGroupSummaryOpen(summaryOverrideKey, open)}
+                            fontSizePx={normalizedChatFontSizePx}
+                            renderChildren={() => (
+                              <div className={WORK_ROW_DISCLOSED_CLASS_NAME}>
+                                {fold.entries.map(renderInlineToolRow)}
+                              </div>
                             )}
-                            style={{ fontSize: `${normalizedChatFontSizePx}px` }}
-                            onClick={() => handleToggleWorkGroup(display.toolGroupId!)}
-                          >
-                            {display.toolExpanded
-                              ? t("workspace:timeline_showLess")
-                              : t("chat:moreToolCalls", {
-                                  value0: cappedRenderPlan.hiddenEntryCount,
-                                })}
-                          </button>
-                        </div>
-                      )}
+                          />
+                        );
+                      })}
                     </div>
-                  )}
-                {!hasCollapsedWork &&
-                  !collapseAsSummary &&
-                  display.visibleRenderableToolEntries.length > 0 && (
-                    <div className={placement === "leading" ? "mb-1.5" : "mt-1.5"}>
-                      <div className="space-y-px">
-                        {display.visibleRenderableToolEntries.map(renderInlineToolRow)}
+                    {display.toolGroupId && cappedRenderPlan.hasOverflow && (
+                      <div className="py-0.5">
+                        <button
+                          type="button"
+                          className={cn(
+                            "leading-5 transition-colors duration-150 hover:text-foreground",
+                            MUTED_LABEL_TEXT_CLASS_NAME,
+                          )}
+                          style={{ fontSize: `${normalizedChatFontSizePx}px` }}
+                          onClick={() => handleToggleWorkGroup(display.toolGroupId!)}
+                        >
+                          {display.toolExpanded
+                            ? t("workspace:timeline_showLess")
+                            : t("chat:moreToolCalls", {
+                                value0: cappedRenderPlan.hiddenEntryCount,
+                              })}
+                        </button>
                       </div>
-                      {display.toolGroupId && display.hasToolOverflow && (
-                        <div className="py-0.5">
-                          <button
-                            type="button"
-                            className={cn(
-                              "transition-colors duration-150 hover:text-foreground",
-                              MUTED_LABEL_TEXT_CLASS_NAME,
-                            )}
-                            style={{ fontSize: `${normalizedChatFontSizePx}px` }}
-                            onClick={() => handleToggleWorkGroup(display.toolGroupId!)}
-                          >
-                            {display.toolExpanded
-                              ? t("workspace:timeline_showLess")
-                              : t("chat:moreToolCalls", {
-                                  value0: display.hiddenToolCount,
-                                })}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                {!hasCollapsedWork && display.statusEntries.length > 0 && (
-                  <div
-                    className={cn(
-                      "space-y-0.5",
-                      placement === "leading"
-                        ? row.assistantTurnInProgress
-                          ? "mb-0.5"
-                          : "mb-2"
-                        : "mt-2",
                     )}
-                  >
+                  </div>
+                )}
+                {showToolBlock && (
+                  <div className={WORK_ROW_STACK_CLASS_NAME}>
+                    <div className={WORK_ROW_STACK_CLASS_NAME}>
+                      {display.visibleRenderableToolEntries.map(renderInlineToolRow)}
+                    </div>
+                    {display.toolGroupId && display.hasToolOverflow && (
+                      <div className="py-0.5">
+                        <button
+                          type="button"
+                          className={cn(
+                            "leading-5 transition-colors duration-150 hover:text-foreground",
+                            MUTED_LABEL_TEXT_CLASS_NAME,
+                          )}
+                          style={{ fontSize: `${normalizedChatFontSizePx}px` }}
+                          onClick={() => handleToggleWorkGroup(display.toolGroupId!)}
+                        >
+                          {display.toolExpanded
+                            ? t("workspace:timeline_showLess")
+                            : t("chat:moreToolCalls", {
+                                value0: display.hiddenToolCount,
+                              })}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {showStatusBlock && (
+                  <div className={WORK_ROW_STACK_CLASS_NAME}>
                     {display.statusEntries.map((workEntry) => (
                       <TimelineWorkEntryRow
                         key={`${placement}-status-row:${row.message.id}:${workEntry.id}`}
                         workEntry={workEntry}
                         chatMetaFontSizePx={appTypographyScale.chatMetaPx}
                         textFontSizePx={normalizedChatFontSizePx}
-                        density={prefersCompactWorkEntryRow(workEntry) ? "compact" : "default"}
+                        density="compact"
                         markdownCwd={markdownCwd}
                         threadId={threadId}
                         onImageExpand={onImageExpand}
@@ -2779,7 +2794,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     ))}
                   </div>
                 )}
-              </>
+              </div>
             );
           };
           return (
@@ -2832,7 +2847,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 ) : null}
                 {conversationOnly ? null : renderWorkDisplay(inlineWorkDisplay, "inline")}
                 {!conversationOnly && inlineEditedFilesFromTurnSummary.length > 0 && (
-                  <div className="mt-2 space-y-0.5">
+                  <div className="mt-2.5 space-y-0.5">
                     {inlineEditedFilesFromTurnSummary.map((file) => (
                       <button
                         key={`inline-summary-edit:${row.message.id}:${file.path}`}
@@ -3082,6 +3097,26 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     </div>
                   );
                 })()}
+                {pinnedSubagentEntries.length > 0 && !conversationOnly ? (
+                  <div
+                    className={cn(WORK_ROW_STACK_CLASS_NAME, "mt-3.5")}
+                    data-pinned-subagent-runs="true"
+                  >
+                    {pinnedSubagentEntries.map((workEntry) => (
+                      <TimelineWorkEntryRow
+                        key={`pinned-subagent:${row.message.id}:${workEntry.id}`}
+                        workEntry={workEntry}
+                        chatMetaFontSizePx={appTypographyScale.chatMetaPx}
+                        textFontSizePx={normalizedChatFontSizePx}
+                        density="compact"
+                        markdownCwd={markdownCwd}
+                        threadId={threadId}
+                        onImageExpand={onImageExpand}
+                        timestampFormat={timestampFormat}
+                      />
+                    ))}
+                  </div>
+                ) : null}
                 {(showPinToggle ||
                   showForkAction ||
                   assistantCopyState.visible ||

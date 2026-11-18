@@ -1070,5 +1070,19 @@
   "projectPicker_folderComputer": "文件夹所在计算机",
   "projectPicker_computerPurpose": "项目计算机",
   "selectThisComputerToCloneFromGitHubAddExistingFolderOnConnectedComputer": "选择“此计算机”以从 GitHub 克隆。你可以在已连接的计算机上添加现有文件夹。",
-  "gitHub": "GitHub"
+  "gitHub": "GitHub",
+  "childThreadCount_one": "{{count}} 个子会话",
+  "childThreadCount_other": "{{count}} 个子会话",
+  "showChildThreads_one": "显示 {{count}} 个子会话",
+  "showChildThreads_other": "显示 {{count}} 个子会话",
+  "hideChildThreads_one": "隐藏 {{count}} 个子会话",
+  "hideChildThreads_other": "隐藏 {{count}} 个子会话",
+  "childThreadsWaiting_one": "{{count}} 个需要处理",
+  "childThreadsWaiting_other": "{{count}} 个需要处理",
+  "childThreadsUnread_one": "{{count}} 个未读",
+  "childThreadsUnread_other": "{{count}} 个未读",
+  "childThreadsWorking_one": "{{count}} 个运行中",
+  "childThreadsWorking_other": "{{count}} 个运行中",
+  "childThreadsDoneCount_one": "+{{count}} 个已完成",
+  "childThreadsDoneCount_other": "+{{count}} 个已完成"
 }

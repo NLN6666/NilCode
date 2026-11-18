@@ -23,7 +23,7 @@ import { useEffect, useState, type ButtonHTMLAttributes, type ReactElement } fro
 import { useAccount } from "~/hooks/useAccount";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useTranslation } from "~/i18n";
-import { ACCOUNT_BILLING_ENABLED } from "~/lib/accountBilling";
+import { ACCOUNT_BILLING_ENABLED } from "~/lib/accountBillingFlag";
 import { accountBillingQueryOptions } from "~/lib/accountReactQuery";
 import { shouldPromptForDiscoverability } from "~/lib/hosts/enrollment";
 import { readExecutionContext } from "~/lib/hosts/executionContext";

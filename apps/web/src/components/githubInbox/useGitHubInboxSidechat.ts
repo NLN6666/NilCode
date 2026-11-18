@@ -11,7 +11,12 @@ import type { ProjectId, ThreadId } from "@synara/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { getProviderInstanceOptions, getProviderStartOptions, useAppSettings } from "~/appSettings";
+import {
+  getProviderInstanceOptions,
+  getProviderStartOptions,
+  resolveNewChatDefault,
+  useAppSettings,
+} from "~/appSettings";
 import { createGitHubItemContextDraft } from "~/components/chat/environment/environmentPullRequest.logic";
 import { useSidechatShortcut } from "~/components/chat/useSidechatShortcut";
 import {
@@ -189,7 +194,7 @@ export function useGitHubInboxSidechat(selection: GitHubInboxSelection | null) {
       },
       threadModelSelection: null,
       projectModelSelection: project?.defaultModelSelection ?? null,
-      defaultProvider: settings.defaultProvider,
+      newChatDefault: resolveNewChatDefault(settings),
       defaultModelByProvider: settings.defaultModelByProvider,
       resolveProviderForInstanceId: (instanceId) =>
         getProviderInstanceOptions(settings).find((instance) => instance.instanceId === instanceId)

@@ -16,6 +16,7 @@ import {
   type ThreadId,
 } from "@synara/contracts";
 import { resolveThreadEnvironmentMode } from "@synara/shared/threadEnvironment";
+import type { NewChatDefault } from "../appSettings";
 import {
   type ComposerThreadDraftState,
   type DraftThreadEnvMode,
@@ -106,7 +107,8 @@ export type ThreadBootstrapPlan = DraftReusePlanStored | DraftReusePlanRoute | D
 interface ResolveTerminalThreadCreationStateInput {
   activeDraftThread: DraftThreadState | null;
   activeThread: ActiveThreadSnapshot | null;
-  defaultProvider?: ProviderKind | null | undefined;
+  /** Null falls back to codex on its default account. */
+  newChatDefault: NewChatDefault | null;
   defaultModelByProvider?: ReadonlyArray<DefaultModelRef> | null | undefined;
   draftComposerState: ComposerThreadDraftState | null;
   draftThread: DraftThreadState | null;
@@ -321,7 +323,7 @@ export function resolveTerminalThreadCreationState(
           ? input.activeThread.modelSelection
           : null,
       projectModelSelection: input.projectDefaultModelSelection,
-      defaultProvider: input.defaultProvider,
+      newChatDefault: input.newChatDefault,
       defaultModelByProvider: input.defaultModelByProvider,
       ...(input.resolveProviderForInstanceId
         ? { resolveProviderForInstanceId: input.resolveProviderForInstanceId }

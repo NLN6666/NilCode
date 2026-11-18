@@ -19,6 +19,7 @@ import {
 } from "~/appSettings";
 import { RenameThreadDialog } from "~/components/RenameThreadDialog";
 import { useCopyPathToClipboard, useCopyThreadIdToClipboard } from "~/hooks/useCopyToClipboard";
+import { useNewChatDefault } from "~/hooks/useNewChatDefault";
 import { deleteActiveThreadFromClient } from "~/lib/activeThreadDelete";
 import {
   dispatchKanbanDraftCardAsGoal,
@@ -122,6 +123,7 @@ export function useKanbanCardContextMenu(): KanbanCardContextMenuController {
   const { t, formatLocale } = useTranslation();
 
   const { settings } = useAppSettings();
+  const newChatDefault = useNewChatDefault(settings);
   const queryClient = useQueryClient();
   const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ queryClient }));
   const clearComposerContent = useComposerDraftStore((store) => store.clearComposerContent);
@@ -319,13 +321,13 @@ export function useKanbanCardContextMenu(): KanbanCardContextMenuController {
           threadId: card.threadId,
           projectId: card.projectId,
           thread: card.thread,
-          defaultProvider: settings.defaultProvider,
+          newChatDefault,
           defaultModelByProvider: settings.defaultModelByProvider,
           providerInstances,
         });
         const result = await dispatchKanbanDraftCardAsGoal({
           card,
-          defaultProvider: settings.defaultProvider,
+          newChatDefault,
           defaultModelByProvider: settings.defaultModelByProvider,
           assistantDeliveryMode: resolveAssistantDeliveryMode(settings),
           providerOptions: getProviderStartOptions(settings, target.instanceId),

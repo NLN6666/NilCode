@@ -1,3 +1,9 @@
+import {
+  composerTurnMayHaveBeenSent,
+  dispatchOwnedComposerTurn,
+  rememberRestoredComposerTurn,
+} from "~/lib/composerTurnSettlement";
+
 import type {
   ProjectId,
   ProjectKind,
@@ -297,6 +303,7 @@ export function useChatTurnExecution({
       let createdWorktreeForSendPath: string | null = null;
       let switchedToLocalCheckout = false;
       let turnStartSucceeded = false;
+      let attemptedTurnStart = false;
       let settledLocalBranchUpdatedForSend = false;
       await (async () => {
         // "Work locally" from the setup card: drop any prepared worktree and
@@ -677,8 +684,10 @@ export function useChatTurnExecution({
               "Choose how to resume the held message before sending another message.",
             );
           }
-          await api.orchestration
-            .dispatchCommand({
+          attemptedTurnStart = true;
+          await dispatchOwnedComposerTurn(
+            api,
+            {
               type: "thread.turn.start",
               commandId: newCommandId(),
               threadId: threadIdForSend,
@@ -700,15 +709,9 @@ export function useChatTurnExecution({
                 ? { sourceProposedPlan: sourceProposedPlanForSend }
                 : {}),
               createdAt: messageCreatedAt,
-            })
-            .catch((error: unknown) => {
-              if (
-                getThreadFromState(useStore.getState(), threadIdForSend)?.claudeCacheReview
-                  ?.messageId !== messageIdForSend
-              ) {
-                throw error;
-              }
-            });
+            },
+            queuedChatTurn?.id,
+          );
         });
         turnStartSucceeded = true;
         if (
@@ -766,6 +769,8 @@ export function useChatTurnExecution({
         // A user-cancelled worktree setup unwinds through this same rollback,
         // but silently: no error styling on the step row, no thread error.
         const setupCancelled = err instanceof WorktreeSetupCancelledError;
+        const turnUnsettled = attemptedTurnStart && composerTurnMayHaveBeenSent(err);
+        const canRollback = !turnStartSucceeded && !turnUnsettled;
         // Uploads start in parallel with workspace/session preparation. If any
         // earlier step fails, settle that promise and release every staged blob.
         await turnAttachmentsPromise.then(
@@ -777,12 +782,11 @@ export function useChatTurnExecution({
         if (!setupCancelled) {
           failLocalDispatchWorktreeSetup();
         }
-        if (!turnStartSucceeded) {
-          // The turn RPC never resolved, so no server turn exists for the
-          // watchdog to recover — drop the marker armed when the dispatch began.
+        if (canRollback) {
+          // Release the watchdog marker only once this attempt is known unsent.
           clearPendingTurnDispatch(threadIdForSend);
         }
-        if (settledLocalBranchUpdatedForSend && !turnStartSucceeded) {
+        if (settledLocalBranchUpdatedForSend && canRollback) {
           await api.orchestration
             .dispatchCommand({
               type: "thread.meta.update",
@@ -808,7 +812,7 @@ export function useChatTurnExecution({
               () => undefined,
             );
         }
-        if (createdServerThreadForLocalDraft && !turnStartSucceeded && !baseBranchForWorktree) {
+        if (createdServerThreadForLocalDraft && canRollback && !baseBranchForWorktree) {
           // This rollback cleans up a retryable draft promotion; do not tombstone the draft id.
           await api.orchestration
             .dispatchCommand({
@@ -818,7 +822,7 @@ export function useChatTurnExecution({
             })
             .catch(() => undefined);
         }
-        if (createdWorktreeForSendPath && !turnStartSucceeded) {
+        if (createdWorktreeForSendPath && canRollback) {
           const removed = await api.git
             .removeWorktree({
               cwd: targetProjectCwdForSend,
@@ -897,8 +901,12 @@ export function useChatTurnExecution({
               const next = existing.filter((message) => message.id !== messageIdForSend);
               return next.length === existing.length ? existing : next;
             });
-          if (isFocusedSend) promptRef.current = promptForSend;
-          setPrompt(promptForSend);
+          if (isFocusedSend) {
+            promptRef.current = promptForSend;
+            setPrompt(promptForSend);
+          } else {
+            useComposerDraftStore.getState().setPrompt(threadIdForSend, promptForSend);
+          }
           if (sourceProposedPlanForSend) {
             (isFocusedSend
               ? setRestoredQueuedSourceProposedPlan
@@ -972,6 +980,7 @@ export function useChatTurnExecution({
           }
           if (isFocusedSend)
             setComposerTrigger(detectComposerTrigger(promptForSend, promptForSend.length));
+          if (turnUnsettled) rememberRestoredComposerTurn(threadIdForSend, messageIdForSend);
         }
         // A handoff refused by the source's background tasks is explained by
         // the composer notice, which also offers to stop them.

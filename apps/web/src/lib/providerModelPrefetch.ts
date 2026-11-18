@@ -17,11 +17,19 @@ import type { QueryClient } from "@tanstack/react-query";
 import {
   getProviderInstanceOptions,
   getProviderStartOptions,
+  newChatDefaultInstanceIdFor,
+  resolveSelectableProviderInstanceId,
   type AppSettings,
+  type NewChatDefault,
 } from "../appSettings";
 import { isProviderKind } from "../providerOrdering";
 import type { DraftThreadEnvMode } from "../composerDraftDomain";
-import { findProviderStatus, resolveAvailableProviderPreference } from "./providerAvailability";
+import {
+  findProviderStatus,
+  findUsableProviderStatus,
+  providerStatusInstanceKey,
+  resolveAvailableProviderPreference,
+} from "./providerAvailability";
 import { resolveProviderDiscoveryCwd } from "./providerDiscovery";
 import {
   prioritizeProviderModelDiscovery,
@@ -33,7 +41,6 @@ import {
 
 export type ProviderModelPrefetchSettings = Pick<
   AppSettings,
-  | "defaultProvider"
   | "claudeBinaryPath"
   | "cursorBinaryPath"
   | "cursorApiEndpoint"
@@ -58,6 +65,7 @@ export type ProviderModelPrefetchSettings = Pick<
       | "openCodeExperimentalWebSockets"
       | "openCodeServerUrl"
       | "providerInstances"
+      | "disabledProviders"
     >
   >;
 
@@ -414,6 +422,8 @@ export function prefetchModelsForNewThread(
   queryClient: QueryClient,
   input: {
     settings: ProviderModelPrefetchSettings;
+    /** Agent and account the new chat starts on when nothing else picks one. */
+    newChatDefault: NewChatDefault;
     serverSettings?: ServerSettings | null;
     hiddenProviders?: ReadonlyArray<ProviderKind>;
     /** Normalized provider health (custom binary paths applied), see useProviderStatusesForLocalConfig. */
@@ -435,12 +445,16 @@ export function prefetchModelsForNewThread(
     includeDroid?: boolean;
   },
 ): void {
-  const configuredProviderInstances = getProviderInstanceOptions({
+  const instanceSettings = {
     codexAccounts: input.settings.codexAccounts ?? [],
     codexHomePath: input.settings.codexHomePath ?? "",
     selectedCodexAccountId: input.settings.selectedCodexAccountId ?? "default",
     providerInstances: input.settings.providerInstances ?? {},
-  });
+    ...(input.settings.disabledProviders
+      ? { disabledProviders: input.settings.disabledProviders }
+      : {}),
+  };
+  const configuredProviderInstances = getProviderInstanceOptions(instanceSettings);
   const resolveProviderForInstanceId = (instanceId: ProviderInstanceId): ProviderKind | null =>
     configuredProviderInstances.find((instance) => instance.instanceId === instanceId)?.provider ??
     null;
@@ -449,32 +463,53 @@ export function prefetchModelsForNewThread(
     draftActiveProvider: input.draftActiveProvider,
     stickyActiveProvider: input.stickyActiveProvider,
     projectDefaultProvider: input.projectDefaultProvider,
-    defaultProvider: input.settings.defaultProvider,
+    defaultProvider: input.newChatDefault.defaultProvider,
     resolveProviderForInstanceId,
   });
-  const preferredInstanceId = (() => {
-    if (input.providerOverride) return input.providerOverride;
-    for (const instanceId of [input.draftActiveProvider, input.stickyActiveProvider]) {
-      if (instanceId && resolveProviderForInstanceId(instanceId) === resolvedProvider) {
-        return instanceId;
-      }
-    }
-    return resolvedProvider;
-  })();
+  const preferredInstanceId = input.providerOverride
+    ? undefined
+    : ([input.draftActiveProvider, input.stickyActiveProvider].find(
+        (instanceId) => instanceId && resolveProviderForInstanceId(instanceId) === resolvedProvider,
+      ) ??
+      // Nothing picked a provider, so the new chat starts on the default account.
+      newChatDefaultInstanceIdFor(
+        input.newChatDefault,
+        resolvedProvider,
+        input.projectDefaultProvider,
+      ) ??
+      undefined);
   // ChatView resolves the new thread's provider with the same availability
   // preference (resolveAvailableProviderPreference) once statuses are reconciled,
   // so the warm-first provider is the one the composer will actually show.
   const selectedProvider =
-    input.statusesReconciled === true
+    input.providerOverride ??
+    (input.statusesReconciled === true
       ? resolveAvailableProviderPreference({
           preferredProvider: resolvedProvider,
           statuses: input.providerStatuses ?? EMPTY_PROVIDER_STATUSES,
           providerOrder: input.providerOrder ?? [],
           hiddenProviders: input.hiddenProviders ?? [],
         })
-      : resolvedProvider;
-  const selectedProviderInstanceId =
-    selectedProvider === resolvedProvider ? preferredInstanceId : selectedProvider;
+      : resolvedProvider);
+  const requestedInstanceId =
+    selectedProvider === resolvedProvider ? preferredInstanceId : undefined;
+  const configuredInstanceId = resolveSelectableProviderInstanceId(
+    instanceSettings,
+    selectedProvider,
+    requestedInstanceId,
+  );
+  const fallback =
+    input.statusesReconciled && requestedInstanceId !== configuredInstanceId
+      ? findUsableProviderStatus(
+          input.providerStatuses ?? EMPTY_PROVIDER_STATUSES,
+          selectedProvider,
+          configuredInstanceId,
+          configuredProviderInstances,
+        )
+      : null;
+  const selectedProviderInstanceId = fallback
+    ? providerStatusInstanceKey(fallback)
+    : configuredInstanceId;
   const cwd = resolveNewThreadModelPrefetchCwd({
     worktreePath: input.worktreePath ?? null,
     hasExplicitWorktreePath: input.hasExplicitWorktreePath === true,

@@ -108,7 +108,7 @@ describe("resolvePreferredComposerModelSelection", () => {
         draft: null,
         threadModelSelection: null,
         projectModelSelection: null,
-        defaultProvider: "codex",
+        newChatDefault: { defaultProvider: "codex", defaultProviderInstanceId: null },
         defaultModelByProvider,
       }),
     ).toEqual({ provider: "codex", instanceId: "codex", model: "gpt-5.4" });
@@ -118,7 +118,7 @@ describe("resolvePreferredComposerModelSelection", () => {
         draft: null,
         threadModelSelection: null,
         projectModelSelection: null,
-        defaultProvider: "claudeAgent",
+        newChatDefault: { defaultProvider: "claudeAgent", defaultProviderInstanceId: null },
         defaultModelByProvider,
       }),
     ).toEqual({ provider: "claudeAgent", instanceId: "claudeAgent", model: "claude-opus-4-6" });
@@ -129,18 +129,46 @@ describe("resolvePreferredComposerModelSelection", () => {
       draft: null,
       threadModelSelection: null,
       projectModelSelection: null,
-      defaultProvider: "codex",
+      newChatDefault: { defaultProvider: "codex", defaultProviderInstanceId: null },
       defaultModelByProvider: [{ provider: "grok", slug: "grok-build" }],
     });
     const withoutDefault = resolvePreferredComposerModelSelection({
       draft: null,
       threadModelSelection: null,
       projectModelSelection: null,
-      defaultProvider: "codex",
+      newChatDefault: { defaultProvider: "codex", defaultProviderInstanceId: null },
     });
 
     expect(withDefault).toEqual(withoutDefault);
     expect(withDefault.model).toBe(getDefaultModel("codex"));
+  });
+
+  it("combines a new-chat account with its configured model and context traits", () => {
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: null,
+        projectModelSelection: null,
+        newChatDefault: {
+          defaultProvider: "claudeAgent",
+          defaultProviderInstanceId: ProviderInstanceId.makeUnsafe("claude-work"),
+        },
+        defaultModelByProvider: [
+          {
+            provider: "claudeAgent",
+            slug: "claude-opus-4-6[1m]",
+            effort: "high",
+            contextWindow: "1m",
+          },
+        ],
+        resolveProviderForInstanceId: () => "claudeAgent",
+      }),
+    ).toEqual({
+      provider: "claudeAgent",
+      instanceId: "claude-work",
+      model: "claude-opus-4-6[1m]",
+      options: { effort: "high", autoCompactWindow: "1m" },
+    });
   });
 
   // A stored trait that never reaches `options` is the silent failure mode here:
@@ -151,7 +179,7 @@ describe("resolvePreferredComposerModelSelection", () => {
         draft: null,
         threadModelSelection: null,
         projectModelSelection: null,
-        defaultProvider: "codex",
+        newChatDefault: { defaultProvider: "codex", defaultProviderInstanceId: null },
         defaultModelByProvider: [{ provider: "codex", slug: "gpt-5.4", effort: "xhigh" }],
       }),
     ).toEqual({
@@ -169,7 +197,7 @@ describe("resolvePreferredComposerModelSelection", () => {
         draft: null,
         threadModelSelection: null,
         projectModelSelection: null,
-        defaultProvider: provider,
+        newChatDefault: { defaultProvider: provider, defaultProviderInstanceId: null },
         defaultModelByProvider: [{ provider, slug, effort: "high" }],
       });
 
@@ -185,7 +213,7 @@ describe("resolvePreferredComposerModelSelection", () => {
         draft: null,
         threadModelSelection: null,
         projectModelSelection: null,
-        defaultProvider: "claudeAgent",
+        newChatDefault: { defaultProvider: "claudeAgent", defaultProviderInstanceId: null },
         defaultModelByProvider: [
           { provider: "claudeAgent", slug: "claude-opus-4-6", contextWindow: "1m" },
         ],
@@ -201,7 +229,7 @@ describe("resolvePreferredComposerModelSelection", () => {
         draft: null,
         threadModelSelection: null,
         projectModelSelection: null,
-        defaultProvider: "codex",
+        newChatDefault: { defaultProvider: "codex", defaultProviderInstanceId: null },
         defaultModelByProvider: [{ provider: "codex", slug: "gpt-5.4" }],
       }),
     ).toEqual({ provider: "codex", instanceId: "codex", model: "gpt-5.4" });
@@ -215,7 +243,7 @@ describe("resolvePreferredComposerModelSelection", () => {
         draft: null,
         threadModelSelection: { provider: "codex", model: "gpt-5.5" },
         projectModelSelection: null,
-        defaultProvider: "codex",
+        newChatDefault: { defaultProvider: "codex", defaultProviderInstanceId: null },
         defaultModelByProvider: [{ provider: "codex", slug: "gpt-5.4", effort: "xhigh" }],
       }),
     ).toEqual({ provider: "codex", model: "gpt-5.5" });
@@ -227,7 +255,7 @@ describe("resolvePreferredComposerModelSelection", () => {
         draft: null,
         threadModelSelection: null,
         projectModelSelection: null,
-        defaultProvider: "pi",
+        newChatDefault: { defaultProvider: "pi", defaultProviderInstanceId: null },
         defaultModelByProvider: [{ provider: "codex", slug: "gpt-5.4" }],
       }),
     ).toEqual({ provider: "codex", instanceId: "codex", model: "gpt-5.4" });
@@ -236,7 +264,7 @@ describe("resolvePreferredComposerModelSelection", () => {
         draft: null,
         threadModelSelection: null,
         projectModelSelection: null,
-        defaultProvider: "omp",
+        newChatDefault: { defaultProvider: "omp", defaultProviderInstanceId: null },
         defaultModelByProvider: [{ provider: "codex", slug: "gpt-5.4" }],
       }),
     ).toEqual({ provider: "codex", instanceId: "codex", model: "gpt-5.4" });
@@ -282,7 +310,7 @@ describe("resolvePreferredComposerModelSelection", () => {
       },
       threadModelSelection: null,
       projectModelSelection: null,
-      defaultProvider: "claudeAgent",
+      newChatDefault: { defaultProvider: "claudeAgent", defaultProviderInstanceId: null },
       resolveProviderForInstanceId: (instanceId) =>
         instanceId === ProviderInstanceId.makeUnsafe("claude_work") ||
         instanceId === ProviderInstanceId.makeUnsafe("claude_personal")
@@ -295,6 +323,74 @@ describe("resolvePreferredComposerModelSelection", () => {
       instanceId: "claudeAgent",
       model: "claude-sonnet-5",
     });
+  });
+});
+
+function resolveClaudeAccounts(instanceId: string) {
+  return instanceId === "claude_work" ? ("claudeAgent" as const) : null;
+}
+
+describe("resolvePreferredComposerModelSelection default account", () => {
+  it("starts on the default account when the default agent decides the provider", () => {
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: null,
+        projectModelSelection: null,
+        newChatDefault: {
+          defaultProvider: "claudeAgent",
+          defaultProviderInstanceId: ProviderInstanceId.makeUnsafe("claude_work"),
+        },
+        resolveProviderForInstanceId: resolveClaudeAccounts,
+      }),
+    ).toEqual({ provider: "claudeAgent", instanceId: "claude_work", model: "claude-sonnet-5" });
+  });
+
+  it("keeps the sticky last-used selection ahead of the default account", () => {
+    const sticky = modelSelection("claudeAgent", "claude-opus-4-6", { effort: "max" });
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: { modelSelectionByProvider: { claudeAgent: sticky }, activeProvider: "claudeAgent" },
+        threadModelSelection: null,
+        projectModelSelection: null,
+        newChatDefault: {
+          defaultProvider: "claudeAgent",
+          defaultProviderInstanceId: ProviderInstanceId.makeUnsafe("claude_work"),
+        },
+        resolveProviderForInstanceId: resolveClaudeAccounts,
+      }),
+    ).toEqual(sticky);
+  });
+
+  it("keeps a project selection's own account", () => {
+    const project = modelSelection("claudeAgent", "claude-opus-4-6");
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: null,
+        projectModelSelection: project,
+        newChatDefault: {
+          defaultProvider: "claudeAgent",
+          defaultProviderInstanceId: ProviderInstanceId.makeUnsafe("claude_work"),
+        },
+        resolveProviderForInstanceId: resolveClaudeAccounts,
+      }),
+    ).toEqual(project);
+  });
+
+  it("ignores an account that belongs to another agent", () => {
+    expect(
+      resolvePreferredComposerModelSelection({
+        draft: null,
+        threadModelSelection: null,
+        projectModelSelection: null,
+        newChatDefault: {
+          defaultProvider: "codex",
+          defaultProviderInstanceId: ProviderInstanceId.makeUnsafe("claude_work"),
+        },
+        resolveProviderForInstanceId: resolveClaudeAccounts,
+      }),
+    ).toMatchObject({ provider: "codex", instanceId: "codex" });
   });
 });
 

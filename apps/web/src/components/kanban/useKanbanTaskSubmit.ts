@@ -19,7 +19,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 
 import { toastManager } from "~/components/ui/toast";
-import type { ProviderInstanceOption } from "~/appSettings";
+import type { NewChatDefault, ProviderInstanceOption } from "~/appSettings";
 import type { DraftThreadEnvMode } from "~/composerDraftStore";
 import { providerInstanceModelSelectionKey, useComposerDraftStore } from "~/composerDraftStore";
 import { useRefreshProviderStatusesNow } from "~/hooks/useProviderStatusRefresh";
@@ -46,8 +46,8 @@ interface UseKanbanTaskSubmitInput {
   readonly sendAsDraft: boolean;
   /** New-task dialog "send as goal" toggle (off by default; dialog-owned state). */
   readonly sendAsGoal?: boolean | undefined;
-  readonly defaultProvider: ProviderKind;
-  readonly defaultModelByProvider: ReadonlyArray<DefaultModelRef>;
+  readonly newChatDefault: NewChatDefault;
+  readonly defaultModelByProvider?: ReadonlyArray<DefaultModelRef> | undefined;
   readonly assistantDeliveryMode: AssistantDeliveryMode;
   readonly providerOptionsForDispatch: ProviderStartOptions | undefined;
   readonly providerInstances: ReadonlyArray<
@@ -75,7 +75,7 @@ export function useKanbanTaskSubmit(input: UseKanbanTaskSubmitInput) {
     envMode,
     sendAsDraft,
     sendAsGoal = false,
-    defaultProvider,
+    newChatDefault,
     defaultModelByProvider,
     assistantDeliveryMode,
     providerOptionsForDispatch,
@@ -177,7 +177,7 @@ export function useKanbanTaskSubmit(input: UseKanbanTaskSubmitInput) {
     setIsCreating(true);
     void createAndSendKanbanTask({
       ...taskInput,
-      defaultProvider,
+      newChatDefault,
       defaultModelByProvider,
       assistantDeliveryMode,
       providerOptions: providerOptionsForDispatch,

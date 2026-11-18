@@ -108,10 +108,14 @@ export function SidebarGroupsSurface({
   readonly visualActiveThreadId: ThreadId | null;
   readonly threadSortMenuProps: ThreadSortMenuProps;
   readonly renderThreadRow: (
-    entry: Pick<SidebarProjectEntry, "thread" | "depth" | "childCount">,
+    entry: Pick<
+      SidebarProjectEntry,
+      "thread" | "depth" | "childCount" | "nativeSubagentDepth" | "nativeSubagentChildCount"
+    >,
     orderedProjectThreadIds: readonly ThreadId[],
     topLevel?: boolean,
     projectContextLabel?: string,
+    nesting?: SidebarProjectEntry,
   ) => ReactNode;
   readonly renderListSectionHeader: (label: string, toolbar: ReactNode) => ReactNode;
   readonly renderPinnedThreadsSection: () => ReactNode;
@@ -483,6 +487,7 @@ export function SidebarGroupsSurface({
                             entry.thread.projectId !== project.id
                               ? (projectLabelById.get(entry.thread.projectId) ?? undefined)
                               : undefined,
+                            entry,
                           ),
                         )}
                       </SidebarMenuSub>

@@ -1070,5 +1070,19 @@
   "openFileNamed": "Abrir {{file}}",
   "openFileOptions": "Opciones para abrir {{file}}",
   "activeSpaceLabel": "{{name}} · Activo",
-  "unknownSpace": "Espacio desconocido"
+  "unknownSpace": "Espacio desconocido",
+  "childThreadCount_one": "{{count}} conversación secundaria",
+  "childThreadCount_other": "{{count}} conversaciones secundarias",
+  "showChildThreads_one": "Mostrar {{count}} conversación secundaria",
+  "showChildThreads_other": "Mostrar {{count}} conversaciones secundarias",
+  "hideChildThreads_one": "Ocultar {{count}} conversación secundaria",
+  "hideChildThreads_other": "Ocultar {{count}} conversaciones secundarias",
+  "childThreadsWaiting_one": "{{count}} necesita tu atención",
+  "childThreadsWaiting_other": "{{count}} necesitan tu atención",
+  "childThreadsUnread_one": "{{count}} nueva",
+  "childThreadsUnread_other": "{{count}} nuevas",
+  "childThreadsWorking_one": "{{count}} en ejecución",
+  "childThreadsWorking_other": "{{count}} en ejecución",
+  "childThreadsDoneCount_one": "+{{count}} terminada",
+  "childThreadsDoneCount_other": "+{{count}} terminadas"
 }

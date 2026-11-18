@@ -36,6 +36,7 @@ import {
 } from "@synara/contracts";
 import { Cause, Effect, Layer, Option, Queue, Schema, ServiceMap, Stream } from "effect";
 import { sanitizeUserFacingErrorMessage } from "@synara/shared/errorMessages";
+import { isCodexUnstableFeaturesWarning } from "@synara/shared/codexStderr";
 
 import {
   ProviderAdapterProcessError,
@@ -1873,6 +1874,9 @@ function mapToRuntimeEvents(
 
   if (CODEX_RUNTIME_WARNING_METHODS.has(event.method)) {
     const message = asTrimmedString(payload?.message);
+    if (event.method === "warning" && message && isCodexUnstableFeaturesWarning(message)) {
+      return [];
+    }
     if (
       event.method === "guardianWarning" &&
       message?.startsWith("Automatic approval review approved (")
