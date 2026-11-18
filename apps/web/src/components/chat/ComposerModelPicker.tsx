@@ -398,9 +398,8 @@ export function ComposerModelPicker(props: ComposerModelPickerProps) {
     provider: ProviderKind,
     instanceId: string,
   ): ReadonlyArray<ProviderModelOption> =>
-    props.modelOptionsByProviderInstance
-      ? (props.modelOptionsByProviderInstance[instanceId as ProviderInstanceId] ?? [])
-      : props.modelOptionsByProvider[provider];
+    props.modelOptionsByProviderInstance?.[instanceId as ProviderInstanceId] ??
+    (instanceId === provider ? props.modelOptionsByProvider[provider] : []);
 
   // Starred presets mix accounts, so each names its own once a provider has several.
   const accountLabelFor = (instanceId: string) => {

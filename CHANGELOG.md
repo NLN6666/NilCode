@@ -2,8 +2,9 @@
 
 ## Unreleased — dev integration
 
-- Merge `main` through `47f8f3997` (Synara 1.6.2), retaining NilCode’s multilingual catalogs, provider and project integrations, and existing fork migration identities.
-
+- Merge `main` through `47f8f3997` (Synara 1.6.2), retaining NilCode's multilingual catalogs, provider and project integrations, and existing fork migration identities.
+- Keep starred models visible for the default account when its provider-wide catalog is available, without using it as a fallback for a named account.
+- Preserve archived usage and linked PRs when upgrading released main databases by replaying their migration aliases into fork slots 145 and 146.
 - Merge `main` through `fa05901d4` (Synara 1.5.3), adopting the new settings/account pages, child-thread nesting, quieter chat activity, Remote Space fixes and account/session reliability improvements while retaining NilCode's multilingual and provider integrations.
 - Keep released fork migrations 143–144 unchanged; run deleted-token analytics at 145 and repair the released main 143 tracker without discarding archived usage, shared-browser settings or Advisor overrides.
 - Move language and Classic/Rail controls, OMP policy details and their restore/search behavior into the new settings owners. Keep live reasoning in its stable-height region while simplifying ordinary tool rows.
