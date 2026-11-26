@@ -169,6 +169,8 @@ import Migration0135 from "./Migrations/135_ProjectionMessageTurnActivityIndex.t
 import Migration0141 from "./Migrations/141_ProjectionThreadsUsageLimitRecovery.ts";
 import Migration0145 from "./Migrations/145_UsageAnalyticsDeletedTokens.ts";
 import Migration0146 from "./Migrations/146_ProjectionThreadsPullRequestLinks.ts";
+import Migration0147 from "./Migrations/147_ProjectionThreadSessionSteering.ts";
+import Migration0148 from "./Migrations/148_AgentGatewayOperationWaves.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -331,6 +333,8 @@ export const migrationEntries = [
   [144, "ProjectionThreadsAdvisorEnabled", AdvisorEnabledMigration],
   [145, "UsageAnalyticsDeletedTokens", Migration0145],
   [146, "ProjectionThreadsPullRequestLinks", Migration0146],
+  [147, "ProjectionThreadSessionSteering", Migration0147],
+  [148, "AgentGatewayOperationWaves", Migration0148],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>
@@ -572,6 +576,19 @@ export const MIGRATION_LINEAGE_ALIASES: readonly MigrationLineageAlias[] = [
     currentId: 146,
     historicalSlotRequiresRerun: true,
   },
+  {
+    // Released main 1.6.6+ used 145/146. Replay the fork's occupied slots atomically.
+    historicalId: 145,
+    historicalName: "ProjectionThreadSessionSteering",
+    currentId: 147,
+    historicalSlotRequiresRerun: true,
+  },
+  {
+    historicalId: 146,
+    historicalName: "AgentGatewayOperationWaves",
+    currentId: 148,
+    historicalSlotRequiresRerun: true,
+  },
 ];
 
 export type MigrationLineageAliasRepair =
@@ -732,7 +749,7 @@ export const reconcileMigrationLineage = Effect.gen(function* () {
             `
           : sql`DELETE FROM effect_sql_migrations WHERE migration_id = ${repair.migrationId}`,
       { discard: true },
-    );
+    ).pipe(sql.withTransaction);
     recorded = yield* sql<{ readonly migration_id: number; readonly name: string }>`
       SELECT migration_id, name FROM effect_sql_migrations ORDER BY migration_id ASC
     `;

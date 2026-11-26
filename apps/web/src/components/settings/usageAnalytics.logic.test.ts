@@ -5,6 +5,7 @@ import {
   buildUsageAnalyticsView,
   localDayKey,
   percentChange,
+  usageAnalyticsDeviceScope,
   usageAnalyticsWindow,
 } from "./usageAnalytics.logic";
 
@@ -155,5 +156,18 @@ describe("percentChange", () => {
     expect(percentChange(150, 100)).toBe(50);
     expect(percentChange(5, 0)).toBeNull();
     expect(percentChange(5, null)).toBeNull();
+  });
+});
+
+describe("usageAnalyticsDeviceScope", () => {
+  it("identifies macOS local-session scope", () => {
+    expect(usageAnalyticsDeviceScope("MacIntel")).toBe("mac");
+    expect(usageAnalyticsDeviceScope("darwin")).toBe("mac");
+  });
+
+  it("identifies non-Mac local-session scope", () => {
+    expect(usageAnalyticsDeviceScope("Linux x86_64")).toBe("device");
+    expect(usageAnalyticsDeviceScope("Win32")).toBe("device");
+    expect(usageAnalyticsDeviceScope("")).toBe("device");
   });
 });

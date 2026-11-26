@@ -1,9 +1,9 @@
 // FILE: UsageAnalyticsPanel.tsx
 // Purpose: The Usage Analytics tab: cost and tokens by day, provider, model, and
 //          project, plus cache use, turn origin, and weekly rhythm. "In Synara" uses
-//          Synara's own records; "This Mac" also reads Claude Code and Codex session
-//          files. Cost is at API rates: the provider's own figure when it reports
-//          one, else the tokens at API list prices.
+//          Synara's own records; "This Mac" / "This Device" also reads Claude Code and
+//          Codex session files. Cost is at API rates: the provider's own figure when it
+//          reports one, else the tokens at API list prices.
 // Layer: Web settings feature
 // Exports: UsageAnalyticsPanel
 
@@ -29,6 +29,7 @@ import {
   percentChange,
   PROVIDER_SERIES_COLOR,
   providerLabel,
+  usageAnalyticsDeviceScope,
   type UsageAnalyticsMetric,
   type UsageAnalyticsProvider,
   type UsageAnalyticsProviderTotal,
@@ -111,11 +112,22 @@ function percentOf(part: number, total: number): number {
   return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
 }
 
-export function UsageAnalyticsPanel() {
+export function UsageAnalyticsPanel({
+  initialScope = "synara",
+}: {
+  initialScope?: StatsUsageAnalyticsScope;
+} = {}) {
   useTranslation();
   const [range, setRange] = useState<UsageAnalyticsRange>("30d");
   const [metricChoice, setMetricChoice] = useState<UsageAnalyticsMetric | null>(null);
-  const [scope, setScope] = useState<StatsUsageAnalyticsScope>("synara");
+  const [scope, setScope] = useState<StatsUsageAnalyticsScope>(initialScope);
+  const isMac = usageAnalyticsDeviceScope() === "mac";
+  const deviceScope = {
+    pickerLabel: t(isMac ? "settings:analytics_thisMac" : "settings:analytics_thisDevice"),
+    inlineLabel: t(
+      isMac ? "settings:analytics_thisMacInline" : "settings:analytics_thisDeviceInline",
+    ),
+  };
   const todayKey = localDayKey(new Date());
   // Recomputed once a day so the query keys stay stable within a day.
   const windows = useMemo(() => {
@@ -178,7 +190,7 @@ export function UsageAnalyticsPanel() {
           onValueChange={setScope}
           options={[
             { value: "synara", label: t("settings:analytics_inSynara") },
-            { value: "mac", label: t("settings:analytics_thisMac") },
+            { value: "mac", label: deviceScope.pickerLabel },
           ]}
         />
       </div>
@@ -203,7 +215,7 @@ export function UsageAnalyticsPanel() {
             title={t("settings:analytics_empty")}
             description={
               scope === "mac"
-                ? t("settings:analytics_emptyMac")
+                ? t("settings:analytics_emptyLocal", { device: deviceScope.inlineLabel })
                 : t("settings:analytics_emptySynara")
             }
           />
@@ -213,7 +225,12 @@ export function UsageAnalyticsPanel() {
           aria-busy={loadingNewPeriod}
           className={cn("transition-opacity duration-150", loadingNewPeriod && "opacity-50")}
         >
-          <UsageAnalyticsBody view={view} metric={metric} rangeDays={dataWindow.days.length} />
+          <UsageAnalyticsBody
+            view={view}
+            metric={metric}
+            rangeDays={dataWindow.days.length}
+            deviceScopeInlineLabel={deviceScope.inlineLabel}
+          />
         </div>
       )}
     </div>
@@ -224,6 +241,7 @@ function UsageAnalyticsBody(props: {
   view: UsageAnalyticsView;
   metric: UsageAnalyticsMetric;
   rangeDays: number;
+  deviceScopeInlineLabel: string;
 }) {
   const { view, metric } = props;
   const { formatLocale } = useTranslation();
@@ -614,6 +632,7 @@ function UsageAnalyticsBody(props: {
             {view.scope === "mac" && view.sessionFileProviders.length > 0 ? (
               <li>
                 {t("settings:analytics_sessionSources", {
+                  device: props.deviceScopeInlineLabel,
                   providers: view.sessionFileProviders
                     .map((provider) => providerLabel(provider))
                     .join(", "),

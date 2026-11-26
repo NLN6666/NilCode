@@ -108,7 +108,10 @@ export function useSettingsRestoreDefaults({
     ...(settings.nestAgentCreatedThreads !== defaults.nestAgentCreatedThreads
       ? ["settings:childThreads"]
       : []),
-    ...(settings.showAsciiBackground !== defaults.showAsciiBackground ? ["ASCII background"] : []),
+    ...(settings.showAsciiBackground !== defaults.showAsciiBackground ||
+    settings.emptyChatBackdropStyle !== defaults.emptyChatBackdropStyle
+      ? ["Empty chat background"]
+      : []),
     ...(settings.uiDensity !== defaults.uiDensity ? ["settings:changed_uiDensity"] : []),
     ...(settings.chatWidth !== defaults.chatWidth ? ["settings:chatWidth"] : []),
     ...(settings.desktopAppIcon !== defaultDesktopAppIcon ? ["settings:appIcon"] : []),
@@ -218,6 +221,9 @@ export function useSettingsRestoreDefaults({
     ...(settings.sourceControlWritingStyle !== defaults.sourceControlWritingStyle ||
     settings.sourceControlCustomInstructions !== defaults.sourceControlCustomInstructions
       ? ["settings:sourceControlWritingStyle"]
+      : []),
+    ...(settings.gitAttributionEnabled !== defaults.gitAttributionEnabled
+      ? ["settings:addSynaraAttribution"]
       : []),
     ...(settings.customCodexModels.length > 0 ||
     settings.customClaudeModels.length > 0 ||

@@ -7,7 +7,19 @@
 //          readFrontmatterBoolean, readdirOrEmpty
 
 import * as fs from "node:fs/promises";
-import YAML from "yaml";
+import { createRequire } from "node:module";
+import type * as Yaml from "yaml";
+
+let cachedYaml: typeof Yaml | undefined;
+function loadYamlSync(): typeof Yaml {
+  if (!cachedYaml) {
+    const mod = createRequire(import.meta.url)("yaml") as
+      | typeof Yaml
+      | { readonly default: typeof Yaml };
+    cachedYaml = "parse" in mod ? mod : mod.default;
+  }
+  return cachedYaml;
+}
 
 export type FrontmatterValue = string | boolean;
 
@@ -40,7 +52,7 @@ export function parseScalarFrontmatter(markdown: string): Record<string, Frontma
 
   const block = match[1] ?? "";
   try {
-    const parsed: unknown = YAML.parse(block, { uniqueKeys: false, logLevel: "error" });
+    const parsed: unknown = loadYamlSync().parse(block, { uniqueKeys: false, logLevel: "error" });
     if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
       const record: Record<string, FrontmatterValue> = {};
       for (const [key, value] of Object.entries(parsed)) {

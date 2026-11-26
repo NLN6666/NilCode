@@ -278,10 +278,29 @@ function resolveWindowsEditorUriLaunch(
   };
 }
 
+const AVAILABLE_EDITORS_CACHE_TTL_MS = 30_000;
+let availableEditorsCache:
+  | {
+      readonly key: string;
+      readonly expiresAt: number;
+      readonly editors: ReadonlyArray<EditorId>;
+    }
+  | undefined;
+
 export async function resolveAvailableEditors(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ReadonlyArray<EditorId>> {
+  const useCache = platform === process.platform && env === process.env;
+  const cacheKey = useCache ? `${platform}\0${env.PATH ?? ""}\0${env.HOME ?? ""}` : "";
+  if (
+    useCache &&
+    availableEditorsCache !== undefined &&
+    availableEditorsCache.key === cacheKey &&
+    Date.now() < availableEditorsCache.expiresAt
+  ) {
+    return availableEditorsCache.editors;
+  }
   const available: EditorId[] = [];
   // One PATH scan for every editor: per-command probing is seconds of sync IO on Windows.
   const resolve = createBatchExecutableResolver({ platform, env });
@@ -318,6 +337,13 @@ export async function resolveAvailableEditors(
     }
   }
 
+  if (useCache) {
+    availableEditorsCache = {
+      key: cacheKey,
+      expiresAt: Date.now() + AVAILABLE_EDITORS_CACHE_TTL_MS,
+      editors: available,
+    };
+  }
   return available;
 }
 

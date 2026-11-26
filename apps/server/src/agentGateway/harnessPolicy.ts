@@ -9,7 +9,7 @@ import { computerToolInstructions } from "./computerGuidance.ts";
 import { AUTOMATION_AUTHORING_GUIDANCE } from "./automationAuthoringGuidance.ts";
 
 /** Canonical, versioned host policy delivered to every supported provider. */
-export const SYNARA_HARNESS_POLICY_VERSION = "2026-11-13.1";
+export const SYNARA_HARNESS_POLICY_VERSION = "2026-11-23.1";
 export const SYNARA_HARNESS_POLICY_MARKER = `[Synara harness policy ${SYNARA_HARNESS_POLICY_VERSION}]`;
 
 export interface SynaraHarnessCapabilities {
@@ -42,10 +42,10 @@ export function renderSynaraHarnessPolicy(capabilities: SynaraHarnessCapabilitie
         "Use synara_*_daemon for long-lived processes; shell children die with the session. Declare ready at start; send input for graceful stop. Use detached: true only to survive Synara exit.",
         "Provider-native subagent or Task tools are implementation details: they do not create Synara threads and must not substitute for an explicit request to create Synara threads.",
         "Hub roles come from the server: the coordinator routes assigned hub work and owns hub automations; workers do their assigned work and cannot create threads or message other threads. Other conversations retain ordinary thread tools.",
-        "For a plural thread request, submit one exact synara_create_threads plan. The array length is the exact requested count.",
-        "If synara_create_threads fails before returning an operationId, correct the rejected plan and reuse its requestId; no durable task was created.",
-        "Use synara_capabilities and its targetConstruction: canonical providers/models/options only. Codex options.reasoningEffort differs from Claude Agent options.effort. Never guess model slugs or silently substitute providers/models.",
-        "For results, repeat synara_wait_for_threads with runIds until allTerminal, then synthesize. Await native subagents. Hub packets may allow async reports.",
+        "Use synara_create_threads for each exact batch. Match the requested count. Use a new requestId per phase; respect maxThreadsPerActiveTurn.",
+        "Correct explicit validation errors with the same requestId. After a timeout, retry the exact request.",
+        "Use synara_capabilities with the target instanceId for models, targetConstruction, and compatibleRuntimeModes. Never guess or silently substitute a target.",
+        "Wait with synara_wait_for_threads with returned runIds until allTerminal. Await native subagents. Set resumeCreatorOnComplete only for user-requested asynchronous follow-up.",
         "After operationId, retry the same requestId and exact plan. Report failures; no replacement threads without a new user request. Hub retries are server-owned.",
         "Synara automations support heartbeat, standalone, and dedicated modes plus interval, once, daily, weekdays, weekly, and cron schedules. Existing everyMinutes heartbeat calls remain supported. Use fastInterval: true only when the user explicitly accepts a sub-minute bounded loop.",
         "Mode controls execution: heartbeat appends to an idle target thread; standalone opens a fresh thread per independent run; dedicated reuses one automation-owned thread so runs build on each other without writing into another thread.",

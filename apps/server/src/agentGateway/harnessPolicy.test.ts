@@ -28,8 +28,10 @@ describe("Synara harness policy", () => {
   it("identifies Synara and explains exact batch coordination when MCP is available", () => {
     const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
     assert.include(policy, SYNARA_HARNESS_POLICY_MARKER);
-    assert.include(policy, "one exact synara_create_threads plan");
-    assert.include(policy, "before returning an operationId");
+    assert.include(policy, "Synara is your host and harness");
+    assert.include(policy, "Use synara_create_threads for each exact batch");
+    assert.include(policy, "new requestId per phase");
+    assert.include(policy, "After a timeout, retry the exact request");
     assert.include(policy, "synara_wait_for_threads");
     assert.include(policy, "synara_set_thread_pull_request");
     assert.include(policy, "for this thread's work");
@@ -74,6 +76,7 @@ describe("Synara harness policy", () => {
   it("never advertises gateway mutation to providers without scoped MCP", () => {
     const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: false });
     assert.include(policy, "Synara MCP control is unavailable");
+    assert.notInclude(policy, "Use synara_create_threads for each exact batch");
   });
 
   it("delivers a private host-context block once per provider session", () => {
@@ -148,6 +151,7 @@ describe("Synara harness policy", () => {
         ) ?? "";
       assert.include(text, SYNARA_HARNESS_POLICY_MARKER, provider);
       assert.include(text, "Synara MCP control is unavailable", provider);
+      assert.notInclude(text, "Use synara_create_threads for each exact batch", provider);
     }
   });
 

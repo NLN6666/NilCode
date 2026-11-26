@@ -878,7 +878,7 @@
   "thisConversationDidnTLoad": "Esta conversación no se ha cargado.",
   "toggleDiffPanel": "Mostrar u ocultar el panel de diferencias ({{value0}})",
   "launched": "inició {{value0}} {{value1}}",
-  "ranTool": "ejecutó {{value0}} {{value1}} a herramientas",
+  "ranTool": "ejecutó {{count}} llamadas a herramientas",
   "computerKeptInTheBackground": "Ordenador se mantiene en segundo plano",
   "continueInThisLocalWorktree": "Continuar en este worktree local",
   "couldNotAddSelectionToSide": "No se pudo añadir la selección al chat paralelo",
@@ -1249,5 +1249,13 @@
   "usageLimit_alwaysResume": "Reanudar siempre tras alcanzar un límite",
   "usageLimit_alwaysResumeDescription": "Valor predeterminado para todos los chats de este equipo",
   "usageLimit_pausedAt": "Tarea en pausa por el límite de uso de {{provider}} · {{time}}",
-  "usageLimit_pausedAtNoProvider": "Tarea en pausa por el límite de uso · {{time}}"
+  "usageLimit_pausedAtNoProvider": "Tarea en pausa por el límite de uso · {{time}}",
+  "toolsRunning": "{{value0}} en ejecución",
+  "searchedTheWebOnce": "buscó en la web una vez",
+  "searchedTheWebTwice": "buscó en la web dos veces",
+  "searchedTheWebTimes": "buscó en la web {{value0}} veces",
+  "toolsRunning_one": "{{value0}} en ejecución",
+  "toolsRunning_other": "{{value0}} en ejecución",
+  "ranTool_one": "ejecutó {{count}} llamada a herramienta",
+  "ranTool_other": "ejecutó {{count}} llamadas a herramientas"
 }

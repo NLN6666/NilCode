@@ -1,8 +1,23 @@
 import { describe, expect, it } from "vitest";
 
+import { buildAntigravityAcpSpawnInput } from "./AntigravityAcpSupport.ts";
 import { buildAcpSpawnProcessEnv } from "./AcpSessionRuntime.ts";
 
 describe("buildAcpSpawnProcessEnv", () => {
+  it("never restores another provider's credential into Antigravity's prepared environment", () => {
+    const spawn = buildAntigravityAcpSpawnInput(
+      {
+        environment: { GEMINI_API_KEY: "selected-gemini" },
+      },
+      "/repo",
+    );
+    const env = buildAcpSpawnProcessEnv(spawn, {
+      PATH: "/ambient/bin",
+      OPENAI_API_KEY: "ambient-other-provider",
+    });
+    expect(env.GEMINI_API_KEY).toBe("selected-gemini");
+    expect(env.OPENAI_API_KEY).toBeUndefined();
+  });
   it("scrubs ambient provider credentials before applying ACP flags and selected credentials", () => {
     const env = buildAcpSpawnProcessEnv(
       {

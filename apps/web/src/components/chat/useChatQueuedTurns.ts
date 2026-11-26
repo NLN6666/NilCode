@@ -137,7 +137,6 @@ export function useChatQueuedTurns({
   setComposerDraftRuntimeMode,
   setComposerDraftInteractionMode,
   setComposerDraftComputerControlMode,
-  setComposerDraftComputerControl,
   setComposerCursor,
   setComposerTrigger,
   scheduleComposerFocus,

@@ -60,6 +60,7 @@ import {
 } from "~/hooks/useDesktopTopBarGutter";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useIsMobile } from "~/hooks/useMediaQuery";
+import { useComputerPreviewBudgetPx } from "~/hooks/useComputerPreviewBudgetPx";
 import { useNewChatDefault } from "~/hooks/useNewChatDefault";
 import { useRefreshProviderStatusesNow } from "~/hooks/useProviderStatusRefresh";
 import { useRepoDiffTotals } from "~/hooks/useRepoDiffTotals";
@@ -315,13 +316,13 @@ import {
   createThreadLineageSelector,
 } from "./ChatView.selectors";
 import { ComposerPromptEditor } from "./ComposerPromptEditor";
-import PlanSidebar from "./PlanSidebar";
+const PlanSidebar = lazy(() => import("./PlanSidebar"));
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { RenameThreadDialog } from "./RenameThreadDialog";
 import { hasUnseenSnoozeReturn, resolveThreadProjectLabel } from "./Sidebar.logic";
 import { SidebarHeaderNavigationControls } from "./SidebarHeaderNavigationControls";
 import { SynaraLogo } from "@synara/profile-ui/logo";
-import { AsciiWaveBackground } from "./chat/AsciiWaveBackground";
+import { EmptyChatBackdrop } from "./chat/EmptyChatBackdrop";
 import { SponsorLandingBanner } from "./SponsorLandingBanner";
 import TerminalWorkspaceTabs from "./TerminalWorkspaceTabs";
 import { ThreadWorktreeHandoffDialog } from "./ThreadWorktreeHandoffDialog";
@@ -415,6 +416,7 @@ import { WorkflowRunCapsule } from "./chat/WorkflowRunCard";
 import { deriveAgentActivityTimelineState } from "./chat/agentActivity.logic";
 import {
   ENVIRONMENT_DOCKED_CONTENT_INSET_PX,
+  ENVIRONMENT_DOCKED_MIN_COLUMN_WIDTH_PX,
   EnvironmentPanel,
   type EnvironmentPanelProps,
 } from "./chat/environment/EnvironmentPanel";
@@ -425,7 +427,11 @@ import {
   visibleCoordinatorSuggestionChips,
 } from "./chat/project/coordinatorSuggestions.logic";
 import { ProjectPanel } from "./chat/project/ProjectPanel";
-import { LibraryPanel } from "./chat/group/LibraryPanel";
+const LibraryPanel = lazy(() =>
+  import("./chat/group/LibraryPanel").then((module) => ({
+    default: module.LibraryPanel,
+  })),
+);
 import { useHubWorkItems } from "./chat/project/useHubWorkItems";
 import { hubWorkItemsBySourceMessage } from "./chat/project/hubWorkItems";
 import { useProjectAgentSummaries } from "./chat/project/useProjectAgentSummaries";
@@ -469,10 +475,6 @@ import { deriveFastModeNotice } from "~/lib/fastModeState";
 import { AmbientRailSlot } from "./chat/AmbientRailSlot";
 import { ComputerPreviewPopover } from "./chat/ComputerPreviewPopover";
 import {
-  computerPreviewBudgetPx,
-  computerPreviewCardCaps,
-} from "./chat/ComputerPreviewPopover.logic";
-import {
   selectThreadComputerPreviewLayout,
   selectThreadComputerPreviewSession,
   useComputerPreviewStore,
@@ -509,6 +511,7 @@ import { useStopBackgroundTask } from "./chat/useThreadBackgroundTasks";
 import { useThreadErrorToast } from "./chat/useThreadErrorToast";
 import { useTranscriptAssistantSelectionAction } from "./chat/useTranscriptAssistantSelectionAction";
 import {
+  COMPOSER_MODEL_LABEL_MIN_VISIBLE_WIDTH_PX,
   composerFooterPlanForTier,
   resolveNextComposerFooterTier,
   shouldUseCompactComposerFooter,
@@ -825,34 +828,38 @@ export default function ChatView({
     serverThread?.creationSource && serverThread.sourceThreadId
       ? serverThread.sourceThreadId
       : null;
-  const crossTaskSourceThread = useStore(
-    useMemo(() => createThreadSelector(crossTaskSourceThreadId), [crossTaskSourceThreadId]),
+  const crossTaskSourceThread = useStore((state) =>
+    crossTaskSourceThreadId ? (state.threadShellById?.[crossTaskSourceThreadId] ?? null) : null,
   );
+  // Read outside the memo: React Compiler infers `crossTaskSourceThread?.modelSelection`
+  // for an in-memo read, which no longer matches the dependency list and makes it skip
+  // optimizing this whole component.
+  const crossTaskSourceProvider = crossTaskSourceThread?.modelSelection.provider ?? null;
   const crossTaskOrigin = useMemo(
     () =>
       crossTaskSourceThreadId
         ? {
             sourceThreadId: crossTaskSourceThreadId,
-            sourceProvider: crossTaskSourceThread?.modelSelection.provider ?? null,
+            sourceProvider: crossTaskSourceProvider,
           }
         : null,
-    [crossTaskSourceThread?.modelSelection.provider, crossTaskSourceThreadId],
+    [crossTaskSourceProvider, crossTaskSourceThreadId],
   );
   const forkSourceThreadId = serverThread?.sidechatSourceThreadId
     ? null
     : (serverThread?.forkSourceThreadId ?? null);
-  const forkSourceThread = useStore(
-    useMemo(() => createThreadSelector(forkSourceThreadId), [forkSourceThreadId]),
+  const forkSourceTitle = useStore((state) =>
+    forkSourceThreadId ? (state.threadShellById?.[forkSourceThreadId]?.title ?? null) : null,
   );
   const forkSource = useMemo(
     () =>
       forkSourceThreadId
         ? {
             sourceThreadId: forkSourceThreadId,
-            sourceTitle: forkSourceThread?.title ?? "chat",
+            sourceTitle: forkSourceTitle ?? "chat",
           }
         : null,
-    [forkSourceThread?.title, forkSourceThreadId],
+    [forkSourceTitle, forkSourceThreadId],
   );
   const fallbackDraftProjectId = draftThread?.projectId ?? null;
   const fallbackDraftProject = useStore(
@@ -1144,14 +1151,14 @@ export default function ChatView({
     () => deriveCumulativeCostUsd(threadActivities),
     [threadActivities],
   );
-  const quotaProvider = activeThread?.session?.provider ?? activeThread?.modelSelection.provider;
+  const threadProvider = activeThread?.session?.provider ?? activeThread?.modelSelection.provider;
   const quotaInstanceId =
     activeThread?.session?.providerInstanceId ??
     activeThread?.modelSelection.instanceId ??
-    quotaProvider;
+    threadProvider;
   const activeRateLimitStatus = useRateLimitStatus(
     threadActivities,
-    quotaProvider,
+    threadProvider,
     quotaInstanceId,
   );
   const enabledRateLimitStatus =
@@ -1503,7 +1510,6 @@ export default function ChatView({
     activeThread && coordinatorThreadIds.has(activeThread.id),
   );
   const {
-    hasThreadStarted,
     lockedProvider,
     boundProvider,
     serverConfigQuery,
@@ -1688,8 +1694,8 @@ export default function ChatView({
   );
   const [openAgentActivityId, setOpenAgentActivityId] = useState<string | null>(null);
   const agentActivityTimelineState = useMemo(
-    () => deriveAgentActivityTimelineState(workLogEntries),
-    [workLogEntries],
+    () => deriveAgentActivityTimelineState(workLogEntries, threadProvider),
+    [workLogEntries, threadProvider],
   );
   const openAgentActivityDetail = openAgentActivityId
     ? (agentActivityTimelineState.detailById.get(openAgentActivityId) ?? null)
@@ -2877,10 +2883,6 @@ export default function ChatView({
       }),
     [keybindings],
   );
-  const traitsPickerShortcutLabel = useMemo(
-    () => shortcutLabelForCommand(keybindings, "traitsPicker.toggle"),
-    [keybindings],
-  );
   const onToggleDiff = useCallback(() => {
     if (diffEnvironmentPending && !diffOpen) {
       return;
@@ -3174,6 +3176,10 @@ export default function ChatView({
     },
     [dismissEffortPreview, setIsModelPickerOpen, setIsTraitsPickerOpen],
   );
+  const handleOpenRecoveryModelPicker = useCallback(
+    () => handleModelPickerOpenChange(true),
+    [handleModelPickerOpenChange],
+  );
   const handleTraitsPickerOpenChange = useCallback(
     (open: boolean) => {
       dismissEffortPreview();
@@ -3339,16 +3345,32 @@ export default function ChatView({
   // or hides the side panel only when this thread already has a pane to show.
   const rightDockOpen = useRightDockStore((store) => selectRightDockState(threadId)(store).open);
   const isMobileViewport = useIsMobile();
+  const [mainContentElement, setMainContentElement] = useState<HTMLDivElement | null>(null);
+  const [isNarrowChatColumn, setIsNarrowChatColumn] = useState(false);
+  // A sidebar slide changes width every frame. Remember only the docking threshold.
+  useLayoutEffect(() => {
+    if (!mainContentElement) return;
+    const update = () => {
+      const width = mainContentElement.clientWidth;
+      setIsNarrowChatColumn(width > 0 && width < ENVIRONMENT_DOCKED_MIN_COLUMN_WIDTH_PX);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(mainContentElement);
+    return () => observer.disconnect();
+  }, [mainContentElement]);
   // Temporary threads are visually identical to regular chats — they use the same
   // Environment panel + header controls. "Temporary" is purely a sidebar badge +
   // auto-delete-on-leave concern, never a stripped-down chat UI.
-  const environmentUsesFloatingOverlay =
+  const isConstrainedChatLayout =
     isTerminalEnvironmentContext || isMobileViewport || rightDockOpen || surfaceMode === "split";
+  // The column-width threshold changes docking without changing the open preference.
+  const environmentUsesFloatingOverlay = isConstrainedChatLayout || isNarrowChatColumn;
   const environmentDefaultOpen = resolveDefaultEnvironmentPanelOpen({
     environmentEnabled,
     isCenteredEmptyLanding,
     isTerminalPrimarySurface,
-    isConstrainedChatLayout: environmentUsesFloatingOverlay,
+    isConstrainedChatLayout,
     settingsDefaultOpen: settings.environmentPanelDefaultOpen,
   });
   // Every close (header toggle or panel action click) stores the cross-chat preference,
@@ -3703,10 +3725,17 @@ export default function ChatView({
           nextCompact &&
           leadingCluster !== null &&
           leadingCluster.scrollWidth > leadingCluster.clientWidth + 1;
+        const modelLabel = footerRow.querySelector<HTMLElement>("[data-composer-model-label]");
+        // Shed secondary controls first. Keep an ellipsized model name while it is legible.
+        const modelLabelNeedsSpace =
+          modelLabel !== null &&
+          modelLabel.scrollWidth > modelLabel.clientWidth + 1 &&
+          (composerFooterTierRef.current < 2 ||
+            modelLabel.clientWidth < COMPOSER_MODEL_LABEL_MIN_VISIBLE_WIDTH_PX);
         const nextStep = resolveNextComposerFooterTier({
           currentTier: composerFooterTierRef.current,
           clientWidth: footerRow.clientWidth,
-          isOverflowing: rowOverflows || leadingClips,
+          isOverflowing: rowOverflows || leadingClips || modelLabelNeedsSpace,
           demotionWidths: composerFooterDemotionWidthsRef.current,
         });
         composerFooterDemotionWidthsRef.current = nextStep.demotionWidths;
@@ -3724,16 +3753,13 @@ export default function ChatView({
     if (typeof ResizeObserver === "undefined") return;
 
     const observer = new ResizeObserver((entries) => {
-      const [entry] = entries;
-      if (!entry) return;
-
       syncComposerFooterLayout();
-
-      const nextHeight = entry.contentRect.height;
-      composerFormHeightRef.current = nextHeight;
+      const formEntry = entries.find((entry) => entry.target === composerForm);
+      if (formEntry) composerFormHeightRef.current = formEntry.contentRect.height;
     });
 
     observer.observe(composerForm);
+    if (composerStatusRowRef.current) observer.observe(composerStatusRowRef.current);
     return () => {
       observer.disconnect();
     };
@@ -5864,20 +5890,30 @@ export default function ChatView({
   }, [setDismissedRateLimitBannerKey, activeRateLimitBannerDismissalKey]);
   const previewSession = useComputerPreviewStore(selectThreadComputerPreviewSession(threadId));
   const previewLayout = useComputerPreviewStore(selectThreadComputerPreviewLayout(threadId));
-  const mainContentRef = useRef<HTMLDivElement | null>(null);
-  const [mainContentWidth, setMainContentWidth] = useState(1600);
+  // Full-width single chat: overlay plus transcript/composer inset. Floating overlay when the
+  // column is already narrow — right dock open or a split pane (same as header compact mode).
+  // Terminal surfaces always float so opening Environment never resizes the terminal workspace.
+  const projectPanelVisible = projectPanelEnabled && auxiliarySurface === "project";
+  const libraryPanelVisible = projectPanelEnabled && auxiliarySurface === "library";
+  const [hasOpenedLibrary, setHasOpenedLibrary] = useState(false);
   useEffect(() => {
-    const element = mainContentRef.current;
-    if (!element) return;
-    const update = () => {
-      const width = element.clientWidth;
-      setMainContentWidth((previous) => (previous === width ? previous : width));
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+    if (libraryPanelVisible) setHasOpenedLibrary(true);
+  }, [libraryPanelVisible]);
+  const environmentPanelVisibleEffective =
+    environmentPanelVisible && auxiliarySurface !== "project" && auxiliarySurface !== "library";
+  const environmentAppliesContentInset =
+    (environmentPanelVisibleEffective || projectPanelVisible || libraryPanelVisible) &&
+    !environmentUsesFloatingOverlay;
+  const environmentOverlayVariant = environmentUsesFloatingOverlay ? "floating" : "docked";
+  const environmentInsetPx = environmentAppliesContentInset
+    ? ENVIRONMENT_DOCKED_CONTENT_INSET_PX
+    : 0;
+  // The preview tracks its capped budget so column width alone does not trigger renders.
+  const previewBudgetPx = useComputerPreviewBudgetPx({
+    column: mainContentElement,
+    environmentInsetPx,
+    size: settings.computerPreviewSize === "large" ? "large" : "compact",
+  });
   const composerEffortOptionId = composerTraitSelection.primarySelectDescriptor?.id ?? "effort";
   const applyComputerControlEffortHint = useCallback(() => {
     setComposerDraftProviderModelOptions(
@@ -6189,12 +6225,9 @@ export default function ChatView({
   const emptyLandingControls = showEmptyLandingControls ? (
     <div
       data-empty-landing-controls="true"
-      // Tray sitting in normal flow directly above the composer, full composer width so
-      // the project / environment / branch chips sit near the shell edges. Unfilled in
-      // both themes (chips float over the page), rounded on top only and flush against
-      // the input shell below. No overlap/underlay tricks — in dark mode a slice tucked
-      // behind the composer's translucent corners reads as a visible cut along the seam.
-      className="chat-composer-shell squircle mx-auto flex min-h-8 w-full min-w-0 flex-nowrap items-center gap-x-1.5 overflow-hidden !rounded-b-none !rounded-t-[var(--composer-radius)] px-1.5 py-1 transition-colors duration-150 ease-out motion-reduce:transition-none sm:min-h-7"
+      // Top strip of the composer tray on the empty landing: the project / environment /
+      // branch chips wrap above the normal new-chat composer card.
+      className="@container flex min-h-8 w-full min-w-0 flex-nowrap items-center gap-x-1.5 overflow-hidden px-1 pb-1 pt-0.5 sm:min-h-7"
     >
       {isLocalDraftThread ? <NewChatComputerPicker /> : null}
       {showContainerChatWorkspacePicker ? (
@@ -6396,33 +6429,10 @@ export default function ChatView({
     onClose: closeEnvironmentPanelAfterAction,
     onRegisterCommitAndPushTrigger,
   };
-  // Full-width single chat: overlay plus transcript/composer inset. Floating overlay when the
-  // column is already narrow — right dock open or a split pane (same as header compact mode).
-  // Terminal surfaces always float so opening Environment never resizes the terminal workspace.
-  const projectPanelVisible = projectPanelEnabled && auxiliarySurface === "project";
-  const libraryPanelVisible = projectPanelEnabled && auxiliarySurface === "library";
-  const environmentPanelVisibleEffective =
-    environmentPanelVisible && auxiliarySurface !== "project" && auxiliarySurface !== "library";
-  const environmentAppliesContentInset =
-    (environmentPanelVisibleEffective || projectPanelVisible || libraryPanelVisible) &&
-    !environmentUsesFloatingOverlay;
-  const environmentOverlayVariant = environmentUsesFloatingOverlay ? "floating" : "docked";
-
   // Ambient preview rail: the live card sits below the Environment card and
   // the chat frees its gutter, so it never covers the transcript. Space is
   // reserved only for a card that actually has content (live phase + a landed
   // frame), at its fitted width — never for an armed or waiting session.
-  const environmentInsetPx = environmentAppliesContentInset
-    ? ENVIRONMENT_DOCKED_CONTENT_INSET_PX
-    : 0;
-  const previewCaps = computerPreviewCardCaps(
-    settings.computerPreviewSize === "large" ? "large" : "compact",
-  );
-  const previewBudgetPx = computerPreviewBudgetPx({
-    mainContentWidthPx: mainContentWidth,
-    environmentInsetPx: environmentInsetPx,
-    caps: previewCaps,
-  });
   const previewReservesInset =
     environmentOverlayVariant === "docked" &&
     settings.autoOpenComputerPane &&
@@ -6504,6 +6514,28 @@ export default function ChatView({
         .length ?? 0)
     : (activeBackgroundTasks?.activeCount ?? 0);
 
+  // Started threads: the row under the composer card, inside the grey tray. Permission, branch
+  // controls (git threads), then model/effort and the context ring. The footer tiers measure
+  // this row.
+  const composerStatusRow = composerStatusBelow ? (
+    <div
+      ref={composerStatusRowRef}
+      data-chat-composer-status-row=""
+      className="@container flex min-h-8 w-full min-w-0 flex-wrap items-center gap-1 px-0.5 pb-0.5 pt-1"
+    >
+      <RuntimeUsageControls {...runtimeUsageControlsProps} className="shrink-0" />
+      {showTrailingBranchToolbar ? (
+        <BranchToolbar {...branchToolbarProps} className="min-w-0 flex-[1_0_9rem] px-1 py-0" />
+      ) : (
+        <div className="min-w-0 flex-1" />
+      )}
+      <div className="ml-auto flex min-w-0 shrink items-center gap-2 pr-0.5">
+        {composerPickerControls}
+        {composerContextMeter}
+      </div>
+    </div>
+  ) : null;
+
   const composerSection = shouldRenderChatPaneContent ? (
     <div
       className={cn(isCenteredEmptyLanding ? "w-full overflow-visible" : "contents")}
@@ -6517,6 +6549,8 @@ export default function ChatView({
         onSubmit={onSend}
         className="relative z-10 w-full overflow-visible"
         data-chat-composer-form="true"
+        // The input sits in a grey tray; the stacked rail above it takes the tray's tone.
+        data-composer-tray-host=""
         data-chat-pane-scope={paneScopeId}
       >
         <ComposerColumnFrame>
@@ -6683,7 +6717,7 @@ export default function ChatView({
               <div className="pb-2">
                 <ComposerUsageLimitCard
                   {...usageLimitInputs}
-                  provider={quotaProvider}
+                  provider={threadProvider}
                   instanceId={quotaInstanceId}
                   onCollapse={() => setCollapsedUsageLimitCardKey(activeUsageLimitCardKey)}
                   onCancelRecovery={onInterruptFromStopControl}
@@ -6727,7 +6761,6 @@ export default function ChatView({
                 }}
               />
             ) : null}
-            {emptyLandingControls}
           </div>
           <div
             className={cn(
@@ -6738,9 +6771,12 @@ export default function ChatView({
               isThreadDragOverComposer && "ring-1 ring-info/65",
             )}
             aria-disabled={isSidechatExpired}
+            // Soft grey tray behind the composer (new chat and started threads alike).
+            data-composer-tray=""
             data-composer-layout={composerSingleRow ? "row" : undefined}
             {...threadMentionDropzoneProps}
           >
+            {emptyLandingControls}
             <div
               data-chat-composer-surface=""
               className={cn(
@@ -6923,9 +6959,11 @@ export default function ChatView({
                       : isComposerApprovalState
                         ? t("chat:placeholder_resolveApproval")
                         : activePendingProgress
-                          ? activePendingProgress.activeQuestion?.options.length === 0
-                            ? t("chat:placeholder_typeAnswer")
-                            : t("chat:orTypeYourOwnAnswer")
+                          ? activePendingProgress.activeQuestion?.allowCustomAnswer === false
+                            ? ""
+                            : activePendingProgress.activeQuestion?.options.length === 0
+                              ? t("chat:placeholder_typeAnswer")
+                              : t("chat:orTypeYourOwnAnswer")
                           : showPlanFollowUpPrompt && activeProposedPlan
                             ? t("chat:placeholder_refinePlan")
                             : activeThread?.parentThreadId
@@ -6937,7 +6975,10 @@ export default function ChatView({
                                   : t("chat:doAnythingInSynara")
                   }
                   prediction={composerPrediction.ghost}
-                  disabled={isComposerEditorDisabled}
+                  disabled={
+                    isComposerEditorDisabled ||
+                    activePendingProgress?.activeQuestion?.allowCustomAnswer === false
+                  }
                   singleLine={composerSingleRow}
                 />
               </div>
@@ -7011,6 +7052,7 @@ export default function ChatView({
                 />
               )}
             </div>
+            {composerStatusRow}
           </div>
         </ComposerColumnFrame>
       </form>
@@ -7218,7 +7260,10 @@ export default function ChatView({
         />
       ) : null}
       {/* Main content area with optional plan sidebar */}
-      <div ref={mainContentRef} className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div
+        ref={setMainContentElement}
+        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
+      >
         {/* Chat column */}
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <div
@@ -7238,7 +7283,7 @@ export default function ChatView({
                 )}
               >
                 {settings.showAsciiBackground && !terminalWorkspaceTerminalTabActive ? (
-                  <AsciiWaveBackground />
+                  <EmptyChatBackdrop style={settings.emptyChatBackdropStyle} />
                 ) : null}
                 {/* The heading floats centered in the space above the composer, which is
                     anchored to the bottom of the pane (with its workspace-tools rail
@@ -7247,10 +7292,15 @@ export default function ChatView({
                 <div className="relative flex min-h-0 flex-1 items-center justify-center">
                   {/* Pinned to the top so the heading stays optically centered; hidden on
                       short panes where it would crowd the heading. */}
-                  <div className="absolute inset-x-0 top-4 flex justify-center px-6 [@media(max-height:620px)]:hidden">
+                  <div
+                    data-empty-chat-backdrop-quiet=""
+                    className="absolute inset-x-0 top-4 flex justify-center px-6 [@media(max-height:620px)]:hidden"
+                  >
                     <SponsorLandingBanner className="w-full max-w-[520px]" />
                   </div>
                   <div
+                    // The dithered backdrop keeps a clear zone behind the heading for contrast.
+                    data-empty-chat-backdrop-quiet=""
                     className={cn(
                       "flex flex-col items-center gap-4 px-6 text-center select-none",
                       CHAT_COLUMN_FRAME_CLASS_NAME,
@@ -7308,7 +7358,7 @@ export default function ChatView({
                     </h2>
                   </div>
                 </div>
-                {/* Positioned so it paints above the ASCII background. */}
+                {/* Positioned so it paints above the empty chat background. */}
                 <div className="relative w-full shrink-0 pb-3 sm:pb-4">
                   {activeThread.error ? (
                     <div className="flex shrink-0 justify-center px-3 pt-2">
@@ -7349,6 +7399,8 @@ export default function ChatView({
                       turnTakenOver,
                       isConnecting,
                       providerName: providerDisplayName,
+                      awaitingApproval: activePendingApproval !== null,
+                      awaitingUserInput: pendingUserInputs.length > 0,
                     })}
                     worktreeSetup={activeWorktreeSetup}
                     worktreeSetupPendingAction={worktreeSetupPendingAction}
@@ -7402,7 +7454,7 @@ export default function ChatView({
                       pendingUserInputs.length > 0
                     }
                     onContinueFailedTurn={onResumeTurn}
-                    onChangeRecoveryModel={() => handleModelPickerOpenChange(true)}
+                    onChangeRecoveryModel={handleOpenRecoveryModelPicker}
                     unblockingThread={unblockingActiveThread}
                     onDismissThreadError={dismissActiveThreadError}
                     onUnblockThread={unblockThread}
@@ -7516,40 +7568,8 @@ export default function ChatView({
                   >
                     <div className="pointer-events-auto">{composerSection}</div>
                   </div>
-                  <div className="pt-0.5" />
-                  {/* Row under the composer: permission, branch controls (git threads), then
-                      model/effort and the context ring. The footer tiers measure this row. It
-                      takes the composer's right inset so it stays under the composer while the
-                      Environment card or preview rail is docked. */}
-                  <div
-                    className={cn(
-                      CHAT_COLUMN_GUTTER_CLASS_NAME,
-                      ENVIRONMENT_CONTENT_INSET_MOTION_CLASS,
-                    )}
-                    style={contentInsetRightPx ? { paddingRight: contentInsetRightPx } : undefined}
-                  >
-                    <div className={COMPOSER_COLUMN_FRAME_CLASS_NAME}>
-                      <div
-                        ref={composerStatusRowRef}
-                        data-chat-composer-status-row=""
-                        className="@container flex min-h-9 w-full min-w-0 flex-wrap items-center gap-1 pb-1.5 pt-1"
-                      >
-                        <RuntimeUsageControls {...runtimeUsageControlsProps} className="shrink-0" />
-                        {showTrailingBranchToolbar ? (
-                          <BranchToolbar
-                            {...branchToolbarProps}
-                            className="min-w-0 flex-[1_0_9rem] px-1 py-0"
-                          />
-                        ) : (
-                          <div className="min-w-0 flex-1" />
-                        )}
-                        <div className="ml-auto flex shrink-0 items-center gap-2 pr-1">
-                          {composerPickerControls}
-                          {composerContextMeter}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  {/* Gap under the composer tray; its status row lives inside the tray. */}
+                  <div className="pb-1.5" />
                 </div>
               </div>
             ) : null}
@@ -7634,34 +7654,39 @@ export default function ChatView({
               }}
             />
           ) : null}
-          {projectPanelEnabled ? (
-            <LibraryPanel
-              open={libraryPanelVisible}
-              variant={environmentOverlayVariant}
-              projectId={activeProjectId}
-              onClose={() => setLibraryFromAuxiliary(false)}
-            />
+          {/* Load on first open and retain the panel's state and close transition. */}
+          {projectPanelEnabled && (libraryPanelVisible || hasOpenedLibrary) ? (
+            <Suspense fallback={null}>
+              <LibraryPanel
+                open={libraryPanelVisible}
+                variant={environmentOverlayVariant}
+                projectId={activeProjectId}
+                onClose={() => setLibraryFromAuxiliary(false)}
+              />
+            </Suspense>
           ) : null}
         </div>
         {/* end chat column */}
 
         {/* Plan sidebar */}
         {planSidebarOpen ? (
-          <PlanSidebar
-            activeTaskList={activeTaskList}
-            activeProposedPlan={sidebarProposedPlan}
-            markdownCwd={threadWorkspaceCwd ?? undefined}
-            workspaceRoot={threadArtifactWorkspaceRoot ?? undefined}
-            timestampFormat={timestampFormat}
-            onClose={() => {
-              setPlanSidebarOpen(false);
-              // Track that the user explicitly dismissed for this turn so auto-open won't fight them.
-              const turnKey = activeTaskList?.turnId ?? sidebarProposedPlan?.turnId ?? null;
-              if (turnKey) {
-                planSidebarDismissedForTurnRef.current = turnKey;
-              }
-            }}
-          />
+          <Suspense fallback={null}>
+            <PlanSidebar
+              activeTaskList={activeTaskList}
+              activeProposedPlan={sidebarProposedPlan}
+              markdownCwd={threadWorkspaceCwd ?? undefined}
+              workspaceRoot={threadArtifactWorkspaceRoot ?? undefined}
+              timestampFormat={timestampFormat}
+              onClose={() => {
+                setPlanSidebarOpen(false);
+                // Track that the user explicitly dismissed for this turn so auto-open won't fight them.
+                const turnKey = activeTaskList?.turnId ?? sidebarProposedPlan?.turnId ?? null;
+                if (turnKey) {
+                  planSidebarDismissedForTurnRef.current = turnKey;
+                }
+              }}
+            />
+          </Suspense>
         ) : null}
       </div>
       {/* end horizontal flex container */}

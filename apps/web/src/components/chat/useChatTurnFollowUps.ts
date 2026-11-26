@@ -345,7 +345,10 @@ export function useChatTurnFollowUps({
         activeThread?.session?.provider ?? modelSelectionForPlanDispatch.provider;
       if (
         dispatchMode === "steer" &&
-        !providerSupportsNativeTurnSteering(livePlanProviderForSteerGate)
+        !providerSupportsNativeTurnSteering(
+          livePlanProviderForSteerGate,
+          activeThread?.session?.supportsNativeTurnSteering,
+        )
       ) {
         const nextSteerGate = {
           sawInterruptGap: false,

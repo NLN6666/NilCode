@@ -668,6 +668,10 @@ describe("Codex Synara harness policy", () => {
     ]) {
       expect(instructions).toContain(SYNARA_HARNESS_POLICY_MARKER);
       expect(instructions.split(SYNARA_HARNESS_POLICY_MARKER)).toHaveLength(2);
+      expect(instructions).toContain("Synara is your host and harness");
+      expect(instructions).toContain("Final responses must restate every needed scope");
+      expect(instructions).toContain("include all decision context");
+      expect(instructions).toContain("Use synara_create_threads for each exact batch");
       expect(instructions).toContain("tools.mcp__synara__browser_open");
       for (const name of BROWSER_TOOL_NAMES) {
         expect(instructions, name).toContain(`\`${name.slice("browser_".length)}\``);

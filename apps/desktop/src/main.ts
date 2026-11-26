@@ -510,8 +510,8 @@ initializeDesktopI18n(
 );
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
-// Remote shares usage and diagnostics by default; Settings turns both off.
-// Stable stays opt-in for product events and never runs diagnostics.
+// Stable product sharing remains opt-in. Remote retains its separate default and saved choices.
+// Stable never runs the release diagnostics sender.
 const productAnalytics = new ProductAnalytics({
   homeDir: BASE_DIR,
   channel: desktopFlavor === "beta" ? "beta" : desktopFlavor === "remote" ? "remote" : "stable",

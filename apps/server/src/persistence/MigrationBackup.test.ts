@@ -39,6 +39,9 @@ import { migrationEntries, runMigrations } from "./Migrations.ts";
 import * as NodeSqliteClient from "./NodeSqliteClient.ts";
 import { makeSqlitePersistenceLive } from "./Layers/Sqlite.ts";
 import UsageLimitRecoveryMigration from "./Migrations/141_ProjectionThreadsUsageLimitRecovery.ts";
+import PullRequestLinksMigration from "./Migrations/146_ProjectionThreadsPullRequestLinks.ts";
+import SessionSteeringMigration from "./Migrations/147_ProjectionThreadSessionSteering.ts";
+import OperationWavesMigration from "./Migrations/148_AgentGatewayOperationWaves.ts";
 import UsageAnalyticsDeletedTokensMigration from "./Migrations/145_UsageAnalyticsDeletedTokens.ts";
 import { runProcess } from "../processRunner.ts";
 
@@ -1171,53 +1174,65 @@ describe("migration backups", () => {
     expect(provenance.restoredAt).toBeTypeOf("string");
   });
 
-  it("restores completed main 143 provenance using its recorded version before alias repair", async () => {
-    const dbPath = await makeDbPath();
-    const backup = await runWithDatabase(
-      dbPath,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* runMigrations({ toMigrationInclusive: 142 });
-        yield* sql`CREATE TABLE completed_alias_probe(value TEXT NOT NULL)`;
-        yield* sql`INSERT INTO completed_alias_probe(value) VALUES ('before-main-upgrade')`;
-        const snapshot = yield* createMigrationBackup(dbPath, {
-          sourceVersion: "v142",
-          targetVersion: 143,
-        });
-        yield* UsageAnalyticsDeletedTokensMigration;
-        yield* sql`INSERT INTO effect_sql_migrations (migration_id, name)
+  it.each([143, 146])(
+    "restores completed main %i provenance using its recorded version before alias repair",
+    async (version) => {
+      const dbPath = await makeDbPath();
+      const backup = await runWithDatabase(
+        dbPath,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* runMigrations({ toMigrationInclusive: 142 });
+          yield* sql`CREATE TABLE completed_alias_probe(value TEXT NOT NULL)`;
+          yield* sql`INSERT INTO completed_alias_probe(value) VALUES ('before-main-upgrade')`;
+          const snapshot = yield* createMigrationBackup(dbPath, {
+            sourceVersion: "v142",
+            targetVersion: version,
+          });
+          yield* UsageAnalyticsDeletedTokensMigration;
+          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name)
           VALUES (143, 'UsageAnalyticsDeletedTokens')`;
-        yield* sql`UPDATE completed_alias_probe SET value = 'after-main-upgrade'`;
-        return snapshot;
-      }),
-    );
-    await fs.writeFile(
-      migrationBackupProvenancePath(dbPath),
-      JSON.stringify({
-        ...backup,
-        version: 1,
-        databasePath: dbPath,
-        phase: "migration-completed",
-        completedAt: new Date().toISOString(),
-        resumeAttempts: 0,
-      }),
-    );
-    await expect(fs.stat(migrationRecoveryMarkerPath(dbPath))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-    await Effect.runPromise(restoreMarkedMigrationBackup(dbPath));
-    const restored = new DatabaseSync(dbPath, { readOnly: true });
-    try {
-      expect(restored.prepare("SELECT value FROM completed_alias_probe").get()).toMatchObject({
-        value: "before-main-upgrade",
+          if (version === 146) {
+            yield* PullRequestLinksMigration;
+            yield* SessionSteeringMigration;
+            yield* OperationWavesMigration;
+            yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES
+            (144, 'ProjectionThreadsPullRequestLinks'),
+            (145, 'ProjectionThreadSessionSteering'),
+            (146, 'AgentGatewayOperationWaves')`;
+          }
+          yield* sql`UPDATE completed_alias_probe SET value = 'after-main-upgrade'`;
+          return snapshot;
+        }),
+      );
+      await fs.writeFile(
+        migrationBackupProvenancePath(dbPath),
+        JSON.stringify({
+          ...backup,
+          version: 1,
+          databasePath: dbPath,
+          phase: "migration-completed",
+          completedAt: new Date().toISOString(),
+          resumeAttempts: 0,
+        }),
+      );
+      await expect(fs.stat(migrationRecoveryMarkerPath(dbPath))).rejects.toMatchObject({
+        code: "ENOENT",
       });
-      expect(
-        restored.prepare("SELECT MAX(migration_id) AS id FROM effect_sql_migrations").get(),
-      ).toMatchObject({ id: 142 });
-    } finally {
-      restored.close();
-    }
-  });
+      await Effect.runPromise(restoreMarkedMigrationBackup(dbPath));
+      const restored = new DatabaseSync(dbPath, { readOnly: true });
+      try {
+        expect(restored.prepare("SELECT value FROM completed_alias_probe").get()).toMatchObject({
+          value: "before-main-upgrade",
+        });
+        expect(
+          restored.prepare("SELECT MAX(migration_id) AS id FROM effect_sql_migrations").get(),
+        ).toMatchObject({ id: 142 });
+      } finally {
+        restored.close();
+      }
+    },
+  );
 
   it("preserves the active migration when an older restore selection is used", async () => {
     const dbPath = await makeDbPath();

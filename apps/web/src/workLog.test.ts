@@ -29,6 +29,8 @@ const diagnostic = (
   fields: Record<string, unknown>,
   target = "codex_skills::interface",
 ) => JSON.stringify({ timestamp: "2026-10-15T20:05:38.509122Z", level, fields, target });
+const mcpOAuthStartupError = (name: string) =>
+  `The ${name} MCP server requires OAuth reauthentication. Run \`codex mcp login ${name}\`.`;
 
 describe("deriveSubagentTaskEnds", () => {
   it("preserves settled invocations while a resumed task waits for its own completion", () => {
@@ -802,7 +804,7 @@ describe("deriveWorkLogEntries", () => {
     expect(entries.map((entry) => entry.id).toSorted()).toEqual(["pi-info", "pi-warning"]);
   });
 
-  it("trusts ingestion for Codex stderr rows and keeps other providers' warnings", () => {
+  it("keeps Codex stderr out of the transcript and preserves other providers' warnings", () => {
     const stderr = (id: string, message: string, nativeEventType?: string) =>
       makeActivity({
         id,
@@ -812,8 +814,6 @@ describe("deriveWorkLogEntries", () => {
       });
     const entries = deriveWorkLogEntries(
       [
-        // Stored only because ingestion kept it: a structured ERROR whose level
-        // the message normalization removed must not be judged again.
         stderr("codex-structured-error", "Quota exceeded", "codex.process/stderr"),
         stderr("codex-error", "fatal: permission denied", "codex.process/stderr"),
         stderr("other-provider", "Bash was denied: outside workspace"),
@@ -821,12 +821,43 @@ describe("deriveWorkLogEntries", () => {
       ],
       undefined,
     );
-    expect(entries.map((entry) => entry.id).toSorted()).toEqual([
-      "codex-error",
-      "codex-structured-error",
-      "other-plain",
-      "other-provider",
-    ]);
+    expect(entries.map((entry) => entry.id).toSorted()).toEqual(["other-plain", "other-provider"]);
+  });
+
+  it("hides saved Codex MCP startup warnings while keeping failed tool calls", () => {
+    const startupWarning = (name: string, error: string) =>
+      makeActivity({
+        id: name,
+        kind: "runtime.warning",
+        summary: "Runtime warning",
+        payload: {
+          message: `MCP server "${name}" failed to start: ${error}`,
+          data: { name, status: "failed", error },
+        },
+      });
+    const entries = deriveWorkLogEntries(
+      [
+        startupWarning("stripe", mcpOAuthStartupError("stripe")),
+        startupWarning("polar", mcpOAuthStartupError("polar")),
+        startupWarning("stripe_connector", mcpOAuthStartupError("stripe_connector")),
+        startupWarning(
+          "superx",
+          'HTTP 403: {"error":"subscription_required: An active subscription is required"}',
+        ),
+        makeActivity({
+          id: "stripe-tool",
+          kind: "tool.completed",
+          summary: "MCP tool call failed",
+          payload: {
+            itemType: "mcp_tool_call",
+            status: "failed",
+            detail: mcpOAuthStartupError("stripe"),
+          },
+        }),
+      ],
+      undefined,
+    );
+    expect(entries.map((entry) => entry.id)).toEqual(["stripe-tool"]);
   });
 
   it("hides stored Claude warnings the adapter now only logs", () => {
@@ -1616,7 +1647,6 @@ describe("deriveWorkLogEntries", () => {
     });
     expect(entry).toMatchObject({
       id: "monitor-event",
-      label: "Monitor updated",
       detail: message,
       nativeEventType: "monitor_event",
       monitorNotification: { taskId: "bu336ro2k", name: "", output: message, outcome: "updated" },
@@ -1641,9 +1671,6 @@ describe("deriveWorkLogEntries", () => {
           }),
         ],
         undefined,
-      );
-      expect(entry?.label).toBe(
-        `Monitor · CI checks ${outcome === "completed" ? "finished" : outcome}`,
       );
       expect(entry?.monitorNotification).toEqual({
         taskId: "monitor-ci",

@@ -22,6 +22,8 @@ import PullRequestAutoFixMigration from "./Migrations/130_PullRequestAutoFix.ts"
 import ForkSourceMessageMigration from "./Migrations/134_ProjectionThreadsForkSourceMessage.ts";
 import WorkspaceInitializationMigration from "./Migrations/133_ProjectionTurnsWorkspaceInitialization.ts";
 import UsageLimitRecoveryMigration from "./Migrations/141_ProjectionThreadsUsageLimitRecovery.ts";
+import OperationWavesMigration from "./Migrations/148_AgentGatewayOperationWaves.ts";
+import SessionSteeringMigration from "./Migrations/147_ProjectionThreadSessionSteering.ts";
 import SpacesMigration from "./Migrations/079_Spaces.ts";
 import BrowserSharingMigration from "./Migrations/143_ProjectionProjectsBrowserSharing.ts";
 import AdvisorEnabledMigration from "./Migrations/144_ProjectionThreadsAdvisorEnabled.ts";
@@ -82,6 +84,28 @@ const tableIndexNames = (sql: SqlClient.SqlClient, tableName: string) =>
   sql<{ readonly name: string }>`
     SELECT name FROM pragma_index_list(${tableName})
   `.pipe(Effect.map((rows) => rows.map((row) => row.name)));
+
+it.effect(
+  "preserves existing provider sessions and negotiated values when the steering migration replays",
+  () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 144 });
+      yield* sql`INSERT INTO projection_thread_sessions (thread_id, status, provider_name, updated_at)
+      VALUES ('original-thread', 'ready', 'antigravity', '2026-11-22')`;
+      yield* runMigrations();
+      const read = () => sql`SELECT thread_id, status, supports_native_turn_steering
+      FROM projection_thread_sessions WHERE thread_id = 'original-thread'`;
+      assert.deepStrictEqual(yield* read(), [
+        { thread_id: "original-thread", status: "ready", supports_native_turn_steering: null },
+      ]);
+      yield* sql`UPDATE projection_thread_sessions SET supports_native_turn_steering = 1 WHERE thread_id = 'original-thread'`;
+      yield* SessionSteeringMigration;
+      assert.deepStrictEqual(yield* read(), [
+        { thread_id: "original-thread", status: "ready", supports_native_turn_steering: 1 },
+      ]);
+    }).pipe(Effect.provide(NodeSqliteClient.layerMemory())),
+);
 
 layer("reconcileMigrationLineage", (it) => {
   // An imported database whose tracker high-water
@@ -196,7 +220,7 @@ layer("reconcileMigrationLineage", (it) => {
       const executed = yield* runMigrations();
       assert.deepStrictEqual(
         executed.map(([id]) => id),
-        [136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146],
+        [136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148],
       );
       assert.deepStrictEqual(yield* read(), before);
       assert.deepStrictEqual(
@@ -776,6 +800,8 @@ managedAttachmentsLegacyLayer("managed attachment migration after private migrat
         [144, "ProjectionThreadsAdvisorEnabled"],
         [145, "UsageAnalyticsDeletedTokens"],
         [146, "ProjectionThreadsPullRequestLinks"],
+        [147, "ProjectionThreadSessionSteering"],
+        [148, "AgentGatewayOperationWaves"],
       ]);
 
       const tracker = yield* trackerRows(sql);
@@ -874,6 +900,8 @@ managedAttachmentsLegacyLayer("managed attachment migration after private migrat
           { migration_id: 144, name: "ProjectionThreadsAdvisorEnabled" },
           { migration_id: 145, name: "UsageAnalyticsDeletedTokens" },
           { migration_id: 146, name: "ProjectionThreadsPullRequestLinks" },
+          { migration_id: 147, name: "ProjectionThreadSessionSteering" },
+          { migration_id: 148, name: "AgentGatewayOperationWaves" },
         ],
       );
       const groupConfigColumns = yield* sql<{ readonly name: string }>`
@@ -1052,6 +1080,8 @@ agentGatewayRetentionLegacyLayer(
           [144, "ProjectionThreadsAdvisorEnabled"],
           [145, "UsageAnalyticsDeletedTokens"],
           [146, "ProjectionThreadsPullRequestLinks"],
+          [147, "ProjectionThreadSessionSteering"],
+          [148, "AgentGatewayOperationWaves"],
         ]);
 
         const columns = yield* sql<{ readonly name: string }>`
@@ -1193,6 +1223,8 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
         [144, "ProjectionThreadsAdvisorEnabled"],
         [145, "UsageAnalyticsDeletedTokens"],
         [146, "ProjectionThreadsPullRequestLinks"],
+        [147, "ProjectionThreadSessionSteering"],
+        [148, "AgentGatewayOperationWaves"],
       ]);
 
       const tracker = yield* trackerRows(sql);
@@ -1275,6 +1307,8 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
           [144, "ProjectionThreadsAdvisorEnabled"],
           [145, "UsageAnalyticsDeletedTokens"],
           [146, "ProjectionThreadsPullRequestLinks"],
+          [147, "ProjectionThreadSessionSteering"],
+          [148, "AgentGatewayOperationWaves"],
         ],
       );
 
@@ -1411,6 +1445,8 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
         [144, "ProjectionThreadsAdvisorEnabled"],
         [145, "UsageAnalyticsDeletedTokens"],
         [146, "ProjectionThreadsPullRequestLinks"],
+        [147, "ProjectionThreadSessionSteering"],
+        [148, "AgentGatewayOperationWaves"],
       ]);
 
       const tracker = yield* trackerRows(sql);
@@ -1489,6 +1525,8 @@ spacesMigrationCollisionLayer("Spaces migration after the private migration 70 c
           [144, "ProjectionThreadsAdvisorEnabled"],
           [145, "UsageAnalyticsDeletedTokens"],
           [146, "ProjectionThreadsPullRequestLinks"],
+          [147, "ProjectionThreadSessionSteering"],
+          [148, "AgentGatewayOperationWaves"],
         ],
       );
       const preservedSpaces = yield* sql<{ readonly spaceId: string }>`
@@ -2092,6 +2130,8 @@ describe("released analytics migration upgrades", () => {
       assert.deepStrictEqual(yield* runMigrations(), [
         [145, "UsageAnalyticsDeletedTokens"],
         [146, "ProjectionThreadsPullRequestLinks"],
+        [147, "ProjectionThreadSessionSteering"],
+        [148, "AgentGatewayOperationWaves"],
       ]);
       assert.deepStrictEqual(
         yield* sql`SELECT thread_id, advisor_enabled FROM projection_threads ORDER BY thread_id`,
@@ -2105,7 +2145,7 @@ describe("released analytics migration upgrades", () => {
     }).pipe(Effect.provide(NodeSqliteClient.layerMemory())),
   );
 
-  for (const releasedMainVersion of [143, 144, null]) {
+  for (const releasedMainVersion of [143, 144, 145, 146, null]) {
     it.effect(
       `preserves archived analytics through ${releasedMainVersion === null ? "interrupted analytics DDL" : `released main ${releasedMainVersion}`} upgrade`,
       () =>
@@ -2128,7 +2168,7 @@ describe("released analytics migration upgrades", () => {
               VALUES (143, 'UsageAnalyticsDeletedTokens')
             `;
           }
-          if (releasedMainVersion === 144) {
+          if (releasedMainVersion !== null && releasedMainVersion >= 144) {
             yield* PullRequestLinksMigration;
             yield* sql`
               INSERT INTO effect_sql_migrations (migration_id, name)
@@ -2151,8 +2191,41 @@ describe("released analytics migration upgrades", () => {
               )
             `;
           }
+          if (releasedMainVersion !== null && releasedMainVersion >= 145) {
+            yield* SessionSteeringMigration;
+            yield* sql`INSERT INTO effect_sql_migrations (migration_id, name)
+              VALUES (145, 'ProjectionThreadSessionSteering')`;
+            yield* sql`INSERT INTO projection_thread_sessions
+              (thread_id, status, provider_name, updated_at, supports_native_turn_steering)
+              VALUES ('unlinked-thread', 'ready', 'antigravity', '2026-11-24', 0),
+                ('steerable-thread', 'ready', 'antigravity', '2026-11-24', 1)`;
+          }
+          if (releasedMainVersion === 146) {
+            yield* OperationWavesMigration;
+            yield* sql`INSERT INTO effect_sql_migrations (migration_id, name)
+              VALUES (146, 'AgentGatewayOperationWaves')`;
+            yield* sql`INSERT INTO agent_gateway_operations (
+              operation_id, caller_thread_id, caller_turn_id, operation_kind, request_id,
+              fingerprint, requested_count, plan_json, status, result_json, error_json,
+              caller_purged_at, resume_context_json, created_at, updated_at
+            ) VALUES
+              ('receipt', 'parent', 'same-turn', 'create_threads', 'batch-1', 'f1', 1, '[]',
+                'completed', '{"receipt":true}', NULL, NULL, '{"resume":true}', 'created', 'updated'),
+              ('cleanup', 'parent', 'same-turn', 'create_threads', 'batch-2', 'f2', 1, '[]',
+                'compensating', NULL, '{"cleanup":true}', 'purged', NULL, 'created', 'updated')`;
+          }
+          const operations =
+            releasedMainVersion === 146
+              ? yield* sql`SELECT * FROM agent_gateway_operations ORDER BY operation_id`
+              : [];
+          const sessionValues =
+            releasedMainVersion !== null && releasedMainVersion >= 145
+              ? yield* sql`SELECT * FROM projection_thread_sessions ORDER BY thread_id`
+              : [];
           const archive = yield* sql`SELECT * FROM usage_analytics_deleted_tokens`;
           const prefix = yield* trackerRows(sql);
+          const prefixTimes = yield* sql`SELECT migration_id, name, created_at
+            FROM effect_sql_migrations WHERE migration_id <= 142 ORDER BY migration_id`;
           const backupPlan = yield* inspectMigrationBackupPlan;
           assert.isDefined(backupPlan);
           assert.isFalse("lineageDivergence" in backupPlan!);
@@ -2161,6 +2234,8 @@ describe("released analytics migration upgrades", () => {
             [144, "ProjectionThreadsAdvisorEnabled"],
             [145, "UsageAnalyticsDeletedTokens"],
             [146, "ProjectionThreadsPullRequestLinks"],
+            [147, "ProjectionThreadSessionSteering"],
+            [148, "AgentGatewayOperationWaves"],
           ]);
           assert.deepStrictEqual(yield* sql`SELECT * FROM usage_analytics_deleted_tokens`, archive);
           assert.include(yield* tableColumnNames(sql, "projection_projects"), "browser_sharing");
@@ -2169,10 +2244,27 @@ describe("released analytics migration upgrades", () => {
             (yield* trackerRows(sql)).filter((row) => row.migration_id <= 142),
             prefix.filter((row) => row.migration_id <= 142),
           );
-          if (releasedMainVersion === 144) {
+          if (releasedMainVersion !== null && releasedMainVersion >= 144) {
             assert.deepStrictEqual(
               yield* sql`SELECT pull_requests_json FROM projection_threads WHERE thread_id = 'unlinked-thread'`,
               [{ pull_requests_json: "[]" }],
+            );
+          }
+          assert.deepStrictEqual(
+            yield* sql`SELECT migration_id, name, created_at FROM effect_sql_migrations
+              WHERE migration_id <= 142 ORDER BY migration_id`,
+            prefixTimes,
+          );
+          if (releasedMainVersion === 146) {
+            assert.deepStrictEqual(
+              yield* sql`SELECT * FROM agent_gateway_operations ORDER BY operation_id`,
+              operations,
+            );
+          }
+          if (releasedMainVersion !== null && releasedMainVersion >= 145) {
+            assert.deepStrictEqual(
+              yield* sql`SELECT * FROM projection_thread_sessions ORDER BY thread_id`,
+              sessionValues,
             );
           }
           assert.deepStrictEqual(yield* runMigrations(), []);

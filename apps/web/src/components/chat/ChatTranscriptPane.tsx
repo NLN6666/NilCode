@@ -6,6 +6,7 @@
 import { ThreadId, type MessageId, type TurnId } from "@synara/contracts";
 import { type LegendListRef } from "@legendapp/list/react";
 import {
+  memo,
   useEffect,
   useMemo,
   useCallback,
@@ -171,7 +172,7 @@ interface ChatTranscriptPaneProps {
   findHighlightStore?: ThreadFindHighlightStore | null;
 }
 
-export function ChatTranscriptPane({
+export const ChatTranscriptPane = memo(function ChatTranscriptPane({
   activeThreadId,
   activeTurnId,
   activeTurnInProgress,
@@ -595,4 +596,4 @@ export function ChatTranscriptPane({
       </div>
     </ThemePreviewThreadContext.Provider>
   );
-}
+});

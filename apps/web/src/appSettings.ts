@@ -163,6 +163,8 @@ export type SidebarProjectSortOrder = typeof SidebarProjectSortOrder.Type;
 export const DEFAULT_SIDEBAR_PROJECT_SORT_ORDER: SidebarProjectSortOrder = "manual";
 export const SidebarThreadSortOrder = Schema.Literals(["updated_at", "created_at"]);
 export const ComputerPreviewSize = Schema.Literals(["compact", "large"]);
+export const EmptyChatBackdropStyle = Schema.Literals(["temple", "gradient"]);
+export type EmptyChatBackdropStyle = typeof EmptyChatBackdropStyle.Type;
 export type ComputerPreviewSize = typeof ComputerPreviewSize.Type;
 export const DEFAULT_COMPUTER_PREVIEW_SIZE: ComputerPreviewSize = "compact";
 export const AgentCursorColorMode = Schema.Literals(["stock", "custom"]);
@@ -449,6 +451,10 @@ export const AppSettingsSchema = Schema.Struct({
     isSidebarNavItemId(id) ? id : undefined,
   ).pipe(withDefaults(() => [])),
   showAsciiBackground: Schema.Boolean.pipe(withDefaults(() => true)),
+  // Which empty-chat backdrop shows while `showAsciiBackground` is on.
+  emptyChatBackdropStyle: EmptyChatBackdropStyle.pipe(
+    withDefaults(() => "temple" as const satisfies EmptyChatBackdropStyle),
+  ),
   confirmThreadDelete: Schema.Boolean.pipe(withDefaults(() => true)),
   // Opt-in: archiving a task also releases its worktree when nothing else uses it.
   archiveDeletesOrphanedWorktree: Schema.Boolean.pipe(withDefaults(() => false)),
@@ -650,6 +656,9 @@ export const AppSettingsSchema = Schema.Struct({
     withDefaults(() => "repository" as const),
   ),
   sourceControlCustomInstructions: SourceControlCustomInstructions.pipe(withDefaults(() => "")),
+  // Server-backed: end the description of a pull request Synara creates with a
+  // "Created with Synara" link.
+  gitAttributionEnabled: Schema.Boolean.pipe(withDefaults(() => true)),
   uiFontFamily: Schema.String.check(Schema.isMaxLength(256)).pipe(withDefaults(() => "")),
   defaultProvider: PersistedProviderKind.pipe(withDefaults(() => "codex" as const)),
   // Local-only: the account (provider instance) of `defaultProvider` that new chats
@@ -1772,6 +1781,7 @@ export function serverSettingsToAppSettings(settings: ServerSettingsView): Parti
     textGenerationModel: settings.textGenerationModelSelection.model,
     sourceControlWritingStyle: settings.sourceControlWritingStyle,
     sourceControlCustomInstructions: settings.sourceControlCustomInstructions,
+    gitAttributionEnabled: settings.gitAttributionEnabled,
     onboardingCompletedAt: settings.onboardingCompletedAt ?? null,
   };
 }
@@ -1910,6 +1920,9 @@ export function appSettingsPatchToServerSettingsPatch(
   }
   if (patch.sourceControlCustomInstructions !== undefined) {
     serverPatch.sourceControlCustomInstructions = patch.sourceControlCustomInstructions;
+  }
+  if (hasOwn(patch, "gitAttributionEnabled")) {
+    serverPatch.gitAttributionEnabled = Boolean(patch.gitAttributionEnabled);
   }
   if (
     hasOwn(patch, "textGenerationModel") ||
@@ -2901,6 +2914,9 @@ function resolveAppSettings(
   return settings;
 }
 
+let lastNormalizedLocalSettingsRef: AppSettings | null = null;
+let lastNormalizedMigrationCompleted: boolean | null = null;
+
 export function useAppSettings() {
   const queryClient = useQueryClient();
   const serverSettingsQuery = useQuery(serverSettingsQueryOptions());
@@ -2935,18 +2951,31 @@ export function useAppSettings() {
       return;
     }
     normalizedStoredSettingsRef.current = true;
+    const migrationCompleted = hasCompletedServerSettingsMigration();
+    if (
+      lastNormalizedLocalSettingsRef === localSettings &&
+      lastNormalizedMigrationCompleted === migrationCompleted
+    ) {
+      return;
+    }
 
     setSettings((previous) => {
-      const migrationCompleted = hasCompletedServerSettingsMigration();
-      if (!migrationCompleted) {
+      const currentMigrationCompleted = hasCompletedServerSettingsMigration();
+      if (!currentMigrationCompleted) {
         pendingServerSettingsMigrationPatchRef.current =
           buildInitialServerSettingsMigrationPatch(previous);
       }
       // Legacy localStorage may be the only remaining plaintext source until
       // the server confirms migration; redact it immediately after that write.
-      return normalizeInitialStoredAppSettingsForServerMigration(previous, migrationCompleted);
+      const next = normalizeInitialStoredAppSettingsForServerMigration(
+        previous,
+        currentMigrationCompleted,
+      );
+      lastNormalizedLocalSettingsRef = next;
+      lastNormalizedMigrationCompleted = currentMigrationCompleted;
+      return next;
     });
-  }, [setSettings]);
+  }, [localSettings, setSettings]);
 
   useEffect(() => {
     if (

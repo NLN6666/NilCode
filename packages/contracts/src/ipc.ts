@@ -339,8 +339,6 @@ import type {
   ComputerInputClickInput,
   ComputerInputKeyInput,
   ComputerInputScrollInput,
-  ComputerListWindowsInput,
-  ComputerListWindowsResult,
   ComputerProvisionInput,
   ComputerProvisionResult,
   ComputerSetControlEnabledInput,

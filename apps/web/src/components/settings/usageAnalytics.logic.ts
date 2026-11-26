@@ -12,6 +12,8 @@ import {
   type StatsUsageAnalyticsScope,
 } from "@synara/contracts";
 
+import { getNavigatorPlatform, isMacPlatform } from "~/lib/utils";
+
 export type UsageAnalyticsRange = "7d" | "30d" | "90d" | "1y";
 export type UsageAnalyticsMetric = "cost" | "tokens";
 export type UsageAnalyticsProvider = ProviderKind | "unknown";
@@ -40,6 +42,13 @@ export const PROVIDER_SERIES_COLOR: Record<UsageAnalyticsProvider, string> = {
 
 export function providerLabel(provider: UsageAnalyticsProvider): string {
   return provider === "unknown" ? "Other" : PROVIDER_DISPLAY_NAMES[provider];
+}
+
+/** Platform identity for local-session scope copy; translation stays in the UI. */
+export function usageAnalyticsDeviceScope(
+  platform: string = getNavigatorPlatform(),
+): "mac" | "device" {
+  return isMacPlatform(platform) ? "mac" : "device";
 }
 
 /** Local `YYYY-MM-DD` for an instant. */

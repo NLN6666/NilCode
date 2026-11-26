@@ -876,7 +876,7 @@
   "synaraListedAllowedProjects": "Synara 已列出获准访问的项目",
   "thisConversationDidnTLoad": "此对话未能加载。",
   "launched": "已启动 {{value0}} {{value1}}",
-  "ranTool": "已运行 {{value0}} 次工具{{value1}}",
+  "ranTool": "已运行 {{count}} 次工具调用",
   "computerKeptInTheBackground": "Computer 将保持在后台",
   "continueInThisLocalWorktree": "在此本地 worktree 中继续",
   "couldNotAddSelectionToSide": "无法将选中内容添加到旁聊",
@@ -1249,5 +1249,13 @@
   "usageLimit_alwaysResume": "达到上限后始终恢复",
   "usageLimit_alwaysResumeDescription": "此电脑上所有会话的默认设置",
   "usageLimit_pausedAt": "达到 {{provider}} 用量上限，任务已暂停 · {{time}}",
-  "usageLimit_pausedAtNoProvider": "达到用量上限，任务已暂停 · {{time}}"
+  "usageLimit_pausedAtNoProvider": "达到用量上限，任务已暂停 · {{time}}",
+  "toolsRunning": "{{value0}} 项正在运行",
+  "searchedTheWebOnce": "已搜索网页一次",
+  "searchedTheWebTwice": "已搜索网页两次",
+  "searchedTheWebTimes": "已搜索网页 {{value0}} 次",
+  "toolsRunning_one": "{{value0}} 项正在运行",
+  "toolsRunning_other": "{{value0}} 项正在运行",
+  "ranTool_one": "已运行 {{count}} 次工具调用",
+  "ranTool_other": "已运行 {{count}} 次工具调用"
 }

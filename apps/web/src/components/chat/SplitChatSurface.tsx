@@ -27,10 +27,7 @@ import {
 import { BrowserDockPane } from "./BrowserDockPane";
 import { FloatingBrowserPanel } from "./FloatingBrowserPanel";
 import { shouldRenderFloatingBrowserPanel } from "./floatingBrowserPanel.logic";
-import {
-  selectFloatingBrowserRequested,
-  useFloatingBrowserRequestStore,
-} from "./floatingBrowserRequestStore";
+import { useFloatingBrowserRequestStore } from "./floatingBrowserRequestStore";
 import { useBrowserPanelDesktopBridge } from "../../hooks/useBrowserPanelDesktopBridge";
 import { useHandleNewChat } from "../../hooks/useHandleNewChat";
 import type { ChatRightPanel } from "../../diffRouteSearch";

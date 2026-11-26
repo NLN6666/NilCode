@@ -566,6 +566,9 @@ function toProjectedSession(row: ProjectionThreadSessionDbRow): OrchestrationSes
     status: row.status,
     providerName: row.providerName,
     ...(row.providerInstanceId ? { providerInstanceId: row.providerInstanceId } : {}),
+    ...(row.supportsNativeTurnSteering == null
+      ? {}
+      : { supportsNativeTurnSteering: row.supportsNativeTurnSteering }),
     runtimeMode: row.runtimeMode,
     activeTurnId: row.activeTurnId,
     lastError: row.lastError,
@@ -660,7 +663,7 @@ function attachThreadMessageSegments(
   }
   const segmentsByMessage = new Map<string, ProjectionThreadMessageTextSegment[]>();
   for (const segment of segmentRows) {
-    const key = JSON.stringify([segment.threadId, segment.messageId]);
+    const key = `${segment.threadId}\0${segment.messageId}`;
     const entry = {
       sequence: segment.sequence,
       startedAt: segment.startedAt,
@@ -675,7 +678,7 @@ function attachThreadMessageSegments(
     }
   }
   return rows.map((row) => {
-    const rowSegments = segmentsByMessage.get(JSON.stringify([row.threadId, row.messageId]));
+    const rowSegments = segmentsByMessage.get(`${row.threadId}\0${row.messageId}`);
     return rowSegments ? { ...row, textSegments: rowSegments } : row;
   });
 }
@@ -1476,16 +1479,18 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
     messages: ReadonlyArray<ProjectionThreadMessageDbRow>,
     tracePrefix: string,
   ) =>
-    listThreadMessageSegmentRows(
-      messages.map(({ threadId, messageId }) => ({ threadId, messageId })),
-    ).pipe(
-      Effect.mapError(
-        toPersistenceSqlOrDecodeError(
-          `${tracePrefix}:listMessageSegments:query`,
-          `${tracePrefix}:listMessageSegments:decodeRows`,
-        ),
-      ),
-    );
+    messages.length === 0
+      ? Effect.succeed<ReadonlyArray<ProjectionThreadMessageSegmentDbRow>>([])
+      : listThreadMessageSegmentRows(
+          messages.map(({ threadId, messageId }) => ({ threadId, messageId })),
+        ).pipe(
+          Effect.mapError(
+            toPersistenceSqlOrDecodeError(
+              `${tracePrefix}:listMessageSegments:query`,
+              `${tracePrefix}:listMessageSegments:decodeRows`,
+            ),
+          ),
+        );
 
   const listThreadProposedPlanRows = SqlSchema.findAll({
     Request: Schema.Void,
@@ -1519,6 +1524,19 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
     AND (ranked.thread_id, ranked.turn_id) IN (
       SELECT thread_id, turn_id FROM failure_turns
     )
+  `);
+  // Thread-detail window order, newest first. Time leads because `sequence` holds
+  // two unrelated counters (see `window_rank`); the causal keys only break ties.
+  const activityWindowOrderDesc = sql.literal(`
+    created_at DESC,
+    CASE WHEN sequence IS NULL THEN 0 ELSE 1 END DESC,
+    sequence DESC,
+    CASE
+      WHEN kind LIKE '%.started' THEN 0
+      WHEN kind LIKE '%.completed' OR kind LIKE '%.resolved' THEN 2
+      ELSE 1
+    END DESC,
+    activity_id DESC
   `);
 
   const listThreadActivityRows = SqlSchema.findAll({
@@ -1741,6 +1759,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           status,
           provider_name AS "providerName",
           provider_instance_id AS "providerInstanceId",
+          supports_native_turn_steering AS "supportsNativeTurnSteering",
           provider_session_id AS "providerSessionId",
           provider_thread_id AS "providerThreadId",
           runtime_mode AS "runtimeMode",
@@ -1813,6 +1832,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           ORDER BY requested_at DESC, turn_id DESC
           LIMIT 1
         )
+        WHERE threads.deleted_at IS NULL
         ORDER BY latest.thread_id ASC
       `,
   });
@@ -2230,7 +2250,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             AND turn_id IS NOT NULL
             AND (${turnFailureActivityPredicate})
         ),
-        ranked AS (
+        ranked AS MATERIALIZED (
           SELECT
             thread_id,
             activity_id,
@@ -2247,14 +2267,24 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                   ELSE 1
                 END DESC,
                 activity_id DESC
-            ) AS activity_rank
+            ) AS activity_rank,
+            -- The window keeps the newest rows by time. activity_rank orders by
+            -- sequence, which mixes two counters: provider rows carry the runtime
+            -- journal sequence, server-created rows their orchestration event
+            -- sequence. The runtime counter runs ahead, so a server-created row
+            -- (a thread-created recap, a delegated-task notice) ranked as if it
+            -- were older than it is and fell out of long threads' window.
+            ROW_NUMBER() OVER (
+              PARTITION BY thread_id
+              ORDER BY ${activityWindowOrderDesc}
+            ) AS window_rank
           FROM projection_thread_activities
           WHERE thread_id = ${threadId}
         ),
         cutoff_turn AS (
           SELECT turn_id AS cutoff_turn_id
           FROM ranked
-          WHERE activity_rank = ${MAX_THREAD_DETAIL_ACTIVITIES}
+          WHERE window_rank = ${MAX_THREAD_DETAIL_ACTIVITIES}
         ),
         cutoff_turn_state AS (
           SELECT
@@ -2262,13 +2292,13 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             EXISTS (
               SELECT 1
               FROM ranked
-              WHERE activity_rank > ${MAX_THREAD_DETAIL_ACTIVITIES}
+              WHERE window_rank > ${MAX_THREAD_DETAIL_ACTIVITIES}
                 AND turn_id = cutoff_turn_id
             ) AS is_split,
             EXISTS (
               SELECT 1
               FROM ranked
-              WHERE activity_rank < ${MAX_THREAD_DETAIL_ACTIVITIES}
+              WHERE window_rank < ${MAX_THREAD_DETAIL_ACTIVITIES}
                 AND turn_id IS NOT cutoff_turn_id
             ) AS has_newer_turn
           FROM cutoff_turn
@@ -2397,7 +2427,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             (${durableTurnFailureActivityScope})
             OR
             (
-              activity_rank <= ${MAX_THREAD_DETAIL_ACTIVITIES}
+              window_rank <= ${MAX_THREAD_DETAIL_ACTIVITIES}
               -- Drop a split oldest turn instead of extending the query beyond
               -- its cap. If one turn fills the entire window, retain the raw
               -- capped tail so an oversized turn does not hide all activity.
@@ -2484,11 +2514,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               )
             )
           )
-        ORDER BY
-          CASE WHEN sequence IS NULL THEN 0 ELSE 1 END ASC,
-          sequence ASC,
-          created_at ASC,
-          activity_id ASC
+        -- Oldest first in the window's own order, so a client that trims its
+        -- oldest rows trims by time rather than by a mixed sequence.
+        ORDER BY ranked.window_rank DESC
       `,
   });
 
@@ -2716,6 +2744,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           status,
           provider_name AS "providerName",
           provider_instance_id AS "providerInstanceId",
+          supports_native_turn_steering AS "supportsNativeTurnSteering",
           provider_session_id AS "providerSessionId",
           provider_thread_id AS "providerThreadId",
           runtime_mode AS "runtimeMode",
@@ -2773,6 +2802,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           status,
           provider_name AS "providerName",
           provider_instance_id AS "providerInstanceId",
+          supports_native_turn_steering AS "supportsNativeTurnSteering",
           provider_session_id AS "providerSessionId",
           provider_thread_id AS "providerThreadId",
           runtime_mode AS "runtimeMode",
@@ -3181,14 +3211,17 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             updatedAt: updatedAt ?? new Date(0).toISOString(),
           };
 
-          return yield* decodeReadModel(snapshot).pipe(
-            Effect.mapError(
-              toPersistenceDecodeError("ProjectionSnapshotQuery.getSnapshot:decodeReadModel"),
-            ),
-          );
+          return snapshot;
         }),
       )
       .pipe(
+        Effect.flatMap((snapshot) =>
+          decodeReadModel(snapshot).pipe(
+            Effect.mapError(
+              toPersistenceDecodeError("ProjectionSnapshotQuery.getSnapshot:decodeReadModel"),
+            ),
+          ),
+        ),
         Effect.mapError((error) => {
           if (isPersistenceError(error)) {
             return error;
@@ -3317,22 +3350,25 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             }),
           );
 
-          return yield* decodeReadModel({
+          return {
             snapshotSequence: yield* computeSnapshotSequence(stateRows),
             spaces: spaceRows.map(toProjectedSpace),
             projects,
             threads,
             updatedAt: updatedAt ?? new Date(0).toISOString(),
-          }).pipe(
+          };
+        }),
+      )
+      .pipe(
+        Effect.flatMap((snapshot) =>
+          decodeReadModel(snapshot).pipe(
             Effect.mapError(
               toPersistenceDecodeError(
                 "ProjectionSnapshotQuery.getCommandReadModel:decodeReadModel",
               ),
             ),
-          );
-        }),
-      )
-      .pipe(
+          ),
+        ),
         Effect.mapError((error) => {
           if (isPersistenceError(error)) {
             return error;
@@ -3518,16 +3554,19 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             updatedAt: updatedAt ?? new Date(0).toISOString(),
           };
 
-          return yield* decodeShellSnapshot(snapshot).pipe(
+          return snapshot;
+        }),
+      )
+      .pipe(
+        Effect.flatMap((snapshot) =>
+          decodeShellSnapshot(snapshot).pipe(
             Effect.mapError(
               toPersistenceDecodeError(
                 "ProjectionSnapshotQuery.getShellSnapshot:decodeShellSnapshot",
               ),
             ),
-          );
-        }),
-      )
-      .pipe(
+          ),
+        ),
         Effect.mapError((error) => {
           if (isPersistenceError(error)) {
             return error;

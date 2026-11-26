@@ -189,7 +189,7 @@ Multi-folder projects have these limits for now:
 
 - Worktree mode isolates only the primary folder. The chat works in a worktree of the primary
   folder, while the other folders are edited directly.
-- Only Codex and Claude can be granted the extra folders. Other providers refuse the chat instead
+- Codex, Claude and Antigravity can be granted the extra folders. Other providers refuse the chat instead
   of silently working without them.
 - **Edit project** adds and removes the other folders; the primary folder moves only with
   **Change project path**. A running chat picks up the new folder set on its next turn.
@@ -214,7 +214,9 @@ task when the work needs a different owner, branch, or review boundary.
 
 Finished work folds into a compact **Worked for** disclosure above the final answer. Expand it
 to read the tools and full narration; turning off finished-turn folding keeps the work visible.
-Active turns show **Working for** with a live duration. These labels use the chat font size and
+Active turns show **Working for** with a live duration. The running call sits in the working
+indicator, while the rest of the current run stays in the transcript as a summary you can expand
+to read its commands, reasoning, and details. These labels use the chat font size and
 keep the divider below the label, without model badges or completion icons.
 **Stopped by you** requires a request explicitly marked as user Stop, followed by an interrupted
 outcome for that turn. Agent, automatic, steering, and historical interruptions without that actor
@@ -506,6 +508,10 @@ The intended loop is:
 Create PR can include uncommitted changes and create a feature branch from the default branch.
 When you supply a PR title, Synara also uses it as the commit message unless a separate commit
 message was supplied. Providing both the title and description skips text generation for this flow.
+
+By default, the description of a pull request Synara creates ends with a "Created with Synara"
+link. Turn this off with **Add Synara attribution** in Settings. Synara never adds it twice and
+never edits an existing pull request; commits and branch names are not changed.
 
 Failed commit, push, and PR actions show the failed step and a copyable error until dismissed.
 Each action keeps its own error details when you switch workspaces and start another action.

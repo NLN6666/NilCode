@@ -111,7 +111,7 @@ export function UserInputQuestionForm({
     const option = digit >= 1 && digit <= 9 ? activeQuestion.options[digit - 1] : undefined;
     if (!option) return;
     event.preventDefault();
-    handleOptionSelection(activeQuestion.id, option.label);
+    handleOptionSelection(activeQuestion.id, option.value ?? option.label);
   };
   const handleEffectShortcut = useEffectEvent(handleShortcut);
 
@@ -189,12 +189,13 @@ export function UserInputQuestionForm({
       {activeQuestion.options.length > 0 ? (
         <div className="mt-2 space-y-px">
           {activeQuestion.options.map((option, index) => {
-            const isSelected = selectedOptionLabelSet.has(option.label);
+            const optionValue = option.value ?? option.label;
+            const isSelected = selectedOptionLabelSet.has(optionValue);
             const shortcutKey = index < 9 ? index + 1 : null;
             const display = splitRecommendedOptionLabel(option.label);
             return (
               <ComposerChoiceRow
-                key={`${activeQuestion.id}:${option.label}`}
+                key={`${activeQuestion.id}:${optionValue}`}
                 layout="stacked"
                 dir="auto"
                 shortcut={shortcutKey}
@@ -209,7 +210,7 @@ export function UserInputQuestionForm({
                 }
                 selected={isSelected}
                 disabled={isResponding}
-                onSelect={() => handleOptionSelection(activeQuestion.id, option.label)}
+                onSelect={() => handleOptionSelection(activeQuestion.id, optionValue)}
                 trailing={
                   <span className="flex h-5 w-3.5 shrink-0 items-center">
                     {isSelected ? (

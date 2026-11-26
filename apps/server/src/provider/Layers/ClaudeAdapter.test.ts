@@ -1530,7 +1530,7 @@ describe("ClaudeAdapterLive", () => {
       label: "Sonnet 5 ultracode becomes xhigh plus the Claude Code setting",
       model: "claude-sonnet-5",
       options: { effort: "ultracode" },
-      settings: { autoCompactEnabled: true, effortLevel: "xhigh", ultracode: true },
+      settings: { effortLevel: "xhigh", ultracode: true },
     },
     {
       label: "adaptive effort is ignored for Haiku 4.5",
@@ -1541,25 +1541,25 @@ describe("ClaudeAdapterLive", () => {
       label: "thinking toggle reaches SDK settings for Haiku 4.5",
       model: "claude-haiku-4-5",
       options: { thinking: false },
-      settings: { autoCompactEnabled: true, alwaysThinkingEnabled: false },
+      settings: { alwaysThinkingEnabled: false },
     },
     {
       label: "thinking toggle is ignored for non-Haiku models",
       model: "claude-sonnet-4-6",
       options: { thinking: false },
-      settings: { autoCompactEnabled: true },
+      settings: {},
     },
     {
       label: "fast mode reaches SDK settings for Opus",
       model: "claude-opus-4-6",
       options: { fastMode: true },
-      settings: { autoCompactEnabled: true, fastMode: true },
+      settings: { fastMode: true },
     },
     {
       label: "fast mode is ignored for non-Opus models",
       model: "claude-sonnet-4-6",
       options: { fastMode: true },
-      settings: { autoCompactEnabled: true },
+      settings: {},
     },
   ] as const)("model options: $label", ({ model, options, ...expected }) => {
     const harness = makeHarness();
@@ -10378,7 +10378,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
     });
   }
 
-  it.effect("enables auto-compaction without pinning the model-native window", () => {
+  it.effect("lets the Claude profile control automatic and idle compaction", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
@@ -10393,10 +10393,9 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
         runtimeMode: "full-access",
       });
 
-      const settings = harness.getLastCreateQueryInput()?.options.settings;
-      assert.ok(settings && typeof settings === "object");
-      assert.equal((settings as { autoCompactEnabled?: boolean }).autoCompactEnabled, true);
-      assert.isUndefined((settings as { autoCompactWindow?: number }).autoCompactWindow);
+      const options = harness.getLastCreateQueryInput()?.options;
+      assert.sameMembers(options?.settingSources ?? [], ["user", "project", "local"]);
+      assert.deepEqual(options?.settings, {});
 
       const configuredEvent = yield* Fiber.join(configuredEventFiber);
       assert.equal(configuredEvent._tag, "Some");
@@ -16973,6 +16972,148 @@ describe("Claude subagent tracking", () => {
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
     );
+  });
+
+  describe("steer delivery", () => {
+    // Yields until `done` holds; a small limit just lets forked work run.
+    const yieldUntil = (done: () => boolean, limit = 10_000) =>
+      Effect.gen(function* () {
+        for (let i = 0; i < limit && !done(); i += 1) yield* Effect.yieldNow;
+      });
+
+    // The stream fiber pulls the next SDK message only after handling this one.
+    const emitAndSettle = (
+      harness: ReturnType<typeof makeHarness>,
+      messages: ReadonlyArray<SDKMessage>,
+    ) =>
+      Effect.gen(function* () {
+        const before = harness.query.iteratorNextCalls;
+        for (const message of messages) harness.query.emit(message);
+        yield* yieldUntil(() => harness.query.iteratorNextCalls >= before + messages.length);
+      });
+
+    const foregroundBash = (index: number, toolUseId: string, taskId: string) => [
+      rootToolUse(index, toolUseId, "Bash", { command: "bun run test" }),
+      system("task_started", {
+        task_id: taskId,
+        tool_use_id: toolUseId,
+        task_type: "local_bash",
+        is_backgrounded: false,
+        description: "bun run test",
+      }),
+    ];
+
+    const commandLifecycle = (commandUuid: string, state: string) =>
+      ({
+        type: "command_lifecycle",
+        command_uuid: commandUuid,
+        state,
+        session_id: SESSION,
+        uuid: nextUuid(),
+      }) as unknown as SDKMessage;
+
+    // The second prompt is the steer; the first started the turn.
+    const steerCommandUuid = (harness: ReturnType<typeof makeHarness>) =>
+      Effect.promise(async () => {
+        const prompts = harness.getLastCreateQueryInput()!.prompt[Symbol.asyncIterator]();
+        await prompts.next();
+        const steer = await prompts.next();
+        return steer.done ? undefined : (steer.value as { readonly uuid?: string }).uuid;
+      });
+
+    it.effect("moves running foreground work to the background when a steer is queued", () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const session = yield* startTrackingSession(adapter);
+        yield* emitAndSettle(harness, foregroundBash(0, "toolu_running_bash", "task-running"));
+        assert.deepEqual(harness.query.backgroundTasksCalls, []);
+
+        yield* adapter.steerTurn({
+          threadId: session.threadId,
+          input: "Stop the tests and fix the lint first",
+          attachments: [],
+        });
+        yield* yieldUntil(() => harness.query.backgroundTasksCalls.length > 0);
+
+        // No tool use id: every foreground task moves, like the CLI's Ctrl+B.
+        assert.deepEqual(harness.query.backgroundTasksCalls, [undefined]);
+        assert.isString(yield* steerCommandUuid(harness));
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    });
+
+    it.effect("moves work started after a steer aside until Claude reads the steer", () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const session = yield* startTrackingSession(adapter);
+        yield* adapter.steerTurn({
+          threadId: session.threadId,
+          input: "Use the staging database",
+          attachments: [],
+        });
+        assert.deepEqual(harness.query.backgroundTasksCalls, []);
+
+        yield* emitAndSettle(harness, foregroundBash(0, "toolu_before_read", "task-before-read"));
+        yield* yieldUntil(() => harness.query.backgroundTasksCalls.length > 0);
+        assert.deepEqual(harness.query.backgroundTasksCalls, ["toolu_before_read"]);
+
+        const commandUuid = yield* steerCommandUuid(harness);
+        assert.isString(commandUuid);
+        yield* emitAndSettle(harness, [
+          commandLifecycle(commandUuid!, "queued"),
+          ...foregroundBash(1, "toolu_still_queued", "task-still-queued"),
+        ]);
+        yield* yieldUntil(() => harness.query.backgroundTasksCalls.length > 1);
+        assert.deepEqual(harness.query.backgroundTasksCalls, [
+          "toolu_before_read",
+          "toolu_still_queued",
+        ]);
+
+        // Work Claude starts after reading the steer is its answer to it.
+        yield* emitAndSettle(harness, [
+          commandLifecycle(commandUuid!, "started"),
+          ...foregroundBash(2, "toolu_after_read", "task-after-read"),
+        ]);
+        yield* yieldUntil(() => harness.query.backgroundTasksCalls.length > 2, 200);
+        assert.deepEqual(harness.query.backgroundTasksCalls, [
+          "toolu_before_read",
+          "toolu_still_queued",
+        ]);
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    });
+
+    it.effect("drops an unread steer when its turn ends", () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const session = yield* startTrackingSession(adapter);
+        yield* adapter.steerTurn({
+          threadId: session.threadId,
+          input: "Also update the changelog",
+          attachments: [],
+        });
+        yield* emitAndSettle(harness, [success()]);
+
+        yield* adapter.sendTurn({
+          threadId: session.threadId,
+          input: "Next task",
+          attachments: [],
+        });
+        yield* emitAndSettle(harness, foregroundBash(0, "toolu_next_turn", "task-next-turn"));
+        yield* yieldUntil(() => harness.query.backgroundTasksCalls.length > 0, 200);
+        assert.deepEqual(harness.query.backgroundTasksCalls, []);
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    });
   });
 });
 

@@ -176,7 +176,8 @@ const OMP_PROVIDER = "omp" as const;
 const PI_PROVIDER = "pi" as const;
 type ProviderStatuses = ReadonlyArray<ServerProviderStatus>;
 const DISABLED_PROVIDER_STATUS_MESSAGE = "Provider is disabled in Synara settings.";
-const MINIMUM_ANTIGRAVITY_CLI_VERSION = "1.0.12";
+// `agy acp` shipped in 1.5.0. Keep the independent native OMP minimum.
+const MINIMUM_ANTIGRAVITY_CLI_VERSION = "1.5.0";
 export const MINIMUM_OH_MY_PI_CLI_VERSION = "16.1.12";
 
 const PROVIDERS = [

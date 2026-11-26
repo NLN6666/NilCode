@@ -30,8 +30,6 @@ import {
   type AuthSessionState,
   type AuthWebSocketTokenResult,
   type ExternalMcpCreateIntegrationInput,
-  type ExternalMcpCreateIntegrationResult,
-  type ExternalMcpIntegration,
   type AgentMcpSetEnabledInput,
   type ExternalMcpRefreshPairingInput,
   type ExternalMcpRevokeIntegrationInput,
@@ -72,7 +70,6 @@ import {
   COMPUTER_WS_METHODS,
   type ComputerEvent,
 } from "@synara/contracts";
-import { VOICE_TRANSCRIPTION_UPLOAD_ROUTE_PATH } from "@synara/shared/binaryTransfer";
 import { Schema } from "effect";
 
 import { showConfirmDialogFallback } from "./confirmDialogFallback";
@@ -409,6 +406,22 @@ export function onServerWelcome(listener: (payload: WsWelcomePayload) => void): 
  * Subscribe to server config update events. Replays the latest update for
  * late subscribers to avoid missing config validation feedback.
  */
+export function readLatestServerConfigSnapshot() {
+  return instance?.transport.getLatestServerConfigSnapshot() ?? null;
+}
+
+export function waitForInitialServerConfigSnapshot(timeoutMs?: number) {
+  return instance?.transport.waitForInitialServerConfigSnapshot(timeoutMs) ?? null;
+}
+
+export function readLatestServerSettingsSnapshot() {
+  return instance?.transport.getLatestServerSettingsSnapshot() ?? null;
+}
+
+export function waitForInitialServerSettingsSnapshot(timeoutMs?: number) {
+  return instance?.transport.waitForInitialServerSettingsSnapshot(timeoutMs) ?? null;
+}
+
 export function onServerConfigUpdated(
   listener: (payload: ServerConfigUpdatedPayload) => void,
 ): () => void {

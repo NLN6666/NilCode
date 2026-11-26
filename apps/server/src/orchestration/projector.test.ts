@@ -1815,6 +1815,7 @@ describe("orchestration projector", () => {
       readonly text: string;
       readonly streaming: boolean;
       readonly turnId: string | null;
+      readonly colorPreview?: boolean;
     }) =>
       makeEvent({
         sequence: input.sequence,
@@ -1830,6 +1831,7 @@ describe("orchestration projector", () => {
           text: input.text,
           turnId: input.turnId,
           streaming: input.streaming,
+          ...(input.colorPreview !== undefined ? { colorPreview: input.colorPreview } : {}),
           source: "native",
           createdAt,
           updatedAt: `2026-07-20T09:00:${String(input.sequence).padStart(2, "0")}.000Z`,
@@ -1852,6 +1854,7 @@ describe("orchestration projector", () => {
           messageId: "assistant-1",
           role: "assistant",
           text: delta,
+          ...(index === 0 ? { colorPreview: false } : {}),
           streaming: true,
           // First delta arrives without a turn binding; later deltas must not
           // rebind an already-bound message.
@@ -1898,6 +1901,7 @@ describe("orchestration projector", () => {
     const assistant = thread?.messages[1];
     expect(assistant?.text).toBe(`${deltas.join("")}!`);
     expect(assistant?.streaming).toBe(true);
+    expect(assistant?.colorPreview).toBe(false);
     expect(assistant?.turnId).toBe("turn-1");
     expect(thread?.messages[2]?.text).toBe("next");
 
