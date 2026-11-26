@@ -7,7 +7,7 @@ import {
 } from "@synara/contracts";
 import { advisorDeliveryId } from "@synara/shared/advisorDelivery";
 import type { Schema } from "effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setLanguagePreference } from "~/i18n";
 
 import {
@@ -23,6 +23,9 @@ import type { ChatMessage } from "./types";
 import { makeActivity } from "./storeTestFixtures";
 import { isComputerToolName } from "./lib/computerToolPresentation";
 import { isPlainRuntimeNoticeWorkEntry } from "./components/chat/agentActivity.logic";
+
+beforeEach(() => setLanguagePreference("en"));
+afterEach(() => setLanguagePreference("system"));
 
 const diagnostic = (
   level: string,
@@ -280,7 +283,7 @@ describe("deriveWorkLogEntries", () => {
       expect(defaultFileEntry).toMatchObject({ toolTitle: "Read", detail: "/repo/Settings" });
       expect(defaultFileEntry?.displayToolTitle).toBeUndefined();
     } finally {
-      setLanguagePreference("en");
+      setLanguagePreference("system");
     }
   });
 
@@ -574,7 +577,7 @@ describe("deriveWorkLogEntries", () => {
       setLanguagePreference("en");
       expect(derive()[1]?.displayToolTitle).toBeUndefined();
     } finally {
-      setLanguagePreference("en");
+      setLanguagePreference("system");
     }
   });
 

@@ -2,6 +2,7 @@
 
 ## Unreleased — dev integration
 
+- Isolate transcript, work-log and tool-summary test languages per case, restoring the system preference afterward so shuffled runs do not depend on another test's locale.
 - Merge `main` through `557533309` (Synara 1.6.8), retaining NilCode's three-language UI, native OMP, project integrations and Stable product-analytics opt-in.
 - Adopt upstream startup/streaming improvements and Antigravity ACP as one transport, preserving process attribution, prepared provider environments and versioned host-policy delivery.
 - Append steering and gateway-wave migrations at 147–148 without renumbering fork 143–146; atomically repair released main 143–146 aliases while preserving archived usage, linked PRs, negotiated capabilities and gateway receipts.

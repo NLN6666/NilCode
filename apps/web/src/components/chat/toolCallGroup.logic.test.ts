@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { i18n, setLanguagePreference } from "~/i18n";
 import { deriveReadableCommandDisplay, deriveReadableToolTitle } from "../../lib/toolCallLabel";
 import type { WorkLogEntry } from "../../session-logic";
@@ -7,6 +7,9 @@ import {
   isSummarizableToolCallEntry,
   summarizeToolCallGroup,
 } from "./toolCallGroup.logic";
+
+beforeEach(() => setLanguagePreference("en"));
+afterEach(() => setLanguagePreference("system"));
 
 function workEntry(overrides: Partial<WorkLogEntry> & Pick<WorkLogEntry, "id">): WorkLogEntry {
   return {
@@ -63,7 +66,7 @@ describe("classifyToolCallSummaryCategory", () => {
         ),
       ).toBe("read");
     } finally {
-      setLanguagePreference("en");
+      setLanguagePreference("system");
     }
   });
 
