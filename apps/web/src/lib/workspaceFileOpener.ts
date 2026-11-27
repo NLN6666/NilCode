@@ -12,6 +12,7 @@
 import { isSupportedLocalPreviewFilePath } from "@synara/shared/localPreviewFiles";
 import {
   isLocalAbsolutePath,
+  isWindowsAbsolutePath,
   isWorkspaceRelativePathSafe,
   localPathsEqual,
   workspaceRelativePathOf,
@@ -47,12 +48,30 @@ export function useWorkspaceFileOpener(): WorkspaceFileOpener | null {
 // Trailing `:line` / `:line:col` suffix carried by resolved markdown file links.
 // The in-app viewer previews whole files, so the position is dropped.
 const FILE_POSITION_SUFFIX_PATTERN = /:\d+(?::\d+)?$/;
+const URL_WINDOWS_DRIVE_PATH_PATTERN = /^\/[a-z]:[\\/]/i;
 const TRAILING_PATH_SEPARATOR_PATTERN = /[\\/]+$/;
 const SYNARA_PUBLIC_ASSET_PATH_PREFIXES = [
   "/central-icons-reversed/",
   "/central-icons-fill/",
 ] as const;
 const SYNARA_WEB_PUBLIC_WORKSPACE_DIR = "apps/web/public";
+
+export function normalizeWindowsWorkspaceFileReference(
+  path: string,
+  workspaceRoot: string | null,
+): string {
+  // Markdown can carry a URL pathname like `/D:/repo/file` instead of a native
+  // drive path. Only reinterpret it when the owning workspace is Windows.
+  if (
+    workspaceRoot === null ||
+    !URL_WINDOWS_DRIVE_PATH_PATTERN.test(path) ||
+    !isWindowsAbsolutePath(workspaceRoot)
+  ) {
+    return path;
+  }
+  const nativePath = path.slice(1);
+  return workspaceRelativePathOf(nativePath, workspaceRoot) ?? nativePath;
+}
 
 function resolveSynaraPublicAssetOpenTarget(path: string, workspaceRoot: string | null) {
   if (!workspaceRoot) {
@@ -116,7 +135,10 @@ export function resolveWorkspaceFileOpenTarget(
   rawPath: string,
   workspaceRoot: string | null,
 ): string | null {
-  const withoutPosition = rawPath.trim().replace(FILE_POSITION_SUFFIX_PATTERN, "");
+  const withoutPosition = normalizeWindowsWorkspaceFileReference(
+    rawPath.trim().replace(FILE_POSITION_SUFFIX_PATTERN, ""),
+    workspaceRoot,
+  );
   if (withoutPosition.length === 0) {
     return null;
   }
@@ -171,7 +193,7 @@ export function resolveDockFileOpenTarget(
     return workspaceTarget;
   }
   if (isLocalAbsolutePath(withoutPosition)) {
-    return withoutPosition;
+    return normalizeWindowsWorkspaceFileReference(withoutPosition, workspaceRoot);
   }
   return resolveScratchPreviewFileOpenTarget(rawPath);
 }

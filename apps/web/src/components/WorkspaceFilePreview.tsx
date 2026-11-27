@@ -70,6 +70,7 @@ import {
 } from "~/lib/syntaxHighlighting";
 import { cn } from "~/lib/utils";
 import { resolveWorkspaceFileEditorReadOnlyReason } from "~/lib/workspaceFileEditor";
+import { normalizeWindowsWorkspaceFileReference } from "~/lib/workspaceFileOpener";
 import { readNativeApi } from "~/nativeApi";
 import ChatMarkdown from "./ChatMarkdown";
 import { DiffTruncationWarning } from "./DiffTruncationWarning";
@@ -478,13 +479,11 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
   const taskWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
   const latestTaskWriteVersionRef = useRef({ next: 0, byFile: new Map<string, number>() });
   const taskFileDiskVersionRef = useRef(new Map<string, string>());
-  const {
-    filePath: requestedFilePath,
-    onAskWhyInChat,
-    onCommentInChat,
-    onReferenceInChat,
-    workspaceRoot,
-  } = props;
+  const { onAskWhyInChat, onCommentInChat, onReferenceInChat, workspaceRoot } = props;
+  const requestedFilePath =
+    props.filePath === null
+      ? null
+      : normalizeWindowsWorkspaceFileReference(props.filePath, workspaceRoot);
   const queryClient = useQueryClient();
   // A workspace-relative reference that fails to read may actually live under
   // an ancestor of the workspace root (agents sometimes emit paths relative to

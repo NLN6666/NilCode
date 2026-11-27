@@ -6,6 +6,8 @@ import "../index.css";
 
 import type { NativeApi } from "@synara/contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { HttpResponse, http } from "msw";
+import { setupWorker } from "msw/browser";
 import { afterEach, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";
 
@@ -37,6 +39,60 @@ function makeQueryClient() {
 
 afterEach(() => {
   document.body.innerHTML = "";
+});
+
+it("opens an image and a text file from existing Windows tabs with URL-style drive paths", async () => {
+  const workspaceRoot = "D:\\Codes\\Project";
+  const png = await (await fetch(document.createElement("canvas").toDataURL())).arrayBuffer();
+  const worker = setupWorker(
+    http.get("*/api/local-image", ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      return params.get("cwd") === workspaceRoot && params.get("path") === "out/shot.png"
+        ? new HttpResponse(png, { headers: { "Content-Type": "image/png" } })
+        : new HttpResponse(null, { status: 404 });
+    }),
+  );
+  await worker.start({ quiet: true, onUnhandledRequest: "bypass" });
+  const restoreNativeApi = installNativeApi({
+    projects: {
+      async createLocalFilePreviewGrant() {
+        throw new Error("An error occurred in Effect.tryPromise");
+      },
+      async readFile({ cwd, relativePath }: { cwd: string; relativePath: string }) {
+        if (cwd !== workspaceRoot || relativePath !== "out/note.txt") {
+          throw new Error("Workspace file not found");
+        }
+        return { relativePath, contents: "Contents from the Windows workspace", truncated: false };
+      },
+    },
+  } as unknown as NativeApi);
+  const client = makeQueryClient();
+  const preview = (relativePath: string) => (
+    <QueryClientProvider client={client}>
+      <WorkspaceFilePreview
+        workspaceRoot={workspaceRoot}
+        filePath={`/D:/Codes/Project/${relativePath}`}
+      />
+    </QueryClientProvider>
+  );
+  try {
+    const screen = await render(preview("out/shot.png"));
+    try {
+      await expect.element(screen.getByRole("img", { name: "shot.png" })).toBeVisible();
+      await expect
+        .poll(() => document.querySelector<HTMLImageElement>("img[alt='shot.png']")?.naturalWidth)
+        .toBeGreaterThan(0);
+
+      await screen.rerender(preview("out/note.txt"));
+      await expect.element(screen.getByText("Contents from the Windows workspace")).toBeVisible();
+    } finally {
+      await screen.unmount();
+    }
+  } finally {
+    client.clear();
+    restoreNativeApi();
+    worker.stop();
+  }
 });
 
 it("relocates a workspace-relative image after its in-root preview fails", async () => {

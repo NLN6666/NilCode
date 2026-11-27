@@ -153,6 +153,26 @@ describe("resolveDockFileOpenTarget", () => {
     expect(resolveDockFileOpenTarget("src/page.tsx", "/repo/app")).toBe("src/page.tsx");
   });
 
+  it.each([
+    ["/D:/Codes/Project/out/shot.png", "out/shot.png"],
+    ["/d:/codes/project/src/main.ts:42:7", "src/main.ts"],
+  ])("opens a URL-style Windows workspace link %s as a relative file", (href, relativePath) => {
+    const cwd = "D:\\Codes\\Project";
+    const target = resolveMarkdownFileLinkTarget(href, cwd);
+    expect(target).not.toBeNull();
+    expect(resolveWorkspaceFileOpenTarget(target!, cwd)).toBe(relativePath);
+    expect(resolveDockFileOpenTarget(target!, cwd)).toBe(relativePath);
+  });
+
+  it("preserves explicit outside-drive paths and does not reinterpret POSIX paths", () => {
+    expect(resolveDockFileOpenTarget("/D:/other/report.txt", "C:\\project")).toBe(
+      "D:/other/report.txt",
+    );
+    expect(resolveDockFileOpenTarget("/D:/other/report.txt", "/project")).toBe(
+      "/D:/other/report.txt",
+    );
+  });
+
   it("opens absolute local paths directly instead of falling back to the editor", () => {
     expect(resolveDockFileOpenTarget("/Users/dev/Downloads/report.txt:4", "/repo/app")).toBe(
       "/Users/dev/Downloads/report.txt",
