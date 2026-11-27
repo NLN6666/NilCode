@@ -260,17 +260,19 @@ export function useChatProjectScripts({
         );
         return;
       }
+      const stopFailure = `Failed to stop "${script.name}".`;
       try {
         // A detached service can outlive its shell. Keep its ownership if stopping it fails.
         if (localServer && port != null) {
-          await api.server.stopLocalServer({ pid: localServer.pid, port });
+          const result = await api.server.stopLocalServer({ pid: localServer.pid, port });
+          if (!result.stopped) {
+            setThreadError(activeThreadId, result.message || stopFailure);
+            return;
+          }
         }
         await Promise.all(terminalIds.map((id) => closeProjectScriptTerminal(api, threadId, id)));
       } catch (error) {
-        setThreadError(
-          activeThreadId,
-          error instanceof Error ? error.message : `Failed to stop "${script.name}".`,
-        );
+        setThreadError(activeThreadId, error instanceof Error ? error.message : stopFailure);
       } finally {
         void queryClient.invalidateQueries({ queryKey: serverQueryKeys.localServers() });
       }

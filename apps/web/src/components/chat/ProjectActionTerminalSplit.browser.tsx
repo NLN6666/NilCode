@@ -2,6 +2,9 @@ import "../../index.css";
 
 import type {
   ProjectScript,
+  ServerListLocalServersResult,
+  ServerStopLocalServerInput,
+  ServerStopLocalServerResult,
   TerminalCloseInput,
   TerminalOpenInput,
   TerminalWriteInput,
@@ -14,6 +17,7 @@ import { render } from "vitest-browser-react";
 import { setLanguagePreference } from "~/i18n";
 import { dockTerminalThreadId } from "~/lib/dockTerminalScope";
 import { resolveProjectScriptTerminalScope } from "~/lib/projectServiceTerminalScope";
+import { serverQueryKeys } from "~/lib/serverReactQuery";
 import { selectRightDockState, useRightDockStore } from "~/rightDockStore";
 import { useStore } from "~/store";
 import { makeProject, makeThread } from "~/storeTestFixtures";
@@ -26,7 +30,11 @@ import { RightDock } from "./RightDock";
 import { useChatProjectScripts } from "./useChatProjectScripts";
 
 const api = vi.hoisted(() => ({
-  server: { listLocalServers: vi.fn(async () => ({ servers: [] })) },
+  server: {
+    listLocalServers: vi.fn<() => Promise<ServerListLocalServersResult>>(),
+    stopLocalServer:
+      vi.fn<(input: ServerStopLocalServerInput) => Promise<ServerStopLocalServerResult>>(),
+  },
   terminal: {
     open: vi.fn(async (input: TerminalOpenInput) => ({
       ...input,
@@ -48,6 +56,10 @@ vi.mock("../../nativeApi", () => ({ readNativeApi: () => api, ensureNativeApi: (
 
 beforeEach(() => {
   setLanguagePreference("en");
+  api.server.listLocalServers
+    .mockReset()
+    .mockResolvedValue({ generatedAt: new Date().toISOString(), servers: [] });
+  api.server.stopLocalServer.mockReset();
   api.terminal.write.mockReset();
   api.terminal.close.mockReset().mockImplementation(async (input) => {
     if (input.onlyIfIdle) {
@@ -212,6 +224,39 @@ it.each([
         await expect.poll(() => setThreadError.mock.lastCall?.[1]).toBe("Stop failed");
         await expect.element(expand).toBeVisible();
         api.terminal.close.mockClear();
+        setThreadError.mockClear();
+
+        const pid = 4242;
+        const listing = {
+          generatedAt: new Date().toISOString(),
+          servers: [
+            {
+              id: `local-server:${pid}:${port}`,
+              pid,
+              command: "node",
+              displayName: "node",
+              args: "server.js",
+              ports: [port],
+              addresses: [],
+              isStoppable: true,
+            },
+          ],
+        };
+        api.server.listLocalServers.mockResolvedValue(listing);
+        client.setQueryData(serverQueryKeys.localServers(), listing);
+        store.setTerminalActivity(scopeId, started.terminalId!, {
+          hasRunningSubprocess: false,
+          agentState: null,
+        });
+        api.server.stopLocalServer
+          .mockResolvedValueOnce({ pid, stopped: false, message: "Process is still running" })
+          .mockResolvedValueOnce({ pid, stopped: true });
+        await stop.click();
+        await expect.poll(() => setThreadError.mock.lastCall?.[1]).toBe("Process is still running");
+        expect(api.server.stopLocalServer).toHaveBeenCalledExactlyOnceWith({ pid, port });
+        expect(api.terminal.close).not.toHaveBeenCalled();
+        await expect.element(expand).toBeVisible();
+        await expect.element(stop).toBeVisible();
         setThreadError.mockClear();
       }
       await stop.click();
