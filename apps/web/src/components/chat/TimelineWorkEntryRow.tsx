@@ -617,17 +617,7 @@ function isFileChangeWorkEntry(workEntry: TimelineWorkEntry): boolean {
   return isFileChangeWorkLogEntry(workEntry);
 }
 
-// Item-scoped reasoning and summaries keep full prose. Legacy reasoning groups
-// only carry a compact preview; their existing opener retains all original updates.
-function isProseWorkEntry(workEntry: TimelineWorkEntry): boolean {
-  return (
-    (isReasoningUpdateWorkEntry(workEntry) && Boolean(workEntry.toolCallId)) ||
-    workEntry.activityKind === "tool.summary"
-  );
-}
-
-function proseWorkEntryText(workEntry: TimelineWorkEntry, displayText: string): string | null {
-  const source = workEntry.detail ?? workEntry.preview ?? displayText;
+function proseWorkEntryText(source: string): string | null {
   // Codex summaries end in an empty `<!-- -->` block separator.
   const text = source.replace(/<!--[\s\S]*?-->/gu, "").trim();
   return text.length > 0 ? text : null;
@@ -762,11 +752,10 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
               ? "mcp"
               : undefined;
   const displayParts = workEntryDisplayParts(workEntry, t);
-  const { heading, preview, displayText } = displayParts;
-  // While a reasoning trace streams the row shows the trace itself in a
-  // fixed-height region; once it settles it collapses back to the summary line.
+  const { displayText } = displayParts;
+  const isReasoning = isReasoningUpdateWorkEntry(workEntry);
   const streamingReasoningText =
-    isReasoningUpdateWorkEntry(workEntry) && workEntry.reasoningStatus === "inProgress"
+    isReasoning && workEntry.reasoningStatus === "inProgress"
       ? (workEntry.detail?.trim() ?? "")
       : "";
   const isStreamingReasoning = streamingReasoningText.length > 0;
@@ -873,11 +862,50 @@ export const TimelineWorkEntryRow = memo(function TimelineWorkEntryRow(props: {
     );
   }
 
-  // Narration renders like the assistant's own text: full Markdown in the
-  // transcript type and color, with no glyph or disclosure.
+  // Keep item-scoped reasoning inspectable without turning it into assistant
+  // prose. Legacy reasoning groups still open their original grouped updates.
+  const settledReasoningText =
+    isReasoning &&
+    workEntry.reasoningStatus !== "inProgress" &&
+    (workEntry.toolCallId || workEntry.reasoningStatus)
+      ? proseWorkEntryText(workEntry.detail ?? workEntry.preview ?? "")
+      : null;
+  if (settledReasoningText !== null) {
+    return (
+      <div className={compact ? "py-0.5" : "py-1"}>
+        <ToolDetailsDisclosure
+          compact={compact}
+          timestampFormat={timestampFormat}
+          detailContent={
+            <ReasoningStreamRegion
+              text={settledReasoningText}
+              fontSizePx={textFontSizePx}
+              compact={compact}
+              cwd={markdownCwd}
+              threadId={threadId}
+              onImageExpand={onImageExpand}
+              isStreaming={false}
+            />
+          }
+        >
+          <span
+            className={cn(
+              compact ? "leading-5" : "leading-6",
+              WORK_ROW_MUTED_HOVER_TONE["tool-row"],
+            )}
+            style={{ fontSize: `${textFontSizePx}px` }}
+          >
+            {t("chat:sessionStatus_reasoning")}
+          </span>
+        </ToolDetailsDisclosure>
+      </div>
+    );
+  }
+
+  // Tool summaries are narration, not reasoning traces.
   const proseText =
-    !isStreamingReasoning && isProseWorkEntry(workEntry)
-      ? proseWorkEntryText(workEntry, displayText)
+    workEntry.activityKind === "tool.summary"
+      ? proseWorkEntryText(workEntry.detail ?? workEntry.preview ?? displayText)
       : null;
   if (proseText !== null) {
     return (

@@ -24,7 +24,7 @@
 - Integrate main's account and remote-connection surfaces, Pro entry points, immersive onboarding, crash recovery, opt-in quota continuation, Pi 1.4 compatibility, safer attachments, and Electron 43.8.7.
 - Use the shared i18next catalogs and one renderer language runtime for English, Spanish and Simplified Chinese. Retain NilCode's Stable Chinese support, native menus, and three-language browser annotations.
 - Format device and remote-session activity as complete localized phrases without mixed-language or duplicate "ago" suffixes.
-- Retain fixed-height live reasoning while rendering settled narration as prose. Apply stable position and terminal-state protection to both Codex and Claude reasoning so late events cannot reopen completed or failed rows.
+- Keep provider reasoning in a bounded panel while it streams, then collapse it into a reasoning row that can be reopened. Tool summaries remain plain narration. Late Codex and Claude events cannot reopen completed or failed traces.
 - Share the project-action editor between the header and Environment panel without losing preview ports, Chinese copy, service detection, or Run/Stop state.
 - Preserve main migration IDs through 142; append fork browser sharing/Advisor at 143–144. Repair historical fork identities, including released IDs 136–137, before replaying the account and remote migrations without losing fork state.
 - Keep streamed and completed subagent reasoning under one child-owned row, project-local provider catalogs, and account-local options.

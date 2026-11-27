@@ -9,9 +9,10 @@ import "../../index.css";
 
 import { EventId, MessageId, TurnId, type OrchestrationThreadActivity } from "@synara/contracts";
 import { useState, type ComponentProps } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { render } from "vitest-browser-react";
 
+import { setLanguagePreference } from "~/i18n";
 import { MessagesTimeline } from "./MessagesTimeline";
 import type { TimelineEntry } from "../../session-logic";
 import { deriveTimelineEntries, deriveWorkLogEntries } from "../../workLog";
@@ -174,7 +175,9 @@ async function expectTailRunSettled(label = "Ran 2 commands"): Promise<HTMLButto
 }
 
 describe("MessagesTimeline tool group collapse", () => {
+  beforeEach(() => setLanguagePreference("en"));
   afterEach(() => {
+    setLanguagePreference("system");
     document.body.innerHTML = "";
   });
 
@@ -498,57 +501,107 @@ describe("MessagesTimeline tool group collapse", () => {
     }
   });
 
-  it.each(["reasoning", "tool summary"] as const)(
-    "keeps %s between tool runs as full Markdown transcript text",
-    async (kind) => {
-      const host = createTimelineHost();
-      const onOpenAgentActivity = vi.fn();
-      const reasoning: TimelineEntry = {
+  it("keeps a reasoning block expandable when it settles between tool runs", async () => {
+    const host = createTimelineHost();
+    const entries = (reasoningStatus: "inProgress" | "completed"): TimelineEntry[] => [
+      ...SETTLED_COMMANDS.map((command, index) => commandEntry(`before-${index}`, command)),
+      {
         id: "reasoning-row",
         kind: "work",
         createdAt: "2026-03-17T19:12:28.000Z",
         entry: {
           id: "reasoning-row",
           createdAt: "2026-03-17T19:12:28.000Z",
-          label: kind === "reasoning" ? "Reasoning trace" : "Tool summary",
-          tone: kind === "reasoning" ? "tool" : "info",
-          ...(kind === "reasoning"
-            ? { toolCallId: "reasoning-item", toolStatus: "running" as const }
-            : { activityKind: "tool.summary" }),
-          detail: "First inspect the `provider` boundary.\n\nThen verify cancellation.",
+          label: "Reasoning trace",
+          tone: "tool",
+          toolCallId: "reasoning-item",
+          reasoningStatus,
+          detail:
+            reasoningStatus === "inProgress"
+              ? "First inspect the `provider` boundary."
+              : "First inspect the `provider` boundary.\n\nThen verify cancellation.",
         },
-      };
-      const screen = await render(
-        <ToolGroupCollapseTimeline
-          timelineEntries={[
-            ...SETTLED_COMMANDS.map((command, index) => commandEntry(`before-${index}`, command)),
-            reasoning,
-            ...LIVE_COMMANDS.map((command, index) => commandEntry(`after-${index}`, command)),
-          ]}
-          onOpenAgentActivity={onOpenAgentActivity}
-        />,
-        { container: host },
+      },
+      ...LIVE_COMMANDS.map((command, index) => commandEntry(`after-${index}`, command)),
+    ];
+    const screen = await render(
+      <ToolGroupCollapseTimeline timelineEntries={entries("inProgress")} />,
+      { container: host },
+    );
+
+    try {
+      const panel = screen.getByText("First inspect the", { exact: false });
+      await expect.element(panel).toBeVisible();
+      expect(host.querySelector("[data-reasoning-stream-region] code")?.textContent).toBe(
+        "provider",
       );
 
-      try {
-        await expect.poll(() => findSummaryTrigger("Ran 4 commands") !== null).toBe(true);
-        await expectTailRunSettled();
-        expect(isVisibleOutsideClosedDisclosure("First inspect the")).toBe(true);
-        expect(isVisibleOutsideClosedDisclosure("Then verify cancellation.")).toBe(true);
-        const prose = host.querySelector<HTMLElement>("[data-work-entry-prose='true']");
-        expect(prose).not.toBeNull();
-        expect(prose!.querySelectorAll("p")).toHaveLength(2);
-        expect(prose!.querySelector("code")?.textContent).toBe("provider");
-        expect(prose!.textContent).not.toContain("`");
-        expect(prose!.closest("button")).toBeNull();
-        expect(prose!.querySelector("[data-work-entry-icon='true']")).toBeNull();
-        expect(onOpenAgentActivity).not.toHaveBeenCalled();
-      } finally {
-        await screen.unmount();
-        host.remove();
-      }
-    },
-  );
+      await screen.rerender(<ToolGroupCollapseTimeline timelineEntries={entries("completed")} />);
+      const trigger = screen.getByRole("button", { name: "Reasoning", exact: true });
+      await expect.element(trigger).toHaveAttribute("aria-expanded", "false");
+      await expect.element(panel).not.toBeInTheDocument();
+      await expect.poll(() => findSummaryTrigger("Ran 4 commands") !== null).toBe(true);
+      await expectTailRunSettled();
+
+      await trigger.click();
+      await expect
+        .element(screen.getByText("Then verify cancellation.", { exact: true }))
+        .toBeVisible();
+      const reasoning = host.querySelector("[data-reasoning-stream-region]");
+      expect(reasoning?.querySelector("code")?.textContent).toBe("provider");
+      expect(reasoning?.closest("button")).toBeNull();
+
+      await trigger.click();
+      await expect.element(panel).not.toBeInTheDocument();
+    } finally {
+      await screen.unmount();
+      host.remove();
+    }
+  });
+
+  it("keeps a tool summary between tool runs as full Markdown transcript text", async () => {
+    const host = createTimelineHost();
+    const summary: TimelineEntry = {
+      id: "summary-row",
+      kind: "work",
+      createdAt: "2026-03-17T19:12:28.000Z",
+      entry: {
+        id: "summary-row",
+        createdAt: "2026-03-17T19:12:28.000Z",
+        label: "Tool summary",
+        tone: "info",
+        activityKind: "tool.summary",
+        detail: "First inspect the `provider` boundary.\n\nThen verify cancellation.",
+      },
+    };
+    const screen = await render(
+      <ToolGroupCollapseTimeline
+        timelineEntries={[
+          ...SETTLED_COMMANDS.map((command, index) => commandEntry(`before-${index}`, command)),
+          summary,
+          ...LIVE_COMMANDS.map((command, index) => commandEntry(`after-${index}`, command)),
+        ]}
+      />,
+      { container: host },
+    );
+
+    try {
+      await expect.poll(() => findSummaryTrigger("Ran 4 commands") !== null).toBe(true);
+      await expectTailRunSettled();
+      expect(isVisibleOutsideClosedDisclosure("First inspect the")).toBe(true);
+      expect(isVisibleOutsideClosedDisclosure("Then verify cancellation.")).toBe(true);
+      const prose = host.querySelector<HTMLElement>("[data-work-entry-prose='true']");
+      expect(prose).not.toBeNull();
+      expect(prose!.querySelectorAll("p")).toHaveLength(2);
+      expect(prose!.querySelector("code")?.textContent).toBe("provider");
+      expect(prose!.textContent).not.toContain("`");
+      expect(prose!.closest("button")).toBeNull();
+      expect(prose!.querySelector("[data-work-entry-icon='true']")).toBeNull();
+    } finally {
+      await screen.unmount();
+      host.remove();
+    }
+  });
 
   it("wears a Codex status only while it is the newest entry, and a running call over it", async () => {
     const host = createTimelineHost();

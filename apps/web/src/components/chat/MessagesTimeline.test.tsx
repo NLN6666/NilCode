@@ -902,43 +902,41 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("chat-markdown-codeblock");
   });
 
-  it("renders a lone reasoning update as iconless transcript prose", async () => {
-    const { MessagesTimeline } = await import("./MessagesTimeline");
-    const activeTurnId = TurnId.makeUnsafe("turn-reasoning-lone");
-    const markup = renderToStaticMarkup(
-      <MessagesTimeline
-        {...makeTimelineBaseProps(null)}
-        isWorking
-        activeTurnInProgress
-        activeTurnId={activeTurnId}
-        activeTurnStartedAt="2026-03-17T19:12:28.000Z"
-        timelineEntries={[
-          {
-            id: "entry-reasoning-trace",
-            kind: "work",
-            createdAt: "2026-03-17T19:12:28.100Z",
-            entry: {
-              id: "reasoning-trace",
-              toolCallId: "reasoning-item",
+  it.each([undefined, "completed", "failed"] as const)(
+    "keeps a reasoning trace collapsed with status %s",
+    async (reasoningStatus) => {
+      const { MessagesTimeline } = await import("./MessagesTimeline");
+      const activeTurnId = TurnId.makeUnsafe("turn-reasoning-lone");
+      const markup = renderToStaticMarkup(
+        <MessagesTimeline
+          {...makeTimelineBaseProps(null)}
+          activeTurnId={activeTurnId}
+          timelineEntries={[
+            {
+              id: "entry-reasoning-trace",
+              kind: "work",
               createdAt: "2026-03-17T19:12:28.100Z",
-              turnId: activeTurnId,
-              label: "Reasoning trace",
-              toolTitle: "Reasoning trace",
-              detail: "**Inspecting apps/web/src/store.ts**\n\n<!-- -->",
-              tone: "tool",
+              entry: {
+                id: "reasoning-trace",
+                toolCallId: "reasoning-item",
+                createdAt: "2026-03-17T19:12:28.100Z",
+                turnId: activeTurnId,
+                label: "Reasoning trace",
+                toolTitle: "Reasoning trace",
+                detail: "**Inspecting apps/web/src/store.ts**\n\n<!-- -->",
+                tone: "tool",
+                ...(reasoningStatus ? { reasoningStatus } : {}),
+              },
             },
-          },
-        ]}
-        resolvedTheme="light"
-      />,
-    );
+          ]}
+          resolvedTheme="light"
+        />,
+      );
 
-    expect(markup.match(/data-work-entry-prose="true"/g) ?? []).toHaveLength(1);
-    expect(markup).not.toContain('data-codex-status-row="true"');
-    expect(markup).not.toContain('data-work-entry-icon="true"');
-    expect(markup).toContain("Inspecting apps/web/src/store.ts");
-    expect(markup).not.toContain("Reasoning trace Inspecting");
-  });
+      expect(markup).toMatch(/<button[^>]*aria-expanded="false"[^>]*><span[^>]*>Reasoning<\/span>/);
+      expect(markup).not.toContain("Inspecting apps/web/src/store.ts");
+    },
+  );
 
   it("renders an in-progress reasoning trace as a fixed-height streaming region", async () => {
     const { MessagesTimeline } = await import("./MessagesTimeline");

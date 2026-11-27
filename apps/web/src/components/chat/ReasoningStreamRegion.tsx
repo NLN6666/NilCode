@@ -1,5 +1,5 @@
 // FILE: ReasoningStreamRegion.tsx
-// Purpose: Height-capped, auto-following panel holding a reasoning trace while it streams.
+// Purpose: Height-capped reasoning panel that follows the tail only while streaming.
 // Layer: Web chat presentation component
 // Exports: ReasoningStreamRegion
 
@@ -9,6 +9,7 @@ import { cn } from "~/lib/utils";
 import { THIN_SCROLLBAR_CLASS_NAME } from "~/surfaceStyles";
 
 import ChatMarkdown from "../ChatMarkdown";
+import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 
 // The panel fits its content up to a cap rather than reserving the cap outright:
 // a short trace - the common case - would otherwise sit pinned to the top of a
@@ -35,6 +36,11 @@ interface ReasoningStreamRegionProps {
   readonly fontSizePx: number;
   readonly compact?: boolean;
   readonly cwd?: string | undefined;
+  readonly threadId?: string | null | undefined;
+  readonly onImageExpand?:
+    | ((preview: ExpandedImagePreview, sourceImage?: HTMLImageElement) => void)
+    | undefined;
+  readonly isStreaming?: boolean;
 }
 
 export function ReasoningStreamRegion({
@@ -42,6 +48,9 @@ export function ReasoningStreamRegion({
   fontSizePx,
   compact = false,
   cwd,
+  threadId,
+  onImageExpand,
+  isStreaming = true,
 }: ReasoningStreamRegionProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Only true once the trace outgrows the cap; gates the top fade so a short trace
@@ -53,12 +62,12 @@ export function ReasoningStreamRegion({
   // stays available in the expanded detail view.
   useEffect(() => {
     const node = scrollRef.current;
-    if (!node) {
+    if (!node || !isStreaming) {
       return;
     }
     node.scrollTop = node.scrollHeight;
     setClipped(node.scrollHeight > node.clientHeight);
-  }, [text, compact]);
+  }, [text, compact, isStreaming]);
 
   const maxHeightPx = compact
     ? REASONING_STREAM_REGION_COMPACT_MAX_TEXT_HEIGHT_PX +
@@ -87,7 +96,10 @@ export function ReasoningStreamRegion({
         <ChatMarkdown
           text={text}
           cwd={cwd}
-          isStreaming
+          threadId={threadId}
+          onImageExpand={onImageExpand}
+          directionMode={isStreaming ? "off" : "auto-blocks"}
+          isStreaming={isStreaming}
           className="leading-relaxed"
           style={{
             color: "color-mix(in srgb, var(--muted-foreground) 72%, transparent)",
@@ -97,7 +109,7 @@ export function ReasoningStreamRegion({
         />
       </div>
       {/* Older lines fade out at the top instead of being cut mid-glyph. */}
-      {clipped ? (
+      {isStreaming && clipped ? (
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 top-0 h-4"
