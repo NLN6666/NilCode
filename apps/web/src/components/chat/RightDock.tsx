@@ -103,6 +103,7 @@ interface RightDockProps {
   motionKey?: string;
   activePaneRuntimeMode?: DockPaneRuntimeMode;
   browserRuntimeMode?: DockPaneRuntimeMode;
+  renderBody?: (panes: ReactNode) => ReactNode;
   renderPane: (
     pane: RightDockPane,
     context: {
@@ -338,6 +339,42 @@ export function RightDock(props: RightDockProps) {
     ? SIDEBAR_OFFCANVAS_MOTION_SUPPRESSED_CLASS
     : SIDEBAR_OFFCANVAS_MOTION_CLASS;
 
+  const panes = (
+    <div className="relative min-h-0 flex-1">
+      {activePane === null && props.launcherItems ? (
+        <RightDockLauncher items={props.launcherItems} onOpen={props.onAddPane} />
+      ) : null}
+      {renderedPanes.map((pane) => {
+        const isActive = pane.id === activePane?.id;
+        const isVisible = isActive && props.state.open;
+        // A floating browser can own the live guest while the dock stays preview-only.
+        const runtimeMode: DockPaneRuntimeMode =
+          pane.kind === "browser" ? browserRuntimeMode : isActive ? activePaneRuntimeMode : "live";
+        return (
+          <div
+            key={props.getPaneRenderKey?.(pane) ?? pane.id}
+            className={cn(
+              "absolute inset-0 flex min-h-0 w-full",
+              isActive ? undefined : "invisible pointer-events-none",
+            )}
+            aria-hidden={isVisible ? undefined : true}
+            inert={isVisible ? undefined : true}
+            data-dock-pane-id={pane.id}
+            data-native-browser-surface={
+              pane.kind === "browser" && isActive && runtimeMode === "live" ? "true" : undefined
+            }
+          >
+            {remotePaneUnavailable(pane.kind) ? (
+              <p className="p-6 text-ui text-muted-foreground">{REMOTE_NATIVE_UNAVAILABLE}</p>
+            ) : (
+              props.renderPane(pane, { runtimeMode, isActive, isVisible })
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <SidebarProvider
       defaultOpen={false}
@@ -465,47 +502,7 @@ export function RightDock(props: RightDockProps) {
               <LayoutRightIcon className="size-4" />
             </IconButton>
           </div>
-          <div className="relative min-h-0 flex-1">
-            {activePane === null && props.launcherItems ? (
-              <RightDockLauncher items={props.launcherItems} onOpen={props.onAddPane} />
-            ) : null}
-            {renderedPanes.map((pane) => {
-              const isActive = pane.id === activePane?.id;
-              const isVisible = isActive && props.state.open;
-              // Keep-mounted panes that are not the active tab are already
-              // hydrated; browser panes may use an explicit runtime mode so a
-              // floating browser can own the live guest while the dock stays preview-only.
-              const runtimeMode: DockPaneRuntimeMode =
-                pane.kind === "browser"
-                  ? browserRuntimeMode
-                  : isActive
-                    ? activePaneRuntimeMode
-                    : "live";
-              return (
-                <div
-                  key={props.getPaneRenderKey?.(pane) ?? pane.id}
-                  className={cn(
-                    "absolute inset-0 flex min-h-0 w-full",
-                    isActive ? undefined : "invisible pointer-events-none",
-                  )}
-                  aria-hidden={isVisible ? undefined : true}
-                  inert={isVisible ? undefined : true}
-                  data-dock-pane-id={pane.id}
-                  data-native-browser-surface={
-                    pane.kind === "browser" && isActive && runtimeMode === "live"
-                      ? "true"
-                      : undefined
-                  }
-                >
-                  {remotePaneUnavailable(pane.kind) ? (
-                    <p className="p-6 text-ui text-muted-foreground">{REMOTE_NATIVE_UNAVAILABLE}</p>
-                  ) : (
-                    props.renderPane(pane, { runtimeMode, isActive, isVisible })
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          {props.renderBody ? props.renderBody(panes) : panes}
         </div>
       </Sidebar>
     </SidebarProvider>

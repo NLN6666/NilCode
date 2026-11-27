@@ -15,7 +15,11 @@ import {
   type ServerSettingsView,
   type WsCompatibilityError,
 } from "@synara/contracts";
-import { defaultTerminalTitleForCliKind } from "@synara/shared/terminalThreads";
+import {
+  defaultTerminalTitleForCliKind,
+  isProjectActionTerminalScope,
+  terminalScopeIdsForThread,
+} from "@synara/shared/terminalThreads";
 import { BrowserVaultDialog } from "~/components/BrowserVault";
 import { isThreadDetailEventFor } from "@synara/shared/threadDetailEvents";
 import {
@@ -128,7 +132,7 @@ import {
 } from "../lib/terminalStateCleanup";
 import { useProjectRunStore } from "../projectRunStore";
 import { applyDaemonEvent, useDaemonStore } from "../daemonStore";
-import { dockTerminalThreadId } from "../lib/dockTerminalScope";
+import { settleExitedProjectScriptTerminal } from "../components/terminal/terminalSession";
 import { projectServiceTerminalThreadId } from "../lib/projectServiceTerminalScope";
 import { TaskCompletionNotifications } from "../notifications/taskCompletion";
 import { useWorkspacePathsStore } from "../workspacePathsStore";
@@ -2031,18 +2035,15 @@ function EventRouter() {
         })),
         draftThreadIds,
       });
-      // Right-dock terminals live under a synthetic scope derived from each active
-      // thread; retain those scopes so docked terminals are not pruned mid-session.
-      // Snapshot first: we mutate the set while iterating its prior membership.
+      // Thread-owned dock and action PTYs survive as long as their chat does.
       for (const activeThreadId of Array.from(activeThreadIds)) {
-        activeThreadIds.add(dockTerminalThreadId(activeThreadId));
+        for (const scopeId of terminalScopeIdsForThread(activeThreadId)) {
+          activeThreadIds.add(ThreadId.makeUnsafe(scopeId));
+        }
       }
-      // Services run under a synthetic project-wide scope so every thread of the project
-      // sees the same dev server; that scope belongs to no thread, so retain it explicitly
-      // for as long as the project still has a live thread. After the dock loop on purpose:
-      // a service scope must not grow a dock scope of its own.
-      for (const thread of getThreadsFromState(useStore.getState())) {
-        activeThreadIds.add(projectServiceTerminalThreadId(thread.projectId));
+      // A service belongs to the project, including projects with only draft chats.
+      for (const project of useStore.getState().projects) {
+        activeThreadIds.add(projectServiceTerminalThreadId(project.id));
       }
       removeOrphanedTerminalStates(activeThreadIds);
       removeOrphanedTerminalRuntimes(activeThreadIds);
@@ -2705,6 +2706,10 @@ function EventRouter() {
     });
     const unsubTerminalEvent = api.terminal.onEvent((event) => {
       const terminalThreadId = ThreadId.makeUnsafe(event.threadId);
+      if (event.type === "exited" && isProjectActionTerminalScope(event.threadId)) {
+        settleExitedProjectScriptTerminal(api, terminalThreadId, event.terminalId);
+        return;
+      }
       if (event.type === "activity") {
         const terminalStore = useTerminalStateStore.getState();
         const currentCliKind =

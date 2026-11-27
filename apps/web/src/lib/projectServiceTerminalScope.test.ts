@@ -43,23 +43,23 @@ describe("resolveProjectScriptTerminalScope", () => {
   });
 
   // A test or build run has no port to collide on and belongs to whoever asked for it.
-  it("leaves non-service runs in the calling chat", () => {
+  it("isolates non-service runs from regular terminals and other chats", () => {
     expect(
       resolveProjectScriptTerminalScope({
         isService: false,
         projectId: PROJECT_ERP,
         threadId: THREAD_A,
       }),
-    ).toBe(THREAD_A);
+    ).toBe(`project-action:${THREAD_A}`);
   });
 
-  it("falls back to the chat's own scope when there is no project to share with", () => {
+  it("falls back to the chat's action scope when there is no project to share with", () => {
     expect(
       resolveProjectScriptTerminalScope({
         isService: true,
         projectId: null,
         threadId: THREAD_A,
       }),
-    ).toBe(THREAD_A);
+    ).toBe(`project-action:${THREAD_A}`);
   });
 });

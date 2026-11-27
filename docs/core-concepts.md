@@ -721,19 +721,20 @@ Each chat has one main-view terminal panel and can have multiple independent
 terminal tabs in its right dock. Every **+ → Terminal** creates a new dock tab
 with its own shell session. Switching tabs preserves their sessions; closing or
 exiting one terminal leaves the others running. Dock tabs and session identities
-are restored after reload. Terminals have no nested tabs, groups, splits, or bottom
-drawer. Opening the main-view terminal again focuses its existing session.
+are restored after reload. Ordinary terminals have no nested tabs, groups, or
+splits. Opening the main-view terminal again focuses its existing session.
 The right dock remembers its resized width per chat across thread switches,
 panel tab changes, closing and reopening the dock, and reloads. When a smaller
 window cannot fit that width beside the composer, the dock temporarily uses its
 opening width and restores the saved resize when space returns.
-Project actions open a fresh session in the right dock with the requested working
-directory and environment, keeping the center chat unchanged, including in split
-chats. They replace only the selected idle dock terminal; its busy command must
-be stopped before another action runs there. Other dock sessions remain running.
+Project actions run in their own terminals below the right dock, using the
+requested working directory and environment. The terminals start collapsed,
+without replacing or interrupting any dock tab or changing the center chat,
+including in split chats. Expand an action terminal to inspect its output. **Stop**
+ends the action and removes its terminal. Actions with a preview port share their
+service terminal across chats in the same project.
 On upgrade, the last active terminal is retained. Retired nested sessions are closed only when the
 server verifies they are idle, preserving their saved history. Busy sessions or
 sessions whose activity cannot be checked remain pending for the next mount.
-Project actions use the same server check, including after reloading the app.
 Opening a workspace path verifies on the server that the shell is idle before sending navigation input.
 A failed explicit close keeps the terminal visible and usable. Reopening after close or shell exit uses a new session identity so delayed cleanup cannot terminate the new shell.

@@ -180,7 +180,9 @@ export interface EnvironmentPanelProps {
    */
   projectActions?: {
     readonly scripts: readonly ProjectScript[];
+    readonly runningScriptIds: ReadonlySet<string>;
     readonly onRunScript: (script: ProjectScript) => void;
+    readonly onStopScript: (script: ProjectScript) => void;
     readonly onAddScript: (input: NewProjectScriptInput) => Promise<void> | void;
     readonly onUpdateScript: (
       scriptId: string,
@@ -410,7 +412,9 @@ export function EnvironmentPanel({
         <EnvironmentActionsSection
           scripts={projectActions.scripts}
           keybindings={keybindings}
+          runningScriptIds={projectActions.runningScriptIds}
           onRunScript={projectActions.onRunScript}
+          onStopScript={projectActions.onStopScript}
           onAddScript={projectActions.onAddScript}
           onUpdateScript={projectActions.onUpdateScript}
           onDeleteScript={projectActions.onDeleteScript}

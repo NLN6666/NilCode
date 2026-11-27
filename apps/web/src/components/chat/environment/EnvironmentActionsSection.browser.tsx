@@ -27,7 +27,9 @@ async function mountActionsSection(scripts: ProjectScript[] = []) {
     <EnvironmentActionsSection
       scripts={scripts}
       keybindings={EMPTY_KEYBINDINGS}
+      runningScriptIds={new Set()}
       onRunScript={onRunScript}
+      onStopScript={vi.fn()}
       onAddScript={onAddScript}
       onUpdateScript={onUpdateScript}
       onDeleteScript={onDeleteScript}

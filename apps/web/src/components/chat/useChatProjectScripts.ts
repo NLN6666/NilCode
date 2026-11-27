@@ -5,16 +5,15 @@ import {
   type ProjectScript,
 } from "@synara/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useProjectScriptPreview } from "~/hooks/useProjectScriptPreview";
-import { dockTerminalThreadId } from "~/lib/dockTerminalScope";
 import { persistProjectLaunchConfig } from "~/lib/launchConfigReactQuery";
 import { abortProjectPreview } from "~/lib/projectPreviewLauncher";
 import { resolveProjectScriptTerminalScope } from "~/lib/projectServiceTerminalScope";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
 import { serverLocalServersQueryOptions, serverQueryKeys } from "~/lib/serverReactQuery";
-import { newCommandId, randomUUID } from "~/lib/utils";
+import { newCommandId } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
 import {
   commandForProjectScript,
@@ -23,11 +22,11 @@ import {
   type ProjectScriptRunResult,
 } from "~/projectScripts";
 import { runProjectCommandInTerminal } from "~/projectTerminalRunner";
-import { selectRightDockState, useRightDockStore } from "~/rightDockStore";
+import { useRightDockStore } from "~/rightDockStore";
 import { isElectron } from "../../env";
 import {
-  selectRunningServiceScriptIds,
-  selectServiceTerminalIdsForScript,
+  selectRunningProjectScriptIds,
+  selectProjectScriptTerminalIds,
   selectThreadTerminalState,
   useTerminalStateStore,
 } from "../../terminalStateStore";
@@ -41,10 +40,12 @@ import {
   LastInvokedScriptByProjectSchema,
 } from "../ChatView.logic";
 import { type NewProjectScriptInput } from "./ProjectActionDialog";
-import { disposeAndCloseTerminalSession } from "../terminal/terminalSession";
+import { closeProjectScriptTerminal } from "../terminal/terminalSession";
 import { randomTerminalId } from "../terminal/terminalIds";
 import { toastManager } from "../ui/toast";
 const EMPTY_LAST_INVOKED_SCRIPT_BY_PROJECT: Record<string, string> = {};
+// Several chats can launch the same project-wide service before its first activity event.
+const pendingScriptLaunches = new Set<string>();
 interface ChatProjectScriptsInput {
   activeThreadId: ThreadId | null;
   activeThread: Thread | undefined;
@@ -65,9 +66,6 @@ export function useChatProjectScripts({
   setThreadError,
 }: ChatProjectScriptsInput) {
   const queryClient = useQueryClient();
-  const pendingScriptThreads = useRef(new Set<ThreadId>());
-  const storeEnsureDockTerminal = useTerminalStateStore((state) => state.ensureDockTerminal);
-  const storeSetTerminalMetadata = useTerminalStateStore((state) => state.setTerminalMetadata);
   const { startPreview } = useProjectScriptPreview({
     projectId: activeProject?.id ?? null,
     openBrowserUrl,
@@ -77,6 +75,17 @@ export function useChatProjectScripts({
     EMPTY_LAST_INVOKED_SCRIPT_BY_PROJECT,
     LastInvokedScriptByProjectSchema,
   );
+  const activeProjectId = activeProject?.id ?? null;
+  const actionScopeId = resolveProjectScriptTerminalScope({
+    isService: false,
+    projectId: activeProjectId,
+    threadId: activeThreadId,
+  });
+  const serviceScopeId = resolveProjectScriptTerminalScope({
+    isService: true,
+    projectId: activeProjectId,
+    threadId: activeThreadId,
+  });
 
   const runProjectScript = useCallback(
     async (
@@ -85,6 +94,22 @@ export function useChatProjectScripts({
     ): Promise<ProjectScriptRunResult | null> => {
       const api = readNativeApi();
       if (!api || !activeThreadId || !activeProject || !activeThread) return null;
+      const terminalThreadId = script.port != null ? serviceScopeId : actionScopeId;
+      if (terminalThreadId === null) return null;
+      const terminalStore = useTerminalStateStore.getState();
+      const terminalState = selectThreadTerminalState(
+        terminalStore.terminalStateByThreadId,
+        terminalThreadId,
+      );
+      const launchKey = `${terminalThreadId}\0${script.id}`;
+      if (
+        pendingScriptLaunches.has(launchKey) ||
+        terminalState.runningTerminalIds.some(
+          (id) => terminalState.projectScriptIdsByTerminalId[id] === script.id,
+        )
+      ) {
+        return null;
+      }
       if (options?.rememberAsLastInvoked !== false) {
         setLastInvokedScriptByProjectId((current) => {
           if (current[activeProject.id] === script.id) return current;
@@ -92,44 +117,6 @@ export function useChatProjectScripts({
         });
       }
       const targetCwd = options?.cwd ?? gitCwd ?? activeProject.cwd;
-      const isService = script.port !== null && script.port !== undefined;
-      const terminalThreadId = isService
-        ? (resolveProjectScriptTerminalScope({
-            isService,
-            projectId: activeProject.id,
-            threadId: activeThreadId,
-          }) ?? activeThreadId)
-        : dockTerminalThreadId(activeThreadId);
-      const terminalState = selectThreadTerminalState(
-        useTerminalStateStore.getState().terminalStateByThreadId,
-        terminalThreadId,
-      );
-      const dock = isService
-        ? null
-        : selectRightDockState(activeThreadId)(useRightDockStore.getState());
-      const terminalPane =
-        dock?.panes.find((pane) => pane.id === dock.activePaneId && pane.kind === "terminal") ??
-        dock?.panes.find(
-          (pane) =>
-            pane.kind === "terminal" &&
-            terminalState?.dockTerminalIdsByPaneId?.[pane.id] === terminalState?.activeTerminalId,
-        ) ??
-        dock?.panes.find((pane) => pane.kind === "terminal");
-      const targetPaneId = isService ? script.id : (terminalPane?.id ?? randomUUID());
-      const baseTerminalId =
-        terminalState.dockTerminalIdsByPaneId?.[targetPaneId] ??
-        (isService ? selectServiceTerminalIdsForScript(terminalState, script.id)[0] : undefined);
-      if (
-        pendingScriptThreads.current.has(terminalThreadId) ||
-        (baseTerminalId !== undefined && terminalState?.runningTerminalIds.includes(baseTerminalId))
-      ) {
-        const error = new Error(
-          "The right-side terminal is busy. Stop its command before running another action.",
-        );
-        setThreadError(activeThreadId, error.message);
-        if (options?.throwOnError) throw error;
-        return null;
-      }
       const targetTerminalId = randomTerminalId();
 
       // React Compiler cannot lower value blocks directly inside `try`; keep
@@ -147,57 +134,33 @@ export function useChatProjectScripts({
           worktreePath: options?.worktreePath ?? activeThread.worktreePath ?? null,
           ...(options?.env ? { env: options.env } : {}),
           onOpened: () => {
-            // Attach only after the requested cwd/env are set, but before writing
-            // so the session stays accessible if command delivery fails.
-            storeEnsureDockTerminal(terminalThreadId, targetPaneId, targetTerminalId);
-            // Services stay below the browser; only their terminal ownership changes.
-            if (isService) return;
-            const dockStore = useRightDockStore.getState();
-            if (
-              selectRightDockState(activeThreadId)(dockStore).panes.some(
-                (pane) => pane.id === targetPaneId,
-              )
-            ) {
-              dockStore.setActivePane(activeThreadId, targetPaneId);
-              dockStore.setDockOpen(activeThreadId, true);
-            } else {
-              dockStore.openPane(activeThreadId, { kind: "terminal", paneId: targetPaneId });
-            }
+            // Register before sending input so activity is tracked while the row is collapsed.
+            terminalStore.registerProjectScriptTerminal(
+              terminalThreadId,
+              targetTerminalId,
+              script.id,
+              script.name,
+            );
+            useRightDockStore.getState().setDockOpen(activeThreadId, true);
           },
         });
         if (metadata) {
-          storeSetTerminalMetadata(terminalThreadId, targetTerminalId, {
+          terminalStore.setTerminalMetadata(terminalThreadId, targetTerminalId, {
             cliKind: metadata.cliKind,
             label: metadata.label,
           });
         }
-        if (isService) {
-          useTerminalStateStore
-            .getState()
-            .markTerminalServiceScript(terminalThreadId, targetTerminalId, script.id);
+        const current = useTerminalStateStore.getState().terminalStateByThreadId[terminalThreadId];
+        if (current?.projectScriptIdsByTerminalId[targetTerminalId] === script.id) {
+          startPreview(script);
         }
-        startPreview(script);
       };
 
-      pendingScriptThreads.current.add(terminalThreadId);
+      pendingScriptLaunches.add(launchKey);
       try {
-        // Hydration omits client activity, so the server must verify an owned
-        // session is idle. An unmapped pane must never borrow a sibling's ID.
-        if (baseTerminalId !== undefined) {
-          await disposeAndCloseTerminalSession({
-            api,
-            threadId: terminalThreadId,
-            terminalId: baseTerminalId,
-            onlyIfIdle: true,
-            deleteHistory: false,
-          });
-          useTerminalStateStore.getState().closeTerminal(terminalThreadId, baseTerminalId);
-        }
         await runScriptInTargetTerminal();
-        pendingScriptThreads.current.delete(terminalThreadId);
         return { threadId: terminalThreadId, terminalId: targetTerminalId };
       } catch (error) {
-        pendingScriptThreads.current.delete(terminalThreadId);
         setThreadError(
           activeThreadId,
           error instanceof Error ? error.message : `Failed to run script "${script.name}".`,
@@ -208,62 +171,53 @@ export function useChatProjectScripts({
             : new Error(`Failed to run script "${script.name}".`);
         }
         return null;
+      } finally {
+        pendingScriptLaunches.delete(launchKey);
       }
     },
     [
       activeProject,
       activeThread,
       activeThreadId,
+      actionScopeId,
       gitCwd,
       isGroupContainer,
+      serviceScopeId,
       setThreadError,
-      storeEnsureDockTerminal,
-      storeSetTerminalMetadata,
       setLastInvokedScriptByProjectId,
       startPreview,
     ],
   );
 
-  const activeProjectId = activeProject?.id ?? null;
-  const activeProjectCwd = activeProject?.cwd ?? null;
   const activeProjectScripts = activeProject?.scripts;
-  const serviceScopeId = resolveProjectScriptTerminalScope({
-    isService: true,
-    projectId: activeProjectId,
-    threadId: activeThreadId,
-  });
   const serviceTerminalState = useTerminalStateStore((state) =>
-    serviceScopeId === null
-      ? null
-      : selectThreadTerminalState(state.terminalStateByThreadId, serviceScopeId),
+    serviceScopeId === null ? undefined : state.terminalStateByThreadId[serviceScopeId],
+  );
+  const actionTerminalState = useTerminalStateStore((state) =>
+    actionScopeId === null ? undefined : state.terminalStateByThreadId[actionScopeId],
   );
   const terminalRunningProjectScriptIds = useMemo(
-    () =>
-      serviceTerminalState === null
-        ? new Set<string>()
-        : selectRunningServiceScriptIds(serviceTerminalState),
-    [serviceTerminalState],
+    () => selectRunningProjectScriptIds(actionTerminalState, serviceTerminalState),
+    [actionTerminalState, serviceTerminalState],
   );
   const launchedProjectScriptIds = useMemo(
     () =>
       new Set(
-        serviceTerminalState === null
+        serviceTerminalState === undefined
           ? []
-          : Object.values(serviceTerminalState.serviceScriptIdsByTerminalId),
+          : Object.values(serviceTerminalState.projectScriptIdsByTerminalId),
       ),
     [serviceTerminalState],
   );
   const shouldDiscoverProjectServices =
-    activeProjectCwd !== null &&
-    (activeProjectScripts?.some((script) => script.port !== null && script.port !== undefined) ??
-      false);
+    activeProjectScripts?.some((script) => script.port != null) ?? false;
   const projectLocalServersQuery = useQuery(
     serverLocalServersQueryOptions(shouldDiscoverProjectServices),
   );
   const projectLocalServers = projectLocalServersQuery.data?.servers;
   const runningProjectScriptIds = useMemo(
     () =>
-      activeProjectCwd === null || activeProjectScripts === undefined
+      activeProjectScripts === undefined
         ? terminalRunningProjectScriptIds
         : resolveRunningProjectScriptIds({
             scripts: activeProjectScripts,
@@ -272,7 +226,6 @@ export function useChatProjectScripts({
             localServers: projectLocalServers ?? [],
           }),
     [
-      activeProjectCwd,
       activeProjectScripts,
       launchedProjectScriptIds,
       projectLocalServers,
@@ -280,36 +233,26 @@ export function useChatProjectScripts({
     ],
   );
   const stopProjectScript = useCallback(
-    (script: ProjectScript) => {
+    async (script: ProjectScript) => {
       const api = readNativeApi();
-      if (activeProjectId) abortProjectPreview(activeProjectId);
-      if (!api || !activeThreadId || serviceScopeId === null || serviceTerminalState === null) {
-        return;
-      }
-      const serviceTerminalIds = selectServiceTerminalIdsForScript(serviceTerminalState, script.id);
-      // Interrupt rather than close so the service's diagnostic output remains readable.
-      for (const terminalId of serviceTerminalIds) {
-        void api.terminal
-          .write({ threadId: serviceScopeId, terminalId, data: "\u0003" })
-          .finally(() => {
-            void queryClient.invalidateQueries({ queryKey: serverQueryKeys.localServers() });
-          })
-          .catch((error: unknown) => {
-            setThreadError(
-              activeThreadId,
-              error instanceof Error ? error.message : `Failed to stop "${script.name}".`,
-            );
-          });
-      }
-      if (serviceTerminalIds.length > 0 || activeProjectCwd === null) return;
-      const localServer = findLocalServerForProjectScript({
-        script,
-        localServers: projectLocalServers ?? [],
-        launchedScriptIds: launchedProjectScriptIds,
-      });
       const port = script.port;
-      if (localServer === null || port === null || port === undefined) return;
-      if (!localServer.isStoppable) {
+      const threadId = port != null ? serviceScopeId : actionScopeId;
+      if (!api || !activeThreadId || threadId === null) return;
+      if (port != null && activeProjectId) abortProjectPreview(activeProjectId);
+      const state = selectThreadTerminalState(
+        useTerminalStateStore.getState().terminalStateByThreadId,
+        threadId,
+      );
+      const terminalIds = selectProjectScriptTerminalIds(state, script.id);
+      const localServer =
+        port != null && !terminalIds.some((id) => state.runningTerminalIds.includes(id))
+          ? findLocalServerForProjectScript({
+              script,
+              localServers: projectLocalServers ?? [],
+              launchedScriptIds: launchedProjectScriptIds,
+            })
+          : null;
+      if (localServer && !localServer.isStoppable) {
         setThreadError(
           activeThreadId,
           localServer.stopDisabledReason ??
@@ -317,27 +260,29 @@ export function useChatProjectScripts({
         );
         return;
       }
-      void api.server
-        .stopLocalServer({ pid: localServer.pid, port })
-        .finally(() => {
-          void queryClient.invalidateQueries({ queryKey: serverQueryKeys.localServers() });
-        })
-        .catch((error: unknown) => {
-          setThreadError(
-            activeThreadId,
-            error instanceof Error ? error.message : `Failed to stop "${script.name}".`,
-          );
-        });
+      try {
+        // A detached service can outlive its shell. Keep its ownership if stopping it fails.
+        if (localServer && port != null) {
+          await api.server.stopLocalServer({ pid: localServer.pid, port });
+        }
+        await Promise.all(terminalIds.map((id) => closeProjectScriptTerminal(api, threadId, id)));
+      } catch (error) {
+        setThreadError(
+          activeThreadId,
+          error instanceof Error ? error.message : `Failed to stop "${script.name}".`,
+        );
+      } finally {
+        void queryClient.invalidateQueries({ queryKey: serverQueryKeys.localServers() });
+      }
     },
     [
-      activeProjectCwd,
+      actionScopeId,
       activeProjectId,
       activeThreadId,
       launchedProjectScriptIds,
       projectLocalServers,
       queryClient,
       serviceScopeId,
-      serviceTerminalState,
       setThreadError,
     ],
   );

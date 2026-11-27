@@ -25,6 +25,10 @@ import {
   noopChatSurfaceAction,
 } from "./ChatThreadSurfacePrimitives";
 import { BrowserDockPane } from "./BrowserDockPane";
+import {
+  ProjectActionTerminalSplit,
+  useHasProjectActionTerminals,
+} from "./ProjectActionTerminalSplit";
 import { FloatingBrowserPanel } from "./FloatingBrowserPanel";
 import { shouldRenderFloatingBrowserPanel } from "./floatingBrowserPanel.logic";
 import { useFloatingBrowserRequestStore } from "./floatingBrowserRequestStore";
@@ -102,6 +106,7 @@ function SplitPaneEmbeddedPanel(props: {
   threadId: ThreadId | null;
   browserSurfaceId: ThreadId | null;
   projectId: ProjectId | null;
+  hasActionTerminals: boolean;
   onClosePanel: () => void;
   onOpenThread: (threadId: ThreadId) => void;
   panelState: Pick<SplitViewPanePanelState, "panel" | "diffTurnId" | "diffFilePath">;
@@ -127,6 +132,7 @@ function SplitPaneEmbeddedPanel(props: {
       )
     : undefined;
   const panel = terminalPane || subagentsPane || backgroundTasksPane ? null : props.panel;
+  const actionsVisible = dockState.open && props.hasActionTerminals;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const panelWidthStorageKey =
     panel === "browser" ? "browser" : panel === "diff" ? "diff" : "panel";
@@ -203,7 +209,11 @@ function SplitPaneEmbeddedPanel(props: {
   };
 
   if (
-    (!props.panelOpen && !terminalPane && !subagentsPane && !backgroundTasksPane) ||
+    (!props.panelOpen &&
+      !terminalPane &&
+      !subagentsPane &&
+      !backgroundTasksPane &&
+      !actionsVisible) ||
     !props.threadId
   ) {
     return null;
@@ -212,7 +222,6 @@ function SplitPaneEmbeddedPanel(props: {
   return (
     <div
       ref={wrapperRef}
-      data-native-browser-surface={panel === "browser" ? "true" : undefined}
       className="relative flex h-full min-h-0 min-w-0 flex-none border-l border-[var(--app-surface-divider)] bg-card text-foreground"
       style={
         {
@@ -226,62 +235,71 @@ function SplitPaneEmbeddedPanel(props: {
         className="absolute inset-y-0 left-0 z-20 w-2 -translate-x-1/2 cursor-col-resize bg-transparent before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-[var(--app-surface-divider)]"
         onPointerDown={startResize}
       />
-      {subagentsPane ? (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <DockPaneHeader
-            title={t("chat:subagents")}
-            closeLabel={t("chat:hideSubagents")}
-            onClose={props.onClosePanel}
-          />
-          <SubagentsDockPane
-            hostThreadId={props.threadId}
-            splitViewId={props.splitViewId}
-            onOpenThread={props.onOpenThread}
-          />
-        </div>
-      ) : backgroundTasksPane ? (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <DockPaneHeader
-            title={t("chat:backgroundTasks")}
-            closeLabel={t("chat:hideBackgroundTasks")}
-            onClose={props.onClosePanel}
-          />
-          <BackgroundTasksDockPane hostThreadId={props.threadId} />
-        </div>
-      ) : terminalPane ? (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <DockPaneHeader
-            title={t("workspace:viewportPane_terminal")}
-            closeLabel={t("workspace:hideTerminal")}
-            onClose={props.onClosePanel}
-          />
-          <Suspense fallback={<PanelStateMessage>{t("chat:loadingTerminal")}</PanelStateMessage>}>
-            <DockTerminalPane
+      <ProjectActionTerminalSplit
+        hostThreadId={props.threadId}
+        projectId={props.projectId}
+        paneScopeId={props.paneScopeId}
+        isVisible={actionsVisible}
+      >
+        {subagentsPane ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <DockPaneHeader
+              title={t("chat:subagents")}
+              closeLabel={t("chat:hideSubagents")}
+              onClose={props.onClosePanel}
+            />
+            <SubagentsDockPane
               hostThreadId={props.threadId}
-              paneId={terminalPane.id}
-              projectId={props.projectId}
-              paneScopeId={props.paneScopeId}
+              splitViewId={props.splitViewId}
+              onOpenThread={props.onOpenThread}
+            />
+          </div>
+        ) : backgroundTasksPane ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <DockPaneHeader
+              title={t("chat:backgroundTasks")}
+              closeLabel={t("chat:hideBackgroundTasks")}
+              onClose={props.onClosePanel}
+            />
+            <BackgroundTasksDockPane hostThreadId={props.threadId} />
+          </div>
+        ) : terminalPane ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <DockPaneHeader
+              title={t("workspace:viewportPane_terminal")}
+              closeLabel={t("workspace:hideTerminal")}
+              onClose={props.onClosePanel}
+            />
+            <Suspense fallback={<PanelStateMessage>{t("chat:loadingTerminal")}</PanelStateMessage>}>
+              <DockTerminalPane
+                hostThreadId={props.threadId}
+                paneId={terminalPane.id}
+                projectId={props.projectId}
+                paneScopeId={props.paneScopeId}
+                onClosePanel={props.onClosePanel}
+              />
+            </Suspense>
+          </div>
+        ) : panel === "browser" ? (
+          <div className="min-h-0 flex-1" data-native-browser-surface="true">
+            <BrowserDockPane
+              key={props.browserSurfaceId ?? props.threadId}
+              threadId={props.threadId}
+              paneId={props.paneId}
               onClosePanel={props.onClosePanel}
             />
-          </Suspense>
-        </div>
-      ) : panel === "browser" ? (
-        <BrowserDockPane
-          key={props.browserSurfaceId ?? props.threadId}
-          threadId={props.threadId}
-          paneId={props.paneId}
-          onClosePanel={props.onClosePanel}
-        />
-      ) : (
-        <LazyDiffPanel
-          mode="sidebar"
-          threadId={props.threadId}
-          onClosePanel={props.onClosePanel}
-          panelState={props.panelState}
-          liveRefreshEnabled={props.isFocused}
-          onUpdatePanelState={props.onUpdatePanelState}
-        />
-      )}
+          </div>
+        ) : props.panelOpen ? (
+          <LazyDiffPanel
+            mode="sidebar"
+            threadId={props.threadId}
+            onClosePanel={props.onClosePanel}
+            panelState={props.panelState}
+            liveRefreshEnabled={props.isFocused}
+            onUpdatePanelState={props.onUpdatePanelState}
+          />
+        ) : null}
+      </ProjectActionTerminalSplit>
     </div>
   );
 }
@@ -397,6 +415,10 @@ function SplitPaneSurface(props: {
     dockState.panes.find(
       (pane) => pane.id === dockState.activePaneId && pane.kind === "terminal",
     ) ?? dockState.panes.find((pane) => pane.kind === "terminal");
+  const projectId =
+    props.threads.find((thread) => thread.id === props.threadId)?.projectId ??
+    props.splitView.ownerProjectId;
+  const hasActionTerminals = useHasProjectActionTerminals(props.threadId, projectId);
   const panelOpen = props.panelState.panel !== null;
   const shouldRenderPanelContent = panelOpen || props.panelState.hasOpenedPanel;
 
@@ -450,16 +472,19 @@ function SplitPaneSurface(props: {
               isFocusedPane={props.isFocused}
               panelState={props.panelState}
               onToggleDiff={props.onToggleDiff}
-              {...(terminalPane && props.threadId
+              {...((terminalPane || hasActionTerminals) && props.threadId
                 ? {
                     onToggleRightDock: () => {
                       const store = useRightDockStore.getState();
                       const hostId = props.threadId!;
                       const current = selectRightDockState(hostId)(store);
-                      const terminalVisible =
-                        current.open && current.activePaneId === terminalPane.id;
-                      store.setActivePane(hostId, terminalPane.id);
-                      store.setDockOpen(hostId, !terminalVisible);
+                      const dockVisible =
+                        current.open &&
+                        (hasActionTerminals || current.activePaneId === terminalPane?.id);
+                      if (terminalPane && !hasActionTerminals) {
+                        store.setActivePane(hostId, terminalPane.id);
+                      }
+                      store.setDockOpen(hostId, !dockVisible);
                     },
                   }
                 : {})}
@@ -496,10 +521,8 @@ function SplitPaneSurface(props: {
         panel={props.panelState.panel}
         threadId={props.threadId}
         browserSurfaceId={props.browserSurfaceId}
-        projectId={
-          props.threads.find((thread) => thread.id === props.threadId)?.projectId ??
-          props.splitView.ownerProjectId
-        }
+        projectId={projectId}
+        hasActionTerminals={hasActionTerminals}
         onClosePanel={props.onClosePanel}
         onOpenThread={props.onSelectThread}
         panelState={props.panelState}

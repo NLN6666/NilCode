@@ -12,6 +12,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import {
   defaultTerminalTitleForCliKind,
   consumeTerminalIdentityInput,
+  isProjectActionTerminalScope,
 } from "@synara/shared/terminalThreads";
 import { describeErrorMessage } from "@synara/shared/errorMessages";
 import {
@@ -190,6 +191,7 @@ function buildOpenInput(entry: TerminalRuntimeEntry) {
     cwd: entry.cwd,
     cols: entry.terminal.cols,
     rows: entry.terminal.rows,
+    ...(isProjectActionTerminalScope(entry.threadId) ? { attachOnly: true } : {}),
     ...(entry.providerAuthInstanceId
       ? { providerAuthInstanceId: entry.providerAuthInstanceId }
       : {}),

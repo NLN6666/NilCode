@@ -47,6 +47,8 @@ export const TerminalOpenInput = Schema.Struct({
   cols: Schema.optional(TerminalColsSchema),
   rows: Schema.optional(TerminalRowsSchema),
   env: Schema.optional(TerminalEnvSchema),
+  // Display an existing session; a late viewer must not recreate a closed PTY.
+  attachOnly: Schema.optional(Schema.Boolean),
   // When false, the PTY is still drained and history is still maintained, but
   // live `output` events are not broadcast. Used for headless background
   // sessions (e.g. dev servers) whose output no renderer consumes. Defaults to

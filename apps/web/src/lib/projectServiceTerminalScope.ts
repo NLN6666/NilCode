@@ -12,7 +12,10 @@
 // every existing `threadId` slot (store, runtime registry, server session) unchanged.
 
 import type { ProjectId, ThreadId } from "@synara/contracts";
-import { PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX } from "@synara/shared/terminalThreads";
+import {
+  PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX,
+  projectActionTerminalScopeId,
+} from "@synara/shared/terminalThreads";
 
 export function projectServiceTerminalThreadId(projectId: ProjectId): ThreadId {
   return `${PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX}${projectId}` as ThreadId;
@@ -20,7 +23,7 @@ export function projectServiceTerminalThreadId(projectId: ProjectId): ThreadId {
 
 /**
  * Which terminal scope a project action runs in — the single source of this rule, shared by
- * the runner (start), the action buttons (status + stop), and the preview pane (display), so
+ * the runner (start), the action buttons (status + stop), and the Dock footer (display), so
  * they can never disagree about where a service lives.
  *
  * A service runs project-wide; a test or build run belongs to the chat that asked for it. A
@@ -34,5 +37,7 @@ export function resolveProjectScriptTerminalScope(input: {
   if (input.isService && input.projectId !== null) {
     return projectServiceTerminalThreadId(input.projectId);
   }
-  return input.threadId;
+  return input.threadId === null
+    ? null
+    : (projectActionTerminalScopeId(input.threadId) as ThreadId);
 }

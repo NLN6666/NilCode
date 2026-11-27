@@ -26,6 +26,7 @@ import {
   SYNARA_TERMINAL_HOOK_OSC_PREFIX,
   SYNARA_TERMINAL_CLI_KIND_ENV_KEY,
   DOCK_TERMINAL_SCOPE_PREFIX,
+  PROJECT_ACTION_TERMINAL_SCOPE_PREFIX,
   PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX,
   type TerminalActivityState,
   type TerminalAgentHookEventType,
@@ -181,11 +182,14 @@ function terminalOwnerThreadId(threadId: string): ThreadId | undefined {
   }
   const hostThreadId = threadId.startsWith(DOCK_TERMINAL_SCOPE_PREFIX)
     ? threadId.slice(DOCK_TERMINAL_SCOPE_PREFIX.length)
-    : threadId;
+    : threadId.startsWith(PROJECT_ACTION_TERMINAL_SCOPE_PREFIX)
+      ? threadId.slice(PROJECT_ACTION_TERMINAL_SCOPE_PREFIX.length)
+      : threadId;
   if (
     hostThreadId.length === 0 ||
     hostThreadId.startsWith(PROJECT_DEV_SERVER_THREAD_PREFIX) ||
     hostThreadId.startsWith(PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX) ||
+    hostThreadId.startsWith(PROJECT_ACTION_TERMINAL_SCOPE_PREFIX) ||
     hostThreadId.startsWith(DOCK_TERMINAL_SCOPE_PREFIX)
   ) {
     return undefined;
@@ -933,13 +937,14 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
 
   async open(raw: TerminalOpenInput): Promise<TerminalSessionSnapshot> {
     const input = decodeTerminalOpenInput(raw);
-    await this.refreshManagedProfileWrappers();
+    if (!input.attachOnly) await this.refreshManagedProfileWrappers();
     return this.runWithThreadLock(input.threadId, async () => {
-      await this.assertValidCwd(input.cwd);
+      if (!input.attachOnly) await this.assertValidCwd(input.cwd);
 
       const sessionKey = toSessionKey(input.threadId, input.terminalId);
       const existing = this.sessions.get(sessionKey);
       if (!existing) {
+        if (input.attachOnly) throw new Error("The terminal session has already closed.");
         await this.flushPersistQueue(input.threadId, input.terminalId);
         const history = input.providerAuthInstanceId
           ? ""
@@ -999,6 +1004,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
       if (existing.providerAuthInstanceId !== input.providerAuthInstanceId) {
         throw new Error("A terminal cannot switch its authentication account.");
       }
+      if (input.attachOnly && !existing.process) return this.snapshot(existing);
       existing.lastOpenedAt = new Date().toISOString();
       // Reconnect preserves a finished login; it must never start another login.
       if (existing.providerAuthInstanceId) {
@@ -1014,17 +1020,18 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
       if (input.streamOutput !== undefined) {
         existing.streamOutput = input.streamOutput;
       }
-      const nextRuntimeEnv = normalizedRuntimeEnv(input.env);
-      const currentRuntimeEnv = existing.runtimeEnv;
+      const nextRuntimeEnv = input.attachOnly
+        ? existing.runtimeEnv
+        : normalizedRuntimeEnv(input.env);
       const targetCols = input.cols ?? existing.cols;
       const targetRows = input.rows ?? existing.rows;
       const runtimeEnvChanged =
-        JSON.stringify(currentRuntimeEnv) !== JSON.stringify(nextRuntimeEnv);
+        !input.attachOnly && JSON.stringify(existing.runtimeEnv) !== JSON.stringify(nextRuntimeEnv);
 
       if (existing.process) {
         // A renderer reattach/reconcile is not an explicit restart; keep the live
         // PTY's original cwd/env so UI drift cannot SIGTERM a running agent.
-        if (existing.cwd !== input.cwd || runtimeEnvChanged) {
+        if (!input.attachOnly && (existing.cwd !== input.cwd || runtimeEnvChanged)) {
           this.logger.warn("ignoring terminal open cwd/env change for running session", {
             threadId: existing.threadId,
             terminalId: existing.terminalId,

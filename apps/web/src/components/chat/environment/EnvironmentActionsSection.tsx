@@ -10,7 +10,7 @@ import type { ProjectScript, ResolvedKeybindingsConfig } from "@synara/contracts
 import { useCallback, useMemo, useState } from "react";
 
 import { IconButton } from "~/components/ui/icon-button";
-import { PlusIcon, SettingsIcon } from "~/lib/icons";
+import { PlusIcon, SettingsIcon, StopIcon } from "~/lib/icons";
 
 import {
   ProjectActionDialog,
@@ -27,7 +27,9 @@ import {
 export interface EnvironmentActionsSectionProps {
   readonly scripts: readonly ProjectScript[];
   readonly keybindings: ResolvedKeybindingsConfig;
+  readonly runningScriptIds: ReadonlySet<string>;
   readonly onRunScript: (script: ProjectScript) => void;
+  readonly onStopScript: (script: ProjectScript) => void;
   readonly onAddScript: (input: NewProjectScriptInput) => Promise<void> | void;
   readonly onUpdateScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void> | void;
   readonly onDeleteScript: (scriptId: string) => Promise<void> | void;
@@ -36,7 +38,9 @@ export interface EnvironmentActionsSectionProps {
 export function EnvironmentActionsSection({
   scripts,
   keybindings,
+  runningScriptIds,
   onRunScript,
+  onStopScript,
   onAddScript,
   onUpdateScript,
   onDeleteScript,
@@ -89,37 +93,50 @@ export function EnvironmentActionsSection({
             {t("workspace:noProjectActions")}
           </p>
         ) : (
-          scripts.map((script) => (
-            <div key={script.id} className="group/action relative">
-              <EnvironmentRow
-                icon={<ScriptIcon icon={script.icon} className={ENVIRONMENT_ROW_ICON_CLASS_NAME} />}
-                label={<span className="truncate">{script.name}</span>}
-                trailing={
-                  <>
-                    {script.runOnWorktreeCreate ? (
-                      <span className="text-[var(--color-text-foreground-secondary)]">
-                        {t("workspace:projectActionSetup")}
-                      </span>
-                    ) : null}
-                    <span
-                      aria-hidden
-                      className="hidden w-7 group-focus-within/action:block group-hover/action:block sm:w-6"
-                    />
-                  </>
-                }
-                aria-label={t("workspace:run", { value0: script.name })}
-                onClick={() => onRunScript(script)}
-              />
-              <IconButton
-                label={t("workspace:edit", { value0: script.name })}
-                tooltip={t("workspace:editProjectAction")}
-                className="absolute top-1/2 right-2 -translate-y-1/2 opacity-0 transition-opacity group-hover/action:opacity-100 focus-visible:opacity-100"
-                onClick={() => openEditDialog(script)}
-              >
-                <SettingsIcon className="size-3.5" />
-              </IconButton>
-            </div>
-          ))
+          scripts.map((script) => {
+            const running = runningScriptIds.has(script.id);
+            return (
+              <div key={script.id} className="group/action relative">
+                <EnvironmentRow
+                  icon={
+                    running ? (
+                      <StopIcon className={`${ENVIRONMENT_ROW_ICON_CLASS_NAME} text-destructive`} />
+                    ) : (
+                      <ScriptIcon icon={script.icon} className={ENVIRONMENT_ROW_ICON_CLASS_NAME} />
+                    )
+                  }
+                  label={<span className="truncate">{script.name}</span>}
+                  trailing={
+                    <>
+                      {script.runOnWorktreeCreate ? (
+                        <span className="text-[var(--color-text-foreground-secondary)]">
+                          {t("workspace:projectActionSetup")}
+                        </span>
+                      ) : null}
+                      <span
+                        aria-hidden
+                        className="hidden w-7 group-focus-within/action:block group-hover/action:block sm:w-6"
+                      />
+                    </>
+                  }
+                  aria-label={
+                    running
+                      ? t("chat:stop2", { value0: script.name })
+                      : t("workspace:run", { value0: script.name })
+                  }
+                  onClick={() => (running ? onStopScript(script) : onRunScript(script))}
+                />
+                <IconButton
+                  label={t("workspace:edit", { value0: script.name })}
+                  tooltip={t("workspace:editProjectAction")}
+                  className="absolute top-1/2 right-2 -translate-y-1/2 opacity-0 transition-opacity group-hover/action:opacity-100 focus-visible:opacity-100"
+                  onClick={() => openEditDialog(script)}
+                >
+                  <SettingsIcon className="size-3.5" />
+                </IconButton>
+              </div>
+            );
+          })
         )}
       </EnvironmentCollapsibleSection>
 

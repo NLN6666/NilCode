@@ -521,6 +521,26 @@ describe("TerminalManager", () => {
     manager.dispose();
   });
 
+  it("attaches to an action without starting or resurrecting its shell", async () => {
+    const { manager, ptyAdapter, logsDir } = makeManager();
+    const run = openInput({ threadId: "project-action:thread-1", terminalId: "build" });
+    const viewer = { ...run, attachOnly: true, cwd: path.join(logsDir, "missing") };
+    try {
+      const started = await manager.open(run);
+      expect(await manager.open(viewer)).toMatchObject({
+        pid: started.pid,
+        cwd: run.cwd,
+        status: "running",
+      });
+      await manager.close({ threadId: run.threadId, terminalId: run.terminalId! });
+      await expect(manager.open(viewer)).rejects.toThrow("already closed");
+      expect(ptyAdapter.spawnInputs).toHaveLength(1);
+      expect(ptyAdapter.processes[0]?.killSignals).toContain("SIGTERM");
+    } finally {
+      manager.dispose();
+    }
+  });
+
   it("preserves existing terminal size on open when size is omitted", async () => {
     const { manager, ptyAdapter } = makeManager();
     await manager.open(openInput({ cols: 100, rows: 24 }));

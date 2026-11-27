@@ -110,10 +110,15 @@ describe("deleteActiveThreadFromClient", () => {
       "thread.delete",
       "terminal.dispose",
       "terminal.dispose",
+      "terminal.dispose",
       "reconcile",
       "onDeleted",
     ]);
-    expect(harness.disposeThread.mock.calls).toEqual([[THREAD_ID], [`dock-terminal:${THREAD_ID}`]]);
+    expect(harness.disposeThread.mock.calls).toEqual([
+      [THREAD_ID],
+      [`dock-terminal:${THREAD_ID}`],
+      [`project-action:${THREAD_ID}`],
+    ]);
     expect(onDeleted).toHaveBeenCalledWith({ thread: THREAD, prepared: "prepared" });
   });
 
@@ -210,7 +215,7 @@ describe("deleteActiveThreadFromClient", () => {
     expect(harness.reconcile.mock.calls.map(([input]) => input.threadId)).toEqual(deletionOrder);
     expect(onDeleted.mock.calls.map(([input]) => input.thread.id)).toEqual(deletionOrder);
     expect(harness.disposeThread.mock.calls).toEqual(
-      deletionOrder.flatMap((id) => [[id], [`dock-terminal:${id}`]]),
+      deletionOrder.flatMap((id) => [[id], [`dock-terminal:${id}`], [`project-action:${id}`]]),
     );
     expect(harness.orphanResolver).toHaveBeenCalledWith([THREAD, unrelated], THREAD_ID);
     expect(harness.confirm).toHaveBeenCalledOnce();
@@ -255,6 +260,7 @@ describe("deleteActiveThreadFromClient", () => {
     expect(harness.disposeThread.mock.calls).toEqual([
       [grandchild.id],
       [`dock-terminal:${grandchild.id}`],
+      [`project-action:${grandchild.id}`],
     ]);
     expect(removeWorktree).not.toHaveBeenCalled();
   });

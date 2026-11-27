@@ -24,10 +24,11 @@ describe("terminal scope cleanup", () => {
     expect(close.mock.calls).toEqual([
       [{ threadId: "host", deleteHistory: true }],
       [{ threadId: "dock-terminal:host", deleteHistory: true }],
+      [{ threadId: "project-action:host", deleteHistory: true }],
     ]);
   });
 
-  it("preserves the archive generation fence for both terminal scopes", async () => {
+  it("preserves the archive generation fence for every thread-owned scope", async () => {
     const close = vi.fn(() => Effect.void);
     const closeSessionsOpenedAtOrBefore = vi.fn(() => Effect.void);
     const archivedAt = "2026-09-09T12:00:00.000Z";
@@ -44,6 +45,7 @@ describe("terminal scope cleanup", () => {
     expect(closeSessionsOpenedAtOrBefore.mock.calls).toEqual([
       [{ threadId: "host", openedAtOrBefore: archivedAt }],
       [{ threadId: "dock-terminal:host", openedAtOrBefore: archivedAt }],
+      [{ threadId: "project-action:host", openedAtOrBefore: archivedAt }],
     ]);
   });
 });

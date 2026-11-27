@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   sanitizePersistedTerminalStateByThreadId,
-  selectRunningServiceScriptIds,
-  selectServiceTerminalIdsForScript,
+  selectRunningProjectScriptIds,
+  selectProjectScriptTerminalIds,
   selectThreadTerminalState,
   useTerminalStateStore,
 } from "./terminalStateStore";
@@ -409,7 +409,9 @@ describe("dock terminal sessions", () => {
   });
 });
 
-describe("project action services", () => {
+describe("managed action terminals", () => {
+  const actionScope = ThreadId.makeUnsafe("project-action:thread-1");
+
   beforeEach(() => {
     useTerminalStateStore.setState({ terminalStateByThreadId: {} });
   });
@@ -417,75 +419,66 @@ describe("project action services", () => {
   function currentState() {
     return selectThreadTerminalState(
       useTerminalStateStore.getState().terminalStateByThreadId,
-      THREAD_ID,
+      actionScope,
     );
   }
 
   function startService(terminalId: string, scriptId: string) {
     const store = useTerminalStateStore.getState();
-    store.markTerminalServiceScript(THREAD_ID, terminalId, scriptId);
-    store.setTerminalActivity(THREAD_ID, terminalId, {
+    store.registerProjectScriptTerminal(actionScope, terminalId, scriptId, scriptId);
+    store.setTerminalActivity(actionScope, terminalId, {
       agentState: null,
       hasRunningSubprocess: true,
     });
   }
 
   it("reports an action as running only once its terminal has a live process", () => {
-    useTerminalStateStore.getState().markTerminalServiceScript(THREAD_ID, "default", "erp-web");
+    useTerminalStateStore
+      .getState()
+      .registerProjectScriptTerminal(actionScope, "web-shell", "erp-web", "Web");
 
-    expect(selectRunningServiceScriptIds(currentState())).toEqual(new Set());
+    expect(selectRunningProjectScriptIds(currentState())).toEqual(new Set());
 
-    useTerminalStateStore.getState().setTerminalActivity(THREAD_ID, "default", {
+    useTerminalStateStore.getState().setTerminalActivity(actionScope, "web-shell", {
       agentState: null,
       hasRunningSubprocess: true,
     });
 
-    expect(selectRunningServiceScriptIds(currentState())).toEqual(new Set(["erp-web"]));
+    expect(selectRunningProjectScriptIds(currentState())).toEqual(new Set(["erp-web"]));
   });
 
   it("stops reporting an action whose process exited on its own", () => {
-    startService("default", "erp-web");
+    startService("web-shell", "erp-web");
 
-    useTerminalStateStore.getState().setTerminalActivity(THREAD_ID, "default", {
+    useTerminalStateStore.getState().setTerminalActivity(actionScope, "web-shell", {
       agentState: null,
       hasRunningSubprocess: false,
     });
 
-    expect(selectRunningServiceScriptIds(currentState())).toEqual(new Set());
+    expect(selectRunningProjectScriptIds(currentState())).toEqual(new Set());
+    expect(selectProjectScriptTerminalIds(currentState(), "erp-web")).toEqual(["web-shell"]);
   });
 
   it("forgets the ownership record when the terminal is closed", () => {
-    useTerminalStateStore.getState().newTerminal(THREAD_ID, "default");
-    useTerminalStateStore.getState().ensureDockTerminal(THREAD_ID, "pane-2", "terminal-2");
-    startService("terminal-2", "erp-web");
-    expect(selectRunningServiceScriptIds(currentState())).toEqual(new Set(["erp-web"]));
-
-    useTerminalStateStore.getState().closeTerminal(THREAD_ID, "terminal-2");
-
-    expect(currentState().serviceScriptIdsByTerminalId).toEqual({});
-    expect(selectRunningServiceScriptIds(currentState())).toEqual(new Set());
-  });
-
-  it("ignores a terminal that does not exist", () => {
-    useTerminalStateStore.getState().markTerminalServiceScript(THREAD_ID, "ghost", "erp-web");
-
-    expect(currentState().serviceScriptIdsByTerminalId).toEqual({});
+    startService("web-shell", "erp-web");
+    startService("worker-shell", "worker");
+    useTerminalStateStore.getState().closeTerminal(actionScope, "web-shell");
+    expect(selectProjectScriptTerminalIds(currentState(), "erp-web")).toEqual([]);
+    expect(selectRunningProjectScriptIds(currentState())).toEqual(new Set(["worker"]));
   });
 
   it("collects every terminal running the same action so all of them can be stopped", () => {
-    useTerminalStateStore.getState().newTerminal(THREAD_ID, "default");
-    useTerminalStateStore.getState().ensureDockTerminal(THREAD_ID, "pane-2", "terminal-2");
-    startService("default", "erp-web");
+    startService("terminal-1", "erp-web");
     startService("terminal-2", "erp-web");
 
-    expect(selectServiceTerminalIdsForScript(currentState(), "erp-web").toSorted()).toEqual([
-      "default",
+    expect(selectProjectScriptTerminalIds(currentState(), "erp-web").toSorted()).toEqual([
+      "terminal-1",
       "terminal-2",
     ]);
-    expect(selectServiceTerminalIdsForScript(currentState(), "other")).toEqual([]);
+    expect(selectProjectScriptTerminalIds(currentState(), "other")).toEqual([]);
   });
 
-  it("drops service ownership from persisted state while keeping the layout", () => {
+  it("only persists the ordinary terminal layout, not managed action sessions", () => {
     useTerminalStateStore.getState().newTerminal(THREAD_ID, "default");
     useTerminalStateStore.getState().ensureDockTerminal(THREAD_ID, "pane-2", "terminal-2");
     startService("terminal-2", "erp-web");
@@ -494,9 +487,7 @@ describe("project action services", () => {
       useTerminalStateStore.getState().terminalStateByThreadId,
     );
 
-    // The layout is worth restoring; a dev server that died with the app is not.
     expect(sanitized[THREAD_ID]?.terminalIds).toEqual(["default", "terminal-2"]);
-    expect(sanitized[THREAD_ID]?.serviceScriptIdsByTerminalId).toEqual({});
-    expect(sanitized[THREAD_ID]?.runningTerminalIds).toEqual([]);
+    expect(sanitized[actionScope]).toBeUndefined();
   });
 });

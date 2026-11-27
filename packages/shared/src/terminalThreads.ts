@@ -6,13 +6,29 @@
 export const GENERIC_TERMINAL_THREAD_TITLE = "New terminal";
 export const DOCK_TERMINAL_SCOPE_PREFIX = "dock-terminal:";
 export const PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX = "project-service:";
+export const PROJECT_ACTION_TERMINAL_SCOPE_PREFIX = "project-action:";
 
 export function dockTerminalScopeId(hostThreadId: string): string {
   return `${DOCK_TERMINAL_SCOPE_PREFIX}${hostThreadId}`;
 }
 
+export function projectActionTerminalScopeId(hostThreadId: string): string {
+  return `${PROJECT_ACTION_TERMINAL_SCOPE_PREFIX}${hostThreadId}`;
+}
+
+export function isProjectActionTerminalScope(threadId: string): boolean {
+  return (
+    threadId.startsWith(PROJECT_ACTION_TERMINAL_SCOPE_PREFIX) ||
+    threadId.startsWith(PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX)
+  );
+}
+
 export function terminalScopeIdsForThread(hostThreadId: string): readonly string[] {
-  return [hostThreadId, dockTerminalScopeId(hostThreadId)];
+  return [
+    hostThreadId,
+    dockTerminalScopeId(hostThreadId),
+    projectActionTerminalScopeId(hostThreadId),
+  ];
 }
 
 export type TerminalCliKind = "codex" | "claude" | "antigravity";

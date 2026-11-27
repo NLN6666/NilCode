@@ -98,7 +98,7 @@ import { FloatingBrowserPanel } from "./FloatingBrowserPanel";
 import { shouldRenderFloatingBrowserPanel } from "./floatingBrowserPanel.logic";
 import { PanelStateMessage } from "./PanelStateMessage";
 import { DockThreadPane } from "./DockThreadPane";
-import { BrowserPaneTerminalSplit } from "./BrowserPaneTerminalSplit";
+import { ProjectActionTerminalSplit } from "./ProjectActionTerminalSplit";
 import { BrowserDockPane } from "./BrowserDockPane";
 import { RightDock } from "./RightDock";
 import { SidechatDockPane, useSidechatDockPanePruning } from "./SidechatDockPane";
@@ -1011,15 +1011,13 @@ export function SingleChatSurface(props: {
     switch (pane.kind) {
       case "browser":
         return (
-          <BrowserPaneTerminalSplit hostThreadId={props.threadId} projectId={props.projectId}>
-            <BrowserDockPane
-              threadId={props.threadId}
-              paneId={pane.id}
-              onClosePanel={() => closeDockPane(pane.id)}
-              runtimeMode={context.runtimeMode}
-              onRequestLive={requestActiveDockPaneLive}
-            />
-          </BrowserPaneTerminalSplit>
+          <BrowserDockPane
+            threadId={props.threadId}
+            paneId={pane.id}
+            onClosePanel={() => closeDockPane(pane.id)}
+            runtimeMode={context.runtimeMode}
+            onRequestLive={requestActiveDockPaneLive}
+          />
         );
       case "device":
         return (
@@ -1422,6 +1420,15 @@ export function SingleChatSurface(props: {
             setDockOpen(props.threadId, open);
           }}
           onAddPane={handleAddDockPane}
+          renderBody={(panes) => (
+            <ProjectActionTerminalSplit
+              hostThreadId={props.threadId}
+              projectId={props.projectId}
+              isVisible={renderDockState.open}
+            >
+              {panes}
+            </ProjectActionTerminalSplit>
+          )}
           renderPane={renderDockPane}
         />
         <WorkspaceSearchPalette

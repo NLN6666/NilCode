@@ -9725,7 +9725,7 @@ describe("ChatView transcript geometry (full app)", () => {
   });
 
   it.each(["button", "draft shortcut", "split button"] as const)(
-    "runs project scripts in the right dock at the worktree cwd via %s",
+    "runs project scripts in a collapsed dock terminal at the worktree cwd via %s",
     async (entryPoint) => {
       useComposerDraftStore.setState({
         draftThreadsByThreadId: {
@@ -9842,7 +9842,7 @@ describe("ChatView transcript geometry (full app)", () => {
             );
             expect(openRequest).toMatchObject({
               _tag: WS_METHODS.terminalOpen,
-              threadId: dockTerminalThreadId(THREAD_ID),
+              threadId: `project-action:${THREAD_ID}`,
               cwd: "/repo/worktrees/feature-draft",
               env: {
                 SYNARA_PROJECT_ROOT: "/repo/project",
@@ -9860,12 +9860,18 @@ describe("ChatView transcript geometry (full app)", () => {
             );
             expect(writeRequest).toMatchObject({
               _tag: WS_METHODS.terminalWrite,
-              threadId: dockTerminalThreadId(THREAD_ID),
+              threadId: `project-action:${THREAD_ID}`,
               data: "bun run test\r",
             });
           },
           { timeout: 8_000, interval: 16 },
         );
+        const expand = page.getByRole("button", { name: "Expand terminal for Test", exact: true });
+        await expect.element(expand).toHaveAttribute("aria-expanded", "false");
+        await expect
+          .element(page.getByRole("complementary", { name: "Terminal" }))
+          .not.toBeInTheDocument();
+        await expand.click();
         await expect.element(page.getByRole("complementary", { name: "Terminal" })).toBeVisible();
         const terminalSelector =
           entryPoint === "split button"
@@ -9883,14 +9889,13 @@ describe("ChatView transcript geometry (full app)", () => {
               .filter((request) => request._tag === WS_METHODS.terminalOpen)
               .map((request) => request.terminalId),
           );
-          await page.getByRole("button", { name: "Hide terminal", exact: true }).click();
+          await page
+            .getByRole("button", { name: "Collapse terminal for Test", exact: true })
+            .click();
           await expect
             .element(page.getByRole("complementary", { name: "Terminal" }))
             .not.toBeInTheDocument();
-          await page
-            .getByRole("button", { name: "Toggle right sidebar", exact: true })
-            .first()
-            .click();
+          await expand.click();
           await expect.element(page.getByRole("complementary", { name: "Terminal" })).toBeVisible();
           expect(
             new Set(
@@ -14936,7 +14941,7 @@ describe("ChatView transcript geometry (full app)", () => {
           const request = wsRequests.find(
             (candidate) =>
               candidate._tag === WS_METHODS.terminalOpen &&
-              candidate.threadId === dockTerminalThreadId(newThreadId) &&
+              candidate.threadId === `project-action:${newThreadId}` &&
               candidate.cwd === worktreePath,
           );
           expect(request).toBeTruthy();
@@ -14960,7 +14965,7 @@ describe("ChatView transcript geometry (full app)", () => {
           const request = wsRequests.find(
             (candidate) =>
               candidate._tag === WS_METHODS.terminalWrite &&
-              candidate.threadId === dockTerminalThreadId(newThreadId) &&
+              candidate.threadId === `project-action:${newThreadId}` &&
               candidate.data === "printf setup\r",
           );
           expect(request).toBeTruthy();

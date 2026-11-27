@@ -7,7 +7,11 @@ import { executionStorage } from "./lib/hosts/executionStorage";
  */
 
 import { randomTerminalId } from "./components/terminal/terminalIds";
-import { type TerminalActivityState, type TerminalCliKind } from "@synara/shared/terminalThreads";
+import {
+  isProjectActionTerminalScope,
+  type TerminalActivityState,
+  type TerminalCliKind,
+} from "@synara/shared/terminalThreads";
 import type { ThreadId } from "@synara/contracts";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -34,14 +38,10 @@ export interface ThreadTerminalState {
   terminalAttentionStatesById: Record<string, "attention" | "review">;
   runningTerminalIds: string[];
   /**
-   * Terminals that were started by a project action declaring a preview port,
-   * mapped to that action's id. Combined with `runningTerminalIds` this is what
-   * makes an action render as a stoppable service: the map says "this terminal
-   * belongs to that action", and the running set says "its process is alive".
-   * Both are pruned when the terminal goes away, so no lifecycle bookkeeping of
-   * our own can drift out of sync with the real terminal.
+   * Terminals started by project actions, keyed by terminal ID. Ownership is
+   * live-only; ordinary Dock terminals never enter this map.
    */
-  serviceScriptIdsByTerminalId: Record<string, string>;
+  projectScriptIdsByTerminalId: Record<string, string>;
   activeTerminalId: string;
   retiredTerminalIds?: string[];
   dockTerminalIdsByPaneId?: Record<string, string>;
@@ -65,12 +65,12 @@ function normalizeRunningTerminalIds(
     .filter((id) => id.length > 0 && validTerminalIdSet.has(id));
 }
 
-function normalizeServiceScriptIds(
-  serviceScriptIdsByTerminalId: Record<string, string> | null | undefined,
+function normalizeProjectScriptIds(
+  projectScriptIdsByTerminalId: Record<string, string> | null | undefined,
   terminalIds: string[],
 ): Record<string, string> {
   const validTerminalIdSet = new Set(terminalIds);
-  const normalizedEntries = Object.entries(serviceScriptIdsByTerminalId ?? {})
+  const normalizedEntries = Object.entries(projectScriptIdsByTerminalId ?? {})
     .map(([terminalId, scriptId]) => [terminalId.trim(), scriptId.trim()] as const)
     .filter(
       ([terminalId, scriptId]) =>
@@ -248,8 +248,8 @@ function threadTerminalStateEqual(left: ThreadTerminalState, right: ThreadTermin
     JSON.stringify(left.terminalAttentionStatesById) ===
       JSON.stringify(right.terminalAttentionStatesById) &&
     arraysEqual(left.runningTerminalIds, right.runningTerminalIds) &&
-    JSON.stringify(left.serviceScriptIdsByTerminalId) ===
-      JSON.stringify(right.serviceScriptIdsByTerminalId) &&
+    JSON.stringify(left.projectScriptIdsByTerminalId) ===
+      JSON.stringify(right.projectScriptIdsByTerminalId) &&
     arraysEqual(left.retiredTerminalIds ?? [], right.retiredTerminalIds ?? []) &&
     JSON.stringify(left.dockTerminalIdsByPaneId) === JSON.stringify(right.dockTerminalIdsByPaneId)
   );
@@ -268,7 +268,7 @@ const DEFAULT_THREAD_TERMINAL_STATE: ThreadTerminalState = Object.freeze({
   terminalCliKindsById: {},
   terminalAttentionStatesById: {},
   runningTerminalIds: [],
-  serviceScriptIdsByTerminalId: {},
+  projectScriptIdsByTerminalId: {},
   activeTerminalId: DEFAULT_THREAD_TERMINAL_ID,
 });
 
@@ -281,8 +281,8 @@ function createDefaultThreadTerminalState(): ThreadTerminalState {
     terminalCliKindsById: { ...DEFAULT_THREAD_TERMINAL_STATE.terminalCliKindsById },
     terminalAttentionStatesById: { ...DEFAULT_THREAD_TERMINAL_STATE.terminalAttentionStatesById },
     runningTerminalIds: [...DEFAULT_THREAD_TERMINAL_STATE.runningTerminalIds],
-    serviceScriptIdsByTerminalId: {
-      ...DEFAULT_THREAD_TERMINAL_STATE.serviceScriptIdsByTerminalId,
+    projectScriptIdsByTerminalId: {
+      ...DEFAULT_THREAD_TERMINAL_STATE.projectScriptIdsByTerminalId,
     },
   };
 }
@@ -297,9 +297,13 @@ function normalizeThreadTerminalState(state: ThreadTerminalState): ThreadTermina
     ? state.activeTerminalId
     : (terminalIds[0] ?? DEFAULT_THREAD_TERMINAL_ID);
   const dockTerminalIdsByPaneId = state.dockTerminalIdsByPaneId;
-  const nextTerminalIds = dockTerminalIdsByPaneId ? terminalIds : [activeTerminalId];
+  const scriptIds = state.projectScriptIdsByTerminalId;
+  const nextTerminalIds =
+    dockTerminalIdsByPaneId || terminalIds.some((id) => scriptIds?.[id] !== undefined)
+      ? terminalIds
+      : [activeTerminalId];
   // Legacy nested sessions retire only after the server acknowledges an idle close.
-  // Dock panes keep their independently owned sessions.
+  // Dock tabs and project actions keep their independently owned sessions.
   const retiredTerminalIds = [
     ...new Set([
       ...(state.retiredTerminalIds ?? []),
@@ -329,10 +333,7 @@ function normalizeThreadTerminalState(state: ThreadTerminalState): ThreadTermina
     terminalTitleOverridesById,
   });
   const runningTerminalIds = normalizeRunningTerminalIds(state.runningTerminalIds, nextTerminalIds);
-  const serviceScriptIdsByTerminalId = normalizeServiceScriptIds(
-    (state as Partial<ThreadTerminalState>).serviceScriptIdsByTerminalId,
-    nextTerminalIds,
-  );
+  const projectScriptIdsByTerminalId = normalizeProjectScriptIds(scriptIds, nextTerminalIds);
   const normalized: ThreadTerminalState = {
     entryPoint: state.entryPoint === "terminal" ? "terminal" : "chat",
     terminalOpen: state.terminalOpen,
@@ -347,7 +348,7 @@ function normalizeThreadTerminalState(state: ThreadTerminalState): ThreadTermina
     terminalCliKindsById,
     terminalAttentionStatesById,
     runningTerminalIds,
-    serviceScriptIdsByTerminalId,
+    projectScriptIdsByTerminalId,
     activeTerminalId,
     ...(retiredTerminalIds.length > 0 ? { retiredTerminalIds } : {}),
     ...(dockTerminalIdsByPaneId ? { dockTerminalIdsByPaneId } : {}),
@@ -367,7 +368,7 @@ function stripVolatileTerminalRuntimeState(state: ThreadTerminalState): ThreadTe
   if (
     normalized.runningTerminalIds.length === 0 &&
     Object.keys(normalized.terminalAttentionStatesById).length === 0 &&
-    Object.keys(normalized.serviceScriptIdsByTerminalId).length === 0
+    Object.keys(normalized.projectScriptIdsByTerminalId).length === 0
   ) {
     return normalized;
   }
@@ -378,7 +379,7 @@ function stripVolatileTerminalRuntimeState(state: ThreadTerminalState): ThreadTe
     ...normalized,
     terminalAttentionStatesById: {},
     runningTerminalIds: [],
-    serviceScriptIdsByTerminalId: {},
+    projectScriptIdsByTerminalId: {},
   };
 }
 
@@ -387,9 +388,8 @@ export function sanitizePersistedTerminalStateByThreadId(
 ): Record<ThreadId, ThreadTerminalState> {
   const next: Record<ThreadId, ThreadTerminalState> = {};
   for (const [threadId, state] of Object.entries(terminalStateByThreadId ?? {})) {
-    // Dedicated Workspace pages used synthetic `workspace:*` terminal scopes.
-    // Drop those retired entries while hydrating the shared terminal store.
-    if (threadId.startsWith("workspace:")) {
+    // Retired workspace scopes and live-only action sessions have no layout to restore.
+    if (threadId.startsWith("workspace:") || isProjectActionTerminalScope(threadId)) {
       continue;
     }
     const sanitized = stripVolatileTerminalRuntimeState(state);
@@ -744,9 +744,6 @@ function closeThreadTerminal(state: ThreadTerminalState, terminalId: string): Th
     presentationMode: normalized.presentationMode,
     workspaceLayout: normalized.workspaceLayout,
     ...(normalized.retiredTerminalIds ? { retiredTerminalIds: normalized.retiredTerminalIds } : {}),
-    serviceScriptIdsByTerminalId: Object.fromEntries(
-      Object.entries(normalized.serviceScriptIdsByTerminalId).filter(([id]) => id !== terminalId),
-    ),
   });
 }
 
@@ -830,22 +827,20 @@ function setThreadTerminalActivity(
   };
 }
 
-function setThreadTerminalServiceScript(
+function registerThreadProjectScriptTerminal(
   state: ThreadTerminalState,
   terminalId: string,
   scriptId: string,
+  label: string,
 ): ThreadTerminalState {
   const normalized = normalizeThreadTerminalState(state);
-  if (!normalized.terminalIds.includes(terminalId)) {
-    return normalized;
-  }
-  if (normalized.serviceScriptIdsByTerminalId[terminalId] === scriptId) {
-    return normalized;
-  }
   return normalizeThreadTerminalState({
     ...normalized,
-    serviceScriptIdsByTerminalId: {
-      ...normalized.serviceScriptIdsByTerminalId,
+    hasSession: true,
+    terminalIds: [...(normalized.hasSession ? normalized.terminalIds : []), terminalId],
+    terminalLabelsById: { ...normalized.terminalLabelsById, [terminalId]: label },
+    projectScriptIdsByTerminalId: {
+      ...normalized.projectScriptIdsByTerminalId,
       [terminalId]: scriptId,
     },
   });
@@ -856,24 +851,27 @@ function setThreadTerminalServiceScript(
  * running subprocess. A dev server that crashed leaves its terminal open at a
  * shell prompt, which drops out of `runningTerminalIds` and therefore out of here.
  */
-export function selectRunningServiceScriptIds(state: ThreadTerminalState): ReadonlySet<string> {
+export function selectRunningProjectScriptIds(
+  ...states: readonly (ThreadTerminalState | undefined)[]
+): ReadonlySet<string> {
   const running = new Set<string>();
-  for (const terminalId of state.runningTerminalIds) {
-    const scriptId = state.serviceScriptIdsByTerminalId[terminalId];
-    if (scriptId !== undefined) {
-      running.add(scriptId);
+  for (const state of states) {
+    if (state === undefined) continue;
+    for (const terminalId of state.runningTerminalIds) {
+      const scriptId = state.projectScriptIdsByTerminalId[terminalId];
+      if (scriptId !== undefined) running.add(scriptId);
     }
   }
   return running;
 }
 
-/** Every live terminal running the given action, for stopping all of them at once. */
-export function selectServiceTerminalIdsForScript(
+/** Includes idle shells so stopping a detached service also removes its terminal. */
+export function selectProjectScriptTerminalIds(
   state: ThreadTerminalState,
   scriptId: string,
 ): string[] {
-  return state.runningTerminalIds.filter(
-    (terminalId) => state.serviceScriptIdsByTerminalId[terminalId] === scriptId,
+  return state.terminalIds.filter(
+    (terminalId) => state.projectScriptIdsByTerminalId[terminalId] === scriptId,
   );
 }
 
@@ -952,7 +950,12 @@ interface TerminalStateStoreState {
     terminalId: string,
     activity: { agentState: TerminalActivityState | null; hasRunningSubprocess: boolean },
   ) => void;
-  markTerminalServiceScript: (threadId: ThreadId, terminalId: string, scriptId: string) => void;
+  registerProjectScriptTerminal: (
+    threadId: ThreadId,
+    terminalId: string,
+    scriptId: string,
+    label: string,
+  ) => void;
   clearTerminalState: (threadId: ThreadId) => void;
   removeOrphanedTerminalStates: (activeThreadIds: Set<ThreadId>) => void;
 }
@@ -1052,9 +1055,9 @@ export const useTerminalStateStore = create<TerminalStateStoreState>()(
           updateTerminal(threadId, (state) =>
             setThreadTerminalActivity(state, terminalId, activity),
           ),
-        markTerminalServiceScript: (threadId, terminalId, scriptId) =>
+        registerProjectScriptTerminal: (threadId, terminalId, scriptId, label) =>
           updateTerminal(threadId, (state) =>
-            setThreadTerminalServiceScript(state, terminalId, scriptId),
+            registerThreadProjectScriptTerminal(state, terminalId, scriptId, label),
           ),
         clearTerminalState: (threadId) =>
           updateTerminal(threadId, () => createDefaultThreadTerminalState()),

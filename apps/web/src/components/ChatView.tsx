@@ -6419,7 +6419,9 @@ export default function ChatView({
       ? {
           projectActions: {
             scripts: activeProjectScripts,
+            runningScriptIds: runningProjectScriptIds,
             onRunScript: onRunProjectScriptFromHeader,
+            onStopScript: stopProjectScript,
             onAddScript: saveProjectScript,
             onUpdateScript: updateProjectScript,
             onDeleteScript: deleteProjectScript,

@@ -7,7 +7,8 @@
 // Note: the id factory lives in `terminalIds.ts` so eager consumers can import
 //       it without anchoring xterm into the initial bundle.
 
-import { type NativeApi } from "@synara/contracts";
+import { type NativeApi, type ThreadId } from "@synara/contracts";
+import { useTerminalStateStore } from "~/terminalStateStore";
 
 // The terminal runtime pulls in xterm and its addons (~223 KB gzip). Importing
 // the registry statically anchored the whole terminal stack into the eager
@@ -61,4 +62,36 @@ export async function disposeAndCloseTerminalSession(input: {
     }
   }
   if (preserveUntilClosed) await disposeTerminalRuntime(threadId, terminalId);
+}
+
+export async function closeProjectScriptTerminal(
+  api: NativeApi | undefined,
+  threadId: ThreadId,
+  terminalId: string,
+): Promise<void> {
+  await disposeAndCloseTerminalSession({
+    api,
+    threadId,
+    terminalId,
+    deleteHistory: false,
+    requireStructuredClose: true,
+  });
+  useTerminalStateStore.getState().closeTerminal(threadId, terminalId);
+}
+
+export function settleExitedProjectScriptTerminal(
+  api: NativeApi | undefined,
+  threadId: ThreadId,
+  terminalId: string,
+): void {
+  const store = useTerminalStateStore.getState();
+  if (!store.terminalStateByThreadId[threadId]?.projectScriptIdsByTerminalId[terminalId]) return;
+  store.closeTerminal(threadId, terminalId);
+  void disposeAndCloseTerminalSession({
+    api,
+    threadId,
+    terminalId,
+    processAlreadyExited: true,
+    deleteHistory: false,
+  });
 }
