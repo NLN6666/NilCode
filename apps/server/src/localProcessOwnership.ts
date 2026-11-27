@@ -1,26 +1,31 @@
-import type { ThreadId } from "@synara/contracts";
+import type { LocalServerActionTerminal, ThreadId } from "@synara/contracts";
 
-/** A process root whose lifecycle is owned by one conversation. */
+/** A process root owned by a conversation, a managed action terminal, or both. */
 export interface LocalProcessOwner {
   readonly pid: number;
-  readonly threadId: ThreadId;
+  readonly threadId?: ThreadId;
+  readonly actionTerminal?: LocalServerActionTerminal;
 }
 
-const ownersByPid = new Map<number, Map<ThreadId, number>>();
+interface OwnerLease {
+  readonly owner: LocalProcessOwner;
+  count: number;
+}
+
+const ownersByPid = new Map<number, Map<string, OwnerLease>>();
 
 /**
- * Register a locally managed process root to its owning conversation. The returned
+ * Register a locally managed process root with its exact owner. The returned
  * lease is idempotent and should be released when that process exits or teardown
- * proves it gone. Multiple leases for one PID/thread collapse to one owner; distinct
- * thread owners for a reused/shared PID remain ambiguous to attribution callers.
+ * proves it gone. Duplicate leases collapse; conflicting owners for a reused or
+ * shared PID remain ambiguous to attribution callers.
  */
-export function registerLocalProcessOwner(pid: number, threadId: ThreadId): () => void {
-  if (
-    !Number.isSafeInteger(pid) ||
-    pid <= 0 ||
-    typeof threadId !== "string" ||
-    threadId.trim().length === 0
-  ) {
+export function registerLocalProcessOwner(
+  pid: number,
+  threadId: ThreadId | undefined,
+  actionTerminal?: LocalServerActionTerminal,
+): () => void {
+  if (!Number.isSafeInteger(pid) || pid <= 0 || !(threadId?.trim() || actionTerminal)) {
     return () => undefined;
   }
 
@@ -29,19 +34,31 @@ export function registerLocalProcessOwner(pid: number, threadId: ThreadId): () =
     owners = new Map();
     ownersByPid.set(pid, owners);
   }
-  owners.set(threadId, (owners.get(threadId) ?? 0) + 1);
+  const key = JSON.stringify([threadId, actionTerminal?.threadId, actionTerminal?.terminalId]);
+  const existing = owners.get(key);
+  if (existing) {
+    existing.count += 1;
+  } else {
+    owners.set(key, {
+      owner: {
+        pid,
+        ...(threadId ? { threadId } : {}),
+        ...(actionTerminal ? { actionTerminal } : {}),
+      },
+      count: 1,
+    });
+  }
 
   let released = false;
   return () => {
     if (released) return;
     released = true;
     const currentOwners = ownersByPid.get(pid);
-    const leases = currentOwners?.get(threadId);
-    if (currentOwners === undefined || leases === undefined) return;
-    if (leases > 1) {
-      currentOwners.set(threadId, leases - 1);
-    } else {
-      currentOwners.delete(threadId);
+    const lease = currentOwners?.get(key);
+    if (currentOwners === undefined || lease === undefined) return;
+    lease.count -= 1;
+    if (lease.count === 0) {
+      currentOwners.delete(key);
       if (currentOwners.size === 0) ownersByPid.delete(pid);
     }
   };
@@ -50,9 +67,9 @@ export function registerLocalProcessOwner(pid: number, threadId: ThreadId): () =
 /** Snapshot the currently leased roots without probing the operating system. */
 export function snapshotLocalProcessOwners(): ReadonlyArray<LocalProcessOwner> {
   const owners: LocalProcessOwner[] = [];
-  for (const [pid, threadIds] of ownersByPid) {
-    for (const threadId of threadIds.keys()) {
-      owners.push({ pid, threadId });
+  for (const leases of ownersByPid.values()) {
+    for (const lease of leases.values()) {
+      owners.push(lease.owner);
     }
   }
   return owners;

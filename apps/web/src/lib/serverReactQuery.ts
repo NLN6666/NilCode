@@ -12,6 +12,7 @@ import type {
   ThreadId,
 } from "@synara/contracts";
 import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
+import { closeProjectScriptTerminal } from "~/components/terminal/terminalSession";
 import { ensureNativeApi } from "~/nativeApi";
 import {
   readLatestServerConfigSnapshot,
@@ -490,7 +491,12 @@ export function serverStopLocalServerMutationOptions(input: { queryClient: Query
     mutationKey: serverMutationKeys.stopLocalServer(),
     mutationFn: async (server: ServerStopLocalServerInput) => {
       const api = ensureNativeApi();
-      return api.server.stopLocalServer(server);
+      const result = await api.server.stopLocalServer(server);
+      if (result.stopped && result.actionTerminal) {
+        const { threadId, terminalId } = result.actionTerminal;
+        await closeProjectScriptTerminal(api, threadId, terminalId);
+      }
+      return result;
     },
     onSettled: () => {
       void input.queryClient.invalidateQueries({ queryKey: serverQueryKeys.localServers() });

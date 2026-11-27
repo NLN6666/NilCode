@@ -731,8 +731,10 @@ Project actions run in their own terminals below the right dock, using the
 requested working directory and environment. The terminals start collapsed,
 without replacing or interrupting any dock tab or changing the center chat,
 including in split chats. Expand an action terminal to inspect its output. **Stop**
-ends the action and removes its terminal. Actions with a preview port share their
-service terminal across chats in the same project.
+ends the action and removes its terminal. Stopping a listener from **Local
+Servers** also removes its terminal when process ancestry identifies it as a
+project action. Actions with a preview port share their service terminal across
+chats in the same project.
 On upgrade, the last active terminal is retained. Retired nested sessions are closed only when the
 server verifies they are idle, preserving their saved history. Busy sessions or
 sessions whose activity cannot be checked remain pending for the next mount.

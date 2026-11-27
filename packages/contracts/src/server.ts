@@ -559,11 +559,18 @@ export const ServerLocalServerAddress = Schema.Struct({
 });
 export type ServerLocalServerAddress = typeof ServerLocalServerAddress.Type;
 
+const LocalServerActionTerminal = Schema.Struct({
+  threadId: ThreadId,
+  terminalId: TrimmedNonEmptyString,
+});
+export type LocalServerActionTerminal = typeof LocalServerActionTerminal.Type;
+
 export const ServerLocalServerProcess = Schema.Struct({
   id: TrimmedNonEmptyString,
   pid: PositiveInt,
   ppid: Schema.optional(PositiveInt),
   threadId: Schema.optional(ThreadId.check(Schema.isMaxLength(256))),
+  actionTerminal: Schema.optional(LocalServerActionTerminal),
   command: TrimmedNonEmptyString,
   displayName: TrimmedNonEmptyString,
   pageTitle: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(200))),
@@ -594,6 +601,7 @@ export const ServerStopLocalServerResult = Schema.Struct({
   pid: PositiveInt,
   stopped: Schema.Boolean,
   message: Schema.optional(Schema.String.check(Schema.isMaxLength(500))),
+  actionTerminal: Schema.optional(LocalServerActionTerminal),
 });
 export type ServerStopLocalServerResult = typeof ServerStopLocalServerResult.Type;
 

@@ -26,6 +26,7 @@ import {
   SYNARA_TERMINAL_HOOK_OSC_PREFIX,
   SYNARA_TERMINAL_CLI_KIND_ENV_KEY,
   DOCK_TERMINAL_SCOPE_PREFIX,
+  isProjectActionTerminalScope,
   PROJECT_ACTION_TERMINAL_SCOPE_PREFIX,
   PROJECT_SERVICE_TERMINAL_SCOPE_PREFIX,
   type TerminalActivityState,
@@ -1508,11 +1509,16 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
       const ownerThreadId = session.providerAuthInstanceId
         ? undefined
         : terminalOwnerThreadId(session.threadId);
-      if (ownerThreadId !== undefined) {
+      const actionTerminal =
+        !session.providerAuthInstanceId && isProjectActionTerminalScope(session.threadId)
+          ? { threadId: ThreadId.makeUnsafe(session.threadId), terminalId: session.terminalId }
+          : undefined;
+      if (ownerThreadId !== undefined || actionTerminal !== undefined) {
         session.releaseLocalProcessOwner?.();
         session.releaseLocalProcessOwner = registerLocalProcessOwner(
           ptyProcess.pid,
           ownerThreadId,
+          actionTerminal,
         );
       }
       session.status = "running";

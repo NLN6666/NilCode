@@ -11,7 +11,7 @@ import type {
 } from "@synara/contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-react";
 
 import { setLanguagePreference } from "~/i18n";
@@ -25,6 +25,7 @@ import { useTerminalStateStore } from "~/terminalStateStore";
 import ProjectScriptsControl from "../ProjectScriptsControl";
 import { terminalRuntimeRegistry } from "../terminal/terminalRuntimeRegistry";
 import { EnvironmentActionsSection } from "./environment/EnvironmentActionsSection";
+import { EnvironmentLocalServersSection } from "./environment/EnvironmentLocalServersSection";
 import { ProjectActionTerminalSplit } from "./ProjectActionTerminalSplit";
 import { RightDock } from "./RightDock";
 import { useChatProjectScripts } from "./useChatProjectScripts";
@@ -81,6 +82,7 @@ it.each([
   { entryPoint: "header", port: null },
   { entryPoint: "environment", port: null },
   { entryPoint: "environment", port: 58135 },
+  { entryPoint: "local servers", port: null },
 ] as const)(
   "keeps the busy dock terminal while starting and stopping through $entryPoint (port $port)",
   async ({ entryPoint, port }) => {
@@ -143,11 +145,12 @@ it.each([
       return (
         <div className="flex h-[520px] w-full">
           <div className="flex-1">
-            {entryPoint === "header" ? (
-              <ProjectScriptsControl {...controls} />
-            ) : (
+            {entryPoint === "environment" ? (
               <EnvironmentActionsSection {...controls} />
+            ) : (
+              <ProjectScriptsControl {...controls} />
             )}
+            {entryPoint === "local servers" ? <EnvironmentLocalServersSection enabled /> : null}
           </div>
           <RightDock
             state={state}
@@ -218,7 +221,44 @@ it.each([
       await expect
         .element(page.getByRole("complementary", { name: "Terminal" }))
         .not.toBeInTheDocument();
-      if (port !== null) {
+      if (entryPoint === "local servers") {
+        const pid = 4242;
+        const listeningPort = 58135;
+        const actionTerminal = { threadId: scopeId, terminalId: started.terminalId! };
+        const listing = {
+          generatedAt: new Date().toISOString(),
+          servers: [
+            {
+              id: `local-server:${pid}:${listeningPort}`,
+              pid,
+              command: "node",
+              displayName: "Dev listener",
+              args: "server.js",
+              ports: [listeningPort],
+              addresses: [],
+              isStoppable: true,
+              actionTerminal,
+            },
+          ],
+        };
+        api.server.listLocalServers.mockResolvedValue(listing);
+        client.setQueryData(serverQueryKeys.localServers(), listing);
+        api.server.stopLocalServer.mockImplementationOnce(async () => {
+          store.setTerminalActivity(scopeId, started.terminalId!, {
+            hasRunningSubprocess: false,
+            agentState: null,
+          });
+          api.server.listLocalServers.mockResolvedValue({ ...listing, servers: [] });
+          return { pid, stopped: true, actionTerminal };
+        });
+        await page.getByRole("button", { name: /^Local Servers/ }).click();
+        await page.getByRole("menuitem", { name: "Stop Dev listener" }).click();
+        await userEvent.keyboard("{Escape}");
+        expect(api.server.stopLocalServer).toHaveBeenCalledExactlyOnceWith({
+          pid,
+          port: listeningPort,
+        });
+      } else if (port !== null) {
         api.terminal.close.mockRejectedValueOnce(new Error("Stop failed"));
         await stop.click();
         await expect.poll(() => setThreadError.mock.lastCall?.[1]).toBe("Stop failed");
@@ -259,7 +299,7 @@ it.each([
         await expect.element(stop).toBeVisible();
         setThreadError.mockClear();
       }
-      await stop.click();
+      if (entryPoint !== "local servers") await stop.click();
       await expect.element(expand).not.toBeInTheDocument();
       await expect.element(run).toBeVisible();
       expect(api.terminal.close).toHaveBeenCalledExactlyOnceWith({

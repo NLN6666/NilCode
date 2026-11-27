@@ -16,6 +16,7 @@ import {
   parseProcessInfo,
   parseLsofCwdOutput,
   parseLsofTcpListenOutput,
+  stopLocalServer,
   type LocalServerProcessInfo,
 } from "./localServerMonitor";
 
@@ -626,6 +627,57 @@ describe("localServerMonitor", () => {
       releaseA();
       releaseDuplicateA();
       releaseB();
+    }
+  });
+
+  it("returns the exact managed terminal only after its descendant listener stops", async () => {
+    const pid = 903;
+    const port = 6303;
+    const host = ThreadId.makeUnsafe("thread-action-owner");
+    const actionTerminal = {
+      threadId: ThreadId.makeUnsafe(`project-action:${host}`),
+      terminalId: "web-terminal",
+    };
+    const release = registerLocalProcessOwner(905, host, actionTerminal);
+    const releaseConflict = registerLocalProcessOwner(905, host, {
+      ...actionTerminal,
+      terminalId: "different-terminal",
+    });
+    let listening = true;
+    const kill = vi.spyOn(process, "kill").mockImplementation((targetPid, signal) => {
+      if (targetPid !== pid || (signal === 0 && !listening)) throw new Error("No such process");
+      return true;
+    });
+    const listeners = parseLsofTcpListenOutput(
+      [`p${pid}`, "cnode", "PTCP", `n127.0.0.1:${port}`].join("\n"),
+    );
+    const processes = new Map([
+      [pid, { ppid: 904, commandLine: "vite" }],
+      [904, { ppid: 905, commandLine: "npm run dev" }],
+      [905, { ppid: 1, commandLine: "pwsh" }],
+    ]);
+    const detected = () => buildLocalServerProcesses(listeners, processes)[0]!;
+    vi.useFakeTimers();
+    try {
+      expect(detected().actionTerminal).toBeUndefined();
+      releaseConflict();
+      const server = detected();
+      expect(server).toMatchObject({ threadId: host, actionTerminal });
+      const rejected = stopLocalServer({ pid, port }, server);
+      await vi.runAllTimersAsync();
+      const rejectedResult = await rejected;
+      expect(rejectedResult).toMatchObject({ stopped: false });
+      expect(rejectedResult).not.toHaveProperty("actionTerminal");
+
+      const stopped = stopLocalServer({ pid, port }, server);
+      listening = false;
+      await vi.runAllTimersAsync();
+      expect(await stopped).toMatchObject({ pid, stopped: true, actionTerminal });
+    } finally {
+      releaseConflict();
+      release();
+      kill.mockRestore();
+      vi.useRealTimers();
     }
   });
 

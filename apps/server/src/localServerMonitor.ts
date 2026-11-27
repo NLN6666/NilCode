@@ -35,7 +35,8 @@ const PAGE_TITLE_MAX_URLS_PER_SERVER = 3;
 const PAGE_TITLE_REDIRECT_LIMIT = 3;
 const PAGE_TITLE_CACHE_MAX = 250;
 
-type ProcessOwnerMap = ReadonlyMap<number, ReadonlySet<LocalProcessOwner["threadId"]>>;
+// null means the nearest registered ancestor has conflicting leases.
+type ProcessOwnerMap = ReadonlyMap<number, LocalProcessOwner | null>;
 
 export interface ParsedLsofListener {
   readonly pid: number;
@@ -814,7 +815,7 @@ function toServerProcess(
   listeners: readonly ParsedLsofListener[],
   processInfoByPid: ReadonlyMap<number, LocalServerProcessInfo>,
   cwdByPid: ReadonlyMap<number, string>,
-  ownerThreadIdByPid: ProcessOwnerMap,
+  ownerByPid: ProcessOwnerMap,
 ): ServerLocalServerProcess | null {
   if (pid === process.pid) {
     return null;
@@ -839,14 +840,15 @@ function toServerProcess(
 
   const isStoppable = isProcessSignalable(pid);
   const cwd = resolveProcessCwd(pid, processInfoByPid, cwdByPid);
-  const threadId = resolveOwnerThreadId(pid, processInfoByPid, ownerThreadIdByPid);
+  const owner = resolveProcessOwner(pid, processInfoByPid, ownerByPid);
   const server: ServerLocalServerProcess = {
     id: `${pid}:${ports.join(",")}`,
     pid,
     ...(typeof processInfo?.ppid === "number" && processInfo.ppid > 0
       ? { ppid: processInfo.ppid }
       : {}),
-    ...(threadId ? { threadId } : {}),
+    ...(owner?.threadId ? { threadId: owner.threadId } : {}),
+    ...(owner?.actionTerminal ? { actionTerminal: owner.actionTerminal } : {}),
     command,
     displayName,
     ...(cwd ? { cwd } : {}),
@@ -860,24 +862,32 @@ function toServerProcess(
   return server;
 }
 
-function ownerThreadIdMap(owners: readonly LocalProcessOwner[]): ProcessOwnerMap {
-  const mutable = new Map<number, Set<LocalProcessOwner["threadId"]>>();
+function processOwnerMap(owners: readonly LocalProcessOwner[]): ProcessOwnerMap {
+  const byPid = new Map<number, LocalProcessOwner | null>();
   for (const owner of owners) {
-    const threadIds = mutable.get(owner.pid) ?? new Set();
-    threadIds.add(owner.threadId);
-    mutable.set(owner.pid, threadIds);
+    const previous = byPid.get(owner.pid);
+    if (previous === undefined) {
+      byPid.set(owner.pid, owner);
+    } else if (
+      previous !== null &&
+      (previous.threadId !== owner.threadId ||
+        previous.actionTerminal?.threadId !== owner.actionTerminal?.threadId ||
+        previous.actionTerminal?.terminalId !== owner.actionTerminal?.terminalId)
+    ) {
+      byPid.set(owner.pid, null);
+    }
   }
-  return mutable;
+  return byPid;
 }
 
-// The nearest managed process ancestor is the only reliable conversation signal.
-// A shared/reused pid with multiple active conversation leases is deliberately
+// The nearest managed process ancestor is the only reliable ownership signal.
+// A shared/reused pid with conflicting leases is deliberately
 // ambiguous instead of falling through to a more distant ancestor.
-function resolveOwnerThreadId(
+function resolveProcessOwner(
   pid: number,
   processInfoByPid: ReadonlyMap<number, LocalServerProcessInfo>,
-  ownerThreadIdByPid: ProcessOwnerMap,
-): LocalProcessOwner["threadId"] | undefined {
+  ownerByPid: ProcessOwnerMap,
+): LocalProcessOwner | undefined {
   const seen = new Set<number>();
   let currentPid = pid;
   for (let depth = 0; depth < PROCESS_OWNERSHIP_LINEAGE_MAX_DEPTH; depth++) {
@@ -891,10 +901,8 @@ function resolveOwnerThreadId(
     if (currentPid !== pid && !processInfoByPid.has(currentPid)) {
       return undefined;
     }
-    const threadIds = ownerThreadIdByPid.get(currentPid);
-    if (threadIds !== undefined) {
-      return threadIds.size === 1 ? threadIds.values().next().value : undefined;
-    }
+    const owner = ownerByPid.get(currentPid);
+    if (owner !== undefined) return owner ?? undefined;
     const ppid = processInfoByPid.get(currentPid)?.ppid;
     if (typeof ppid !== "number" || ppid <= 1) {
       return undefined;
@@ -1019,16 +1027,10 @@ export function buildLocalServerProcesses(
   localProcessOwners: readonly LocalProcessOwner[] = snapshotLocalProcessOwners(),
 ): ServerLocalServerProcess[] {
   const grouped = groupListenersByPid(listeners);
-  const ownerThreadIdByPid = ownerThreadIdMap(localProcessOwners);
+  const ownerByPid = processOwnerMap(localProcessOwners);
   const processes: ServerLocalServerProcess[] = [];
   for (const [pid, group] of grouped) {
-    const processRow = toServerProcess(
-      pid,
-      group,
-      processInfoByPid,
-      cwdByPid,
-      ownerThreadIdByPid,
-    );
+    const processRow = toServerProcess(pid, group, processInfoByPid, cwdByPid, ownerByPid);
     if (processRow) {
       processes.push(processRow);
     }
@@ -1139,5 +1141,6 @@ export async function stopLocalServer(
     pid: input.pid,
     stopped: !stillAlive,
     message: stillAlive ? "Stop signal sent; the process is still shutting down." : "Stopped.",
+    ...(!stillAlive && target.actionTerminal ? { actionTerminal: target.actionTerminal } : {}),
   };
 }
