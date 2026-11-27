@@ -516,10 +516,7 @@ describe("MessagesTimeline tool group collapse", () => {
           tone: "tool",
           toolCallId: "reasoning-item",
           reasoningStatus,
-          detail:
-            reasoningStatus === "inProgress"
-              ? "First inspect the `provider` boundary."
-              : "First inspect the `provider` boundary.\n\nThen verify cancellation.",
+          detail: "First inspect the `provider` boundary.\n\nThen verify cancellation.",
         },
       },
       ...LIVE_COMMANDS.map((command, index) => commandEntry(`after-${index}`, command)),
